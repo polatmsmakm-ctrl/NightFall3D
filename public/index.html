@@ -46,6 +46,13 @@
   #joyBase{position:absolute;width:120px;height:120px;border-radius:50%;border:2px solid rgba(255,255,255,.18);background:rgba(255,255,255,.04);display:none}
   #joyKnob{position:absolute;width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,.22);display:none}
   #actBtn{position:fixed;right:calc(env(safe-area-inset-right) + 22px);bottom:calc(env(safe-area-inset-bottom) + 32px);width:104px;height:104px;border-radius:50%;z-index:7;min-width:0;padding:0;font-size:18px;background:rgba(120,14,14,.55);border:2px solid rgba(255,80,80,.55);pointer-events:auto}
+  .rb2{position:fixed;display:none;z-index:7;min-width:0;padding:0;border-radius:50%;font-size:14px;background:rgba(20,20,24,.55);border:2px solid rgba(255,255,255,.3);color:#ddd;pointer-events:auto;-webkit-user-select:none;user-select:none;touch-action:none}
+  #sprBtn{right:calc(env(safe-area-inset-right) + 140px);bottom:calc(env(safe-area-inset-bottom) + 26px);width:76px;height:76px}
+  #crBtn{right:calc(env(safe-area-inset-right) + 36px);bottom:calc(env(safe-area-inset-bottom) + 150px);width:68px;height:68px}
+  .rb2.on{background:rgba(232,201,160,.35);border-color:#e8c9a0;color:#fff}
+  #stam{position:fixed;display:none;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 12px);width:170px;height:6px;border-radius:3px;background:rgba(255,255,255,.12);z-index:7;overflow:hidden;direction:ltr}
+  #stam i{display:block;height:100%;width:100%;background:#e8c9a0;border-radius:3px}
+  #stam.exh i{background:#d24a3a}
   #topBtns{position:fixed;top:calc(env(safe-area-inset-top) + 36px);right:12px;z-index:8;display:flex;gap:6px;pointer-events:auto}
   #topBtns button{min-width:0;padding:6px 10px;font-size:14px;background:rgba(0,0,0,.45);border-color:#333;color:#bbb}
   #endBox{position:fixed;inset:0;z-index:9;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.72);font-size:30px;font-weight:800;text-align:center;gap:10px}
@@ -84,6 +91,8 @@
 <div id="look" class="hidden"></div>
 <div id="joy" class="hidden"><div id="joyBase"></div><div id="joyKnob"></div></div>
 <button id="actBtn" class="hidden">—</button>
+<button id="sprBtn" class="rb2">ركض</button><button id="crBtn" class="rb2">انحناء</button>
+<div id="stam"><i></i></div>
 <div id="topBtns" class="hidden"><button id="qHud" class="ghost">الجودة</button><button id="mute" class="ghost">🔊</button></div>
 <div id="endBox" class="hidden"></div>
 
@@ -103,6 +112,7 @@
 })();
 </script>
 <script src="map.js"></script>
+<script src="sim.js"></script>
 <script type="module">
 import * as THREE from '/vendor/three.module.js';
 import { GLTFLoader } from '/vendor/GLTFLoader.js';
@@ -489,7 +499,14 @@ function makePlayer(p) {
   scene.add(g);
   return o;
 }
-function clearPlayers() { for (const o of players.values()) scene.remove(o.g); players.clear(); render.clear(); labels.forEach(l => l.el.remove()); labels.clear(); }
+const marks = [], markGeo = new THREE.PlaneGeometry(8, 22);
+function dropMark(x, z, fa) {
+  let m = marks.length >= 70 ? marks.shift() : null;
+  if (!m) { m = { mesh: new THREE.Mesh(markGeo, new THREE.MeshBasicMaterial({ color: 0xff2a1a, transparent: true, opacity: .75, depthWrite: false, fog: false })) }; m.mesh.rotation.x = -Math.PI / 2; scene.add(m.mesh); }
+  m.mesh.position.set(x + (Math.random() - .5) * 26, 1.3, z + (Math.random() - .5) * 26);
+  m.mesh.rotation.z = -fa + Math.PI / 2 + (Math.random() - .5) * .9; m.born = performance.now(); marks.push(m);
+}
+function clearPlayers() { marks.forEach(m => { m.born = -1e9; m.mesh.visible = false; }); for (const o of players.values()) scene.remove(o.g); players.clear(); render.clear(); labels.forEach(l => l.el.remove()); labels.clear(); }
 
 // ================= جودة الرسم (أداء الجوال) =================
 const QUAL = {
@@ -536,6 +553,24 @@ let phase = 'menu';             // menu | lobby | play | end
 let state = null;
 const render = new Map();       // id → موضع مُنعَّم
 let myRole = null, shownEnd = false;
+// توقّع حركة لاعبي محلياً (نفس محرك السيرفر) + تنعيم بقية اللاعبين
+const C = SIM.C, INTERP = 120;
+let pred = null, predPrev = { x: 0, y: 0, fa: 0 }, pending = [], seq = 0, simAcc = 0, errX = 0, errY = 0;
+const lerpA = (a, b, k) => { let d = b - a; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return a + d * k; };
+function reconcile(me, sv) {
+  if (!pred) { pred = { r: me.r, st: me.st, hp: me.hp }; SIM.reset(pred); SIM.unpack(pred, sv); predPrev = { x: pred.x, y: pred.y, fa: pred.fa }; pending = []; errX = errY = 0; return; }
+  const ox = pred.x, oy = pred.y;
+  pred.r = me.r; pred.st = me.st; pred.hp = me.hp;
+  SIM.unpack(pred, sv);
+  let i = 0; while (i < pending.length && pending[i].s <= sv.a) i++;
+  pending.splice(0, i);
+  for (const q of pending) SIM.step(pred, q, walls);      // أعد تطبيق الحركات اللي السيرفر ما وصلته للحين
+  pred.swing = false;
+  const ex = ox - pred.x, ey = oy - pred.y, e = Math.hypot(ex, ey);
+  if (e > 150) { errX = errY = 0; predPrev.x = pred.x; predPrev.y = pred.y; }
+  else if (e > 0.01) { errX += ex; errY += ey; predPrev.x -= ex; predPrev.y -= ey; }   // صحّح بنعومة بدل القفزة
+  window.__nf && (window.__nf.lastErr = e);
+}
 
 function connect(cb) {
   const url = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
@@ -552,6 +587,7 @@ function show(which) {
   const inGame = which === 'game';
   ['hud', 'joy', 'look', 'actBtn', 'topBtns'].forEach(n => $(n).classList.toggle('hidden', !inGame));
   if (which !== 'game') $('endBox').classList.add('hidden');
+  if (!inGame) ['sprBtn', 'crBtn', 'stam'].forEach(n => $(n).style.display = 'none');
 }
 
 function onMsg(m) {
@@ -567,6 +603,7 @@ function onMsg(m) {
     $('err2').textContent = '';
   }
   else if (m.t === 'start') {
+    pred = null; pending = []; simAcc = 0; inp.crouch = false;
     phase = 'play'; show('game'); clearPlayers(); state = null; myRole = null; shownEnd = false;
     $('endBox').classList.add('hidden'); Snd.start(); fpsAcc = 0; fpsN = 0; fpsT0 = performance.now();
   }
@@ -590,13 +627,15 @@ function msg(txt, ms, col) { const e = $('msg'); e.textContent = txt; e.style.co
 
 function onState(m) {
   state = m;
+  const tNow = performance.now();
   for (const p of m.pl) {
     let r = render.get(p.id);
-    if (!r) { r = { x: p.x, y: p.y, fa: p.fa }; render.set(p.id, r); }
-    r.tx = p.x; r.ty = p.y; r.tfa = p.fa;
+    if (!r) { r = { x: p.x, y: p.y, fa: p.fa, buf: [] }; render.set(p.id, r); }
+    r.buf.push({ t: tNow, x: p.x, y: p.y, fa: p.fa }); if (r.buf.length > 24) r.buf.shift();
     if (p.id === myId) myRole = p.r;
   }
   const me = m.pl.find(p => p.id === myId);
+  if (me && m.me && m.ph === 'play') reconcile(me, m.me);
   for (const ev of m.ev) {
     const d = me ? Math.hypot(ev.x - me.x, ev.y - me.y) : 500;
     if (ev.e === 'hit') { Snd.hit(d, ev.down); flash = .6; shake = 10; if (d < 40) msg('انضربت!', 900); }
@@ -611,12 +650,13 @@ function onState(m) {
 
 // ================= التحكم =================
 let camYaw = 0, camPitch = .42;
-const inp = { jx: 0, jy: 0, act: false };
+const inp = { jx: 0, jy: 0, act: false, sprint: false, push: false, crouch: false };
 const keys = {};
 addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return;
   const k = e.key.toLowerCase();
   if (k === ' ' || k === 'e' || k === 'j') { inp.act = true; e.preventDefault(); }
+  if (k === 'c' && !keys.c) inp.crouch = !inp.crouch;
   keys[k] = true;
 });
 addEventListener('keyup', e => { const k = e.key.toLowerCase(); if (k === ' ' || k === 'e' || k === 'j') inp.act = false; keys[k] = false; });
@@ -634,12 +674,14 @@ joy.addEventListener('touchmove', e => {
   e.preventDefault();
   for (const t of e.changedTouches) if (t.identifier === joyId) {
     let dx = t.clientX - joyO.x, dy = t.clientY - joyO.y; const d = Math.hypot(dx, dy), max = 56;
+    inp.push = d > 96;                                  // سحب الجويستك لآخره = ركض سريع
+    jk.style.background = inp.push ? 'rgba(232,201,160,.6)' : '';
     if (d > max) { dx = dx / d * max; dy = dy / d * max; }
     inp.jx = dx / max; inp.jy = dy / max;
     jk.style.left = joyO.x + dx - 26 + 'px'; jk.style.top = joyO.y + dy - 26 + 'px';
   }
 }, { passive: false });
-const joyEnd = e => { for (const t of e.changedTouches) if (t.identifier === joyId) { joyId = null; inp.jx = inp.jy = 0; jb.style.display = jk.style.display = 'none'; } };
+const joyEnd = e => { for (const t of e.changedTouches) if (t.identifier === joyId) { joyId = null; inp.jx = inp.jy = 0; inp.push = false; jk.style.background = ''; jb.style.display = jk.style.display = 'none'; } };
 joy.addEventListener('touchend', joyEnd); joy.addEventListener('touchcancel', joyEnd);
 
 // تدوير الكاميرا: سحب بالإصبع على الجهة اليمين، أو بالماوس على الكمبيوتر
@@ -661,18 +703,32 @@ ab.addEventListener('touchstart', actOn, { passive: false }); ab.addEventListene
 ab.addEventListener('mousedown', actOn); ab.addEventListener('mouseup', actOff); ab.addEventListener('mouseleave', actOff);
 $('mute').onclick = () => { $('mute').textContent = Snd.toggle() ? '🔇' : '🔊'; };
 
-// إرسال الحركة للسيرفر (نسبةً لاتجاه الكاميرا)
-setInterval(() => {
-  if (phase !== 'play') return;
+// أزرار الركض والانحناء
+const sb = $('sprBtn'), cb = $('crBtn');
+const sprOn = e => { e.preventDefault(); inp.sprint = true; inp.crouch = false; }, sprOff = e => { e.preventDefault(); inp.sprint = false; };
+sb.addEventListener('touchstart', sprOn, { passive: false }); sb.addEventListener('touchend', sprOff, { passive: false }); sb.addEventListener('touchcancel', sprOff, { passive: false });
+sb.addEventListener('mousedown', sprOn); sb.addEventListener('mouseup', sprOff); sb.addEventListener('mouseleave', sprOff);
+const crTog = e => { e.preventDefault(); inp.crouch = !inp.crouch; };
+cb.addEventListener('touchstart', crTog, { passive: false }); cb.addEventListener('mousedown', crTog);
+
+// خطوة محاكاة ثابتة (30 بالثانية): نحرك لاعبي فوراً ونرسل نفس التحكم للسيرفر
+function simTick() {
   let jx = inp.jx, jy = inp.jy;
   if (joyId === null) {
     jx = (keys.d || keys.arrowright ? 1 : 0) - (keys.a || keys.arrowleft ? 1 : 0);
     jy = (keys.s || keys.arrowdown ? 1 : 0) - (keys.w || keys.arrowup ? 1 : 0);
   }
   const f = -jy, r = jx, c = Math.cos(camYaw), s = Math.sin(camYaw);
-  const dx = f * c + r * -s, dy = f * s + r * c;
-  sendJ({ t: 'i', dx: +dx.toFixed(3), dy: +dy.toFixed(3), act: inp.act, aim: +camYaw.toFixed(3) });
-}, 50);
+  const sp = inp.sprint || inp.push || !!keys.shift;
+  if (sp && Math.hypot(jx, jy) > .5) inp.crouch = false;
+  const q = { s: ++seq, dx: +(f * c - r * s).toFixed(3), dy: +(f * s + r * c).toFixed(3), act: inp.act, sp, cr: inp.crouch, aim: +camYaw.toFixed(3) };
+  sendJ({ t: 'i', ...q });
+  if (pred) {
+    predPrev.x = pred.x; predPrev.y = pred.y; predPrev.fa = pred.fa;
+    SIM.step(pred, q, walls); pred.swing = false;
+    pending.push(q); if (pending.length > 90) pending.shift();
+  }
+}
 
 $('joinBtn').onclick = () => {
   Snd.start();
@@ -715,19 +771,32 @@ const camPos = { x: 0, y: 0, z: 0, set: false };
 
 function frame(now) {
   requestAnimationFrame(frame);
-  const dt = Math.min(.05, (now - lastT) / 1000); lastT = now;
+  const rawDt = Math.min(.25, (now - lastT) / 1000), dt = Math.min(.05, rawDt); lastT = now;
   if ((phase !== 'play' && phase !== 'end') || !state) { renderer.clear(); return; }
 
-  // تنعيم الحركة
-  const k = 1 - Math.pow(.0004, dt);
-  for (const r of render.values()) {
-    if (r.tx === undefined) continue;
-    r.x += (r.tx - r.x) * k; r.y += (r.ty - r.y) * k;
-    let da = r.tfa - r.fa; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
-    r.fa += da * Math.min(1, dt * 14);
+  // محاكاة لاعبي بخطوة ثابتة
+  if (phase === 'play') {
+    simAcc += rawDt; let n = 0;
+    while (simAcc >= C.DT && n < 8) { simTick(); simAcc -= C.DT; n++; }
+    if (simAcc >= C.DT) simAcc = 0;
+  }
+  // مواضع العرض: لاعبي من التوقّع المحلي، والباقين من لقطات السيرفر بتأخير بسيط
+  const al = Math.min(1, simAcc / C.DT), ek = Math.exp(-dt * 10); errX *= ek; errY *= ek;
+  const tR = now - INTERP;
+  for (const [id, r] of render) {
+    if (id === myId && pred && phase === 'play') {
+      r.x = predPrev.x + (pred.x - predPrev.x) * al + errX; r.y = predPrev.y + (pred.y - predPrev.y) * al + errY;
+      r.fa = lerpA(predPrev.fa, pred.fa, al); continue;
+    }
+    const b = r.buf; if (!b || !b.length) continue;
+    let j = b.length - 1; while (j > 0 && b[j - 1].t > tR) j--;
+    const s1 = b[j], s0 = b[j - 1] || s1;
+    const k = s1.t > s0.t ? Math.max(0, Math.min(1.25, (tR - s0.t) / (s1.t - s0.t))) : 1;
+    r.x = s0.x + (s1.x - s0.x) * k; r.y = s0.y + (s1.y - s0.y) * k; r.fa = lerpA(s0.fa, s1.fa, Math.min(1, k));
   }
 
   const me = state.pl.find(p => p.id === myId);
+  if (me && pred && phase === 'play') { me.atk = pred.atk > 0 ? 1 : 0; me.cr = pred.cr ? 1 : 0; me.sp = pred.sp ? 1 : 0; }
   const amAlive = me && (me.st === 'alive' || me.st === 'downed');
   let target = me;
   if (!amAlive) target = state.pl.find(p => p.id !== myId && p.r === 's' && (p.st === 'alive' || p.st === 'downed')) || state.pl.find(p => p.r === 'k') || me;
@@ -757,10 +826,13 @@ function frame(now) {
       let an = 'idle', ts = 1;
       if (dead || down) an = 'dying';
       else if (o.kind === 'k' && now < o.atkUntil) { an = 'attack'; ts = 1.5; }
+      else if (p.cr) { if (o.speed < 12) an = 'hide'; else { an = 'crouchwalk'; ts = Math.max(.6, Math.min(1.5, o.speed / 58)); } }
       else if (o.speed < 14) an = 'idle';
-      else if (o.speed < 80) { an = (o.kind === 's' && p.hp === 1) ? 'injured' : 'walk'; ts = Math.max(.7, Math.min(1.6, o.speed / 55)); }
-      else if (o.speed < 185) { an = 'run'; ts = Math.max(.75, Math.min(1.35, o.speed / 150)); }
-      else { an = 'sprint'; ts = Math.max(.8, Math.min(1.3, o.speed / 215)); }
+      else if (o.speed < 105) { an = (o.kind === 's' && p.hp === 1) ? 'injured' : 'walk'; ts = Math.max(.7, Math.min(1.7, o.speed / 60)); }
+      else if (p.sp || p.bo || o.speed > 190) { an = 'sprint'; ts = Math.max(.8, Math.min(1.3, o.speed / 205)); }
+      else { an = 'run'; ts = Math.max(.75, Math.min(1.35, o.speed / 150)); }
+      // آثار الركض: يشوفها القاتل بس، والمشي والانحناء ما يتركون أثر
+      if (myRole === 'k' && o.kind === 's' && p.st === 'alive' && !p.cr && o.speed > 125) { o.mk = (o.mk || 0) + dt; if (o.mk > .28) { o.mk = 0; dropMark(r.x, r.y, r.fa); } }
       if (window.__nf.force && o.acts[window.__nf.force]) { an = window.__nf.force; ts = window.__nf.forceTs ?? 1; }
       setAnim(o, an, an === 'attack' ? .08 : .18);
       o.acts[an].timeScale = ts; o.acts.dying.paused = dead;
@@ -791,6 +863,8 @@ function frame(now) {
   }
   for (const [id, o] of players) if (!seen.has(id)) { scene.remove(o.g); players.delete(id); }
   if (![...state.pl].some(p => p.r === 'k')) killerGlow.intensity = 0;
+
+  for (const m of marks) { const age = (now - m.born) / 1000; m.mesh.visible = myRole === 'k' && age < 7; m.mesh.material.opacity = .75 * Math.max(0, 1 - age / 7); }
 
   // ----- المولدات والبوابات -----
   gensViz.forEach((gv, i) => {
@@ -850,7 +924,7 @@ function frame(now) {
     const o = players.get(p.id); if (!o || p.id === myId || p.st === 'escaped' || p.st === 'dead') continue;
     const r = render.get(p.id); if (!r || !tr) continue;
     const d = Math.hypot(r.x - tr.x, r.y - tr.y);
-    if (d > 380) continue;
+    if (d > 380 || (myRole === 'k' && p.cr)) continue;
     tmp.set(r.x, 92, r.y).project(camera);
     if (tmp.z > 1) continue;
     const l = getLabel(p.id); shownL.add(p.id);
@@ -865,6 +939,9 @@ function frame(now) {
   // ----- HUD -----
   $('roleTxt').textContent = !me ? '' : me.r === 'k' ? '🔪 أنت القاتل' : me.st === 'dead' ? '💀 مت' : me.st === 'escaped' ? '🏃 هربت' : me.st === 'downed' ? '🩸 طحت! انتظر ينقذونك' : (me.hp === 1 ? '🏃 ناجي (مصاب)' : '🏃 ناجي');
   $('genTxt').textContent = state.exitOpen ? '🚪 البوابات مفتوحة!' : `⚙️ مولدات ${state.done}/${state.need}`;
+  const sCtl = phase === 'play' && me && me.r === 's' && me.st === 'alive';
+  sb.style.display = cb.style.display = $('stam').style.display = sCtl ? 'block' : 'none';
+  if (sCtl && pred) { $('stam').firstChild.style.width = (pred.stam * 100).toFixed(0) + '%'; $('stam').classList.toggle('exh', pred.exh); sb.classList.toggle('on', pred.sp); cb.classList.toggle('on', pred.cr); }
   const act = $('actBtn');
   act.textContent = me && me.r === 'k' ? 'هجوم' : 'تصليح / إنقاذ';
   act.style.fontSize = me && me.r === 's' ? '15px' : '19px';
@@ -889,7 +966,7 @@ function frame(now) {
 requestAnimationFrame(frame);
 
 // للاختبار والتشخيص فقط
-window.__nf = { renderer, scene, camera, players, get state() { return state; }, applyQuality, get q() { return qName; } };
+window.__nf = { renderer, scene, camera, players, dbg: () => pred, get state() { return state; }, applyQuality, get q() { return qName; } };
 </script>
 </body>
 </html>

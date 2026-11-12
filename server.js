@@ -38,17 +38,15 @@ const server = http.createServer((req, res) => {
 const wss = new WebSocketServer({ server });
 
 // ---------- إعدادات اللعب ----------
-const R = 14;                 // نصف قطر اللاعب
-const SURV_SPEED = 150;
-const SURV_HURT_BOOST = 190;  // دفعة سرعة بعد الضربة
-const KILLER_SPEED = 168;
+const SIM = require('./public/sim.js');
+const C = SIM.C;
 const MAX_PLAYERS = 7;        // قاتل + 6 ناجين
 const GEN_TIME = 45;          // ثواني لمولد بلاعب واحد
 const REVIVE_TIME = 5;
 const BLEEDOUT = 45;
-const HIT_COOLDOWN = 1.4, MISS_COOLDOWN = 0.7;
-const ATTACK_REACH = 64;
 const TICK = 30;
+const LAG = +process.env.NF_LAG || 0;
+const SNAP_EVERY = 2;         // لقطة للعملاء كل تيكين (15 مرة بالثانية)
 
 const rooms = new Map();
 let nextId = 1;
@@ -74,29 +72,6 @@ function lobbyInfo(room) {
   return { t: 'lobby', code: room.code, host: room.hostId, phase: room.phase, players: [...room.players.values()].map(p => ({ id: p.id, n: p.name })) };
 }
 
-// ---------- فيزياء بسيطة ----------
-function resolveWalls(p) {
-  for (let pass = 0; pass < 2; pass++) {
-    for (const [x, y, w, h] of MAP.walls) {
-      const cx = Math.max(x, Math.min(p.x, x + w));
-      const cy = Math.max(y, Math.min(p.y, y + h));
-      let dx = p.x - cx, dy = p.y - cy;
-      const d2 = dx * dx + dy * dy;
-      if (d2 >= R * R) continue;
-      if (d2 > 0.0001) {
-        const d = Math.sqrt(d2), push = R - d;
-        p.x += (dx / d) * push; p.y += (dy / d) * push;
-      } else {
-        // داخل المستطيل: اطلع من أقرب جهة
-        const l = p.x - x, r = x + w - p.x, t = p.y - y, b = y + h - p.y;
-        const m = Math.min(l, r, t, b);
-        if (m === l) p.x = x - R; else if (m === r) p.x = x + w + R;
-        else if (m === t) p.y = y - R; else p.y = y + h + R;
-      }
-    }
-  }
-}
-
 // ---------- بدء الجولة ----------
 function startGame(room) {
   const list = [...room.players.values()];
@@ -106,8 +81,9 @@ function startGame(room) {
   for (const p of list) {
     p.role = p === killer ? 'k' : 's';
     p.state = 'alive'; p.hp = p.role === 's' ? 2 : 0;
-    p.boost = 0; p.cd = 0; p.atk = 0; p.bleed = 0; p.rv = 0; p.rvTouched = false;
-    p.dx = 0; p.dy = 0; p.act = false; p.fa = 0;
+    SIM.reset(p); p.r = p.role; p.st = p.state;
+    p.bleed = 0; p.rv = 0; p.rvTouched = false;
+    p.q = []; p.bucket = 4; p.ack = 0; p.act = false; p.fa = 0;
     if (p.role === 'k') { p.x = MAP.killerSpawn.x; p.y = MAP.killerSpawn.y; p.fa = Math.PI; }
     else {
       const a = (si / Math.max(survCount, 1)) * Math.PI * 2;
@@ -131,6 +107,29 @@ function endGame(room, reason) {
   broadcast(room, { t: 'end', ...room.result });
 }
 
+// ---------- ضربة القاتل: أقرب ناجي داخل مخروط قدامه أثناء الاندفاعة ----------
+function tryHit(room, killer, survs) {
+  let best = null, bd = C.ATTACK_REACH;
+  for (const s of survs) {
+    if (s.state !== 'alive' && s.state !== 'downed') continue;
+    const dx = s.x - killer.x, dy = s.y - killer.y, d = Math.hypot(dx, dy);
+    if (d >= bd) continue;
+    let da = Math.atan2(dy, dx) - killer.lfa; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
+    if (d > 22 && Math.abs(da) > C.ATTACK_ARC) continue;
+    bd = d; best = s;
+  }
+  if (!best) return;
+  killer.hitDone = true; killer.lunge = 0; killer.cd = C.HIT_CD; killer.slow = C.HIT_SLOW; killer.slowK = C.HIT_SLOW_K;
+  if (best.state === 'alive') {
+    best.hp -= 1; best.boost = C.HIT_BOOST;
+    if (best.hp <= 0) { best.state = 'downed'; best.bleed = BLEEDOUT; best.rv = 0; best.boost = 0; }
+    room.ev.push({ e: 'hit', x: best.x, y: best.y, down: best.state === 'downed' });
+  } else {
+    best.state = 'dead';
+    room.ev.push({ e: 'kill', x: best.x, y: best.y });
+  }
+}
+
 // ---------- تحديث اللعبة ----------
 function update(room, dt) {
   const players = [...room.players.values()];
@@ -138,54 +137,18 @@ function update(room, dt) {
   const survs = players.filter(p => p.role === 's');
   for (const p of players) p.rvTouched = false;
 
-  // حركة
+  // حركة: كل رسالة تحكم من اللاعب = خطوة محاكاة واحدة (نفس اللي حسبها جواله بالضبط)
   for (const p of players) {
-    if (p.cd > 0) p.cd -= dt;
-    if (p.atk > 0) p.atk -= dt;
-    if (p.boost > 0) p.boost -= dt;
-    if (p.state === 'dead' || p.state === 'escaped') continue;
-
-    let mx = p.dx, my = p.dy;
-    const len = Math.hypot(mx, my);
-    if (len > 1) { mx /= len; my /= len; }
-    let speed = p.role === 'k' ? KILLER_SPEED : SURV_SPEED;
-    if (p.role === 's') {
-      if (p.state === 'downed') speed = 28;
-      else if (p.boost > 0) speed = SURV_HURT_BOOST;
-      else if (p.hp === 1) speed = SURV_SPEED * 0.95;
+    p.bucket = Math.min(8, p.bucket + TICK * dt * 1.15);
+    while (p.q.length && p.bucket >= 1) {
+      const inp = p.q.shift(); p.bucket -= 1;
+      p.r = p.role; p.st = p.state;
+      SIM.step(p, inp, MAP.walls);
+      p.ack = inp.s; p.act = !!inp.act;
+      if (p.swing) { p.swing = false; p.hitDone = false; room.ev.push({ e: 'swing', x: p.x, y: p.y }); }
+      if (p.role === 'k' && p.lunge > 0 && !p.hitDone) tryHit(room, p, survs);
     }
-    if (len > 0.05) {
-      p.fa = Math.atan2(my, mx);
-      p.x += mx * speed * dt; p.y += my * speed * dt;
-      resolveWalls(p);
-    }
-  }
-
-  // قاتل: ضرب (يضرب باتجاه الكاميرا لو العميل أرسل aim)
-  if (killer && killer.act && killer.cd <= 0) {
-    if (killer.aim !== undefined) killer.fa = killer.aim;
-    const ax = killer.x + Math.cos(killer.fa) * 30, ay = killer.y + Math.sin(killer.fa) * 30;
-    let best = null, bd = ATTACK_REACH;
-    for (const s of survs) {
-      if (s.state !== 'alive' && s.state !== 'downed') continue;
-      const d = Math.hypot(s.x - ax, s.y - ay);
-      if (d < bd) { bd = d; best = s; }
-    }
-    killer.atk = 0.25;
-    if (best) {
-      killer.cd = HIT_COOLDOWN;
-      if (best.state === 'alive') {
-        best.hp -= 1; best.boost = 1.6;
-        if (best.hp <= 0) { best.state = 'downed'; best.bleed = BLEEDOUT; best.rv = 0; }
-        room.ev.push({ e: 'hit', x: best.x, y: best.y, down: best.state === 'downed' });
-      } else {
-        best.state = 'dead';
-        room.ev.push({ e: 'kill', x: best.x, y: best.y });
-      }
-    } else {
-      killer.cd = MISS_COOLDOWN;
-      room.ev.push({ e: 'swing', x: killer.x, y: killer.y });
-    }
+    if (p.q.length > 12) p.q.splice(0, p.q.length - 12);
   }
 
   // ناجين: نزيف + تصليح + إنقاذ
@@ -206,7 +169,7 @@ function update(room, dt) {
     }
     if (mate) {
       mate.rv += dt / REVIVE_TIME; mate.rvTouched = true;
-      if (mate.rv >= 1) { mate.state = 'alive'; mate.hp = 1; mate.rv = 0; mate.boost = 1.2; room.ev.push({ e: 'revive', x: mate.x, y: mate.y }); }
+      if (mate.rv >= 1) { mate.state = 'alive'; mate.hp = 1; mate.rv = 0; mate.boost = 1.2; mate.stam = 1; mate.exh = false; room.ev.push({ e: 'revive', x: mate.x, y: mate.y }); }
       continue;
     }
     // مولد
@@ -258,6 +221,7 @@ function snapshot(room) {
       r: p.role, st: p.state, hp: p.hp, fa: Math.round(p.fa * 100) / 100,
       atk: p.atk > 0 ? 1 : 0, rv: Math.round(p.rv * 100) / 100,
       bl: p.state === 'downed' ? Math.round(p.bleed) : 0, bo: p.boost > 0 ? 1 : 0,
+      cr: p.cr ? 1 : 0, sp: p.sp ? 1 : 0,
     })),
     ev: room.ev,
   };
@@ -265,7 +229,13 @@ function snapshot(room) {
 
 // ---------- الاتصال ----------
 wss.on('connection', (ws) => {
-  const me = { id: nextId++, ws, room: null, name: 'لاعب', role: null, state: 'alive', hp: 0, x: 0, y: 0, fa: 0, dx: 0, dy: 0, act: false, boost: 0, cd: 0, atk: 0, bleed: 0, rv: 0 };
+  if (LAG) {      // للتجربة فقط: NF_LAG=80 يحاكي تأخير شبكة 80ms بكل اتجاه
+    const rawSend = ws.send.bind(ws), rawOn = ws.on.bind(ws);
+    ws.send = d => setTimeout(() => { if (ws.readyState === 1) rawSend(d); }, LAG);
+    ws.on = (ev, fn) => rawOn(ev, ev === 'message' ? (...a) => setTimeout(() => fn(...a), LAG) : fn);
+  }
+  const me = { id: nextId++, ws, room: null, name: 'لاعب', role: null, state: 'alive', hp: 0, x: 0, y: 0, fa: 0, act: false, bleed: 0, rv: 0, q: [], bucket: 4, ack: 0 };
+  SIM.reset(me);
 
   ws.on('message', (raw) => {
     let m; try { m = JSON.parse(raw); } catch { return; }
@@ -295,11 +265,13 @@ wss.on('connection', (ws) => {
       if (room.players.size < 2) return send(ws, { t: 'err', msg: 'تحتاج لاعبين على الأقل' });
       startGame(room);
     } else if (m.t === 'i') {
-      me.dx = Math.max(-1, Math.min(1, +m.dx || 0));
-      me.dy = Math.max(-1, Math.min(1, +m.dy || 0));
-      me.act = !!m.act;
-      // اتجاه التصويب (زاوية الكاميرا) يستخدمه القاتل للضرب
-      me.aim = typeof m.aim === 'number' && isFinite(m.aim) ? m.aim : undefined;
+      if (room.phase !== 'play' || me.q.length > 16) return;
+      me.q.push({
+        s: m.s | 0,
+        dx: Math.max(-1, Math.min(1, +m.dx || 0)), dy: Math.max(-1, Math.min(1, +m.dy || 0)),
+        act: !!m.act, sp: !!m.sp, cr: !!m.cr,
+        aim: typeof m.aim === 'number' && isFinite(m.aim) ? m.aim : undefined,   // اتجاه الكاميرا: القاتل يضرب باتجاهه
+      });
     }
   });
 
@@ -333,8 +305,13 @@ setInterval(() => {
       for (const p of room.players.values()) { p.role = null; p.state = 'alive'; }
       broadcast(room, lobbyInfo(room));
     }
-    if ((room.phase === 'play' || room.phase === 'end') && tickN % 2 === 0) {
-      broadcast(room, snapshot(room));
+    if ((room.phase === 'play' || room.phase === 'end') && tickN % SNAP_EVERY === 0) {
+      // لقطة مشتركة + حالة الحركة الدقيقة لكل لاعب لنفسه (عشان يطابق توقّعه)
+      const base = JSON.stringify(snapshot(room)).slice(0, -1);
+      for (const p of room.players.values()) {
+        if (p.ws.readyState !== 1) continue;
+        p.ws.send(base + ',"me":' + JSON.stringify({ a: p.ack, ...SIM.pack(p) }) + '}');
+      }
       room.ev = [];
     }
   }
