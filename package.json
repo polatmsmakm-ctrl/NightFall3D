@@ -1,0 +1,9 @@
+{
+  "name": "nightfall3d",
+  "version": "0.1.0",
+  "description": "Nightfall 3D: asymmetric horror, 1 killer vs survivors",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "dependencies": { "ws": "^8.18.0" },
+  "engines": { "node": ">=18" }
+}
