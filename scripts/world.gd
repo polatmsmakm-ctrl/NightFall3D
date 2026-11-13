@@ -144,7 +144,7 @@ func configure(id: String, seed := 1) -> void:
 	gen_spots.append(mbase + mrot * Vector3(11.5, -0.05, MARKET_D / 2.0 + 4.6))
 	var order := _shuffled(gen_spots.size(), rng)
 	for k in 7: gen_points.append(gen_spots[order[k]])
-	# doors (used for creaks) and 9 pallets out of them
+	# doorways, and 9 pallets out of them
 	for b in buildings: door_points.append([_local(b, Vector3(0, 0, b[4] / 2.0)), b[2]])
 	door_points.append([mbase + mrot * Vector3(0, 0, -MARKET_D / 2.0), market.yaw])
 	order = _shuffled(door_points.size(), rng)

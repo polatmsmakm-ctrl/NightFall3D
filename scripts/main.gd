@@ -11,7 +11,7 @@ const NATURAL := {"walk": 1.3, "run": 3.7, "crouchwalk": 1.0, "injured": 1.6}
 const ACCEL := 20.0
 const DECEL := 28.0
 const SFX := {"gen_loop": "wav", "hit": "wav", "ding": "wav", "boom": "wav", "pallet": "wav", "hurt": "wav", "gate": "mp3",
-	"creak": "wav", "click": "wav", "hatch": "wav",
+	"click": "wav", "hatch": "wav",
 	"heart": "mp3", "breath": "mp3", "steps_out": "mp3", "steps_in": "mp3", "gen_run": "mp3", "chase": "mp3", "ambient": "mp3"}
 const TERROR_RADIUS := 24.0 # survivors start to feel the killer inside this distance
 
@@ -78,7 +78,6 @@ var noise_dir := 0.0
 var flash_light: SpotLight3D
 var light_on := false
 var battery := 100.0 # percent; a full charge lasts about two and a half minutes
-var door_cool := {}
 var last_hatch := -1
 var xp_saved := false
 var lobby_scene: Node3D
@@ -1341,24 +1340,6 @@ func _process(dt: float) -> void:
 			_sfx("hatch", world.hatch_points[rules.hatch], 8.0)
 			_flash("انفتحت فتحة هروب! دوّر عليها" if my_role == "survivor" else "انفتحت فتحة هروب — لا تخليه يوصلها")
 	world.set_market_dark(rules.killer != "" and world.in_market(kpos))
-	# anyone passing a doorway makes it creak
-	for n in door_cool.keys(): door_cool[n] = maxf(door_cool[n] - dt, 0.0)
-	var walkers := [body.position]
-	for n in remotes:
-		if remotes[n].node.visible: walkers.append(remotes[n].node.position)
-	for i in world.door_points.size():
-		if door_cool.get(i, 0.0) > 0.0: continue
-		for wp in walkers:
-			if _near(wp, world.door_points[i][0], 0.8):
-				door_cool[i] = 5.0
-				_sfx("creak", world.door_points[i][0] + Vector3(0, 1.5, 0), 2.0, randf_range(0.85, 1.15))
-				break
-	for i in rules.pallets.size(): world.set_pallet_state(i, rules.pallets[i])
-	if rules.powered and not was_powered:
-		was_powered = true
-		for g in world.gate_points: _sfx("gate", g[0] + Vector3(0, 3, 0), 8.0)
-		_sfx("gate", null, -12.0)
-		_flash("اشتغلت الكهرباء — البوابات انفتحت!")
 	# survivors feel the killer coming: heartbeat inside the terror radius, heavy breathing when he is very close
 	danger = 0.0
 	var kdist := 999.0

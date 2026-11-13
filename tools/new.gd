@@ -23,7 +23,7 @@ func _ready():
 	for i in 160: await tree.physics_frame
 	m.stick_vec = Vector2.ZERO
 	var loc: Vector3 = rot.inverse() * (m.body.position - Vector3(b[0], 0, b[1]))
-	print("house entry: local z=", snappedf(loc.z, 0.01), " (door at 4.0, yard gate at 7.0) surface=", w.surface_at(m.body.position), " creak cooldowns=", m.door_cool.size())
+	print("house entry: local z=", snappedf(loc.z, 0.01), " (door at 4.0, yard gate at 7.0) surface=", w.surface_at(m.body.position))
 	# flashlight
 	m._press("light", 5)
 	for i in 30: await tree.physics_frame
