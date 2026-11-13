@@ -2,6 +2,7 @@
 // Everything is in memory: friend lists live on each phone and are re-sent on connect.
 const http = require('http');
 const { WebSocketServer } = require('ws');
+const { Rules } = require('./rules');
 
 const PORT = process.env.PORT || 8080;
 const MAX_PLAYERS = 7;
@@ -52,10 +53,8 @@ function leaveRoom(c) {
   c.room = null;
   r.members = r.members.filter((m) => m !== c);
   if (r.members.length === 0) { rooms.delete(r.code); return; }
-  if (r.host === c.name) {
-    r.host = r.members[0].name;
-    if (r.state === 'game') r.state = 'lobby'; // the host runs the match rules: round ends if they leave
-  }
+  if (r.host === c.name) r.host = r.members[0].name;
+  if (r.state === 'game' && r.rules) r.rules.leave(c.name);
   broadcast(r, { t: 'left', name: c.name });
   broadcast(r, roomView(r));
 }
@@ -125,25 +124,33 @@ const handlers = {
     r.state = 'game';
     r.seed = Math.floor(Math.random() * 1e9);
     const players = r.members.map((m, i) => ({ name: m.name, role: m.role, char: m.char, slot: i }));
+    r.rules = new Rules(players);
     broadcast(r, { t: 'started', map: r.map, seed: r.seed, players });
   },
   lobby(c) { // host sends everyone back to the lobby
     const r = c.room;
     if (!r || r.host !== c.name) return;
     r.state = 'lobby';
+    r.rules = null;
     broadcast(r, roomView(r));
+  },
+  layout(c, m) { // map object positions; the first one received is used
+    const r = c.room;
+    if (r && r.state === 'game' && r.rules) r.rules.setLayout(m.d);
   },
   st(c, m) { // position relay
     const r = c.room;
     if (!r || r.state !== 'game') return;
     const p = m.p;
     if (!Array.isArray(p) || p.length !== 4 || !p.every(Number.isFinite)) return;
+    if (r.rules) r.rules.setPos(c.name, p);
     broadcast(r, { t: 'st', n: c.name, p, a: String(m.a || 'idle').slice(0, 12) }, c);
   },
-  ev(c, m) { // game events: relayed as-is, the room host is the referee
+  ev(c, m) { // a player's input; the server referees and tells everyone what happened
     const r = c.room;
-    if (!r || r.state !== 'game' || typeof m.d !== 'object' || m.d === null) return;
-    broadcast(r, { t: 'ev', n: c.name, d: m.d }, c);
+    if (!r || r.state !== 'game' || !r.rules || typeof m.d !== 'object' || m.d === null) return;
+    for (const e of r.rules.handle(m.d, c.name)) broadcast(r, { t: 'ev', n: '', d: e });
+    r.dirty = true;
   },
   ping(c) { send(c, { t: 'pong' }); },
 };
@@ -169,5 +176,19 @@ wss.on('connection', (ws) => {
 setInterval(() => {
   for (const ws of wss.clients) ws.ping();
 }, 25000);
+
+// game loop: 10 ticks a second, snapshot 5 times a second (or right after an input)
+let tickN = 0;
+setInterval(() => {
+  tickN++;
+  for (const r of rooms.values()) {
+    if (r.state !== 'game' || !r.rules || !r.rules.ready) continue;
+    r.rules.tick(0.1);
+    if (r.dirty || tickN % 2 === 0) {
+      r.dirty = false;
+      broadcast(r, { t: 'ev', n: '', d: r.rules.snapshot() });
+    }
+  }
+}, 100);
 
 server.listen(PORT, () => console.log('NightFall server on :' + PORT));

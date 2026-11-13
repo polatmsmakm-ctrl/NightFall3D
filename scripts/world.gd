@@ -29,6 +29,11 @@ var tree_plan: Array = [] # [x, y, z, variant, scale, yaw]
 var fog_density := 0.016
 var gen_points: Array[Vector3] = []
 var gate_points: Array = [] # [Vector3, yaw]
+var hook_points: Array[Vector3] = []
+var locker_points: Array = [] # [Vector3, yaw]
+var pallet_points: Array = [] # [Vector3 door center, yaw]
+var window_points: Array = [] # [Vector3 center, Vector3 outward normal]
+var pallet_nodes: Array = []
 var gen_nodes: Array = []
 var gate_nodes: Array = []
 var noise := FastNoiseLite.new()
@@ -78,6 +83,25 @@ func configure(id: String) -> void:
 		var gx: float = b[0] + lx * cos(b[2]) + lz * sin(b[2])
 		var gz: float = b[1] - lx * sin(b[2]) + lz * cos(b[2])
 		gen_points.append(Vector3(gx, _raw_h(b[0], b[1]) + 0.1, gz))
+	# each of the first 8 buildings: a locker inside, a pallet at the door, a vault window on the left wall
+	for bi in mini(buildings.size(), 8):
+		var b: Array = buildings[bi]
+		var base := Vector3(b[0], _raw_h(b[0], b[1]) + 0.1, b[1])
+		var rot := Basis(Vector3.UP, b[2])
+		locker_points.append([base + rot * Vector3(b[3] / 2.0 - 0.75, 0, -b[4] / 2.0 + 0.6), b[2]])
+		pallet_points.append([base + rot * Vector3(0, 0, b[4] / 2.0), b[2]])
+		window_points.append([base + rot * Vector3(-b[3] / 2.0, 0, 0), rot * Vector3(-1, 0, 0)])
+	# 6 hooks on a ring between the buildings
+	for hi in 6:
+		var ang := hi * TAU / 6.0 + 0.5
+		var hp := Vector2.from_angle(ang) * 38.0
+		var tries := 0
+		while in_site(hp.x, hp.y, 3.5) and tries < 20:
+			tries += 1
+			ang += 0.17
+			hp = Vector2.from_angle(ang) * (38.0 + tries * 1.5)
+		sites.append([hp.x, hp.y, _raw_h(hp.x, hp.y), 2.5])
+		hook_points.append(Vector3(hp.x, _raw_h(hp.x, hp.y), hp.y))
 	# 2 exit gates on opposite edges
 	for g in [[0.0, -WALL, 0.0], [0.0, WALL, PI]]:
 		sites.append([g[0], g[1], _raw_h(g[0], g[1]), 8.0])
@@ -352,7 +376,69 @@ func _emissive(c: Color) -> StandardMaterial3D:
 	m.emission_energy_multiplier = 0.0
 	return m
 
+func _mesh_box(parent: Node3D, size: Vector3, pos: Vector3, mat: Material, rot := Vector3.ZERO) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = size
+	bm.material = mat
+	mi.mesh = bm
+	mi.position = pos; mi.rotation = rot
+	parent.add_child(mi)
+	return mi
+
+func _build_props() -> void:
+	var red := StandardMaterial3D.new()
+	red.albedo_color = Color(0.32, 0.07, 0.06)
+	red.roughness = 0.6; red.metallic = 0.5
+	for hp in hook_points:
+		var body := StaticBody3D.new()
+		body.position = hp
+		_box(body, Vector3(0.28, 3.4, 0.28), Vector3(0, 1.7, 0), _mat.wood)
+		_mesh_box(body, Vector3(0.2, 0.2, 1.1), Vector3(0, 3.2, 0.45), _mat.wood)
+		_mesh_box(body, Vector3(0.08, 0.5, 0.08), Vector3(0, 2.85, 0.9), _mat.metal)
+		_mesh_box(body, Vector3(0.08, 0.08, 0.3), Vector3(0, 2.6, 0.78), _mat.metal)
+		var l := OmniLight3D.new()
+		l.position = Vector3(0, 3.0, 0.9)
+		l.light_color = Color(1.0, 0.2, 0.15)
+		l.light_energy = 0.8; l.omni_range = 5.0
+		body.add_child(l)
+		add_child(body)
+	for lp in locker_points:
+		var body := StaticBody3D.new()
+		body.position = lp[0]
+		body.rotation.y = lp[1]
+		_box(body, Vector3(1.0, 2.1, 0.7), Vector3(0, 1.05, 0), red)
+		_mesh_box(body, Vector3(0.04, 1.9, 0.04), Vector3(0, 1.05, 0.36), _mat.metal)
+		add_child(body)
+	for pp in pallet_points:
+		var root := Node3D.new()
+		root.position = pp[0]
+		root.rotation.y = pp[1]
+		var up := Node3D.new()
+		_mesh_box(up, Vector3(1.2, 1.5, 0.14), Vector3(1.35, 0.8, -0.3), _mat.wood, Vector3(0.12, 0, 0))
+		root.add_child(up)
+		var down := StaticBody3D.new()
+		_box(down, Vector3(1.3, 0.14, 1.3), Vector3(0, 0.85, 0), _mat.wood)
+		_box(down, Vector3(1.3, 0.8, 0.14), Vector3(0, 0.42, 0), _mat.wood)
+		down.visible = false
+		for ch in down.get_children():
+			if ch is CollisionShape3D: ch.disabled = true
+		root.add_child(down)
+		add_child(root)
+		pallet_nodes.append({"up": up, "down": down, "state": 0})
+
+func set_pallet_state(i: int, state: int) -> void: # 0 standing, 1 dropped, 2 broken
+	if i >= pallet_nodes.size(): return
+	var p: Dictionary = pallet_nodes[i]
+	if p.state == state: return
+	p.state = state
+	p.up.visible = state == 0
+	p.down.visible = state == 1
+	for ch in p.down.get_children():
+		if ch is CollisionShape3D: ch.set_deferred("disabled", state != 1)
+
 func _build_objectives() -> void:
+	_build_props()
 	for gp in gen_points:
 		var body := StaticBody3D.new()
 		body.position = gp

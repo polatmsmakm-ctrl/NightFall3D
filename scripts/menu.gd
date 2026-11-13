@@ -241,6 +241,8 @@ func _page_offline() -> void:
 		if off_char == id: b.modulate = Color(1, 0.75, 0.3)
 	_button("ابدأ", func():
 		var n := Net.username if Net.username != "" else "Player"
-		start_game.emit({"map": off_map, "me": n, "offline": true,
-			"players": [{"name": n, "role": "killer" if off_char == "killer" else "survivor", "char": off_char, "slot": 0}]}))
+		var list := [{"name": n, "role": "killer" if off_char == "killer" else "survivor", "char": off_char, "slot": 0}]
+		# a practice dummy: a target for the killer, or a wounded teammate to heal
+		list.append({"name": "دمية", "role": "survivor", "char": "survivor4" if off_char != "survivor4" else "survivor1", "slot": 1, "dummy": true})
+		start_game.emit({"map": off_map, "me": n, "offline": true, "players": list}))
 	_button("رجوع", func(): open("main" if Net.username != "" else "name"))
