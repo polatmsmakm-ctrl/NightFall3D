@@ -1,14 +1,21 @@
 extends Node
 func _ready():
+	var tree := get_tree()
 	var m = load("res://scenes/main.tscn").instantiate()
-	get_tree().root.add_child.call_deferred(m)
-	for i in 200: await get_tree().process_frame
-	var names := ["a", "b", "c"]
-	var yaws := [0.0, 2.2, 4.0]
-	for k in 3:
-		m.yaw = yaws[k]
-		m.pitch = -0.05 if k == 0 else -0.2
-		for i in 30: await get_tree().process_frame
-		get_tree().root.get_texture().get_image().save_png("/tmp/shot_%s.png" % names[k])
-	print("SHOTS DONE ready=", m.world.ready_done)
-	get_tree().quit()
+	tree.root.add_child.call_deferred(m)
+	for i in 5: await tree.process_frame
+	Net.username = "Rashid"; Net.friends = ["Ali", "Fahad"]; Net.online = {"ali": true}; Net.state = "online"
+	Net.room = {"code": "4979", "host": "Rashid", "map": "forest", "state": "lobby", "players": [
+		{"name": "Rashid", "role": "killer", "char": "killer"}, {"name": "Ali", "role": "survivor", "char": "survivor2"}]}
+	m.menu.open("lobby")
+	for i in 5: await tree.process_frame
+	tree.root.get_texture().get_image().save_png("/tmp/ui_lobby.png")
+	m.menu.open("friends")
+	for i in 5: await tree.process_frame
+	tree.root.get_texture().get_image().save_png("/tmp/ui_friends.png")
+	Net.room = {}
+	m._start({"map": "village", "me": "Rashid", "offline": true, "players": [{"name": "Rashid", "role": "killer", "char": "killer", "slot": 0}]})
+	for i in 150: await tree.process_frame
+	tree.root.get_texture().get_image().save_png("/tmp/ui_game.png")
+	print("SHOTS DONE")
+	tree.quit()

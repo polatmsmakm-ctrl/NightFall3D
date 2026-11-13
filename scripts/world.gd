@@ -10,8 +10,8 @@ const TREE_CHUNK := 50.0
 const GRASS_CHUNK := 20.0
 const GRASS_PER_CHUNK := 700
 
-# x, z, yaw, width, depth, wall height
-const BUILDINGS := [
+# each: x, z, yaw, width, depth, wall height
+const FOREST_BUILDINGS := [
 	[18.0, -16.0, 0.3, 7.0, 6.0, 3.0],
 	[-26.0, 10.0, 1.2, 6.0, 5.0, 2.8],
 	[30.0, 28.0, -0.6, 9.0, 7.0, 3.4],
@@ -21,6 +21,11 @@ const BUILDINGS := [
 	[2.0, 50.0, -1.3, 8.0, 6.0, 3.2],
 ]
 
+var map_id := "forest"
+var buildings: Array = []
+var tree_count := 320
+var tree_plan: Array = [] # [x, y, z, variant, scale, yaw]
+var fog_density := 0.016
 var noise := FastNoiseLite.new()
 var sites: Array = [] # [x, z, flat height, radius]
 var moon_dir := Vector3(0.3, 0.32, -0.9).normalized()
@@ -33,16 +38,64 @@ var flicker: Array[OmniLight3D] = []
 var grass_nodes: Array[MultiMeshInstance3D] = []
 var grass_counts: Array[int] = []
 var ready_done := false
+var tree_positions: Array[Vector3] = []
 var _sky_noise: NoiseTexture2D
 var _mat := {}
 
-func _init() -> void:
-	noise.seed = 1337
+func configure(id: String) -> void:
+	map_id = id
 	noise.frequency = 0.012
 	noise.fractal_octaves = 4
+	if id == "village":
+		noise.seed = 4242
+		tree_count = 170
+		fog_density = 0.011
+		moon_dir = Vector3(-0.45, 0.36, -0.8).normalized()
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 11
+		for i in range(-2, 3):
+			for j in range(-1, 2):
+				if i == 0 and j == 0: continue
+				buildings.append([i * 24.0 + rng.randf_range(-4, 4), j * 26.0 + rng.randf_range(-4, 4),
+					rng.randf() * TAU, rng.randf_range(6.0, 9.0), rng.randf_range(5.0, 7.0), rng.randf_range(2.8, 3.4)])
+	else:
+		noise.seed = 1337
+		buildings = FOREST_BUILDINGS.duplicate(true)
 	sites.append([0.0, 0.0, _raw_h(0.0, 0.0), 6.0])
-	for b in BUILDINGS:
+	for b in buildings:
 		sites.append([b[0], b[1], _raw_h(b[0], b[1]), maxf(b[3], b[4]) * 0.75 + 1.0])
+	_plan_trees()
+
+func _plan_trees() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 21
+	var tries := 0
+	while tree_plan.size() < tree_count and tries < 6000:
+		tries += 1
+		var x := rng.randf_range(-HALF + 4.0, HALF - 4.0)
+		var z := rng.randf_range(-HALF + 4.0, HALF - 4.0)
+		if in_site(x, z, 2.5): continue
+		var edge := maxf(absf(x), absf(z)) / HALF
+		if rng.randf() > lerpf(0.35, 1.0, edge): continue
+		tree_plan.append([x, height(x, z), z, rng.randi() % 2, rng.randf_range(0.8, 1.25), rng.randf() * TAU])
+		tree_positions.append(Vector3(x, height(x, z), z))
+
+func near_tree(x: float, z: float, r: float) -> bool:
+	for t in tree_positions:
+		if Vector2(t.x - x, t.z - z).length() < r: return true
+	return false
+
+func spawn_point(role: String, slot: int) -> Vector3:
+	var p := Vector2.ZERO
+	if role == "killer":
+		p = Vector2(-52.0, 52.0)
+		var k := 0
+		while (near_tree(p.x, p.y, 2.0) or in_site(p.x, p.y, 1.0)) and k < 40:
+			k += 1
+			p += Vector2(2.5, -1.5)
+	else:
+		p = Vector2.from_angle(slot * TAU / 7.0) * 3.0
+	return Vector3(p.x, height(p.x, p.y) + 0.3, p.y)
 
 func _raw_h(x: float, z: float) -> float:
 	return noise.get_noise_2d(x, z) * 2.4 + noise.get_noise_2d(x * 3.0 + 50.0, z * 3.0) * 0.35
@@ -142,7 +195,7 @@ func _build_environment() -> void:
 	env.tonemap_white = 6.0
 	env.fog_enabled = true
 	env.fog_light_color = Color(0.07, 0.09, 0.14)
-	env.fog_density = 0.016
+	env.fog_density = fog_density
 	env.fog_sky_affect = 0.25
 	env.fog_sun_scatter = 0.15
 	env.fog_height = 2.0
@@ -235,7 +288,7 @@ func _box(parent: Node3D, size: Vector3, pos: Vector3, mat: Material, occlude :=
 
 func _build_buildings() -> void:
 	var idx := 0
-	for b in BUILDINGS:
+	for b in buildings:
 		var w: float = b[3]; var d: float = b[4]; var hgt: float = b[5]
 		var t := 0.2
 		var body := StaticBody3D.new()
@@ -303,40 +356,27 @@ func _tree_mesh(variant: int, hi: bool) -> ArrayMesh:
 	return mesh
 
 func _build_trees() -> void:
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 21
 	var meshes := []
 	for v in 2: meshes.append([_tree_mesh(v, true), _tree_mesh(v, false)])
 	var buckets := {} # "cx_cz_variant" -> Array[Transform3D]
 	var body := StaticBody3D.new()
 	body.name = "TreeTrunks"
 	var trunk_shape := CylinderShape3D.new()
-	trunk_shape.radius = 0.3; trunk_shape.height = 5.0
-	var placed := 0
-	var tries := 0
-	while placed < 320 and tries < 4000:
-		tries += 1
-		var x := rng.randf_range(-HALF + 4.0, HALF - 4.0)
-		var z := rng.randf_range(-HALF + 4.0, HALF - 4.0)
-		if in_site(x, z, 2.5): continue
-		# sparser in the middle, dense toward the border
-		var edge := maxf(absf(x), absf(z)) / HALF
-		if rng.randf() > lerpf(0.35, 1.0, edge): continue
-		var y := height(x, z)
-		var v := rng.randi() % 2
+	trunk_shape.radius = 0.42; trunk_shape.height = 6.0
+	for t in tree_plan:
+		var x: float = t[0]; var y: float = t[1]; var z: float = t[2]
 		var cx := int(floor((x + HALF) / TREE_CHUNK))
 		var cz := int(floor((z + HALF) / TREE_CHUNK))
-		var key := "%d_%d_%d" % [cx, cz, v]
+		var key := "%d_%d_%d" % [cx, cz, t[3]]
 		if not buckets.has(key): buckets[key] = []
 		var center := Vector3((cx + 0.5) * TREE_CHUNK - HALF, 0, (cz + 0.5) * TREE_CHUNK - HALF)
-		var sc := rng.randf_range(0.8, 1.25)
-		var bs := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc, sc, sc))
+		var sc: float = t[4]
+		var bs := Basis(Vector3.UP, t[5]).scaled(Vector3(sc, sc, sc))
 		buckets[key].append(Transform3D(bs, Vector3(x, y, z) - center))
 		var cs := CollisionShape3D.new()
 		cs.shape = trunk_shape
 		cs.position = Vector3(x, y + 2.0, z)
 		body.add_child(cs)
-		placed += 1
 	add_child(body)
 	for key in buckets:
 		var parts: PackedStringArray = key.split("_")

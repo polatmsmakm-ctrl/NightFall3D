@@ -1,3 +1,4 @@
 .godot/
 build/
 *.import
+server/node_modules/
