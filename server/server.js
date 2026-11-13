@@ -52,7 +52,10 @@ function leaveRoom(c) {
   c.room = null;
   r.members = r.members.filter((m) => m !== c);
   if (r.members.length === 0) { rooms.delete(r.code); return; }
-  if (r.host === c.name) r.host = r.members[0].name;
+  if (r.host === c.name) {
+    r.host = r.members[0].name;
+    if (r.state === 'game') r.state = 'lobby'; // the host runs the match rules: round ends if they leave
+  }
   broadcast(r, { t: 'left', name: c.name });
   broadcast(r, roomView(r));
 }
@@ -136,6 +139,11 @@ const handlers = {
     const p = m.p;
     if (!Array.isArray(p) || p.length !== 4 || !p.every(Number.isFinite)) return;
     broadcast(r, { t: 'st', n: c.name, p, a: String(m.a || 'idle').slice(0, 12) }, c);
+  },
+  ev(c, m) { // game events: relayed as-is, the room host is the referee
+    const r = c.room;
+    if (!r || r.state !== 'game' || typeof m.d !== 'object' || m.d === null) return;
+    broadcast(r, { t: 'ev', n: c.name, d: m.d }, c);
   },
   ping(c) { send(c, { t: 'pong' }); },
 };

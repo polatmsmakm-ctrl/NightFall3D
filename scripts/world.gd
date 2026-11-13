@@ -26,6 +26,10 @@ var buildings: Array = []
 var tree_count := 320
 var tree_plan: Array = [] # [x, y, z, variant, scale, yaw]
 var fog_density := 0.016
+var gen_points: Array[Vector3] = []
+var gate_points: Array = [] # [Vector3, yaw]
+var gen_nodes: Array = []
+var gate_nodes: Array = []
 var noise := FastNoiseLite.new()
 var sites: Array = [] # [x, z, flat height, radius]
 var moon_dir := Vector3(0.3, 0.32, -0.9).normalized()
@@ -64,6 +68,19 @@ func configure(id: String) -> void:
 	sites.append([0.0, 0.0, _raw_h(0.0, 0.0), 6.0])
 	for b in buildings:
 		sites.append([b[0], b[1], _raw_h(b[0], b[1]), maxf(b[3], b[4]) * 0.75 + 1.0])
+	# 7 generators, each beside the front door of a building
+	var step := maxi(1, buildings.size() / 7)
+	for gi in 7:
+		var b: Array = buildings[(gi * step) % buildings.size()]
+		var lx: float = -b[3] / 2.0 + 1.2
+		var lz: float = b[4] / 2.0 + 1.5
+		var gx: float = b[0] + lx * cos(b[2]) + lz * sin(b[2])
+		var gz: float = b[1] - lx * sin(b[2]) + lz * cos(b[2])
+		gen_points.append(Vector3(gx, _raw_h(b[0], b[1]) + 0.1, gz))
+	# 2 exit gates on opposite edges
+	for g in [[0.0, -(HALF - 9.0), 0.0], [0.0, HALF - 9.0, PI]]:
+		sites.append([g[0], g[1], _raw_h(g[0], g[1]), 4.0])
+		gate_points.append([Vector3(g[0], _raw_h(g[0], g[1]), g[1]), g[2]])
 	_plan_trees()
 
 func _plan_trees() -> void:
@@ -119,6 +136,7 @@ func build() -> void:
 	_build_terrain()
 	await get_tree().process_frame
 	_build_buildings()
+	_build_objectives()
 	await get_tree().process_frame
 	_build_trees()
 	await get_tree().process_frame
@@ -160,7 +178,7 @@ func _pbr(c1: Color, c2: Color, freq: float, uv: Vector3, rough: float, metal :=
 
 func _make_materials() -> void:
 	_sky_noise = _noise_tex(0.02, 512)
-	_mat.ground = _pbr(Color(0.035, 0.045, 0.025), Color(0.1, 0.085, 0.055), 0.02, Vector3(0.12, 0.12, 0.12), 1.0)
+	_mat.ground = _pbr(Color(0.05, 0.065, 0.04), Color(0.15, 0.13, 0.085), 0.02, Vector3(0.12, 0.12, 0.12), 1.0)
 	_mat.wood = _pbr(Color(0.07, 0.05, 0.035), Color(0.2, 0.15, 0.1), 0.03, Vector3(1.4, 0.12, 1.4), 0.85)
 	_mat.metal = _pbr(Color(0.12, 0.06, 0.04), Color(0.3, 0.3, 0.32), 0.015, Vector3(0.5, 0.5, 0.5), 0.55, 0.8)
 	_mat.concrete = _pbr(Color(0.14, 0.14, 0.13), Color(0.3, 0.3, 0.28), 0.03, Vector3(0.4, 0.4, 0.4), 0.9)
@@ -189,7 +207,7 @@ func _build_environment() -> void:
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color(0.16, 0.2, 0.32)
-	env.ambient_light_energy = 0.95
+	env.ambient_light_energy = 1.5
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	env.tonemap_white = 6.0
@@ -206,7 +224,7 @@ func _build_environment() -> void:
 	env.glow_hdr_threshold = 1.1
 	env.adjustment_enabled = true
 	env.adjustment_contrast = 1.12
-	env.adjustment_saturation = 0.82
+	env.adjustment_saturation = 0.95
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
@@ -322,6 +340,92 @@ func _build_buildings() -> void:
 			flicker.append(l)
 		add_child(body)
 		idx += 1
+
+# ---------------- objectives: generators + exit gates ----------------
+func _emissive(c: Color) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color(0.05, 0.05, 0.05)
+	m.emission_enabled = true
+	m.emission = c
+	m.emission_energy_multiplier = 0.0
+	return m
+
+func _build_objectives() -> void:
+	for gp in gen_points:
+		var body := StaticBody3D.new()
+		body.position = gp
+		_box(body, Vector3(1.5, 0.9, 0.8), Vector3(0, 0.55, 0), _mat.metal)
+		_box(body, Vector3(0.7, 0.45, 0.6), Vector3(-0.3, 1.2, 0), _mat.concrete)
+		_box(body, Vector3(0.08, 1.6, 0.08), Vector3(0.6, 1.8, 0.3), _mat.metal)
+		_box(body, Vector3(0.08, 1.6, 0.08), Vector3(0.6, 1.8, -0.3), _mat.metal)
+		var lamp_mat := _emissive(Color(1.0, 0.85, 0.5))
+		for z in [0.3, -0.3]:
+			var bulb := MeshInstance3D.new()
+			var sm := SphereMesh.new()
+			sm.radius = 0.14; sm.height = 0.28
+			sm.material = lamp_mat
+			bulb.mesh = sm
+			bulb.position = Vector3(0.6, 2.65, z)
+			body.add_child(bulb)
+		var light := OmniLight3D.new()
+		light.position = Vector3(0.6, 2.8, 0)
+		light.light_color = Color(1.0, 0.85, 0.5)
+		light.light_energy = 0.0
+		light.omni_range = 11.0
+		body.add_child(light)
+		add_child(body)
+		gen_nodes.append({"light": light, "mat": lamp_mat, "done": false})
+	for g in gate_points:
+		var body := StaticBody3D.new()
+		body.position = g[0]
+		body.rotation.y = g[1]
+		_box(body, Vector3(0.7, 4.2, 0.7), Vector3(-2.0, 2.0, 0), _mat.concrete)
+		_box(body, Vector3(0.7, 4.2, 0.7), Vector3(2.0, 2.0, 0), _mat.concrete)
+		_box(body, Vector3(4.7, 0.6, 0.7), Vector3(0, 4.3, 0), _mat.concrete)
+		_box(body, Vector3(6.0, 3.0, 0.3), Vector3(-5.3, 1.4, 0), _mat.metal)
+		_box(body, Vector3(6.0, 3.0, 0.3), Vector3(5.3, 1.4, 0), _mat.metal)
+		var door := StaticBody3D.new()
+		_box(door, Vector3(3.3, 3.9, 0.18), Vector3(0, 1.95, 0), _mat.metal)
+		body.add_child(door)
+		var sign_mat := _emissive(Color(1.0, 0.15, 0.1))
+		sign_mat.emission_energy_multiplier = 1.5
+		var sign := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.5, 0.5, 0.2)
+		bm.material = sign_mat
+		sign.mesh = bm
+		sign.position = Vector3(0, 4.3, 0.42)
+		body.add_child(sign)
+		var light := OmniLight3D.new()
+		light.position = Vector3(0, 3.6, 1.5)
+		light.light_color = Color(1.0, 0.15, 0.1)
+		light.light_energy = 1.2
+		light.omni_range = 9.0
+		body.add_child(light)
+		add_child(body)
+		gate_nodes.append({"door": door, "light": light, "mat": sign_mat, "state": 0})
+
+func set_gen_done(i: int) -> void:
+	if i >= gen_nodes.size(): return
+	var g: Dictionary = gen_nodes[i]
+	if g.done: return
+	g.done = true
+	g.light.light_energy = 2.2
+	g.mat.emission_energy_multiplier = 4.0
+
+func set_gate_state(i: int, state: int) -> void: # 0 locked, 1 powered, 2 open
+	if i >= gate_nodes.size(): return
+	var g: Dictionary = gate_nodes[i]
+	if g.state == state: return
+	g.state = state
+	var c: Color = [Color(1.0, 0.15, 0.1), Color(1.0, 0.8, 0.2), Color(0.3, 1.0, 0.4)][state]
+	g.light.light_color = c
+	g.light.light_energy = 2.0 if state > 0 else 1.2
+	g.mat.emission = c
+	if state == 2:
+		g.door.visible = false
+		for ch in g.door.get_children():
+			if ch is CollisionShape3D: ch.set_deferred("disabled", true)
 
 # ---------------- trees (MultiMesh + 2 LOD levels per chunk) ----------------
 func _tree_mesh(variant: int, hi: bool) -> ArrayMesh:
