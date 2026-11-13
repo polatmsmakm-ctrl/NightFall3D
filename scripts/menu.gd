@@ -144,6 +144,7 @@ func _page_name() -> void:
 			return
 		Net.configure(n, "")
 		open("main"))
+	_button("النمط التجريبي (بدون نت)", func(): open("offline"))
 
 func _page_main() -> void:
 	_label(_status(), 20, Color(0.6, 0.9, 0.6) if Net.state == "online" else Color(0.8, 0.8, 0.8))
@@ -153,7 +154,7 @@ func _page_main() -> void:
 	_edit("code", "كود الغرفة", h)
 	_button("دخول", func(): Net.send({"t": "join", "code": typed.get("code", "")}), h, on)
 	_button("الأصدقاء (%d)" % Net.friends.size(), func(): open("friends"))
-	_button("تجربة بدون نت", func(): open("offline"))
+	_button("النمط التجريبي (بدون نت)", func(): open("offline"))
 	_button("الاسم والسيرفر", func():
 		typed["name"] = Net.username; typed["url"] = Net.url; open("settings"))
 
@@ -228,7 +229,7 @@ func _page_lobby() -> void:
 	_button("خروج من الغرفة", func(): Net.send({"t": "leave"}))
 
 func _page_offline() -> void:
-	_label("تجربة بدون نت")
+	_label("النمط التجريبي — اختر الخريطة والشخصية")
 	var h := _row()
 	for id in MAPS:
 		var b := _button(MAPS[id], func(): off_map = id; _refresh(), h)
