@@ -9,6 +9,7 @@ const HALF := SIZE / 2.0
 const TREE_CHUNK := 50.0
 const GRASS_CHUNK := 20.0
 const GRASS_PER_CHUNK := 700
+const WALL := HALF - 8.0 # perimeter wall line; the exit gates are set into it
 
 # each: x, z, yaw, width, depth, wall height
 const FOREST_BUILDINGS := [
@@ -78,8 +79,8 @@ func configure(id: String) -> void:
 		var gz: float = b[1] - lx * sin(b[2]) + lz * cos(b[2])
 		gen_points.append(Vector3(gx, _raw_h(b[0], b[1]) + 0.1, gz))
 	# 2 exit gates on opposite edges
-	for g in [[0.0, -(HALF - 9.0), 0.0], [0.0, HALF - 9.0, PI]]:
-		sites.append([g[0], g[1], _raw_h(g[0], g[1]), 4.0])
+	for g in [[0.0, -WALL, 0.0], [0.0, WALL, PI]]:
+		sites.append([g[0], g[1], _raw_h(g[0], g[1]), 8.0])
 		gate_points.append([Vector3(g[0], _raw_h(g[0], g[1]), g[1]), g[2]])
 	_plan_trees()
 
@@ -92,6 +93,7 @@ func _plan_trees() -> void:
 		var x := rng.randf_range(-HALF + 4.0, HALF - 4.0)
 		var z := rng.randf_range(-HALF + 4.0, HALF - 4.0)
 		if in_site(x, z, 2.5): continue
+		if absf(absf(x) - WALL) < 2.2 or absf(absf(z) - WALL) < 2.2: continue # keep the wall clear
 		var edge := maxf(absf(x), absf(z)) / HALF
 		if rng.randf() > lerpf(0.35, 1.0, edge): continue
 		tree_plan.append([x, height(x, z), z, rng.randi() % 2, rng.randf_range(0.8, 1.25), rng.randf() * TAU])
@@ -181,7 +183,7 @@ func _make_materials() -> void:
 	_mat.ground = _pbr(Color(0.05, 0.065, 0.04), Color(0.15, 0.13, 0.085), 0.02, Vector3(0.12, 0.12, 0.12), 1.0)
 	_mat.wood = _pbr(Color(0.07, 0.05, 0.035), Color(0.2, 0.15, 0.1), 0.03, Vector3(1.4, 0.12, 1.4), 0.85)
 	_mat.metal = _pbr(Color(0.12, 0.06, 0.04), Color(0.3, 0.3, 0.32), 0.015, Vector3(0.5, 0.5, 0.5), 0.55, 0.8)
-	_mat.concrete = _pbr(Color(0.14, 0.14, 0.13), Color(0.3, 0.3, 0.28), 0.03, Vector3(0.4, 0.4, 0.4), 0.9)
+	_mat.concrete = _pbr(Color(0.2, 0.2, 0.19), Color(0.42, 0.42, 0.4), 0.03, Vector3(0.4, 0.4, 0.4), 0.9)
 	_mat.bark = _pbr(Color(0.03, 0.022, 0.016), Color(0.11, 0.085, 0.06), 0.04, Vector3(2.0, 0.25, 2.0), 0.95)
 	_mat.rock = _pbr(Color(0.07, 0.07, 0.075), Color(0.22, 0.22, 0.21), 0.02, Vector3(0.5, 0.5, 0.5), 0.9)
 	var fol := ShaderMaterial.new()
@@ -277,7 +279,7 @@ func _build_terrain() -> void:
 		bs.size = Vector3(SIZE, 30.0, 2.0)
 		w.shape = bs
 		w.rotation.y = k * PI / 2.0
-		w.position = Vector3(0, 5.0, HALF - 5.0).rotated(Vector3.UP, k * PI / 2.0)
+		w.position = Vector3(0, 5.0, HALF - 1.0).rotated(Vector3.UP, k * PI / 2.0)
 		body.add_child(w)
 	add_child(body)
 
@@ -375,35 +377,70 @@ func _build_objectives() -> void:
 		body.add_child(light)
 		add_child(body)
 		gen_nodes.append({"light": light, "mat": lamp_mat, "done": false})
+	# perimeter wall: tall, runs the whole edge of the map, so the only way out is through a gate
+	var top := 9.0
+	var bottom := -7.0
+	var wall_h := top - bottom
+	var wall_y := (top + bottom) / 2.0
+	var sides := StaticBody3D.new()
+	sides.name = "PerimeterWall"
+	for sx in [-1.0, 1.0]:
+		_box(sides, Vector3(1.4, wall_h, WALL * 2.0 + 1.4), Vector3(sx * WALL, wall_y, 0), _mat.concrete, true)
+	add_child(sides)
+	var open_w := 7.0 # gate opening width
+	var open_h := 6.0
 	for g in gate_points:
+		var gy: float = g[0].y
 		var body := StaticBody3D.new()
-		body.position = g[0]
+		body.position = Vector3(g[0].x, 0, g[0].z)
 		body.rotation.y = g[1]
-		_box(body, Vector3(0.7, 4.2, 0.7), Vector3(-2.0, 2.0, 0), _mat.concrete)
-		_box(body, Vector3(0.7, 4.2, 0.7), Vector3(2.0, 2.0, 0), _mat.concrete)
-		_box(body, Vector3(4.7, 0.6, 0.7), Vector3(0, 4.3, 0), _mat.concrete)
-		_box(body, Vector3(6.0, 3.0, 0.3), Vector3(-5.3, 1.4, 0), _mat.metal)
-		_box(body, Vector3(6.0, 3.0, 0.3), Vector3(5.3, 1.4, 0), _mat.metal)
-		var door := StaticBody3D.new()
-		_box(door, Vector3(3.3, 3.9, 0.18), Vector3(0, 1.95, 0), _mat.metal)
-		body.add_child(door)
+		var seg := WALL - open_w / 2.0
+		for sx in [-1.0, 1.0]:
+			_box(body, Vector3(seg, wall_h, 1.4), Vector3(sx * (open_w / 2.0 + seg / 2.0), wall_y, 0), _mat.concrete, true)
+			_box(body, Vector3(1.8, top + 1.5 - bottom, 2.0), Vector3(sx * (open_w / 2.0 + 0.9), (top + 1.5 + bottom) / 2.0, 0), _mat.concrete) # gate towers
+		_box(body, Vector3(open_w, top - (gy + open_h), 1.4), Vector3(0, (top + gy + open_h) / 2.0, 0), _mat.concrete)
+		var doors := []
+		for sx in [-1.0, 1.0]:
+			var door := StaticBody3D.new()
+			door.position = Vector3(sx * open_w / 4.0, gy, 0)
+			_box(door, Vector3(open_w / 2.0, open_h, 0.35), Vector3(0, open_h / 2.0, 0), _mat.metal)
+			_box(door, Vector3(open_w / 2.0 - 0.3, 0.25, 0.5), Vector3(0, open_h * 0.33, 0), _mat.wood)
+			_box(door, Vector3(open_w / 2.0 - 0.3, 0.25, 0.5), Vector3(0, open_h * 0.7, 0), _mat.wood)
+			body.add_child(door)
+			doors.append(door)
 		var sign_mat := _emissive(Color(1.0, 0.15, 0.1))
-		sign_mat.emission_energy_multiplier = 1.5
+		sign_mat.emission_energy_multiplier = 2.0
 		var sign := MeshInstance3D.new()
 		var bm := BoxMesh.new()
-		bm.size = Vector3(0.5, 0.5, 0.2)
+		bm.size = Vector3(open_w - 1.0, 0.5, 0.2)
 		bm.material = sign_mat
 		sign.mesh = bm
-		sign.position = Vector3(0, 4.3, 0.42)
+		sign.position = Vector3(0, gy + open_h + 0.7, 0.8)
 		body.add_child(sign)
 		var light := OmniLight3D.new()
-		light.position = Vector3(0, 3.6, 1.5)
+		light.position = Vector3(0, gy + open_h - 0.5, 3.0)
 		light.light_color = Color(1.0, 0.15, 0.1)
-		light.light_energy = 1.2
-		light.omni_range = 9.0
+		light.light_energy = 2.0
+		light.omni_range = 16.0
 		body.add_child(light)
+		for sx in [-1.0, 1.0]: # lamps on the towers so the wall and gate read clearly at night
+			var tl := OmniLight3D.new()
+			tl.position = Vector3(sx * (open_w / 2.0 + 0.9), gy + 5.0, 2.6)
+			tl.light_color = Color(1.0, 0.8, 0.55)
+			tl.light_energy = 2.2
+			tl.omni_range = 15.0
+			body.add_child(tl)
 		add_child(body)
-		gate_nodes.append({"door": door, "light": light, "mat": sign_mat, "state": 0})
+		gate_nodes.append({"doors": doors, "light": light, "mat": sign_mat, "state": 0, "open_w": open_w})
+
+## True when a position is past an open gate (outside the wall).
+func is_outside_gate(i: int, pos: Vector3) -> bool:
+	var gp: Vector3 = gate_points[i][0]
+	var outward := Vector3(gp.x, 0, gp.z).normalized()
+	var rel := pos - gp
+	var out_d := rel.dot(outward)
+	var lateral := absf(rel.dot(outward.cross(Vector3.UP)))
+	return out_d > 1.6 and lateral < 3.4
 
 func set_gen_done(i: int) -> void:
 	if i >= gen_nodes.size(): return
@@ -413,19 +450,25 @@ func set_gen_done(i: int) -> void:
 	g.light.light_energy = 2.2
 	g.mat.emission_energy_multiplier = 4.0
 
-func set_gate_state(i: int, state: int) -> void: # 0 locked, 1 powered, 2 open
+func set_gate_state(i: int, open: bool) -> void:
 	if i >= gate_nodes.size(): return
 	var g: Dictionary = gate_nodes[i]
+	var state := 2 if open else 0
 	if g.state == state: return
 	g.state = state
-	var c: Color = [Color(1.0, 0.15, 0.1), Color(1.0, 0.8, 0.2), Color(0.3, 1.0, 0.4)][state]
+	var c: Color = Color(0.3, 1.0, 0.4) if open else Color(1.0, 0.15, 0.1)
 	g.light.light_color = c
-	g.light.light_energy = 2.0 if state > 0 else 1.2
+	g.light.light_energy = 3.0 if open else 2.0
 	g.mat.emission = c
-	if state == 2:
-		g.door.visible = false
-		for ch in g.door.get_children():
-			if ch is CollisionShape3D: ch.set_deferred("disabled", true)
+	if open: # the two door leaves slide apart into the wall
+		var k := 0
+		for door in g.doors:
+			for ch in door.get_children():
+				if ch is CollisionShape3D: ch.set_deferred("disabled", true)
+			var sx := -1.0 if k == 0 else 1.0
+			var tw := create_tween()
+			tw.tween_property(door, "position:x", sx * (g.open_w * 0.75 + 0.2), 3.0).set_trans(Tween.TRANS_SINE)
+			k += 1
 
 # ---------------- trees (MultiMesh + 2 LOD levels per chunk) ----------------
 func _tree_mesh(variant: int, hi: bool) -> ArrayMesh:

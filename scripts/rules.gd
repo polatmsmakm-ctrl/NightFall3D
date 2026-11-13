@@ -83,11 +83,9 @@ func tick(dt: float) -> void:
 	if not powered and done_count() >= NEED:
 		powered = true
 		for g in gens: g.reps.clear()
-	for g in gates:
-		if g.open or not powered: continue
-		g.p += dt * (1.0 if g.holders.size() > 0 else 0.0) / GATE_TIME
-		if g.p >= 1.0:
-			g.p = 1.0; g.open = true; g.holders.clear()
+	if powered: # the exit gates open by themselves once the power is on
+		for g in gates:
+			g.p = 1.0; g.open = true
 	if hp.size() > 0:
 		var playing := 0
 		for n in hp:

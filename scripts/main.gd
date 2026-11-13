@@ -302,12 +302,8 @@ func _draw_ui() -> void:
 	if not rules.powered:
 		_text(top, "المولدات %d / %d" % [rules.done_count(), Rules.NEED], 26, Color(1, 0.9, 0.6))
 	else:
-		var open := false
-		for g in rules.gates:
-			if g.open: open = true
-		if my_role == "killer": _text(top, "البوابات اشتغلت — امنعهم من الهرب", 24, Color(1, 0.5, 0.4))
-		elif open: _text(top, "البوابة مفتوحة — اهرب!", 26, Color(0.5, 1, 0.6))
-		else: _text(top, "اشتغلت الكهرباء — افتح بوابة الخروج", 24, Color(1, 0.9, 0.6))
+		if my_role == "killer": _text(top, "البوابات انفتحت — امنعهم من الهرب", 24, Color(1, 0.5, 0.4))
+		else: _text(top, "البوابات انفتحت — اهرب من بوابة!", 26, Color(0.5, 1, 0.6))
 	if my_role == "survivor":
 		if my_state == "hurt": _text(top + Vector2(0, 32), "مصاب", 22, Color(1, 0.4, 0.35))
 		elif my_state == "dead": _text(top + Vector2(0, 32), "انتهيت — تتفرج", 22, Color(1, 0.4, 0.35))
@@ -342,7 +338,8 @@ func _draw_minimap() -> void:
 	var k := 150.0 / NightWorld.SIZE
 	var c := Vector2(75, 75)
 	minimap.draw_rect(Rect2(Vector2.ZERO, Vector2(150, 150)), Color(0, 0, 0, 0.45))
-	minimap.draw_rect(Rect2(Vector2.ZERO, Vector2(150, 150)), Color(1, 1, 1, 0.35), false, 1.5)
+	var wl := NightWorld.WALL * k
+	minimap.draw_rect(Rect2(c - Vector2(wl, wl), Vector2(wl, wl) * 2.0), Color(1, 1, 1, 0.55), false, 2.0)
 	for b in world.buildings:
 		minimap.draw_set_transform(c + Vector2(b[0], b[1]) * k, -b[2], Vector2.ONE)
 		minimap.draw_rect(Rect2(-Vector2(b[3], b[4]) * k / 2.0, Vector2(b[3], b[4]) * k), Color(0.55, 0.52, 0.45, 0.8))
@@ -353,10 +350,9 @@ func _draw_minimap() -> void:
 		if boom_t.get(i, 0.0) > 0.0 and my_role == "killer": col = Color(1, 0.2, 0.2)
 		var sz := 9.0 if col.g < 0.5 else 6.0
 		minimap.draw_rect(Rect2(c + Vector2(gp.x, gp.z) * k - Vector2(sz, sz) / 2.0, Vector2(sz, sz)), col)
-	if rules.powered:
-		for i in world.gate_points.size():
-			var p: Vector3 = world.gate_points[i][0]
-			minimap.draw_rect(Rect2(c + Vector2(p.x, p.z) * k - Vector2(7, 3), Vector2(14, 6)), Color(0.4, 1, 0.5) if rules.gates[i].open else Color.WHITE)
+	for i in world.gate_points.size():
+		var p: Vector3 = world.gate_points[i][0]
+		minimap.draw_rect(Rect2(c + Vector2(p.x, p.z) * k - Vector2(7, 3), Vector2(14, 6)), Color(0.4, 1, 0.5) if rules.gates[i].open else Color(1, 0.3, 0.25))
 	for n in remotes: # survivors see their team; the killer has to hunt
 		var r = remotes[n]
 		if my_role == "survivor" and r.role == "survivor":
@@ -463,7 +459,7 @@ func _process(dt: float) -> void:
 	for i in rules.gens.size():
 		if rules.gens[i].done: world.set_gen_done(i)
 	for i in rules.gates.size():
-		world.set_gate_state(i, 2 if rules.gates[i].open else (1 if rules.powered else 0))
+		world.set_gate_state(i, rules.gates[i].open)
 	if rules.over and not results.visible: _show_results()
 
 func _update_interactions(delta: float) -> void:
@@ -477,11 +473,7 @@ func _update_interactions(delta: float) -> void:
 			if not rules.gens[i].done and body.position.distance_to(world.gen_points[i]) < REACH: near_gen = i
 	else:
 		for i in world.gate_points.size():
-			var gp: Vector3 = world.gate_points[i][0]
-			var d := body.position.distance_to(gp)
-			if rules.gates[i].open:
-				if d < 2.2: _ev({"k": "escape"})
-			elif d < REACH + 0.8: near_gate = i
+			if rules.gates[i].open and world.is_outside_gate(i, body.position): _ev({"k": "escape"})
 	if work_kind != "":
 		var still: bool = (work_kind == "gen" and near_gen == work_i) or (work_kind == "gate" and near_gate == work_i)
 		if not still or stick_vec.length() > 0.3:
