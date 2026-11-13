@@ -10,9 +10,8 @@ const CARRY_SPEED := 3.6
 const NATURAL := {"walk": 1.3, "run": 3.7, "crouchwalk": 1.0, "injured": 1.6}
 const ACCEL := 20.0
 const DECEL := 28.0
-const SFX := {"gen_loop": "wav", "hit": "wav", "ding": "wav", "boom": "wav", "pallet": "wav", "hurt": "wav", "gate": "mp3",
-	"click": "wav", "hatch": "wav",
-	"heart": "mp3", "breath": "mp3", "steps_out": "mp3", "steps_in": "mp3", "gen_run": "mp3", "chase": "mp3", "ambient": "mp3"}
+const SFX := ["gate", "heart", "breath", "steps_out", "steps_in", "gen_run", "chase", "ambient", "rope", "male_pain", "scream1", "scream2", "oof1", "oof2", "oof3"]
+const MALE := ["survivor1", "killer"] # the other characters use the female voice clips
 const TERROR_RADIUS := 24.0 # survivors start to feel the killer inside this distance
 
 var menu: GameMenu
@@ -33,12 +32,15 @@ var my_name := ""
 var my_role := "killer"
 var remotes := {} # name -> {node, rig, pos, yaw, anim, role, step}
 var sounds := {}
-var gen_audio: Array = [] # per generator: {hum, run}
+var gen_audio: Array = [] # one engine-sound player per generator
+var chars := {} # player name -> character id (picks the voice)
+var oof_t := {} # name -> seconds until the next pained "oof" while limping
 var amb: AudioStreamPlayer
 var chase_music: AudioStreamPlayer
 var heart: AudioStreamPlayer
 var breath: AudioStreamPlayer
 var my_steps: AudioStreamPlayer
+var my_bleed: Node3D
 var chase_hold := 0.0
 var los_t := 0.0
 var marks: Array = []
@@ -85,7 +87,6 @@ var spectating := "" # who I am watching after escaping or dying
 var big_map := false
 var match_time := 0.0
 var escape_banner := 0.0
-var thrash := {} # name -> seconds of hard thrashing left (after a failed escape attempt)
 
 func _ready() -> void:
 	menu = GameMenu.new()
@@ -445,6 +446,7 @@ func _start(c: Dictionary) -> void:
 	world.build() # staged: terrain + buildings + objectives first, the rest over the next frames
 	rules = Rules.new()
 	rules.setup(world.gen_points.size(), world.gate_points.size(), world.pallet_points.size(), world.hatch_points.size(), c.players)
+	for p in c.players: chars[str(p.name)] = str(p.char)
 	for p in c.players:
 		if str(p.name) == my_name:
 			my_role = str(p.role)
@@ -479,6 +481,8 @@ func _build_player(char_name: String, at: Vector3) -> void:
 	body.floor_max_angle = deg_to_rad(50.0)
 	add_child(body)
 	world.follow = body
+	my_bleed = _make_bleed()
+	body.add_child(my_bleed)
 	cam_pivot = Node3D.new()
 	cam_pivot.position.y = 1.6
 	body.add_child(cam_pivot)
@@ -533,6 +537,8 @@ func _add_remote(p: Dictionary) -> void:
 		var gp: Vector3 = world.gen_points[0]
 		node.position = gp + Vector3(1.8, 0.0, 1.2) if my_role == "killer" else body.position + Vector3(2.5, 0, 0)
 		rules.s[str(p.name)].hp = "ok" if my_role == "killer" else "hurt"
+	var bleed := _make_bleed()
+	node.add_child(bleed)
 	var tag := Label3D.new()
 	tag.text = str(p.name)
 	tag.font = Net.font
@@ -560,7 +566,7 @@ func _add_remote(p: Dictionary) -> void:
 	steps.max_distance = 32.0
 	node.add_child(steps)
 	add_child(node)
-	remotes[str(p.name)] = {"node": node, "rig": r, "pos": node.position, "yaw": 0.0, "anim": "idle", "role": str(p.role), "step": 0.0, "steps": steps, "torch": torch, "lit": false}
+	remotes[str(p.name)] = {"node": node, "rig": r, "pos": node.position, "yaw": 0.0, "anim": "idle", "role": str(p.role), "step": 0.0, "steps": steps, "torch": torch, "lit": false, "bleed": bleed}
 
 # ---------------- audio ----------------
 func _loop_player(stream_name: String, db: float, autoplay := false) -> AudioStreamPlayer:
@@ -572,30 +578,77 @@ func _loop_player(stream_name: String, db: float, autoplay := false) -> AudioStr
 	return a
 
 func _build_audio() -> void:
-	for n in SFX: sounds[n] = load("res://assets/sfx/%s.%s" % [n, SFX[n]])
+	for n in SFX: sounds[n] = load("res://assets/sfx/%s.mp3" % n)
 	for n in ["heart", "breath", "steps_out", "steps_in", "gen_run", "chase", "ambient"]:
 		(sounds[n] as AudioStreamMP3).loop = true
-	var hum: AudioStreamWAV = sounds.gen_loop
-	hum.loop_mode = AudioStreamWAV.LOOP_FORWARD
-	hum.loop_begin = 0
-	hum.loop_end = int(hum.get_length() * hum.mix_rate)
 	amb = _loop_player("ambient", -13.0, true)
 	chase_music = _loop_player("chase", -60.0)
 	heart = _loop_player("heart", -60.0)
 	breath = _loop_player("breath", -60.0)
 	my_steps = _loop_player("steps_out", -60.0)
 	for gp in world.gen_points:
-		var pair := {}
-		for kind in ["hum", "run"]:
-			var a := AudioStreamPlayer3D.new()
-			a.stream = sounds.gen_loop if kind == "hum" else sounds.gen_run
-			a.position = gp + Vector3(0, 1, 0)
-			a.unit_size = 5.0
-			# the killer only hears a generator from close by (8 m); survivors hear it from far
-			a.max_distance = 8.0 if my_role == "killer" else 45.0
-			add_child(a)
-			pair[kind] = a
-		gen_audio.append(pair)
+		var a := AudioStreamPlayer3D.new()
+		a.stream = sounds.gen_run
+		a.position = gp + Vector3(0, 1, 0)
+		a.unit_size = 5.0
+		# the killer only hears a generator from close by (8 m); survivors hear it from far
+		a.max_distance = 8.0 if my_role == "killer" else 45.0
+		add_child(a)
+		gen_audio.append(a)
+
+## A hit: the victim cries out in their own voice (3D for everyone else, plain for the victim).
+func _voice_hit(n: String) -> void:
+	var clip := "male_pain" if chars.get(n, "survivor1") in MALE else ("scream1" if randf() < 0.5 else "scream2")
+	_sfx(clip, null if n == my_name else _pos_of(n) + Vector3(0, 1.5, 0), 0.0 if n == my_name else 5.0)
+
+## Blood for a hooked survivor: drops falling from the body and a pool that spreads under it.
+func _make_bleed() -> Node3D:
+	var root := Node3D.new()
+	var p := GPUParticles3D.new()
+	var m := ParticleProcessMaterial.new()
+	m.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+	m.emission_sphere_radius = 0.12
+	m.gravity = Vector3(0, -7.0, 0)
+	m.initial_velocity_min = 0.0; m.initial_velocity_max = 0.25
+	m.spread = 180.0
+	p.process_material = m
+	var q := QuadMesh.new()
+	q.size = Vector2(0.045, 0.07)
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = Color(0.42, 0.0, 0.0)
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	q.material = mat
+	p.draw_pass_1 = q
+	p.amount = 16
+	p.lifetime = 0.75
+	p.position = Vector3(0, 2.0, 0.05)
+	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(p)
+	var pool := MeshInstance3D.new()
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = 0.5; cyl.bottom_radius = 0.5; cyl.height = 0.01; cyl.radial_segments = 20
+	var pm := StandardMaterial3D.new()
+	pm.albedo_color = Color(0.22, 0.0, 0.0)
+	pm.roughness = 0.15
+	cyl.material = pm
+	pool.mesh = cyl
+	pool.position.y = 0.03
+	pool.name = "Pool"
+	root.add_child(pool)
+	root.visible = false
+	return root
+
+func _update_bleed(b: Node3D, hooked: bool, dt: float) -> void:
+	if not hooked:
+		b.visible = false
+		return
+	var pool := b.get_node("Pool") as MeshInstance3D
+	if not b.visible:
+		b.visible = true
+		pool.scale = Vector3(0.15, 1, 0.15)
+	var k := minf(pool.scale.x + dt * 0.035, 1.6) # the pool keeps spreading while they hang
+	pool.scale = Vector3(k, 1, k)
 
 ## Loop the right footstep recording for the ground under `at`; faster/louder when running, silent when still.
 func _steps(a: Node, at: Vector3, moving: bool, running: bool, base_db: float) -> void:
@@ -700,30 +753,24 @@ func _pos_of(n: String) -> Vector3:
 func _on_event(e: Dictionary) -> void:
 	match str(e.get("k", "")):
 		"boom":
-			_sfx("boom", world.gen_points[int(e.i)], 6.0) # the killer has to locate it by ear: nothing shows on his map
-			if my_role == "killer": _flash("سمعت انفجار مولد!")
+			boom_t[int(e.i)] = 4.0
+			if my_role == "killer": _flash("أحد غلط في تصليح مولد!")
 		"hurt":
-			_sfx("hit", _pos_of(str(e.n)), 2.0)
-			_sfx("hurt", _pos_of(str(e.n)), 0.0)
+			_voice_hit(str(e.n))
 			if str(e.n) == my_name:
 				boost_t = 2.0
 				_flash("انضربت! اهرب" if str(e.s) == "hurt" else "طحت")
 			elif my_role == "killer": _flash("أصبت %s" % str(e.n))
 		"hooked":
-			_sfx("hurt", _pos_of(str(e.n)), 3.0, 0.8)
+			_sfx("rope", _pos_of(str(e.n)) + Vector3(0, 2, 0), 8.0)
+			if str(e.n) == my_name: _sfx("rope", null, 0.0)
 			_flash("%s %s" % [str(e.n), "انعلّق على الخطاف" if str(e.s) == "hooked" else "مات"])
 		"rescued":
 			if str(e.by) == str(e.n): _flash("%s فك نفسه من الخطاف!" % str(e.n))
 			else: _flash("%s أنقذ %s" % [str(e.by), str(e.n)])
-		"struggle":
-			thrash[str(e.n)] = 1.4
-			_sfx("hurt", _pos_of(str(e.n)), -2.0, 1.2)
-			if str(e.n) == my_name: _flash("ما قدرت! راحت 8 ثواني")
 		"grabbed": _flash("القاتل طلّع %s من الخزانة" % str(e.n))
 		"empty":
 			if my_role == "killer": _flash("الخزانة فاضية")
-		"pallet": _sfx("pallet", world.pallet_points[int(e.i)][0], 4.0)
-		"broke": _sfx("pallet", world.pallet_points[int(e.i)][0], 2.0, 0.7)
 		"stun":
 			if my_role == "killer": _flash("انصعقت!")
 		"power":
@@ -915,7 +962,15 @@ func _draw_ui() -> void:
 			"hurt": _text(sub, "مصاب", 22, Color(1, 0.5, 0.35))
 			"down": _text(sub, "طايح — استنى أحد يعالجك (%d)" % int(me.t), 22, Color(1, 0.4, 0.35))
 			"carried": _text(sub, "القاتل شايلك", 22, Color(1, 0.4, 0.35))
-			"hooked": _text(sub, "معلّق على الخطاف — %d ث" % int(me.t), 22, Color(1, 0.4, 0.35))
+			"hooked":
+				_text(sub, "معلّق على الخطاف — %d ث" % int(me.t), 22, Color(1, 0.4, 0.35))
+				if me.hooks == 1:
+					var bar := Rect2(mid.x - 200, s.y - 96, 400, 22)
+					ui.draw_rect(bar, Color(0, 0, 0, 0.65))
+					ui.draw_rect(Rect2(bar.position, Vector2(400 * clampf(me.esc, 0.0, 1.0), 22)), Color(0.9, 0.15, 0.1))
+					ui.draw_rect(bar, Color(1, 1, 1, 0.7), false, 2.0)
+					_text(Vector2(mid.x, s.y - 108), "اضغط «فك نفسك» بسرعة وبدون توقف!", 20, Color(1, 0.85, 0.5))
+				else: _text(sub + Vector2(0, 28), "ما تقدر تفك نفسك هالمرة — استنى أحد ينقذك", 20, Color(1, 0.7, 0.5))
 			"dead": _text(sub, "متّ — تتفرج على %s" % spectating if spectating != "" else "متّ", 22, Color(1, 0.4, 0.35))
 			"escaped": _text(sub, "هربت بنجاح — تتفرج على %s" % spectating if spectating != "" else "هربت بنجاح", 22, Color(0.5, 1, 0.6))
 		if escape_banner > 0.0:
@@ -1064,7 +1119,7 @@ func _update_ctx() -> void:
 		if me.locker >= 0:
 			ctx.interact = {"kind": "locker_out", "label": "اطلع", "i": me.locker}
 			return
-		if my_state == "hooked" and me.tries < Rules.MAX_TRIES:
+		if my_state == "hooked" and me.hooks == 1: # first hook only: hammer the button to pull yourself off
 			ctx.interact = {"kind": "struggle", "label": "فك نفسك"}
 		if not (my_state in ["ok", "hurt"]): return
 		for n in rules.s:
@@ -1131,7 +1186,6 @@ func _press(id: String, touch: int) -> void:
 		"light":
 			if battery > 0.0 or light_on:
 				light_on = not light_on
-				_sfx("click", null, -6.0)
 		"attack":
 			if attack_cd <= 0.0 and rules.stun <= 0.0 and rules.carrying == "":
 				attack_t = 1.1
@@ -1194,7 +1248,6 @@ func _update_hold(delta: float) -> void:
 func _skill_tap() -> void:
 	var ok: bool = absf(float(skill.t) / 1.2 - float(skill.zone)) <= 0.07
 	_ev({"k": "skill", "i": hold.i, "ok": ok})
-	if ok: _sfx("ding")
 	_flash("ممتاز!" if ok else "غلط! انفجر المولد")
 	skill = {}
 	next_skill = randf_range(4.0, 8.0)
@@ -1244,16 +1297,24 @@ func _input(e: InputEvent) -> void:
 		yaw -= e.relative.x * 0.003
 		pitch = clampf(pitch - e.relative.y * 0.003, -0.9, 0.5)
 
-## Hanging on the hook: lifted off the ground, legs kicking, body twisting; harder right after an escape attempt.
 func me_locker() -> int:
 	return rules.s[my_name].locker if rules.s.has(my_name) else -1
 
-func _hook_pose(r: CharacterRig, n: String, dt: float) -> void:
-	var t := Time.get_ticks_msec() / 1000.0 + float(n.hash() % 100)
-	var hard: float = 2.6 if thrash.get(n, 0.0) > 0.0 else 1.0
-	r.position.y = lerpf(r.position.y, 0.62 + 0.04 * sin(t * 6.0 * hard), 1.0 - exp(-10.0 * dt))
-	r.rotation = Vector3(0.07 * hard * sin(t * 3.3 * hard), 0.22 * hard * sin(t * 1.7 * hard), 0.1 * hard * sin(t * 4.6 * hard))
-	r.play("hang", 1.0 * hard)
+## Hanging on the hook by the hands: lifted off the ground and still.
+func _hook_pose(r: CharacterRig, dt: float) -> void:
+	r.position.y = lerpf(r.position.y, 0.62, 1.0 - exp(-10.0 * dt))
+	r.rotation = Vector3.ZERO
+	r.play("hang", 0.6)
+
+func _yaw_of(n: String) -> float:
+	if n == my_name: return rig.rotation.y
+	var r = remotes.get(n)
+	return r.rig.rotation.y if r else 0.0
+
+## Where a carried survivor sits: lying across the killer's arms, just in front of his chest.
+func _carry_spot() -> Vector3:
+	var ky := _yaw_of(rules.killer)
+	return _pos_of(rules.killer) + Basis(Vector3.UP, ky) * Vector3(0, 0, 0.5)
 
 # ---------------- per-frame ----------------
 func _process(dt: float) -> void:
@@ -1267,7 +1328,6 @@ func _process(dt: float) -> void:
 	if not started: return
 	flash_t = maxf(flash_t - dt, 0.0)
 	for i in boom_t.keys(): boom_t[i] = maxf(boom_t[i] - dt, 0.0)
-	for n in thrash.keys(): thrash[n] = maxf(thrash[n] - dt, 0.0)
 	ui.queue_redraw()
 	minimap.queue_redraw()
 	var kpos := _pos_of(rules.killer) if rules.killer != "" else Vector3.ZERO
@@ -1279,19 +1339,28 @@ func _process(dt: float) -> void:
 		var anim: String = r.anim
 		var target: Vector3 = r.pos
 		var lift := 0.0
+		var face: float = r.yaw
 		if st == "carried":
-			target = kpos; lift = 0.25; anim = "carried"
+			target = _carry_spot(); lift = 0.12; anim = "carried"
+			face = _yaw_of(rules.killer) + PI / 2.0
 		elif st == "hooked":
 			target = world.hook_points[rules.s[n].hook_i] + Vector3(0, 0, 0.9)
 		elif st == "dead" or (st == "down" and anim != "crawl"): anim = "dying"
 		elif st == "hurt" and anim == "idle": anim = "injured"
 		r.node.position = r.node.position.lerp(target, w)
 		if st == "hooked":
-			_hook_pose(r.rig, n, dt)
+			_hook_pose(r.rig, dt)
 		else:
 			r.rig.position.y = lerpf(r.rig.position.y, lift, w)
-			r.rig.rotation = Vector3(0, lerp_angle(r.rig.rotation.y, r.yaw, w), 0)
+			r.rig.rotation = Vector3(0, lerp_angle(r.rig.rotation.y, face, w), 0)
 			r.rig.play(anim)
+		_update_bleed(r.bleed, st == "hooked", dt)
+		# women gasp "oof" now and then while limping around injured
+		if st == "hurt" and r.node.visible and anim in ["walk", "injured", "run"] and not (chars.get(n, "") in MALE):
+			oof_t[n] = oof_t.get(n, 1.5) - dt
+			if oof_t[n] <= 0.0:
+				oof_t[n] = randf_range(2.2, 4.0)
+				_sfx("oof%d" % randi_range(1, 3), r.node.position + Vector3(0, 1.5, 0), 2.0)
 		r.node.visible = st != "escaped" and not (rules.s.has(n) and rules.s[n].locker >= 0)
 		if r.torch: r.torch.visible = r.lit and st in ["ok", "hurt"]
 		# footsteps are 3D and depend on the ground; the killer also gets scratch marks and the detection indicator
@@ -1316,20 +1385,14 @@ func _process(dt: float) -> void:
 	for i in rules.gens.size():
 		var g: Dictionary = rules.gens[i]
 		if g.done: world.set_gen_done(i)
-		var hum: AudioStreamPlayer3D = gen_audio[i].hum
-		var run: AudioStreamPlayer3D = gen_audio[i].run
-		var ending: bool = g.p >= 0.85 and not g.done # about to start: engine sound + flickering lamps
-		var want_hum: bool = g.p > 0.01 and g.p < 0.85
-		if want_hum != hum.playing:
-			if want_hum: hum.play()
-			else: hum.stop()
-		hum.pitch_scale = 0.75 + 0.45 * g.p
-		hum.volume_db = -8.0 + 8.0 * g.p
-		var want_run: bool = ending or g.done
+		var run: AudioStreamPlayer3D = gen_audio[i]
+		var ending: bool = g.p >= 0.85 and not g.done # about to start: loud engine + flickering lamps
+		var want_run: bool = g.p > 0.01
 		if want_run != run.playing:
 			if want_run: run.play()
 			else: run.stop()
-		run.volume_db = 4.0 if ending else -7.0
+		run.volume_db = 4.0 if ending else (-7.0 if g.done else lerpf(-18.0, -8.0, g.p / 0.85))
+		run.pitch_scale = 1.0 if (ending or g.done) else lerpf(0.75, 0.95, g.p / 0.85)
 		# the killer only notices the flicker from within 8 m
 		if i < world.gen_nodes.size(): world.gen_nodes[i].blink = ending and (my_role != "killer" or body.position.distance_to(world.gen_points[i]) < 8.0)
 	for i in rules.gates.size(): world.set_gate_state(i, rules.gates[i].open)
@@ -1337,9 +1400,14 @@ func _process(dt: float) -> void:
 		last_hatch = rules.hatch
 		world.set_hatch(rules.hatch)
 		if rules.hatch >= 0:
-			_sfx("hatch", world.hatch_points[rules.hatch], 8.0)
 			_flash("انفتحت فتحة هروب! دوّر عليها" if my_role == "survivor" else "انفتحت فتحة هروب — لا تخليه يوصلها")
 	world.set_market_dark(rules.killer != "" and world.in_market(kpos))
+	if rules.powered and not was_powered:
+		was_powered = true
+		world.set_blood_moon(true)
+		for g in world.gate_points: _sfx("gate", g[0] + Vector3(0, 3, 0), 8.0)
+		_sfx("gate", null, -12.0)
+		_flash("اشتغلت الكهرباء — البوابات انفتحت!")
 	# survivors feel the killer coming: heartbeat inside the terror radius, heavy breathing when he is very close
 	danger = 0.0
 	var kdist := 999.0
@@ -1405,12 +1473,13 @@ func _physics_process(delta: float) -> void:
 		body.position = _pos_of(spectating)
 		rig.visible = false
 	elif my_state == "carried":
-		body.position = _pos_of(rules.killer)
-		rig.position.y = 0.25
+		body.position = _carry_spot()
+		rig.position.y = 0.12
+		rig.rotation.y = _yaw_of(rules.killer) + PI / 2.0
 		rig.play("carried")
 	elif my_state == "hooked":
 		body.position = world.hook_points[me.hook_i] + Vector3(0, 0, 0.9)
-		_hook_pose(rig, my_name, delta)
+		_hook_pose(rig, delta)
 	elif locker >= 0:
 		body.position = world.locker_points[locker][0]
 	elif not vault.is_empty():
@@ -1445,7 +1514,13 @@ func _physics_process(delta: float) -> void:
 		flash_light.rotation = Vector3(pitch * 0.7 + 0.05, yaw, 0)
 		if light_on and battery < 12.0: flash_light.light_energy = 7.0 * (0.4 + 0.6 * absf(sin(Time.get_ticks_msec() / 90.0))) # dying battery flickers
 		else: flash_light.light_energy = 7.0
+	_update_bleed(my_bleed, my_state == "hooked", delta)
 	var spd := Vector2(body.velocity.x, body.velocity.z).length()
+	if my_state == "hurt" and spd > 0.5 and not pinned and not (chars.get(my_name, "") in MALE):
+		oof_t[my_name] = oof_t.get(my_name, 1.5) - delta
+		if oof_t[my_name] <= 0.0:
+			oof_t[my_name] = randf_range(2.2, 4.0)
+			_sfx("oof%d" % randi_range(1, 3), null, -3.0)
 	_steps(my_steps, body.position, not pinned and spd > 0.4 and not crouch and body.is_on_floor(), spd > 2.6, -8.0)
 	last_state = my_state
 	if not offline and spectating == "" and my_state != "escaped": # spectators stop reporting a position

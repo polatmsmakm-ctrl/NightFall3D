@@ -32,6 +32,12 @@ NF_URL=ws://127.0.0.1:8099 godot --headless --path . res://tools/online.tscn   #
 ```
 Screenshots: run a scene under `xvfb-run` (software GL, slow) and save the viewport texture.
 
+## Recent behaviour worth knowing
+- Hook escape is a mash: each `struggle` adds `MASH_STEP` to `esc`, which decays by `MASH_DECAY`/s; only on the first hook. Hooked survivors hang still and bleed.
+- All sounds are the owner's mp3s (`assets/sfx`); the synthesized wavs were removed at his request, so skill checks, pallets, hatch and flashlight are silent until he supplies files. `MALE` in `main.gd` picks male pain vs female scream/oof voices.
+- `world.set_blood_moon(true)` (sky shader `blood` uniform + moonlight/ambient/fog tween) fires when the gates get power.
+- Fareej house at `NightWorld.DIWAN` is «ديوان راشد الشمري» (`_build_diwan`): fake wall-wash quads (`_sconce`/`_beam`, additive) plus a handful of shadowless real lights — keep it under the Mobile renderer's 8 omni + 8 spot per mesh. Palms use `shaders/palm.gdshader` (alpha-cut feather fronds).
+
 ## Known gaps
 - Models other than the characters are boxes/cylinders built in code; textures are procedural noise.
 - No baked lighting (needs the editor on a GPU machine).

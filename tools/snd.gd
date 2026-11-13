@@ -24,5 +24,8 @@ func _ready():
 	m.stick_vec = Vector2.ZERO
 	m.rules.gens[3].p = 0.9
 	for i in 20: await tree.process_frame
-	print("gen 3 at 90%: run sound=", m.gen_audio[3].run.playing, " hum=", m.gen_audio[3].hum.playing, " blink=", w.gen_nodes[3].blink)
+	print("gen 3 at 90%: run sound=", m.gen_audio[3].playing, " ", snappedf(m.gen_audio[3].volume_db, 0.1), "dB blink=", w.gen_nodes[3].blink)
+	m.rules.powered = true
+	for i in 10: await tree.process_frame
+	print("powered: blood moon=", w._blood)
 	tree.quit()

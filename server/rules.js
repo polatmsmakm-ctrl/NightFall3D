@@ -1,7 +1,7 @@
 // Match rules (server authoritative). Mirrors scripts/rules.gd — keep the two in step.
 const NEED = 5, GEN_TIME = 60, HEAL_TIME = 8, SELF_HEAL_TIME = 12, HOOK_TIME = [60, 30];
 const BLEED_TIME = 120, HIT_COOLDOWN = 1.5, POWER_CD = 20, STUN_TIME = 2.5;
-const MAX_TRIES = 3, STRUGGLE_CHANCE = 0.1, STRUGGLE_COST = 8;
+const MASH_STEP = 0.03, MASH_DECAY = 0.1; // "free yourself": keep tapping or the bar drains
 const LIVE = ['ok', 'hurt', 'down', 'carried', 'hooked'];
 const REACH = 4.5; // generous: positions arrive ~15 times a second
 
@@ -15,7 +15,7 @@ class Rules {
       this.roles[p.name] = p.role;
       this.score[p.name] = 0;
       if (p.role === 'killer') this.killer = p.name;
-      else this.s[p.name] = { hp: 'ok', hooks: 0, hook_i: -1, t: 0, heal: 0, locker: -1, item: true, tries: 0 };
+      else this.s[p.name] = { hp: 'ok', hooks: 0, hook_i: -1, t: 0, heal: 0, locker: -1, item: true, esc: 0, tap: 0 };
     }
   }
   setLayout(l) { // object positions, sent by the clients (they all generate the same map)
@@ -91,7 +91,7 @@ class Rules {
           const p = this.s[this.carrying];
           p.hooks += 1;
           if (p.hooks >= 3) p.hp = 'dead';
-          else { p.hp = 'hooked'; p.hook_i = i; p.t = HOOK_TIME[p.hooks - 1]; p.tries = 0; }
+          else { p.hp = 'hooked'; p.hook_i = i; p.t = HOOK_TIME[p.hooks - 1]; p.esc = 0; }
           this.add(from, p.hp === 'hooked' ? 80 : 180);
           out.push({ k: 'hooked', n: this.carrying, s: p.hp });
           this.carrying = '';
@@ -104,12 +104,13 @@ class Rules {
           out.push({ k: 'rescued', n, by: from });
         }
         break;
-      case 'struggle': {
+      case 'struggle': { // one tap; first hook only; ignores taps faster than a human thumb
         const p = this.s[from];
-        if (p && p.hp === 'hooked' && p.tries < MAX_TRIES) {
-          p.tries += 1;
-          if (Math.random() < STRUGGLE_CHANCE) { p.hp = 'hurt'; p.hook_i = -1; p.heal = 0; this.add(from, 30); out.push({ k: 'rescued', n: from, by: from }); }
-          else { p.t -= STRUGGLE_COST; out.push({ k: 'struggle', n: from }); }
+        const now = Date.now();
+        if (p && p.hp === 'hooked' && p.hooks === 1 && now - p.tap >= 55) {
+          p.tap = now;
+          p.esc += MASH_STEP;
+          if (p.esc >= 1) { p.hp = 'hurt'; p.hook_i = -1; p.heal = 0; p.esc = 0; this.add(from, 30); out.push({ k: 'rescued', n: from, by: from }); }
         }
         break;
       }
@@ -182,6 +183,7 @@ class Rules {
     }
     for (const n in this.s) {
       const p = this.s[n];
+      if (p.hp === 'hooked') p.esc = Math.max(p.esc - MASH_DECAY * dt, 0);
       if (p.hp === 'hooked' || p.hp === 'down') { p.t -= dt; if (p.t <= 0) { p.hp = 'dead'; this.add(this.killer, 100); } }
     }
     for (const h of Object.keys(this.healers)) {
@@ -210,7 +212,7 @@ class Rules {
   snapshot() {
     const r3 = (v) => Math.round(v * 1000) / 1000;
     const ss = {};
-    for (const n in this.s) { const p = this.s[n]; ss[n] = [p.hp, p.hooks, p.hook_i, Math.ceil(p.t), r3(p.heal), p.locker, p.item, p.tries]; }
+    for (const n in this.s) { const p = this.s[n]; ss[n] = [p.hp, p.hooks, p.hook_i, Math.ceil(p.t), r3(p.heal), p.locker, p.item, r3(p.esc)]; }
     return {
       k: 'gs', g: this.gens.map((g) => r3(g.p)), d: this.gens.map((g) => g.done), to: this.gates.map((g) => g.open),
       pw: this.powered, s: ss, pl: this.pallets, kc: this.carrying, ks: r3(this.stun), kp: Math.round(this.powerCd * 10) / 10, ov: this.over, hx: this.hatch,

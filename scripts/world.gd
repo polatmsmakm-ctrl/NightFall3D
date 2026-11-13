@@ -40,6 +40,7 @@ var pallet_points: Array = [] # [Vector3 door center, yaw]
 var window_points: Array = [] # [Vector3 center, Vector3 outward normal]
 var pallet_nodes: Array = []
 var market := {} # {pos, yaw, w, d}: the strip mall (restaurant, supermarket, laundry)
+const DIWAN := Vector2(26.0, -66.0) # which fareej house is «ديوان راشد الشمري»
 const MARKET_W := 27.0
 const MARKET_D := 10.0
 var door_points: Array = [] # [Vector3, yaw] every doorway
@@ -56,6 +57,8 @@ var noise := FastNoiseLite.new()
 var sites: Array = [] # [x, z, flat height, radius]
 var moon_dir := Vector3(0.3, 0.32, -0.9).normalized()
 var moon: DirectionalLight3D
+var _sky_mat: ShaderMaterial
+var _blood := false
 var env: Environment
 var follow: Node3D
 var dust: GPUParticles3D
@@ -306,6 +309,10 @@ func _make_materials() -> void:
 	fol.shader = load("res://shaders/foliage.gdshader")
 	fol.set_shader_parameter("noise_tex", _sky_noise)
 	_mat.foliage = fol
+	var pm := ShaderMaterial.new()
+	pm.shader = load("res://shaders/palm.gdshader")
+	pm.set_shader_parameter("noise_tex", _sky_noise)
+	_mat.palm = pm
 	var gr := ShaderMaterial.new()
 	gr.shader = load("res://shaders/grass.gdshader")
 	_mat.grass = gr
@@ -319,6 +326,7 @@ func _build_environment() -> void:
 	sm.set_shader_parameter("noise_tex", _sky_noise)
 	var sky := Sky.new()
 	sky.sky_material = sm
+	_sky_mat = sm
 	sky.radiance_size = Sky.RADIANCE_SIZE_32
 	sky.process_mode = Sky.PROCESS_MODE_INCREMENTAL
 	env.background_mode = Environment.BG_SKY
@@ -1025,6 +1033,17 @@ func in_market(pos: Vector3) -> bool:
 	return absf(ml.x) < MARKET_W / 2.0 and absf(ml.z) < MARKET_D / 2.0
 
 ## The market's lights die when the killer walks in, and come back a moment after he leaves.
+# the moon (disc, glow, moonlight, fog) fades to blood red once the gates are powered
+func set_blood_moon(on: bool) -> void:
+	if on == _blood or _sky_mat == null: return
+	_blood = on
+	var tw := create_tween().set_parallel(true)
+	var d := 4.0
+	tw.tween_method(func(v: float): _sky_mat.set_shader_parameter("blood", v), 0.0 if on else 1.0, 1.0 if on else 0.0, d)
+	tw.tween_property(moon, "light_color", Color(1.0, 0.42, 0.36) if on else Color(0.55, 0.65, 0.95), d)
+	tw.tween_property(env, "ambient_light_color", Color(0.26, 0.15, 0.17) if on else Color(0.16, 0.2, 0.32), d)
+	tw.tween_property(env, "fog_light_color", Color(0.14, 0.05, 0.05) if on else Color(0.07, 0.09, 0.14), d)
+
 func set_market_dark(dark: bool) -> void:
 	if dark == market_dark: return
 	market_dark = dark
@@ -1039,9 +1058,11 @@ func _build_fareej() -> void:
 	for b in buildings:
 		var w: float = b[3]; var d: float = b[4]; var H: float = b[5]
 		var mat: StandardMaterial3D = plaster[idx % plaster.size()]
+		var diwan: bool = absf(b[0] - DIWAN.x) < 0.1 and absf(b[1] - DIWAN.y) < 0.1 # the owner's lit-up diwaniya
+		if diwan: mat = _flat(Color(0.7, 0.62, 0.5), 0.9)
 		var y0 := 0.1
 		var body := StaticBody3D.new()
-		body.name = "House%d" % idx
+		body.name = "Diwan" if diwan else "House%d" % idx
 		body.position = Vector3(b[0], _raw_h(b[0], b[1]), b[1])
 		body.rotation.y = b[2]
 		_box(body, Vector3(w + 0.4, 0.3, d + 0.4), Vector3(0, -0.05, 0), _mat.concrete)
@@ -1058,7 +1079,7 @@ func _build_fareej() -> void:
 		_mesh_box(body, Vector3(w * 0.55, 2.7, d * 0.7), Vector3(-w * 0.2, y0 + H + 1.6, -d * 0.1), mat)
 		_mesh_box(body, Vector3(w * 0.6, 0.2, d * 0.75), Vector3(-w * 0.2, y0 + H + 3.05, -d * 0.1), mat)
 		for wx in [-w * 0.34, -w * 0.06]:
-			_mesh_box(body, Vector3(1.0, 1.1, 0.08), Vector3(wx, y0 + H + 1.7, -d * 0.1 + d * 0.35), dark_glass)
+			if not diwan: _mesh_box(body, Vector3(1.0, 1.1, 0.08), Vector3(wx, y0 + H + 1.7, -d * 0.1 + d * 0.35), dark_glass)
 		var tank := MeshInstance3D.new()
 		var cyl := CylinderMesh.new()
 		cyl.top_radius = 0.6; cyl.bottom_radius = 0.6; cyl.height = 1.3; cyl.radial_segments = 12
@@ -1066,7 +1087,7 @@ func _build_fareej() -> void:
 		tank.mesh = cyl
 		tank.position = Vector3(w * 0.3, y0 + H + 0.9, -d * 0.25)
 		body.add_child(tank)
-		_mesh_box(body, Vector3(0.9, 0.6, 0.5), Vector3(w * 0.3, y0 + H + 0.55, d * 0.2), _flat(Color(0.6, 0.6, 0.6), 0.5, 0.4))
+		if not diwan: _mesh_box(body, Vector3(0.9, 0.6, 0.5), Vector3(w * 0.3, y0 + H + 0.55, d * 0.2), _flat(Color(0.6, 0.6, 0.6), 0.5, 0.4))
 		# compound wall with a gate opening in front
 		var cw := w / 2.0 + 3.0
 		var cd := d / 2.0 + 3.0
@@ -1076,7 +1097,8 @@ func _build_fareej() -> void:
 		_wall_with_gap(body, true, cd, -cw, cw, -1.4, 1.4, 0.0, 2.2, 0.0, 2.2, mat, 0.2)
 		for gx in [-1.55, 1.55]: _mesh_box(body, Vector3(0.35, 2.6, 0.35), Vector3(gx, 1.3, cd), mat)
 		if idx % 2 == 0: _car(Vector3(w / 2.0 + 1.55, 0.05, 0.3), 0.04, [Color(0.75, 0.75, 0.78), Color(0.1, 0.1, 0.12), Color(0.35, 0.05, 0.05)][idx % 3], body)
-		if idx % 3 == 0:
+		if diwan: _build_diwan(body, mat, w, d, H, y0, cw, cd)
+		elif idx % 3 == 0:
 			var l := OmniLight3D.new()
 			l.position = Vector3(-1.5, y0 + H - 0.5, 0)
 			l.light_color = Color(1.0, 0.75, 0.45)
@@ -1174,6 +1196,213 @@ func _build_fareej() -> void:
 	mq.add_child(ml)
 	add_child(mq)
 
+# ---------------- the diwaniya: warm facade lighting, glowing sign, pergola, palms ----------------
+var _lobe: ImageTexture
+var _wash_mats := {}
+
+func _lobe_tex() -> ImageTexture: # a wall-washer's beam: a bright point at the bottom edge fanning out upward
+	if _lobe: return _lobe
+	var n := 64
+	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
+	for y in n:
+		var t := 1.0 - (y + 0.5) / n # 0 at the lamp, 1 at the far end
+		var wd := 0.1 + 0.8 * t
+		for x in n:
+			var u := ((x + 0.5) / n - 0.5) * 2.0
+			var v := exp(-2.2 * (u / wd) * (u / wd)) * pow(1.0 - t, 1.5) * smoothstep(1.0, 0.75, absf(u))
+			img.set_pixel(x, y, Color(v, v, v, 1.0))
+	_lobe = ImageTexture.create_from_image(img)
+	return _lobe
+
+func _wash_mat(energy: float) -> StandardMaterial3D:
+	if _wash_mats.has(energy): return _wash_mats[energy]
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	m.albedo_texture = _lobe_tex()
+	m.albedo_color = Color(1.0, 0.58, 0.24) * (energy * 0.6)
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.disable_receive_shadows = true
+	_wash_mats[energy] = m
+	return m
+
+func _beam(parent: Node3D, at: Vector3, basis: Basis, width: float, length: float, energy: float) -> void:
+	var q := MeshInstance3D.new()
+	var qm := QuadMesh.new()
+	qm.size = Vector2(width, length)
+	qm.material = _wash_mat(energy)
+	q.mesh = qm
+	q.basis = basis
+	q.position = at + basis * Vector3(0, length / 2.0, 0)
+	q.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(q)
+
+func _sconce(parent: Node3D, at: Vector3, yaw: float, width: float, up: float, down: float, energy := 1.0, mirror := 0.0) -> void:
+	# a slim up/down wall light on a wall facing `yaw` (0 = +z); `mirror` > 0 also paints its reflection on the ground in front
+	var bs := Basis(Vector3.UP, yaw)
+	var n := bs * Vector3(0, 0, 1)
+	_mesh_box(parent, Vector3(0.09, 0.3, 0.09), at + n * 0.06, _flat(Color(0.2, 0.14, 0.09), 0.4, 0.5), Vector3(0, yaw, 0))
+	var cap := _flat(Color(1.0, 0.72, 0.4), 0.5, 0.0, 4.0)
+	_mesh_box(parent, Vector3(0.07, 0.02, 0.07), at + n * 0.06 + Vector3(0, 0.16, 0), cap, Vector3(0, yaw, 0))
+	_mesh_box(parent, Vector3(0.07, 0.02, 0.07), at + n * 0.06 - Vector3(0, 0.16, 0), cap, Vector3(0, yaw, 0))
+	if up > 0.0: _beam(parent, at + n * 0.06 + Vector3(0, 0.1, 0), bs, width, up, energy)
+	if down > 0.0: _beam(parent, at + n * 0.06 - Vector3(0, 0.1, 0), bs * Basis(Vector3(0, 0, 1), PI), width, down, energy)
+	if mirror > 0.0: _beam(parent, Vector3(at.x, 0.1, at.z) + n * 0.35, bs * Basis(Vector3.RIGHT, PI / 2.0), width * 0.4, mirror, energy * 1.05)
+
+func _warm_light(parent: Node3D, at: Vector3, energy: float, rng: float) -> void:
+	var l := OmniLight3D.new()
+	l.position = at
+	l.light_color = Color(1.0, 0.68, 0.36)
+	l.light_energy = energy
+	l.omni_range = rng
+	l.omni_attenuation = 1.0
+	parent.add_child(l)
+
+func _warm_spot(parent: Node3D, at: Vector3, target: Vector3, energy: float, rng: float, angle: float) -> void:
+	var l := SpotLight3D.new()
+	l.position = at
+	l.basis = Basis.looking_at(target - at, Vector3.FORWARD if absf((target - at).normalized().y) > 0.95 else Vector3.UP)
+	l.light_color = Color(1.0, 0.68, 0.36)
+	l.light_energy = energy
+	l.spot_range = rng
+	l.spot_angle = angle
+	l.distance_fade_enabled = true
+	l.distance_fade_begin = 55.0
+	l.distance_fade_length = 12.0
+	parent.add_child(l)
+
+func _shrub(parent: Node3D, at: Vector3, r: float, mesh: Mesh) -> void:
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.position = at + Vector3(0, r * 0.75, 0)
+	mi.scale = Vector3(r, r * 1.15, r)
+	parent.add_child(mi)
+
+func _build_diwan(body: StaticBody3D, mat: StandardMaterial3D, w: float, d: float, H: float, y0: float, cw: float, cd: float) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 26
+	var wood := _flat(Color(0.16, 0.09, 0.05), 0.55)
+	var led := _flat(Color(1.0, 0.7, 0.36), 0.5, 0.0, 3.2)
+	var stone := _flat(Color(0.34, 0.31, 0.27), 0.7)
+	var front := cd + 0.1 # outer face of the compound wall
+	# ---- gate portal: tall pillars with a lintel, dark double doors standing open, a lit doorstep
+	for gx in [-1.78, 1.78]:
+		_box(body, Vector3(0.5, 3.2, 0.55), Vector3(gx, 1.6, cd), mat)
+		_mesh_box(body, Vector3(0.62, 0.12, 0.67), Vector3(gx, 3.26, cd), mat)
+		_box(body, Vector3(0.07, 2.5, 1.25), Vector3(signf(gx) * 1.36, 1.25, cd - 0.72), wood) # door leaf, swung inward
+		_mesh_box(body, Vector3(0.03, 0.9, 0.04), Vector3(signf(gx) * 1.31, 1.2, cd - 1.2), _flat(Color(0.7, 0.55, 0.3), 0.3, 0.8))
+	_mesh_box(body, Vector3(3.1, 0.4, 0.45), Vector3(0, 2.95, cd), mat)
+	_mesh_box(body, Vector3(3.0, 0.035, 0.035), Vector3(0, 2.74, cd + 0.2), led)
+	_mesh_box(body, Vector3(3.4, 0.07, 1.3), Vector3(0, 0.035, front + 0.75), stone)
+	_mesh_box(body, Vector3(3.4, 0.03, 0.04), Vector3(0, 0.03, front + 1.42), led)
+	# ---- compound wall: up/down sconces, plants and little ground uplights along its foot, a slatted corner panel
+	for sx in [-6.9, -4.3, -2.35, 2.35, 4.3, 6.9]:
+		_sconce(body, Vector3(sx, 1.3, front), 0.0, 1.5 if absf(sx) > 3.0 else 0.75, 0.88, 1.15, 1.0, 5.0)
+	var bush := SphereMesh.new()
+	bush.radius = 1.0; bush.height = 2.0; bush.radial_segments = 8; bush.rings = 4
+	bush.material = _flat(Color(0.09, 0.16, 0.06), 0.9)
+	var rock := SphereMesh.new()
+	rock.radius = 1.0; rock.height = 1.3; rock.radial_segments = 7; rock.rings = 3
+	rock.material = _mat.rock
+	for sgn in [-1.0, 1.0]:
+		var x := 2.75
+		var k := 0
+		while x < cw - 0.5:
+			if k % 3 == 2:
+				_mesh_box(body, Vector3(0.09, 0.07, 0.09), Vector3(sgn * x, 0.09, front + 0.22), led)
+				_beam(body, Vector3(sgn * x, 0.12, front + 0.06), Basis(), 0.9, 1.1, 0.85)
+			elif k % 3 == 0: _shrub(body, Vector3(sgn * x, 0.05, front + 0.45), rng.randf_range(0.28, 0.42), bush)
+			else:
+				_shrub(body, Vector3(sgn * x, 0.05, front + 0.4), rng.randf_range(0.2, 0.3), bush)
+				_shrub(body, Vector3(sgn * x + 0.3, -0.05, front + 0.6), rng.randf_range(0.14, 0.2), rock)
+			x += rng.randf_range(0.55, 0.75)
+			k += 1
+		# potted shrub beside the gate
+		var pot := MeshInstance3D.new()
+		var pc := CylinderMesh.new()
+		pc.top_radius = 0.3; pc.bottom_radius = 0.2; pc.height = 0.5; pc.radial_segments = 10
+		pc.material = _flat(Color(0.18, 0.12, 0.08), 0.35, 0.5)
+		pot.mesh = pc
+		pot.position = Vector3(sgn * 2.25, 0.3, front + 0.75)
+		body.add_child(pot)
+		_shrub(body, Vector3(sgn * 2.25, 0.5, front + 0.75), 0.36, bush)
+	for k in 5: _mesh_box(body, Vector3(0.09, 2.3, 0.07), Vector3(cw - 0.75 + k * 0.16, 1.15, front + 0.03), wood)
+	# ---- polished forecourt down to the street (catches the lights)
+	_mesh_box(body, Vector3(cw * 2.0 + 1.0, 0.05, 8.3), Vector3(0, 0.03, front + 4.15), _flat(Color(0.08, 0.08, 0.09), 0.25, 0.1))
+	# ---- ground floor facade: light line under the roof, sconces, lit front door
+	_mesh_box(body, Vector3(w + 0.4, 0.035, 0.035), Vector3(0, y0 + H - 0.03, d / 2.0 + 0.16), led)
+	for sx in [-3.9, -1.25, 1.25, 3.9]:
+		_sconce(body, Vector3(sx, 2.15, d / 2.0 + 0.125), 0.0, 1.3, 1.2, 1.6, 0.9)
+	# ---- upper floor: curtained windows glowing from inside, sconces between them, light line under the roof
+	var uf := -d * 0.1 + d * 0.35 # front face of the upper block
+	var curtain := [_flat(Color(1.0, 0.62, 0.3), 0.8, 0.0, 1.5), _flat(Color(0.85, 0.48, 0.2), 0.8, 0.0, 1.1)]
+	for wx in [-w * 0.34, -w * 0.06]:
+		_mesh_box(body, Vector3(1.16, 1.36, 0.06), Vector3(wx, y0 + H + 1.7, uf + 0.02), wood)
+		for c in 5: _mesh_box(body, Vector3(0.2, 1.2, 0.03), Vector3(wx - 0.4 + c * 0.2, y0 + H + 1.7, uf + 0.05), curtain[c % 2] if c != 2 else _flat(Color(0.35, 0.2, 0.1), 0.8, 0.0, 0.5))
+	for sx in [-w * 0.2 - 2.25, -w * 0.2, -w * 0.2 + 2.25]:
+		_sconce(body, Vector3(sx, y0 + H + 1.45, uf), 0.0, 0.95, 1.05, 1.05, 0.9)
+	_mesh_box(body, Vector3(w * 0.6, 0.035, 0.035), Vector3(-w * 0.2, y0 + H + 2.93, uf + 0.16), led)
+	# ---- the sign block with the diwaniya's name in back-lit letters
+	var sb := Vector3(w * 0.26, y0 + H + 1.5, d / 2.0 - 1.2) # flush with the facade, so the roof edge never hides the name
+	_mesh_box(body, Vector3(4.6, 2.5, 3.0), sb, mat)
+	_mesh_box(body, Vector3(4.9, 0.16, 3.3), sb + Vector3(0, 1.33, 0), mat)
+	_mesh_box(body, Vector3(4.7, 0.035, 0.035), sb + Vector3(0, 1.23, 1.6), led)
+	var lbl := Label3D.new()
+	lbl.text = "ديوان\nراشد الشمري"
+	lbl.font = Net.font
+	lbl.font_size = 64
+	lbl.pixel_size = 0.01
+	lbl.line_spacing = -22.0
+	lbl.modulate = Color(1.0, 0.74, 0.36)
+	lbl.outline_size = 10
+	lbl.outline_modulate = Color(0.75, 0.35, 0.08, 0.45)
+	lbl.position = sb + Vector3(0.25, 0.1, 1.53)
+	body.add_child(lbl)
+	_sconce(body, sb + Vector3(-1.95, 0.0, 1.5), 0.0, 0.7, 0.9, 0.9, 0.9)
+	# ---- pergola in the yard, glowing from underneath
+	for px in [-cw + 0.45, -w / 2.0 - 0.45]:
+		for pz in [1.7, cd - 0.6]: _box(body, Vector3(0.14, 2.85, 0.14), Vector3(px, 1.42, pz), wood)
+		_mesh_box(body, Vector3(0.12, 0.16, cd - 1.6), Vector3(px, 2.92, (1.7 + cd - 0.6) / 2.0), wood)
+	for k in 10: _mesh_box(body, Vector3(cw - w / 2.0 - 0.5, 0.05, 0.12), Vector3(-(cw + w / 2.0) / 2.0, 3.02, 1.8 + k * 0.5), wood)
+	_sconce(body, Vector3(-cw + 0.1, 1.5, 4.0), PI / 2.0, 1.6, 1.0, 1.3, 1.0)
+	var pot2 := MeshInstance3D.new()
+	var pc2 := CylinderMesh.new()
+	pc2.top_radius = 0.32; pc2.bottom_radius = 0.22; pc2.height = 0.55; pc2.radial_segments = 10
+	pc2.material = _flat(Color(0.18, 0.12, 0.08), 0.35, 0.5)
+	pot2.mesh = pc2
+	pot2.position = Vector3(-cw + 0.7, 0.3, 5.9)
+	body.add_child(pot2)
+	_shrub(body, Vector3(-cw + 0.7, 0.75, 5.9), 0.55, bush)
+	# ---- two date palms flanking the house, lit from the ground
+	var palm := _palm_mesh(0, true)
+	var trunk := _pbr(Color(0.14, 0.1, 0.06), Color(0.42, 0.32, 0.2), 0.05, Vector3(1.5, 0.6, 1.5), 0.9)
+	for sgn in [-1.0, 1.0]:
+		var pp := Vector3(sgn * (cw + 1.5), 0.0, 4.2)
+		var mi := MeshInstance3D.new()
+		mi.mesh = palm
+		mi.position = pp
+		mi.rotation.y = 1.3 * sgn
+		mi.scale = Vector3.ONE * (0.82 if sgn < 0.0 else 0.78)
+		mi.set_surface_override_material(0, trunk)
+		body.add_child(mi)
+		var cs := CollisionShape3D.new()
+		var cyl := CylinderShape3D.new()
+		cyl.radius = 0.4; cyl.height = 6.0
+		cs.shape = cyl
+		cs.position = pp + Vector3(0, 3.0, 0)
+		body.add_child(cs)
+		_mesh_box(body, Vector3(0.16, 0.08, 0.16), pp + Vector3(0, 0.06, 0.8), led)
+		_warm_spot(body, pp + Vector3(0, 0.15, 0.85), pp + Vector3(0, 6.5, 0.0), 5.0, 12.0, 28.0)
+		_warm_light(body, pp + Vector3(0, 4.3, 1.0), 3.0, 7.5) # the crown, as if lit from the ground
+	# ---- real lights (no shadows): gate, the two wall runs, sign, yard, pergola, inside
+	_warm_light(body, Vector3(0, 2.2, front + 1.6), 0.7, 7.0)
+	for sgn in [-1.0, 1.0]: _warm_spot(body, Vector3(sgn * 4.9, 3.2, front + 4.0), Vector3(sgn * 4.9, 0.4, front), 1.3, 10.0, 60.0)
+	_warm_light(body, sb + Vector3(0, 0.2, 3.0), 0.6, 5.5)
+	_warm_light(body, Vector3(0.0, 2.7, d / 2.0 + 1.5), 0.55, 7.0)
+	_warm_light(body, Vector3(-(cw + w / 2.0) / 2.0, 2.2, 4.0), 0.6, 5.0)
+	_warm_light(body, Vector3(-1.5, y0 + H - 0.5, 0), 1.2, 7.0)
+
 # ---------------- trees (MultiMesh + 2 LOD levels per chunk) ----------------
 func _tree_mesh(variant: int, hi: bool) -> ArrayMesh:
 	var rng := RandomNumberGenerator.new()
@@ -1206,33 +1435,66 @@ func _tree_mesh(variant: int, hi: bool) -> ArrayMesh:
 	mesh.surface_set_material(1, _mat.foliage)
 	return mesh
 
+func _frond(sf: SurfaceTool, origin: Vector3, yaw: float, elev: float, length: float, droop: float, half_w: float, segs: int) -> void:
+	# one feather frond: a ribbon that leaves the crown at `elev` and bends down along its length
+	var fwd := Vector3(sin(yaw), 0, cos(yaw))
+	var side := Vector3(cos(yaw), 0, -sin(yaw))
+	var rows := []
+	var p := origin
+	for i in segs + 1:
+		var s := float(i) / segs
+		rows.append([p, half_w * pow(sin(PI * (0.07 + 0.9 * s)), 0.7), s])
+		var pitch := elev - droop * pow(s, 1.3)
+		p += (fwd * cos(pitch) + Vector3.UP * sin(pitch)) * (length / segs)
+	for i in segs:
+		var a: Array = rows[i]; var b: Array = rows[i + 1]
+		for sgn in [-1.0, 1.0]:
+			var a0: Vector3 = a[0]; var b0: Vector3 = b[0]
+			var a1: Vector3 = a0 + side * (a[1] * sgn) + Vector3.UP * (a[1] * 0.3)
+			var b1: Vector3 = b0 + side * (b[1] * sgn) + Vector3.UP * (b[1] * 0.3)
+			var ue: float = 0.5 + 0.5 * sgn
+			var quad := [[a0, Vector2(0.5, a[2])], [b0, Vector2(0.5, b[2])], [b1, Vector2(ue, b[2])], [a0, Vector2(0.5, a[2])], [b1, Vector2(ue, b[2])], [a1, Vector2(ue, a[2])]]
+			if sgn < 0.0: quad.reverse()
+			for v in quad:
+				sf.set_uv(v[1])
+				sf.add_vertex(v[0])
+
 func _palm_mesh(variant: int, hi: bool) -> ArrayMesh:
+	# date palm: ringed trunk, crown boss, three tiers of feather fronds
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 300 + variant
 	var hgt := rng.randf_range(6.5, 9.0)
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var trunk := CylinderMesh.new()
-	trunk.top_radius = 0.2; trunk.bottom_radius = 0.34; trunk.height = hgt
-	trunk.radial_segments = 8 if hi else 5
-	trunk.rings = 3 if hi else 1
-	st.append_from(trunk, 0, Transform3D(Basis(), Vector3(0, hgt / 2.0 - 0.3, 0)))
+	var rings := 9 if hi else 1
+	for i in rings: # each ring flares upward like the cut frond bases of a real trunk
+		var seg := CylinderMesh.new()
+		seg.height = (hgt + 0.3) / rings
+		seg.bottom_radius = 0.24 if hi else 0.3
+		seg.top_radius = 0.33 if hi else 0.26
+		seg.radial_segments = 8 if hi else 5
+		seg.rings = 1
+		st.append_from(seg, 0, Transform3D(Basis(Vector3.UP, i * 0.4), Vector3(0, -0.3 + seg.height * (i + 0.5), 0)))
+	var boss := CylinderMesh.new()
+	boss.height = 0.8; boss.bottom_radius = 0.3; boss.top_radius = 0.46
+	boss.radial_segments = 8 if hi else 5; boss.rings = 1
+	st.append_from(boss, 0, Transform3D(Basis(), Vector3(0, hgt + 0.25, 0)))
 	var mesh := st.commit()
 	mesh.surface_set_material(0, _mat.bark)
 	var sf := SurfaceTool.new()
 	sf.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var fronds := 11 if hi else 6
-	for i in fronds: # long drooping fronds around the crown
-		var frond := CylinderMesh.new()
-		frond.top_radius = 0.0; frond.bottom_radius = 0.42
-		frond.height = rng.randf_range(3.0, 4.0)
-		frond.radial_segments = 4; frond.rings = 1; frond.cap_bottom = false
-		var yaw := i * TAU / fronds + rng.randf_range(-0.2, 0.2)
-		var droop := rng.randf_range(1.75, 2.2) # tip points outward and down
-		var bs := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, droop) * Basis.from_scale(Vector3(1.0, 1.0, 0.18))
-		sf.append_from(frond, 0, Transform3D(bs, Vector3(0, hgt - 0.2, 0) + bs * Vector3(0, frond.height / 2.0, 0)))
+	var top := Vector3(0, hgt + 0.55, 0)
+	var segs := 6 if hi else 3
+	# [count, elevation from, elevation to, droop]
+	var tiers := [[8, 0.85, 1.25, 1.5], [8, 0.4, 0.7, 1.5], [6, -0.05, 0.2, 1.2]] if hi else [[5, 0.8, 1.1, 1.5], [5, 0.2, 0.5, 1.4]]
+	for tr in tiers:
+		var cnt: int = tr[0]
+		var off := rng.randf() * TAU
+		for i in cnt:
+			_frond(sf, top, off + i * TAU / cnt + rng.randf_range(-0.18, 0.18), rng.randf_range(tr[1], tr[2]), rng.randf_range(3.4, 4.4), tr[3] * rng.randf_range(0.9, 1.1), 0.62, segs)
+	sf.generate_normals()
 	sf.commit(mesh)
-	mesh.surface_set_material(1, _mat.foliage)
+	mesh.surface_set_material(1, _mat.palm)
 	return mesh
 
 func _build_trees() -> void:

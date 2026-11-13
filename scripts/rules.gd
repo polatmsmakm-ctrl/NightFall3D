@@ -12,9 +12,8 @@ const BLEED_TIME := 120.0
 const HIT_COOLDOWN := 1.5
 const POWER_CD := 20.0
 const STUN_TIME := 2.5
-const MAX_TRIES := 3
-const STRUGGLE_CHANCE := 0.1
-const STRUGGLE_COST := 8.0
+const MASH_STEP := 0.03 # each tap on "free yourself"
+const MASH_DECAY := 0.1 # lost per second, so you have to keep hammering the button
 const LIVE := ["ok", "hurt", "down", "carried", "hooked"]
 
 var gens: Array = [] # {p, done, reps}
@@ -44,7 +43,7 @@ func setup(n_gens: int, n_gates: int, n_pallets: int, hatches: int, players: Arr
 		roles[str(pl.name)] = str(pl.role)
 		score[str(pl.name)] = 0.0
 		if str(pl.role) == "killer": killer = str(pl.name)
-		else: s[str(pl.name)] = {"hp": "ok", "hooks": 0, "hook_i": -1, "t": 0.0, "heal": 0.0, "locker": -1, "item": true, "tries": 0}
+		else: s[str(pl.name)] = {"hp": "ok", "hooks": 0, "hook_i": -1, "t": 0.0, "heal": 0.0, "locker": -1, "item": true, "esc": 0.0}
 
 func add(name: String, pts: float) -> void:
 	if score.has(name): score[name] += pts
@@ -124,7 +123,7 @@ func handle(d: Dictionary, from: String) -> Array:
 				p.hooks += 1
 				if p.hooks >= 3: p.hp = "dead"
 				else:
-					p.hp = "hooked"; p.hook_i = i; p.t = HOOK_TIME[p.hooks - 1]; p.tries = 0
+					p.hp = "hooked"; p.hook_i = i; p.t = HOOK_TIME[p.hooks - 1]; p.esc = 0.0
 				add(from, 80.0 if p.hp == "hooked" else 180.0)
 				out.append({"k": "hooked", "n": carrying, "s": p.hp})
 				carrying = ""
@@ -133,16 +132,13 @@ func handle(d: Dictionary, from: String) -> Array:
 				s[n].hp = "hurt"; s[n].hook_i = -1; s[n].heal = 0.0
 				add(from, 60.0)
 				out.append({"k": "rescued", "n": n, "by": from})
-		"struggle": # try to pull yourself off the hook: small chance, and every failure costs time
-			if hp(from) == "hooked" and s[from].tries < MAX_TRIES:
-				s[from].tries += 1
-				if randf() < STRUGGLE_CHANCE:
-					s[from].hp = "hurt"; s[from].hook_i = -1; s[from].heal = 0.0
+		"struggle": # one tap on "free yourself": only on the first hook, and the bar drains unless you keep tapping
+			if hp(from) == "hooked" and s[from].hooks == 1:
+				s[from].esc += MASH_STEP
+				if s[from].esc >= 1.0:
+					s[from].hp = "hurt"; s[from].hook_i = -1; s[from].heal = 0.0; s[from].esc = 0.0
 					add(from, 30.0)
 					out.append({"k": "rescued", "n": from, "by": from})
-				else:
-					s[from].t -= STRUGGLE_COST
-					out.append({"k": "struggle", "n": from})
 		"heal":
 			if d.get("on", false) and free_now(from):
 				if n == from:
@@ -199,6 +195,7 @@ func tick(dt: float) -> void:
 		for g in gates: g.open = true
 	for n in s:
 		var p: Dictionary = s[n]
+		if p.hp == "hooked": p.esc = maxf(p.esc - MASH_DECAY * dt, 0.0)
 		if p.hp == "hooked" or p.hp == "down":
 			p.t -= dt
 			if p.t <= 0.0:
@@ -234,7 +231,7 @@ func snapshot() -> Dictionary:
 	for g in gates: to.append(g.open)
 	for n in s:
 		var p: Dictionary = s[n]
-		ss[n] = [p.hp, p.hooks, p.hook_i, ceili(p.t), snappedf(p.heal, 0.001), p.locker, p.item, p.tries]
+		ss[n] = [p.hp, p.hooks, p.hook_i, ceili(p.t), snappedf(p.heal, 0.001), p.locker, p.item, snappedf(p.esc, 0.001)]
 	return {"k": "gs", "g": gp, "d": gd, "to": to, "pw": powered, "s": ss, "pl": pallets, "kc": carrying, "ks": snappedf(stun, 0.01), "kp": snappedf(power_cd, 0.1), "ov": over, "hx": hatch, "sc": sc}
 
 func apply(v: Dictionary) -> void:
@@ -245,7 +242,7 @@ func apply(v: Dictionary) -> void:
 	powered = bool(v.pw)
 	for n in v.s:
 		var a: Array = v.s[n]
-		s[n] = {"hp": str(a[0]), "hooks": int(a[1]), "hook_i": int(a[2]), "t": float(a[3]), "heal": float(a[4]), "locker": int(a[5]), "item": bool(a[6]), "tries": int(a[7]) if a.size() > 7 else 0}
+		s[n] = {"hp": str(a[0]), "hooks": int(a[1]), "hook_i": int(a[2]), "t": float(a[3]), "heal": float(a[4]), "locker": int(a[5]), "item": bool(a[6]), "esc": float(a[7]) if a.size() > 7 else 0.0}
 	carrying = str(v.kc)
 	stun = float(v.ks)
 	power_cd = float(v.kp)

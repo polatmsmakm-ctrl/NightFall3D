@@ -21,11 +21,19 @@ func _ready():
 		print("market x=", lx, " -> local z=", snappedf(loc.z, 0.01), " y=", snappedf(loc.y, 0.01), " (front glass at 5.0)")
 	print("children=", w.get_child_count(), " lights=", w.find_children("*", "OmniLight3D", true, false).size())
 	var r: Rules = m.rules
-	r.s["P"].hp = "hooked"; r.s["P"].hook_i = 0; r.s["P"].t = 60.0
-	for i in 5: await tree.physics_frame
-	print("hooked ctx=", m.ctx.get("interact", {}).get("kind", ""), " rig y=", snappedf(m.rig.position.y, 0.01), " anim=", m.rig.current)
-	for k in 3:
+	r.s["P"].hp = "hooked"; r.s["P"].hook_i = 0; r.s["P"].t = 60.0; r.s["P"].hooks = 1
+	for i in 30: await tree.physics_frame
+	print("hooked ctx=", m.ctx.get("interact", {}).get("kind", ""), " rig y=", snappedf(m.rig.position.y, 0.01), " anim=", m.rig.current, " bleed=", m.my_bleed.visible, " pool=", snappedf(m.my_bleed.get_node("Pool").scale.x, 0.01))
+	for k in 10:
 		m._press("interact", 5)
-		for i in 5: await tree.physics_frame
-	print("after 3 tries: hp=", r.hp("P"), " tries=", r.s["P"].tries, " t=", snappedf(r.s["P"].t, 0.1), " ctx=", m.ctx.get("interact", {}).get("kind", "none"))
+		for i in 6: await tree.physics_frame
+	print("slow mash (10 taps/s): esc=", snappedf(r.s["P"].esc, 0.01), " hp=", r.hp("P"))
+	var taps := 0
+	while r.hp("P") == "hooked" and taps < 200:
+		m._press("interact", 5); taps += 1
+		for i in 8: await tree.physics_frame
+	print("mash at 7.5 taps/s: freed after ", taps, " taps -> ", r.hp("P"), " bleed=", m.my_bleed.visible)
+	r.s["P"].hp = "hooked"; r.s["P"].hooks = 2; r.s["P"].t = 30.0
+	for i in 10: await tree.physics_frame
+	print("second hook ctx=", m.ctx.get("interact", {}).get("kind", "none"))
 	tree.quit()
