@@ -1,1 +1,9 @@
-node_modules
+Library/
+Temp/
+Obj/
+Build/
+Builds/
+Logs/
+UserSettings/
+*.alf
+*.ulf
