@@ -66,6 +66,7 @@ var was_powered := false
 var danger := 0.0 # survivors: how close the killer is (0..1)
 var noise := 0.0 # killer: loudest nearby survivor (0..1)
 var noise_dir := 0.0
+var thrash := {} # name -> seconds of hard thrashing left (after a failed escape attempt)
 
 func _ready() -> void:
 	menu = GameMenu.new()
@@ -294,7 +295,13 @@ func _on_event(e: Dictionary) -> void:
 		"hooked":
 			_sfx("hurt", _pos_of(str(e.n)), 3.0, 0.8)
 			_flash("%s %s" % [str(e.n), "انعلّق على الخطاف" if str(e.s) == "hooked" else "مات"])
-		"rescued": _flash("%s أنقذ %s" % [str(e.by), str(e.n)])
+		"rescued":
+			if str(e.by) == str(e.n): _flash("%s فك نفسه من الخطاف!" % str(e.n))
+			else: _flash("%s أنقذ %s" % [str(e.by), str(e.n)])
+		"struggle":
+			thrash[str(e.n)] = 1.4
+			_sfx("hurt", _pos_of(str(e.n)), -2.0, 1.2)
+			if str(e.n) == my_name: _flash("ما قدرت! راحت 8 ثواني")
 		"grabbed": _flash("القاتل طلّع %s من الخزانة" % str(e.n))
 		"empty":
 			if my_role == "killer": _flash("الخزانة فاضية")
@@ -498,6 +505,9 @@ func _draw_minimap() -> void:
 	for b in world.buildings:
 		minimap.draw_set_transform(c + Vector2(b[0], b[1]) * k, -b[2], Vector2.ONE)
 		minimap.draw_rect(Rect2(-Vector2(b[3], b[4]) * k / 2.0, Vector2(b[3], b[4]) * k), Color(0.55, 0.52, 0.45, 0.8))
+	var mk: Dictionary = world.market
+	minimap.draw_set_transform(c + Vector2(mk.pos.x, mk.pos.z) * k, -mk.yaw, Vector2.ONE)
+	minimap.draw_rect(Rect2(-Vector2(mk.w, mk.d) * k / 2.0, Vector2(mk.w, mk.d) * k), Color(0.85, 0.3, 0.3, 0.9))
 	minimap.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	for i in world.hook_points.size():
 		var hp: Vector3 = world.hook_points[i]
@@ -538,6 +548,8 @@ func _update_ctx() -> void:
 		if me.locker >= 0:
 			ctx.interact = {"kind": "locker_out", "label": "اطلع", "i": me.locker}
 			return
+		if my_state == "hooked" and me.tries < Rules.MAX_TRIES:
+			ctx.interact = {"kind": "struggle", "label": "فك نفسك"}
 		if not (my_state in ["ok", "hurt"]): return
 		for n in rules.s:
 			var p: Dictionary = rules.s[n]
@@ -609,6 +621,7 @@ func _press(id: String, touch: int) -> void:
 			var c = ctx.get(id)
 			if c == null or not hold.is_empty(): return
 			match str(c.kind):
+				"struggle": _ev({"k": "struggle"})
 				"locker_in": _ev({"k": "locker", "i": c.i, "on": true})
 				"locker_out": _ev({"k": "locker", "i": c.i, "on": false})
 				"pallet": _ev({"k": "pallet", "i": c.i})
@@ -704,11 +717,20 @@ func _input(e: InputEvent) -> void:
 		yaw -= e.relative.x * 0.003
 		pitch = clampf(pitch - e.relative.y * 0.003, -0.9, 0.5)
 
+## Hanging on the hook: lifted off the ground, legs kicking, body twisting; harder right after an escape attempt.
+func _hook_pose(r: CharacterRig, n: String, dt: float) -> void:
+	var t := Time.get_ticks_msec() / 1000.0 + float(n.hash() % 100)
+	var hard: float = 2.6 if thrash.get(n, 0.0) > 0.0 else 1.0
+	r.position.y = lerpf(r.position.y, 0.85 + 0.05 * sin(t * 6.0 * hard), 1.0 - exp(-10.0 * dt))
+	r.rotation = Vector3(0.1 * hard * sin(t * 3.3 * hard), 0.25 * hard * sin(t * 1.7 * hard), 0.13 * hard * sin(t * 4.6 * hard))
+	r.play("run", 0.45 * hard)
+
 # ---------------- per-frame ----------------
 func _process(dt: float) -> void:
 	if not started: return
 	flash_t = maxf(flash_t - dt, 0.0)
 	for i in boom_t.keys(): boom_t[i] = maxf(boom_t[i] - dt, 0.0)
+	for n in thrash.keys(): thrash[n] = maxf(thrash[n] - dt, 0.0)
 	ui.queue_redraw()
 	minimap.queue_redraw()
 	var kpos := _pos_of(rules.killer) if rules.killer != "" else Vector3.ZERO
@@ -723,13 +745,16 @@ func _process(dt: float) -> void:
 		if st == "carried":
 			target = kpos; lift = 1.0; anim = "dying"
 		elif st == "hooked":
-			target = world.hook_points[rules.s[n].hook_i] + Vector3(0, 0.6, 0.9); anim = "idle"
+			target = world.hook_points[rules.s[n].hook_i] + Vector3(0, 0, 0.9)
 		elif st == "down" or st == "dead": anim = "dying"
 		elif st == "hurt" and anim == "idle": anim = "injured"
 		r.node.position = r.node.position.lerp(target, w)
-		r.rig.position.y = lerpf(r.rig.position.y, lift, w)
-		r.rig.rotation.y = lerp_angle(r.rig.rotation.y, r.yaw, w)
-		r.rig.play(anim)
+		if st == "hooked":
+			_hook_pose(r.rig, n, dt)
+		else:
+			r.rig.position.y = lerpf(r.rig.position.y, lift, w)
+			r.rig.rotation = Vector3(0, lerp_angle(r.rig.rotation.y, r.yaw, w), 0)
+			r.rig.play(anim)
 		r.node.visible = st != "escaped" and not (rules.s.has(n) and rules.s[n].locker >= 0)
 		# footsteps of runners are audible in 3D; the killer also gets scratch marks and the detection indicator
 		if anim == "run" and r.node.visible:
@@ -798,8 +823,8 @@ func _physics_process(delta: float) -> void:
 		rig.position.y = 1.0
 		rig.play("dying")
 	elif my_state == "hooked":
-		body.position = world.hook_points[me.hook_i] + Vector3(0, 0.6, 0.9)
-		rig.play("idle")
+		body.position = world.hook_points[me.hook_i] + Vector3(0, 0, 0.9)
+		_hook_pose(rig, my_name, delta)
 	elif locker >= 0:
 		body.position = world.locker_points[locker][0]
 	elif not vault.is_empty():
@@ -814,7 +839,8 @@ func _physics_process(delta: float) -> void:
 		if f >= 1.0: vault = {}
 	else:
 		pinned = false
-	if my_state != "carried": rig.position.y = 0.0
+	if my_state != "carried" and my_state != "hooked": rig.position.y = 0.0
+	if last_state == "hooked" and my_state != "hooked": rig.rotation = Vector3.ZERO
 	if last_locker >= 0 and locker < 0 and my_state in ["ok", "hurt"]: # stepped out of a locker
 		var lp: Array = world.locker_points[last_locker]
 		body.position = lp[0] + Basis(Vector3.UP, lp[1]) * Vector3(0, 0, 1.1)

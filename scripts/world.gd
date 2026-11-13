@@ -34,6 +34,9 @@ var locker_points: Array = [] # [Vector3, yaw]
 var pallet_points: Array = [] # [Vector3 door center, yaw]
 var window_points: Array = [] # [Vector3 center, Vector3 outward normal]
 var pallet_nodes: Array = []
+var market := {} # {pos, yaw, w, d}: the strip mall (restaurant, supermarket, laundry)
+const MARKET_W := 27.0
+const MARKET_D := 10.0
 var gen_nodes: Array = []
 var gate_nodes: Array = []
 var noise := FastNoiseLite.new()
@@ -65,7 +68,7 @@ func configure(id: String) -> void:
 		rng.seed = 11
 		for i in range(-2, 3):
 			for j in range(-1, 2):
-				if i == 0 and j == 0: continue
+				if (i == 0 and j == 0) or (i == 2 and j == 0): continue # centre spawn, and the market's plot
 				buildings.append([i * 24.0 + rng.randf_range(-4, 4), j * 26.0 + rng.randf_range(-4, 4),
 					rng.randf() * TAU, rng.randf_range(6.0, 9.0), rng.randf_range(5.0, 7.0), rng.randf_range(2.8, 3.4)])
 	else:
@@ -83,6 +86,10 @@ func configure(id: String) -> void:
 		var gx: float = b[0] + lx * cos(b[2]) + lz * sin(b[2])
 		var gz: float = b[1] - lx * sin(b[2]) + lz * cos(b[2])
 		gen_points.append(Vector3(gx, _raw_h(b[0], b[1]) + 0.1, gz))
+	# the market: a big flat plot on the east side, shop fronts facing the middle of the map
+	var mh := _raw_h(56.0, 2.0)
+	sites.append([56.0, 2.0, mh, 21.0])
+	market = {"pos": Vector3(62.0, mh, 2.0), "yaw": -PI / 2.0, "w": MARKET_W, "d": MARKET_D}
 	# each of the first 8 buildings: a locker inside, a pallet at the door, a vault window on the left wall
 	for bi in mini(buildings.size(), 8):
 		var b: Array = buildings[bi]
@@ -91,6 +98,13 @@ func configure(id: String) -> void:
 		locker_points.append([base + rot * Vector3(b[3] / 2.0 - 0.75, 0, -b[4] / 2.0 + 0.6), b[2]])
 		pallet_points.append([base + rot * Vector3(0, 0, b[4] / 2.0), b[2]])
 		window_points.append([base + rot * Vector3(-b[3] / 2.0, 0, 0), rot * Vector3(-1, 0, 0)])
+	# market extras: two lockers, a pallet at the supermarket's back door, a vault window on the restaurant's side
+	var mrot := Basis(Vector3.UP, market.yaw)
+	var mbase: Vector3 = market.pos + Vector3(0, 0.15, 0)
+	locker_points.append([mbase + mrot * Vector3(12.6, 0, -4.3), market.yaw])
+	locker_points.append([mbase + mrot * Vector3(-12.6, 0, -4.3), market.yaw])
+	pallet_points.append([mbase + mrot * Vector3(0, 0, -MARKET_D / 2.0), market.yaw])
+	window_points.append([mbase + mrot * Vector3(-MARKET_W / 2.0, 0, 1.0), mrot * Vector3(-1, 0, 0)])
 	# 6 hooks on a ring between the buildings
 	for hi in 6:
 		var ang := hi * TAU / 6.0 + 0.5
@@ -163,13 +177,19 @@ func build() -> void:
 	await get_tree().process_frame
 	_build_buildings()
 	_build_objectives()
+	_build_market()
 	await get_tree().process_frame
+	_build_scatter()
 	_build_trees()
 	await get_tree().process_frame
 	_build_rocks()
 	await _build_grass()
 	_build_particles()
 	_build_probe()
+	for l in find_children("*", "OmniLight3D", true, false): # far lights cost nothing
+		l.distance_fade_enabled = true
+		l.distance_fade_begin = 45.0
+		l.distance_fade_length = 12.0
 	Gfx.changed.connect(_apply_quality)
 	_apply_quality()
 	ready_done = true
@@ -265,37 +285,50 @@ func _build_environment() -> void:
 # ---------------- terrain ----------------
 func _build_terrain() -> void:
 	var n := int(SIZE / CELL)
-	var verts := PackedVector3Array()
-	var norms := PackedVector3Array()
-	var idx := PackedInt32Array()
+	var grid := PackedFloat32Array()
+	grid.resize((n + 1) * (n + 1))
 	for j in n + 1:
 		for i in n + 1:
-			var x := -HALF + i * CELL
-			var z := -HALF + j * CELL
-			verts.append(Vector3(x, height(x, z), z))
-			norms.append(Vector3(height(x - 1.0, z) - height(x + 1.0, z), 2.0, height(x, z - 1.0) - height(x, z + 1.0)).normalized())
-	for j in n:
-		for i in n:
-			var a := j * (n + 1) + i
-			var b := a + 1
-			var c := a + n + 1
-			var d := c + 1
-			idx.append_array(PackedInt32Array([a, b, c, b, d, c]))
-	var arr := []
-	arr.resize(Mesh.ARRAY_MAX)
-	arr[Mesh.ARRAY_VERTEX] = verts
-	arr[Mesh.ARRAY_NORMAL] = norms
-	arr[Mesh.ARRAY_INDEX] = idx
-	var mesh := ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
-	mesh.surface_set_material(0, _mat.ground)
+			grid[j * (n + 1) + i] = height(-HALF + i * CELL, -HALF + j * CELL)
+	var hgt := func(i: int, j: int) -> float: return grid[clampi(j, 0, n) * (n + 1) + clampi(i, 0, n)]
 	var body := StaticBody3D.new()
 	body.name = "Terrain"
-	var mi := MeshInstance3D.new()
-	mi.mesh = mesh
-	body.add_child(mi)
+	var faces := PackedVector3Array()
+	var per := 20 # cells per chunk side
+	for cj in range(0, n, per):
+		for ci in range(0, n, per):
+			var verts := PackedVector3Array()
+			var norms := PackedVector3Array()
+			var idx := PackedInt32Array()
+			for j in per + 1:
+				for i in per + 1:
+					var gi := ci + i
+					var gj := cj + j
+					verts.append(Vector3(-HALF + gi * CELL, hgt.call(gi, gj), -HALF + gj * CELL))
+					norms.append(Vector3(hgt.call(gi - 1, gj) - hgt.call(gi + 1, gj), 2.0 * CELL, hgt.call(gi, gj - 1) - hgt.call(gi, gj + 1)).normalized())
+			for j in per:
+				for i in per:
+					var a := j * (per + 1) + i
+					var b := a + 1
+					var c := a + per + 1
+					var d := c + 1
+					idx.append_array(PackedInt32Array([a, b, c, b, d, c]))
+					for k in [a, b, c, b, d, c]: faces.append(verts[k])
+			var arr := []
+			arr.resize(Mesh.ARRAY_MAX)
+			arr[Mesh.ARRAY_VERTEX] = verts
+			arr[Mesh.ARRAY_NORMAL] = norms
+			arr[Mesh.ARRAY_INDEX] = idx
+			var mesh := ArrayMesh.new()
+			mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+			mesh.surface_set_material(0, _mat.ground)
+			var mi := MeshInstance3D.new()
+			mi.mesh = mesh
+			body.add_child(mi)
 	var cs := CollisionShape3D.new()
-	cs.shape = mesh.create_trimesh_shape()
+	var shape := ConcavePolygonShape3D.new()
+	shape.set_faces(faces)
+	cs.shape = shape
 	body.add_child(cs)
 	for k in 4: # invisible map border
 		var w := CollisionShape3D.new()
@@ -403,19 +436,28 @@ func _build_props() -> void:
 		l.light_energy = 0.8; l.omni_range = 5.0
 		body.add_child(l)
 		add_child(body)
+	var dark := _flat(Color(0.05, 0.05, 0.05), 0.6, 0.4)
 	for lp in locker_points:
 		var body := StaticBody3D.new()
 		body.position = lp[0]
 		body.rotation.y = lp[1]
-		_box(body, Vector3(1.0, 2.1, 0.7), Vector3(0, 1.05, 0), red)
-		_mesh_box(body, Vector3(0.04, 1.9, 0.04), Vector3(0, 1.05, 0.36), _mat.metal)
+		_box(body, Vector3(1.1, 2.1, 0.75), Vector3(0, 1.05, 0), red)
+		for dx in [-0.27, 0.27]: # two door leaves with vents and handles
+			_mesh_box(body, Vector3(0.5, 1.95, 0.04), Vector3(dx, 1.05, 0.385), _flat(Color(0.4, 0.09, 0.07), 0.55, 0.5))
+			for vy in [0.45, 0.55, 0.65, 1.6, 1.7, 1.8]:
+				_mesh_box(body, Vector3(0.3, 0.035, 0.02), Vector3(dx, vy, 0.41), dark)
+			_mesh_box(body, Vector3(0.04, 0.22, 0.05), Vector3(dx * 0.26, 1.1, 0.42), _mat.metal)
+		_mesh_box(body, Vector3(1.3, 0.06, 0.95), Vector3(0, 2.2, 0.0), _mat.metal, Vector3(0.12, 0, 0)) # tin roof
 		add_child(body)
 	for pp in pallet_points:
 		var root := Node3D.new()
 		root.position = pp[0]
 		root.rotation.y = pp[1]
 		var up := Node3D.new()
-		_mesh_box(up, Vector3(1.2, 1.5, 0.14), Vector3(1.35, 0.8, -0.3), _mat.wood, Vector3(0.12, 0, 0))
+		for k in 5:
+			_mesh_box(up, Vector3(0.2, 1.5, 0.05), Vector3(0.87 + k * 0.24, 0.8, -0.26), _mat.wood, Vector3(0.12, 0, 0))
+		for ky in [0.25, 0.8, 1.35]:
+			_mesh_box(up, Vector3(1.2, 0.12, 0.06), Vector3(1.35, ky, -0.33 + (ky - 0.8) * 0.12), _mat.wood, Vector3(0.12, 0, 0))
 		root.add_child(up)
 		var down := StaticBody3D.new()
 		_box(down, Vector3(1.3, 0.14, 1.3), Vector3(0, 0.85, 0), _mat.wood)
@@ -442,8 +484,30 @@ func _build_objectives() -> void:
 	for gp in gen_points:
 		var body := StaticBody3D.new()
 		body.position = gp
-		_box(body, Vector3(1.5, 0.9, 0.8), Vector3(0, 0.55, 0), _mat.metal)
-		_box(body, Vector3(0.7, 0.45, 0.6), Vector3(-0.3, 1.2, 0), _mat.concrete)
+		_box(body, Vector3(1.7, 0.2, 1.0), Vector3(0, 0.12, 0), _mat.concrete) # base
+		_box(body, Vector3(1.45, 0.75, 0.8), Vector3(0, 0.6, 0), _mat.metal) # engine block
+		_mesh_box(body, Vector3(1.2, 0.22, 0.6), Vector3(-0.05, 1.08, 0), _flat(Color(0.5, 0.08, 0.06), 0.5, 0.5)) # red valve cover
+		for k in 4: # pistons
+			var pc := MeshInstance3D.new()
+			var cyl := CylinderMesh.new()
+			cyl.top_radius = 0.09; cyl.bottom_radius = 0.11; cyl.height = 0.42; cyl.radial_segments = 10
+			cyl.material = _mat.metal
+			pc.mesh = cyl
+			pc.rotation.x = 0.5
+			pc.position = Vector3(-0.5 + k * 0.3, 1.32, 0.12)
+			body.add_child(pc)
+		for wx in [-0.55, 0.55]: # wheels
+			var wh := MeshInstance3D.new()
+			var wc := CylinderMesh.new()
+			wc.top_radius = 0.26; wc.bottom_radius = 0.26; wc.height = 0.16
+			wc.material = _flat(Color(0.03, 0.03, 0.03))
+			wh.mesh = wc
+			wh.rotation.x = PI / 2.0
+			wh.position = Vector3(wx, 0.36, 0.5)
+			body.add_child(wh)
+		_mesh_box(body, Vector3(0.5, 0.16, 0.12), Vector3(0.3, 0.75, 0.43), _flat(Color(0.2, 0.9, 0.3), 0.4, 0.0, 1.5)) # fuel gauge
+		_box(body, Vector3(0.14, 3.0, 0.14), Vector3(-0.72, 1.5, -0.25), _mat.metal) # cable pole
+		_mesh_box(body, Vector3(0.05, 1.3, 0.05), Vector3(-0.5, 1.75, -0.1), _flat(Color(0.5, 0.4, 0.1)), Vector3(0.2, 0, -0.35))
 		_box(body, Vector3(0.08, 1.6, 0.08), Vector3(0.6, 1.8, 0.3), _mat.metal)
 		_box(body, Vector3(0.08, 1.6, 0.08), Vector3(0.6, 1.8, -0.3), _mat.metal)
 		var lamp_mat := _emissive(Color(1.0, 0.85, 0.5))
@@ -458,7 +522,7 @@ func _build_objectives() -> void:
 		var light := OmniLight3D.new()
 		light.position = Vector3(0.6, 2.8, 0)
 		light.light_color = Color(1.0, 0.85, 0.5)
-		light.light_energy = 0.0
+		light.light_energy = 0.7 # dim work light; goes bright when the generator is done
 		light.omni_range = 11.0
 		body.add_child(light)
 		add_child(body)
@@ -555,6 +619,273 @@ func set_gate_state(i: int, open: bool) -> void:
 			var tw := create_tween()
 			tw.tween_property(door, "position:x", sx * (g.open_w * 0.75 + 0.2), 3.0).set_trans(Tween.TRANS_SINE)
 			k += 1
+
+# ---------------- the market (strip mall) ----------------
+func _flat(c: Color, rough := 0.8, metal := 0.0, glow := 0.0) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = c
+	m.roughness = rough; m.metallic = metal
+	if glow > 0.0:
+		m.emission_enabled = true
+		m.emission = c
+		m.emission_energy_multiplier = glow
+	return m
+
+func _sign_text(parent: Node3D, text: String, pos: Vector3, size: int, col: Color) -> void:
+	var l := Label3D.new()
+	l.text = text
+	l.font = Net.font
+	l.font_size = size
+	l.pixel_size = 0.01
+	l.modulate = col
+	l.outline_size = 0
+	l.position = pos
+	parent.add_child(l)
+
+func _wall_with_gap(parent: Node3D, along_x: bool, fixed: float, from: float, to: float, gap_a: float, gap_b: float, y0: float, h: float, gap_low: float, gap_high: float, mat: Material, thick := 0.3) -> void:
+	# a wall from `from` to `to` with an opening between gap_a..gap_b, from height gap_low up to gap_high
+	var parts := [[from, gap_a, y0, h], [gap_b, to, y0, h], [gap_a, gap_b, y0 + gap_high, h - gap_high]]
+	if gap_low > 0.0: parts.append([gap_a, gap_b, y0, gap_low])
+	for pt in parts:
+		var length: float = pt[1] - pt[0]
+		if length <= 0.01 or pt[3] <= 0.01: continue
+		var mid: float = (pt[0] + pt[1]) / 2.0
+		var size := Vector3(length, pt[3], thick) if along_x else Vector3(thick, pt[3], length)
+		var pos := Vector3(mid, pt[2] + pt[3] / 2.0, fixed) if along_x else Vector3(fixed, pt[2] + pt[3] / 2.0, mid)
+		_box(parent, size, pos, mat, length > 3.0 and pt[3] > 3.0)
+
+func _build_market() -> void:
+	var W := MARKET_W
+	var D := MARKET_D
+	var H := 4.5
+	var y0 := 0.15
+	var body := StaticBody3D.new()
+	body.name = "Market"
+	body.position = market.pos
+	body.rotation.y = market.yaw
+	var beige := _flat(Color(0.62, 0.56, 0.47))
+	var white := _flat(Color(0.8, 0.8, 0.78))
+	var tile := _flat(Color(0.55, 0.55, 0.52), 0.35)
+	var asphalt := _flat(Color(0.045, 0.045, 0.05), 0.3)
+	var glass := StandardMaterial3D.new()
+	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	glass.albedo_color = Color(0.6, 0.8, 0.95, 0.16)
+	glass.roughness = 0.05
+	var frame := _flat(Color(0.1, 0.12, 0.2), 0.4, 0.6)
+	# ground: floor slab, sidewalk, parking with lines, striped curb
+	_box(body, Vector3(W + 0.6, 0.3, D + 0.6), Vector3(0, 0, 0), tile)
+	_box(body, Vector3(W + 2.0, 0.24, 3.0), Vector3(0, -0.02, D / 2.0 + 1.5), tile)
+	_box(body, Vector3(W + 4.0, 0.12, 13.0), Vector3(0, -0.02, D / 2.0 + 9.5), asphalt)
+	for i in 14:
+		_mesh_box(body, Vector3((W + 2.0) / 14.0, 0.26, 0.3), Vector3(-(W + 2.0) / 2.0 + (i + 0.5) * (W + 2.0) / 14.0, 0.0, D / 2.0 + 3.1),
+			_flat(Color(0.95, 0.75, 0.05) if i % 2 == 0 else Color(0.05, 0.05, 0.05)))
+	for i in 7:
+		_mesh_box(body, Vector3(0.14, 0.02, 5.0), Vector3(-W / 2.0 + 1.5 + i * (W - 3.0) / 6.0, 0.05, D / 2.0 + 6.5), white)
+	# shell
+	_wall_with_gap(body, true, -D / 2.0, -W / 2.0, W / 2.0, -0.7, 0.7, y0, H, 0.0, 2.2, beige) # back wall, door behind the supermarket
+	_wall_with_gap(body, false, -W / 2.0, -D / 2.0, D / 2.0, 0.3, 1.7, y0, H, 1.0, 2.1, beige) # restaurant side: vault window
+	_box(body, Vector3(0.3, H, D), Vector3(W / 2.0, y0 + H / 2.0, 0), beige, true)
+	for px in [-W / 6.0, W / 6.0]: # partitions, each with a doorway near the back
+		_wall_with_gap(body, false, px, -D / 2.0, D / 2.0, -3.6, -2.2, y0, H, 0.0, 2.2, white, 0.25)
+	_box(body, Vector3(W + 1.0, 0.3, D + 1.0), Vector3(0, y0 + H + 0.15, 0), beige)
+	_mesh_box(body, Vector3(W + 1.4, 0.5, 0.7), Vector3(0, y0 + H + 0.45, D / 2.0 + 0.2), beige)
+	for cx in [-W / 2.0, -W / 6.0, W / 6.0, W / 2.0]:
+		_box(body, Vector3(0.7, H, 0.7), Vector3(cx, y0 + H / 2.0, D / 2.0), beige)
+	# shop fronts: glass with a 2 m doorway, sign board above
+	var signs := [
+		{"col": Color(0.03, 0.03, 0.03), "lines": [["ساس", 0.25, 92, Color(1, 0.95, 0.8)], ["مطعم", -0.45, 40, Color(1, 0.95, 0.8)]]},
+		{"col": Color(0.85, 0.03, 0.08), "lines": [["فرع غرب عبدالله مبارك", 0.42, 44, Color.WHITE], ["قطعة 4", -0.02, 44, Color.WHITE]]},
+		{"col": Color(0.02, 0.1, 0.65), "lines": [["مصبغة غرب عبدالله مبارك", 0.0, 46, Color.WHITE]]},
+	]
+	for k in 3:
+		var cx := -W / 3.0 + k * W / 3.0
+		var shop_w := W / 3.0 - 0.7
+		var side := (shop_w - 2.0) / 2.0
+		for sx in [-1.0, 1.0]:
+			_box(body, Vector3(side, 2.7, 0.08), Vector3(cx + sx * (1.0 + side / 2.0), y0 + 1.35, D / 2.0), glass)
+		_mesh_box(body, Vector3(shop_w, 0.16, 0.16), Vector3(cx, y0 + 2.78, D / 2.0), frame)
+		for fx in [-1.0, 1.0]: _mesh_box(body, Vector3(0.1, 2.7, 0.12), Vector3(cx + fx, y0 + 1.35, D / 2.0), frame)
+		_box(body, Vector3(shop_w, H - 2.86, 0.2), Vector3(cx, y0 + 2.86 + (H - 2.86) / 2.0, D / 2.0), beige)
+		var sg: Dictionary = signs[k]
+		_mesh_box(body, Vector3(shop_w - 0.2, 1.5, 0.25), Vector3(cx, y0 + 3.6, D / 2.0 + 0.35), _flat(sg.col, 0.5, 0.0, 0.5))
+		for ln in sg.lines:
+			_sign_text(body, ln[0], Vector3(cx, y0 + 3.6 + ln[1], D / 2.0 + 0.49), ln[2], ln[3])
+		if k == 1: # supermarket: white strip under the red board
+			_mesh_box(body, Vector3(shop_w - 0.2, 0.42, 0.27), Vector3(cx, y0 + 3.06, D / 2.0 + 0.35), _flat(Color(0.95, 0.95, 0.95), 0.5, 0.0, 0.6))
+			_sign_text(body, "سوبر ماركت", Vector3(cx, y0 + 3.06, D / 2.0 + 0.5), 30, Color(0.85, 0.03, 0.08))
+		var lamp := OmniLight3D.new()
+		lamp.position = Vector3(cx, y0 + 3.7, 0.5)
+		lamp.light_color = [Color(1.0, 0.72, 0.4), Color(1.0, 0.98, 0.92), Color(0.75, 0.88, 1.0)][k]
+		lamp.light_energy = 1.5
+		lamp.omni_range = 10.0
+		body.add_child(lamp)
+		var glow := OmniLight3D.new() # light the signs spill on the sidewalk and parking
+		glow.position = Vector3(cx, y0 + 3.0, D / 2.0 + 2.5)
+		glow.light_color = [Color(1.0, 0.8, 0.5), Color(1.0, 0.25, 0.2), Color(0.3, 0.45, 1.0)][k]
+		glow.light_energy = 2.6
+		glow.omni_range = 11.0
+		body.add_child(glow)
+	_mesh_box(body, Vector3(W / 3.0 - 0.9, 0.08, 1.7), Vector3(-W / 3.0, y0 + 2.75, D / 2.0 + 1.0), _flat(Color(0.75, 0.2, 0.1)), Vector3(0.22, 0, 0)) # awning
+	# restaurant: tables, chairs, counter
+	var wood := _flat(Color(0.35, 0.2, 0.1), 0.6)
+	for t in [Vector2(-11.2, 2.4), Vector2(-8.2, 2.6), Vector2(-11.0, -0.4), Vector2(-7.8, -0.2)]:
+		_box(body, Vector3(1.0, 0.8, 1.0), Vector3(t.x, y0 + 0.4, t.y), wood)
+		for c in [Vector2(-0.85, 0), Vector2(0.85, 0)]:
+			_mesh_box(body, Vector3(0.42, 0.45, 0.42), Vector3(t.x + c.x, y0 + 0.23, t.y + c.y), _flat(Color(0.5, 0.25, 0.12)))
+			_mesh_box(body, Vector3(0.08, 0.5, 0.42), Vector3(t.x + c.x * 1.24, y0 + 0.7, t.y + c.y), _flat(Color(0.5, 0.25, 0.12)))
+	_box(body, Vector3(5.0, 1.1, 0.7), Vector3(-9.6, y0 + 0.55, -3.6), wood)
+	# supermarket: three shelf rows with products, checkout
+	var product_cols := [Color(0.85, 0.15, 0.1), Color(0.1, 0.45, 0.85), Color(0.95, 0.75, 0.1), Color(0.15, 0.65, 0.25), Color(0.9, 0.45, 0.1)]
+	for sx in [-2.7, 0.0, 2.7]:
+		_box(body, Vector3(0.7, 1.9, 5.2), Vector3(sx, y0 + 0.95, -0.9), _flat(Color(0.82, 0.82, 0.8), 0.5))
+		for lv in 3:
+			for seg in 4:
+				var pc: Color = product_cols[(lv * 4 + seg + int(sx * 3.0 + 9.0)) % product_cols.size()]
+				_mesh_box(body, Vector3(0.78, 0.38, 1.15), Vector3(sx, y0 + 0.45 + lv * 0.6, -2.85 + seg * 1.3), _flat(pc, 0.6, 0.0, 0.15))
+	_box(body, Vector3(1.8, 1.0, 0.8), Vector3(-2.6, y0 + 0.5, 3.4), _flat(Color(0.25, 0.27, 0.32), 0.5))
+	# laundry: washing machines, clothes rail, counter
+	for i in 4:
+		var mx := 6.0 + i * 1.05
+		_box(body, Vector3(0.9, 1.05, 0.8), Vector3(mx, y0 + 0.53, -4.3), _flat(Color(0.85, 0.87, 0.9), 0.4))
+		var port := MeshInstance3D.new()
+		var cyl := CylinderMesh.new()
+		cyl.top_radius = 0.26; cyl.bottom_radius = 0.26; cyl.height = 0.06
+		cyl.material = _flat(Color(0.1, 0.15, 0.22), 0.1, 0.5)
+		port.mesh = cyl
+		port.rotation.x = PI / 2.0
+		port.position = Vector3(mx, y0 + 0.6, -3.88)
+		body.add_child(port)
+	_mesh_box(body, Vector3(3.2, 0.06, 0.06), Vector3(6.6, y0 + 1.9, 1.5), frame)
+	var cloth_cols := [Color(0.8, 0.8, 0.85), Color(0.2, 0.3, 0.6), Color(0.6, 0.15, 0.15), Color(0.15, 0.4, 0.3), Color(0.85, 0.75, 0.5), Color(0.3, 0.3, 0.3)]
+	for i in 6:
+		_mesh_box(body, Vector3(0.42, 0.95, 0.08), Vector3(5.3 + i * 0.5, y0 + 1.4, 1.5), _flat(cloth_cols[i]), Vector3(0, 0.25, 0))
+	_box(body, Vector3(2.4, 1.0, 0.7), Vector3(10.8, y0 + 0.5, 2.6), _flat(Color(0.2, 0.3, 0.55), 0.5))
+	add_child(body)
+
+# ---------------- scattered props: wrecks, barrels, crates, fences, street lamps, dumpsters ----------------
+func _free_spot(rng: RandomNumberGenerator, pad: float) -> Vector3:
+	for k in 60:
+		var x := rng.randf_range(-WALL + 8.0, WALL - 8.0)
+		var z := rng.randf_range(-WALL + 8.0, WALL - 8.0)
+		if in_site(x, z, pad) or near_tree(x, z, pad + 1.0): continue
+		return Vector3(x, height(x, z), z)
+	return Vector3.INF
+
+func _car(at: Vector3, yaw: float, col: Color, parent: Node3D = null) -> void:
+	var body := StaticBody3D.new()
+	body.position = at
+	body.rotation.y = yaw
+	var paint := _flat(col, 0.45, 0.5)
+	_box(body, Vector3(1.8, 0.7, 4.2), Vector3(0, 0.7, 0), paint)
+	_box(body, Vector3(1.6, 0.62, 2.1), Vector3(0, 1.35, -0.2), _flat(col.darkened(0.35), 0.3, 0.6))
+	var tire := _flat(Color(0.03, 0.03, 0.03))
+	for wx in [-0.9, 0.9]:
+		for wz in [-1.35, 1.35]:
+			var wh := MeshInstance3D.new()
+			var cyl := CylinderMesh.new()
+			cyl.top_radius = 0.36; cyl.bottom_radius = 0.36; cyl.height = 0.24
+			cyl.material = tire
+			wh.mesh = cyl
+			wh.rotation.z = PI / 2.0
+			wh.position = Vector3(wx, 0.36, wz)
+			body.add_child(wh)
+	(parent if parent else self).add_child(body)
+
+func _lamp_post(at: Vector3, yaw: float) -> void:
+	var body := StaticBody3D.new()
+	body.position = at
+	body.rotation.y = yaw
+	_box(body, Vector3(0.16, 4.6, 0.16), Vector3(0, 2.3, 0), _mat.metal)
+	_mesh_box(body, Vector3(0.1, 0.1, 1.2), Vector3(0, 4.5, 0.55), _mat.metal)
+	_mesh_box(body, Vector3(0.3, 0.1, 0.5), Vector3(0, 4.42, 1.0), _flat(Color(1.0, 0.85, 0.55), 0.5, 0.0, 3.0))
+	var l := OmniLight3D.new()
+	l.position = Vector3(0, 4.1, 1.0)
+	l.light_color = Color(1.0, 0.82, 0.55)
+	l.light_energy = 2.6
+	l.omni_range = 13.0
+	body.add_child(l)
+	add_child(body)
+
+func _build_scatter() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 404 if map_id == "forest" else 505
+	var car_cols := [Color(0.3, 0.1, 0.08), Color(0.12, 0.16, 0.22), Color(0.35, 0.33, 0.28), Color(0.1, 0.2, 0.14), Color(0.4, 0.4, 0.42)]
+	# parked cars and lamps at the market
+	var mrot := Basis(Vector3.UP, market.yaw)
+	for c in [[-9.0, 11.0, 0.05, 1], [3.5, 11.5, -0.04, 4], [10.5, 14.5, 1.4, 0]]:
+		_car(market.pos + mrot * Vector3(c[0], 0.05, c[1]), market.yaw + c[2], car_cols[c[3]])
+	for lx in [-12.0, 12.0]:
+		_lamp_post(market.pos + mrot * Vector3(lx, 0, MARKET_D / 2.0 + 15.5), market.yaw + PI)
+	# wrecked cars
+	for i in 5:
+		var p := _free_spot(rng, 3.5)
+		if p == Vector3.INF: continue
+		_car(p, rng.randf() * TAU, car_cols[i % car_cols.size()].darkened(0.3))
+	# street lamps
+	for i in 5:
+		var p := _free_spot(rng, 1.5)
+		if p != Vector3.INF: _lamp_post(p, rng.randf() * TAU)
+	# barrels (three of them burning), crates, dumpsters, fence runs
+	var rust := _flat(Color(0.3, 0.14, 0.08), 0.7, 0.5)
+	for i in 16:
+		var p := _free_spot(rng, 1.2)
+		if p == Vector3.INF: continue
+		var body := StaticBody3D.new()
+		body.position = p
+		var mi := MeshInstance3D.new()
+		var cyl := CylinderMesh.new()
+		cyl.top_radius = 0.32; cyl.bottom_radius = 0.32; cyl.height = 0.95; cyl.radial_segments = 12
+		cyl.material = rust
+		mi.mesh = cyl
+		mi.position.y = 0.47
+		body.add_child(mi)
+		var cs := CollisionShape3D.new()
+		var sh := CylinderShape3D.new()
+		sh.radius = 0.34; sh.height = 0.95
+		cs.shape = sh
+		cs.position.y = 0.47
+		body.add_child(cs)
+		if i < 3:
+			_mesh_box(body, Vector3(0.4, 0.06, 0.4), Vector3(0, 0.95, 0), _flat(Color(1.0, 0.45, 0.1), 0.5, 0.0, 5.0))
+			var l := OmniLight3D.new()
+			l.position = Vector3(0, 1.4, 0)
+			l.light_color = Color(1.0, 0.5, 0.2)
+			l.light_energy = 1.6
+			l.omni_range = 8.0
+			body.add_child(l)
+			flicker.append(l)
+		add_child(body)
+	for i in 10:
+		var p := _free_spot(rng, 1.8)
+		if p == Vector3.INF: continue
+		var body := StaticBody3D.new()
+		body.position = p
+		body.rotation.y = rng.randf() * TAU
+		_box(body, Vector3(0.95, 0.95, 0.95), Vector3(0, 0.47, 0), _mat.wood)
+		if rng.randf() < 0.6: _box(body, Vector3(0.95, 0.95, 0.95), Vector3(1.05, 0.47, 0.1), _mat.wood)
+		if rng.randf() < 0.5: _box(body, Vector3(0.9, 0.9, 0.9), Vector3(0.4, 1.4, 0.0), _mat.wood, false, Vector3(0, 0.4, 0))
+		add_child(body)
+	var green := _flat(Color(0.08, 0.2, 0.12), 0.6, 0.4)
+	for i in 4:
+		var p := _free_spot(rng, 2.2)
+		if p == Vector3.INF: continue
+		var body := StaticBody3D.new()
+		body.position = p
+		body.rotation.y = rng.randf() * TAU
+		_box(body, Vector3(2.0, 1.3, 1.1), Vector3(0, 0.65, 0), green)
+		_mesh_box(body, Vector3(2.05, 0.08, 1.15), Vector3(0, 1.34, 0), _flat(Color(0.05, 0.05, 0.05)))
+		add_child(body)
+	for i in 8:
+		var p := _free_spot(rng, 5.0)
+		if p == Vector3.INF: continue
+		var body := StaticBody3D.new()
+		body.position = p
+		body.rotation.y = rng.randf() * TAU
+		for sgm in rng.randi_range(2, 4):
+			var ox := sgm * 3.0
+			_box(body, Vector3(3.0, 1.25, 0.14), Vector3(ox, 0.6, 0), _mat.wood)
+			_mesh_box(body, Vector3(0.18, 1.5, 0.2), Vector3(ox - 1.5, 0.75, 0), _mat.wood)
+		add_child(body)
 
 # ---------------- trees (MultiMesh + 2 LOD levels per chunk) ----------------
 func _tree_mesh(variant: int, hi: bool) -> ArrayMesh:
