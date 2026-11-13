@@ -3,7 +3,7 @@ extends Node3D
 ## Procedural night map: sky, terrain, forest, grass, abandoned buildings, particles.
 ## Everything is generated in code (no downloaded assets). Built in stages so the app stays responsive.
 
-const SIZE := 200.0
+const SIZE := 240.0
 const CELL := 2.0
 const HALF := SIZE / 2.0
 const TREE_CHUNK := 50.0
@@ -20,11 +20,15 @@ const FOREST_BUILDINGS := [
 	[-44.0, -30.0, 2.0, 7.0, 5.0, 3.0],
 	[46.0, -42.0, 0.9, 6.0, 5.0, 2.8],
 	[2.0, 50.0, -1.3, 8.0, 6.0, 3.2],
+	[-74.0, 60.0, 0.7, 7.0, 6.0, 3.0],
+	[-70.0, -78.0, 2.6, 8.0, 6.0, 3.2],
+	[66.0, 76.0, -0.4, 6.0, 5.0, 2.8],
+	[72.0, -74.0, 1.1, 7.0, 6.0, 3.0],
 ]
 
 var map_id := "forest"
 var buildings: Array = []
-var tree_count := 320
+var tree_count := 450
 var tree_plan: Array = [] # [x, y, z, variant, scale, yaw]
 var fog_density := 0.016
 var gen_points: Array[Vector3] = []
@@ -61,7 +65,7 @@ func configure(id: String) -> void:
 	noise.fractal_octaves = 4
 	if id == "village":
 		noise.seed = 4242
-		tree_count = 170
+		tree_count = 250
 		fog_density = 0.011
 		moon_dir = Vector3(-0.45, 0.36, -0.8).normalized()
 		var rng := RandomNumberGenerator.new()
@@ -69,7 +73,7 @@ func configure(id: String) -> void:
 		for i in range(-2, 3):
 			for j in range(-1, 2):
 				if (i == 0 and j == 0) or (i == 2 and j == 0): continue # centre spawn, and the market's plot
-				buildings.append([i * 24.0 + rng.randf_range(-4, 4), j * 26.0 + rng.randf_range(-4, 4),
+				buildings.append([i * 28.0 + rng.randf_range(-4, 4), j * 31.0 + rng.randf_range(-4, 4),
 					rng.randf() * TAU, rng.randf_range(6.0, 9.0), rng.randf_range(5.0, 7.0), rng.randf_range(2.8, 3.4)])
 	else:
 		noise.seed = 1337
@@ -106,14 +110,15 @@ func configure(id: String) -> void:
 	pallet_points.append([mbase + mrot * Vector3(0, 0, -MARKET_D / 2.0), market.yaw])
 	window_points.append([mbase + mrot * Vector3(-MARKET_W / 2.0, 0, 1.0), mrot * Vector3(-1, 0, 0)])
 	# 6 hooks on a ring between the buildings
-	for hi in 6:
-		var ang := hi * TAU / 6.0 + 0.5
-		var hp := Vector2.from_angle(ang) * 38.0
+	for hi in 9: # six on an inner ring, three further out
+		var ring := 40.0 if hi < 6 else 80.0
+		var ang := hi * TAU / 6.0 + 0.5 if hi < 6 else (hi - 6) * TAU / 3.0 + 2.2
+		var hp := Vector2.from_angle(ang) * ring
 		var tries := 0
 		while in_site(hp.x, hp.y, 3.5) and tries < 20:
 			tries += 1
 			ang += 0.17
-			hp = Vector2.from_angle(ang) * (38.0 + tries * 1.5)
+			hp = Vector2.from_angle(ang) * (ring + tries * 1.5)
 		sites.append([hp.x, hp.y, _raw_h(hp.x, hp.y), 2.5])
 		hook_points.append(Vector3(hp.x, _raw_h(hp.x, hp.y), hp.y))
 	# 2 exit gates on opposite edges
@@ -126,7 +131,7 @@ func _plan_trees() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 21
 	var tries := 0
-	while tree_plan.size() < tree_count and tries < 6000:
+	while tree_plan.size() < tree_count and tries < 9000:
 		tries += 1
 		var x := rng.randf_range(-HALF + 4.0, HALF - 4.0)
 		var z := rng.randf_range(-HALF + 4.0, HALF - 4.0)
@@ -136,6 +141,22 @@ func _plan_trees() -> void:
 		if rng.randf() > lerpf(0.35, 1.0, edge): continue
 		tree_plan.append([x, height(x, z), z, rng.randi() % 2, rng.randf_range(0.8, 1.25), rng.randf() * TAU])
 		tree_positions.append(Vector3(x, height(x, z), z))
+
+## What the ground is at a position: "indoor" (floors, pavement), "sand" (the bare yards around buildings) or "grass".
+func surface_at(pos: Vector3) -> String:
+	var ml: Vector3 = Basis(Vector3.UP, market.yaw).inverse() * (pos - market.pos)
+	if absf(ml.x) < MARKET_W / 2.0 + 2.0 and ml.z > -MARKET_D / 2.0 - 0.3 and ml.z < MARKET_D / 2.0 + 16.0: return "indoor"
+	for b in buildings:
+		var bl: Vector3 = Basis(Vector3.UP, b[2]).inverse() * (pos - Vector3(b[0], pos.y, b[1]))
+		if absf(bl.x) < b[3] / 2.0 + 0.3 and absf(bl.z) < b[4] / 2.0 + 0.3: return "indoor"
+	return "sand" if in_site(pos.x, pos.z, 0.0) else "grass"
+
+func _sandiness(x: float, z: float) -> float:
+	var v := 0.0
+	for st in sites:
+		var d := Vector2(x - st[0], z - st[1]).length()
+		v = maxf(v, 1.0 - smoothstep(st[3] - 1.5, st[3] + 3.0, d))
+	return v
 
 func near_tree(x: float, z: float, r: float) -> bool:
 	for t in tree_positions:
@@ -224,7 +245,8 @@ func _pbr(c1: Color, c2: Color, freq: float, uv: Vector3, rough: float, metal :=
 
 func _make_materials() -> void:
 	_sky_noise = _noise_tex(0.02, 512)
-	_mat.ground = _pbr(Color(0.05, 0.065, 0.04), Color(0.15, 0.13, 0.085), 0.02, Vector3(0.12, 0.12, 0.12), 1.0)
+	_mat.ground = _pbr(Color(0.12, 0.12, 0.11), Color(0.34, 0.32, 0.28), 0.02, Vector3(0.12, 0.12, 0.12), 1.0)
+	_mat.ground.vertex_color_use_as_albedo = true # grass green / sand yellow painted per vertex
 	_mat.wood = _pbr(Color(0.07, 0.05, 0.035), Color(0.2, 0.15, 0.1), 0.03, Vector3(1.4, 0.12, 1.4), 0.85)
 	_mat.metal = _pbr(Color(0.12, 0.06, 0.04), Color(0.3, 0.3, 0.32), 0.015, Vector3(0.5, 0.5, 0.5), 0.55, 0.8)
 	_mat.concrete = _pbr(Color(0.2, 0.2, 0.19), Color(0.42, 0.42, 0.4), 0.03, Vector3(0.4, 0.4, 0.4), 0.9)
@@ -299,12 +321,14 @@ func _build_terrain() -> void:
 		for ci in range(0, n, per):
 			var verts := PackedVector3Array()
 			var norms := PackedVector3Array()
+			var cols := PackedColorArray()
 			var idx := PackedInt32Array()
 			for j in per + 1:
 				for i in per + 1:
 					var gi := ci + i
 					var gj := cj + j
 					verts.append(Vector3(-HALF + gi * CELL, hgt.call(gi, gj), -HALF + gj * CELL))
+					cols.append(Color(0.42, 0.56, 0.34).lerp(Color(1.0, 0.86, 0.6), _sandiness(-HALF + gi * CELL, -HALF + gj * CELL)))
 					norms.append(Vector3(hgt.call(gi - 1, gj) - hgt.call(gi + 1, gj), 2.0 * CELL, hgt.call(gi, gj - 1) - hgt.call(gi, gj + 1)).normalized())
 			for j in per:
 				for i in per:
@@ -318,6 +342,7 @@ func _build_terrain() -> void:
 			arr.resize(Mesh.ARRAY_MAX)
 			arr[Mesh.ARRAY_VERTEX] = verts
 			arr[Mesh.ARRAY_NORMAL] = norms
+			arr[Mesh.ARRAY_COLOR] = cols
 			arr[Mesh.ARRAY_INDEX] = idx
 			var mesh := ArrayMesh.new()
 			mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
@@ -526,7 +551,7 @@ func _build_objectives() -> void:
 		light.omni_range = 11.0
 		body.add_child(light)
 		add_child(body)
-		gen_nodes.append({"light": light, "mat": lamp_mat, "done": false})
+		gen_nodes.append({"light": light, "mat": lamp_mat, "done": false, "blink": false})
 	# perimeter wall: tall, runs the whole edge of the map, so the only way out is through a gate
 	var top := 9.0
 	var bottom := -7.0
@@ -617,7 +642,7 @@ func set_gate_state(i: int, open: bool) -> void:
 				if ch is CollisionShape3D: ch.set_deferred("disabled", true)
 			var sx := -1.0 if k == 0 else 1.0
 			var tw := create_tween()
-			tw.tween_property(door, "position:x", sx * (g.open_w * 0.75 + 0.2), 3.0).set_trans(Tween.TRANS_SINE)
+			tw.tween_property(door, "position:x", sx * (g.open_w * 0.75 + 0.2), 4.6).set_trans(Tween.TRANS_SINE)
 			k += 1
 
 # ---------------- the market (strip mall) ----------------
@@ -970,8 +995,8 @@ func _build_rocks() -> void:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.mesh = sm
-	mm.instance_count = 70
-	for i in 70:
+	mm.instance_count = 100
+	for i in 100:
 		var x := rng.randf_range(-HALF + 6.0, HALF - 6.0)
 		var z := rng.randf_range(-HALF + 6.0, HALF - 6.0)
 		var bs := Basis.from_euler(Vector3(rng.randf() * 0.5, rng.randf() * TAU, rng.randf() * 0.5)).scaled(
@@ -1114,6 +1139,15 @@ func _process(_dt: float) -> void:
 	var t := Time.get_ticks_msec() / 1000.0
 	for i in flicker.size():
 		flicker[i].light_energy = 1.6 * (0.75 + 0.25 * noise.get_noise_1d(t * 220.0 + i * 50.0) + 0.1 * sin(t * 13.0 + i))
+	for g in gen_nodes: # a generator about to start: its lamps stutter on and off
+		if g.done: continue
+		if g.blink:
+			var on := sin(t * 19.0) > -0.2 and sin(t * 7.3) > -0.6
+			g.light.light_energy = 2.4 if on else 0.15
+			g.mat.emission_energy_multiplier = 4.0 if on else 0.0
+		elif g.mat.emission_energy_multiplier > 0.0:
+			g.light.light_energy = 0.7
+			g.mat.emission_energy_multiplier = 0.0
 	if follow and dust:
 		dust.global_position = follow.global_position + Vector3(0, 2.0, 0)
 		leaves.global_position = follow.global_position + Vector3(0, 7.0, 0)

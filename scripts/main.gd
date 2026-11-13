@@ -10,7 +10,9 @@ const CARRY_SPEED := 3.6
 const NATURAL := {"walk": 1.3, "run": 3.7, "crouchwalk": 1.0, "injured": 1.6}
 const ACCEL := 20.0
 const DECEL := 28.0
-const SFX := ["step", "heartbeat", "gen_loop", "hit", "ding", "boom", "pallet", "gate", "wind_loop", "hurt"]
+const SFX := {"gen_loop": "wav", "hit": "wav", "ding": "wav", "boom": "wav", "pallet": "wav", "hurt": "wav", "gate": "mp3",
+	"heart": "mp3", "breath": "mp3", "steps_out": "mp3", "steps_in": "mp3", "gen_run": "mp3", "chase": "mp3", "ambient": "mp3"}
+const TERROR_RADIUS := 24.0 # survivors start to feel the killer inside this distance
 
 var menu: GameMenu
 var world: NightWorld
@@ -30,7 +32,14 @@ var my_name := ""
 var my_role := "killer"
 var remotes := {} # name -> {node, rig, pos, yaw, anim, role, step}
 var sounds := {}
-var gen_audio: Array = []
+var gen_audio: Array = [] # per generator: {hum, run}
+var amb: AudioStreamPlayer
+var chase_music: AudioStreamPlayer
+var heart: AudioStreamPlayer
+var breath: AudioStreamPlayer
+var my_steps: AudioStreamPlayer
+var chase_hold := 0.0
+var los_t := 0.0
 var marks: Array = []
 var mark_i := 0
 
@@ -48,7 +57,6 @@ var hit_sent := false
 var boost_t := 0.0
 var send_t := 0.0
 var step_t := 0.0
-var beat_t := 0.0
 var mark_t := 0.0
 
 var ctx := {} # button id -> what it would do right now
@@ -90,9 +98,9 @@ func _start(c: Dictionary) -> void:
 		if str(p.name) == my_name:
 			my_role = str(p.role)
 			_build_player(str(p.char), world.spawn_point(my_role, int(p.slot)))
+	_build_audio()
 	for p in c.players:
 		if str(p.name) != my_name: _add_remote(p)
-	_build_audio()
 	_build_marks()
 	_build_ui()
 	if not offline:
@@ -175,30 +183,68 @@ func _add_remote(p: Dictionary) -> void:
 	glow.light_energy = 0.5; glow.omni_range = 3.5
 	if str(p.role) == "killer": glow.light_color = Color(1, 0.25, 0.2)
 	node.add_child(glow)
+	var steps := AudioStreamPlayer3D.new()
+	steps.stream = sounds.steps_out
+	steps.unit_size = 4.0
+	steps.max_distance = 32.0
+	node.add_child(steps)
 	add_child(node)
-	remotes[str(p.name)] = {"node": node, "rig": r, "pos": node.position, "yaw": 0.0, "anim": "idle", "role": str(p.role), "step": 0.0}
+	remotes[str(p.name)] = {"node": node, "rig": r, "pos": node.position, "yaw": 0.0, "anim": "idle", "role": str(p.role), "step": 0.0, "steps": steps}
 
 # ---------------- audio ----------------
+func _loop_player(stream_name: String, db: float, autoplay := false) -> AudioStreamPlayer:
+	var a := AudioStreamPlayer.new()
+	a.stream = sounds[stream_name]
+	a.volume_db = db
+	add_child(a)
+	if autoplay: a.play()
+	return a
+
 func _build_audio() -> void:
-	for n in SFX: sounds[n] = load("res://assets/sfx/%s.wav" % n)
-	for n in ["gen_loop", "wind_loop"]:
-		var st: AudioStreamWAV = sounds[n]
-		st.loop_mode = AudioStreamWAV.LOOP_FORWARD
-		st.loop_begin = 0
-		st.loop_end = int(st.get_length() * st.mix_rate)
-	var wind := AudioStreamPlayer.new()
-	wind.stream = sounds.wind_loop
-	wind.volume_db = -16.0
-	add_child(wind)
-	wind.play()
+	for n in SFX: sounds[n] = load("res://assets/sfx/%s.%s" % [n, SFX[n]])
+	for n in ["heart", "breath", "steps_out", "steps_in", "gen_run", "chase", "ambient"]:
+		(sounds[n] as AudioStreamMP3).loop = true
+	var hum: AudioStreamWAV = sounds.gen_loop
+	hum.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	hum.loop_begin = 0
+	hum.loop_end = int(hum.get_length() * hum.mix_rate)
+	amb = _loop_player("ambient", -13.0, true)
+	chase_music = _loop_player("chase", -60.0)
+	heart = _loop_player("heart", -60.0)
+	breath = _loop_player("breath", -60.0)
+	my_steps = _loop_player("steps_out", -60.0)
 	for gp in world.gen_points:
-		var a := AudioStreamPlayer3D.new()
-		a.stream = sounds.gen_loop
-		a.position = gp + Vector3(0, 1, 0)
-		a.unit_size = 5.0
-		a.max_distance = 45.0
-		add_child(a)
-		gen_audio.append(a)
+		var pair := {}
+		for kind in ["hum", "run"]:
+			var a := AudioStreamPlayer3D.new()
+			a.stream = sounds.gen_loop if kind == "hum" else sounds.gen_run
+			a.position = gp + Vector3(0, 1, 0)
+			a.unit_size = 5.0
+			# the killer only hears a generator from close by (8 m); survivors hear it from far
+			a.max_distance = 8.0 if my_role == "killer" else 45.0
+			add_child(a)
+			pair[kind] = a
+		gen_audio.append(pair)
+
+## Loop the right footstep recording for the ground under `at`; faster/louder when running, silent when still.
+func _steps(a: Node, at: Vector3, moving: bool, running: bool, base_db: float) -> void:
+	if not moving:
+		if a.playing: a.stop()
+		return
+	var surf := world.surface_at(at)
+	var want: AudioStream = sounds.steps_in if surf == "indoor" else sounds.steps_out
+	if a.stream != want:
+		a.stream = want
+		a.play()
+	elif not a.playing: a.play()
+	a.pitch_scale = (1.25 if running else 0.9) * (0.82 if surf == "sand" else 1.0) # sand: duller, softer
+	a.volume_db = base_db + (0.0 if running else -9.0) + (-4.0 if surf == "sand" else 0.0)
+
+func _line_of_sight(to: Vector3) -> bool:
+	var from := body.position + Vector3(0, 1.6, 0)
+	var q := PhysicsRayQueryParameters3D.create(from, to + Vector3(0, 1.2, 0))
+	q.exclude = [body.get_rid()]
+	return get_world_3d().direct_space_state.intersect_ray(q).is_empty()
 
 func _sfx(n: String, at = null, db := 0.0, pitch_scale := 1.0) -> void:
 	var a: Node
@@ -282,9 +328,8 @@ func _pos_of(n: String) -> Vector3:
 func _on_event(e: Dictionary) -> void:
 	match str(e.get("k", "")):
 		"boom":
-			boom_t[int(e.i)] = 4.0
-			_sfx("boom", world.gen_points[int(e.i)], 4.0)
-			if my_role == "killer": _flash("انفجار مولد! شوف الخريطة")
+			_sfx("boom", world.gen_points[int(e.i)], 6.0) # the killer has to locate it by ear: nothing shows on his map
+			if my_role == "killer": _flash("سمعت انفجار مولد!")
 		"hurt":
 			_sfx("hit", _pos_of(str(e.n)), 2.0)
 			_sfx("hurt", _pos_of(str(e.n)), 0.0)
@@ -419,8 +464,10 @@ func _draw_ui() -> void:
 	var mid := s / 2.0
 	# survivors: red edges pulse when the killer is close
 	if my_role == "survivor" and danger > 0.0:
-		var a := danger * (0.25 + 0.2 * sin(Time.get_ticks_msec() / 1000.0 * lerpf(5.0, 12.0, danger)))
-		ui.draw_rect(Rect2(Vector2.ZERO, s), Color(0.9, 0.05, 0.05, a), false, 46.0)
+		var pulse := 0.6 + 0.4 * sin(Time.get_ticks_msec() / 1000.0 * lerpf(5.0, 12.0, danger))
+		ui.draw_rect(Rect2(Vector2.ZERO, s), Color(0.8, 0.0, 0.0, danger * 0.16 * pulse)) # whole screen goes a little red
+		for k in 4: # darker red toward the edges
+			ui.draw_rect(Rect2(Vector2.ZERO, s), Color(0.9, 0.03, 0.03, danger * 0.13 * pulse), false, 30.0 + k * 34.0)
 	if stick_id >= 0:
 		ui.draw_circle(stick_origin, 70, Color(1, 1, 1, 0.12))
 		ui.draw_circle(stick_origin + stick_vec * 70, 32, Color(1, 1, 1, 0.35))
@@ -516,9 +563,7 @@ func _draw_minimap() -> void:
 	for i in world.gen_points.size():
 		var gp: Vector3 = world.gen_points[i]
 		var col := Color(0.4, 1, 0.5) if rules.gens[i].done else Color(1, 0.85, 0.2)
-		var alert: bool = boom_t.get(i, 0.0) > 0.0 and my_role == "killer"
-		if alert: col = Color(1, 0.2, 0.2)
-		var sz := 9.0 if alert else 6.0
+		var sz := 6.0
 		minimap.draw_rect(Rect2(c + Vector2(gp.x, gp.z) * k - Vector2(sz, sz) / 2.0, Vector2(sz, sz)), col)
 	for i in world.gate_points.size():
 		var p: Vector3 = world.gate_points[i][0]
@@ -718,6 +763,9 @@ func _input(e: InputEvent) -> void:
 		pitch = clampf(pitch - e.relative.y * 0.003, -0.9, 0.5)
 
 ## Hanging on the hook: lifted off the ground, legs kicking, body twisting; harder right after an escape attempt.
+func me_locker() -> int:
+	return rules.s[my_name].locker if rules.s.has(my_name) else -1
+
 func _hook_pose(r: CharacterRig, n: String, dt: float) -> void:
 	var t := Time.get_ticks_msec() / 1000.0 + float(n.hash() % 100)
 	var hard: float = 2.6 if thrash.get(n, 0.0) > 0.0 else 1.0
@@ -756,19 +804,19 @@ func _process(dt: float) -> void:
 			r.rig.rotation = Vector3(0, lerp_angle(r.rig.rotation.y, r.yaw, w), 0)
 			r.rig.play(anim)
 		r.node.visible = st != "escaped" and not (rules.s.has(n) and rules.s[n].locker >= 0)
-		# footsteps of runners are audible in 3D; the killer also gets scratch marks and the detection indicator
-		if anim == "run" and r.node.visible:
+		# footsteps are 3D and depend on the ground; the killer also gets scratch marks and the detection indicator
+		var moving: bool = r.node.visible and anim in ["run", "walk", "injured"]
+		_steps(r.steps, r.node.position, moving, anim == "run", 4.0 if r.role == "killer" else 0.0)
+		if anim == "run" and r.node.visible and my_role == "killer" and r.role == "survivor":
 			r.step -= dt
 			if r.step <= 0.0:
 				r.step = 0.3
-				_sfx("step", r.node.position, 6.0 if r.role == "killer" else 2.0, randf_range(0.9, 1.1))
-				if my_role == "killer" and r.role == "survivor": _drop_mark(r.node.position)
-			if my_role == "killer" and r.role == "survivor":
-				var to: Vector3 = r.node.position - body.position
-				var lvl := clampf(1.0 - to.length() / 26.0, 0.0, 1.0)
-				if lvl > noise:
-					noise = lvl
-					noise_dir = wrapf(atan2(to.x, -to.z) + yaw, -PI, PI)
+				_drop_mark(r.node.position)
+			var to: Vector3 = r.node.position - body.position
+			var lvl := clampf(1.0 - to.length() / 26.0, 0.0, 1.0)
+			if lvl > noise:
+				noise = lvl
+				noise_dir = wrapf(atan2(to.x, -to.z) + yaw, -PI, PI)
 	for m in marks:
 		if m.t > 0.0:
 			m.t -= dt
@@ -778,28 +826,63 @@ func _process(dt: float) -> void:
 	for i in rules.gens.size():
 		var g: Dictionary = rules.gens[i]
 		if g.done: world.set_gen_done(i)
-		var a: AudioStreamPlayer3D = gen_audio[i]
-		var should: bool = g.p > 0.01
-		if should and not a.playing: a.play()
-		elif not should and a.playing: a.stop()
-		a.pitch_scale = 0.75 + 0.45 * g.p
-		a.volume_db = -8.0 + 8.0 * g.p
+		var hum: AudioStreamPlayer3D = gen_audio[i].hum
+		var run: AudioStreamPlayer3D = gen_audio[i].run
+		var ending: bool = g.p >= 0.85 and not g.done # about to start: engine sound + flickering lamps
+		var want_hum: bool = g.p > 0.01 and g.p < 0.85
+		if want_hum != hum.playing:
+			if want_hum: hum.play()
+			else: hum.stop()
+		hum.pitch_scale = 0.75 + 0.45 * g.p
+		hum.volume_db = -8.0 + 8.0 * g.p
+		var want_run: bool = ending or g.done
+		if want_run != run.playing:
+			if want_run: run.play()
+			else: run.stop()
+		run.volume_db = 4.0 if ending else -7.0
+		# the killer only notices the flicker from within 8 m
+		if i < world.gen_nodes.size(): world.gen_nodes[i].blink = ending and (my_role != "killer" or body.position.distance_to(world.gen_points[i]) < 8.0)
 	for i in rules.gates.size(): world.set_gate_state(i, rules.gates[i].open)
 	for i in rules.pallets.size(): world.set_pallet_state(i, rules.pallets[i])
 	if rules.powered and not was_powered:
 		was_powered = true
 		for g in world.gate_points: _sfx("gate", g[0] + Vector3(0, 3, 0), 8.0)
-		_sfx("gate", null, -10.0)
+		_sfx("gate", null, -12.0)
 		_flash("اشتغلت الكهرباء — البوابات انفتحت!")
-	# survivors: heartbeat gets faster and louder as the killer closes in
+	# survivors feel the killer coming: heartbeat inside the terror radius, heavy breathing when he is very close
 	danger = 0.0
-	if my_role == "survivor" and rules.killer != "" and remotes.has(rules.killer) and my_state in ["ok", "hurt", "down"]:
-		danger = clampf(1.0 - body.position.distance_to(kpos) / 32.0, 0.0, 1.0)
-		if danger > 0.0:
-			beat_t -= dt
-			if beat_t <= 0.0:
-				beat_t = lerpf(1.15, 0.42, danger)
-				_sfx("heartbeat", null, lerpf(-14.0, 2.0, danger))
+	var kdist := 999.0
+	if my_role == "survivor" and rules.killer != "" and remotes.has(rules.killer) and my_state in ["ok", "hurt", "down", "hooked"]:
+		kdist = body.position.distance_to(kpos)
+		danger = clampf(1.0 - kdist / TERROR_RADIUS, 0.0, 1.0)
+	var fade := 1.0 - exp(-4.0 * dt)
+	if danger > 0.0 and not heart.playing: heart.play()
+	heart.volume_db = lerpf(heart.volume_db, lerpf(-16.0, 4.0, danger) if danger > 0.0 else -60.0, fade)
+	heart.pitch_scale = lerpf(0.92, 1.3, danger)
+	if heart.playing and danger <= 0.0 and heart.volume_db < -50.0: heart.stop()
+	var panting: bool = danger > 0.55
+	if panting and not breath.playing: breath.play()
+	breath.volume_db = lerpf(breath.volume_db, lerpf(-8.0, 3.0, (danger - 0.55) / 0.45) if panting else -60.0, fade)
+	if breath.playing and not panting and breath.volume_db < -50.0: breath.stop()
+	# chase music: the killer sees a survivor / a survivor is seen by the killer
+	los_t -= dt
+	if los_t <= 0.0:
+		los_t = 0.2
+		if my_role == "killer":
+			var look := Vector3(-sin(yaw), 0, -cos(yaw))
+			for n in remotes:
+				var r = remotes[n]
+				if r.role != "survivor" or not r.node.visible or not rules.free_now(n): continue
+				var to: Vector3 = r.node.position - body.position
+				if to.length() < 24.0 and look.dot(to.normalized()) > 0.35 and _line_of_sight(r.node.position): chase_hold = 6.0
+		elif my_state in ["ok", "hurt"] and me_locker() < 0 and kdist < 18.0 and _line_of_sight(kpos):
+			chase_hold = 6.0
+	chase_hold = maxf(chase_hold - dt, 0.0)
+	var chasing := chase_hold > 0.0 and not rules.over
+	if chasing and not chase_music.playing: chase_music.play()
+	chase_music.volume_db = lerpf(chase_music.volume_db, -6.0 if chasing else -60.0, 1.0 - exp(-2.5 * dt))
+	if chase_music.playing and not chasing and chase_music.volume_db < -50.0: chase_music.stop()
+	amb.volume_db = lerpf(amb.volume_db, -30.0 if chasing else -13.0, fade)
 	if rules.over and not results.visible: _show_results()
 
 func _physics_process(delta: float) -> void:
@@ -851,6 +934,8 @@ func _physics_process(delta: float) -> void:
 		body.velocity = Vector3.ZERO
 	else:
 		_move(delta)
+	var spd := Vector2(body.velocity.x, body.velocity.z).length()
+	_steps(my_steps, body.position, not pinned and spd > 0.4 and not crouch and body.is_on_floor(), spd > 2.6, -8.0)
 	last_state = my_state
 	if not offline:
 		send_t -= delta
@@ -922,10 +1007,6 @@ func _move(delta: float) -> void:
 	elif v > 0.25:
 		if v > 2.6:
 			rig.play("run", clampf(v / NATURAL.run, 0.7, 1.7))
-			step_t -= delta
-			if step_t <= 0.0:
-				step_t = 0.3
-				_sfx("step", null, -9.0, randf_range(0.9, 1.1))
 		elif my_state == "hurt": rig.play("injured", clampf(v / NATURAL.injured, 0.6, 1.6))
 		else: rig.play("walk", clampf(v / NATURAL.walk, 0.6, 1.7))
 	else:

@@ -68,7 +68,8 @@ func _ready():
 	await frames(60)
 	print("S powered=", m.rules.powered, " hold cleared=", m.hold.is_empty())
 	m.sprint = true
-	await put(m, Vector3(0, w.height(0, 87), 87)); m.yaw = PI; m.stick_vec = Vector2(0, -1); await frames(200)
+	var gz: float = NightWorld.WALL - 5.0
+	await put(m, Vector3(0, w.height(0, gz), gz)); m.yaw = PI; m.stick_vec = Vector2(0, -1); await frames(200)
 	for i in 5: await tree.process_frame
 	print("S escaped=", m.rules.hp("P"), " over=", m.rules.over, " (dummy ", m.rules.hp("D"), ")")
 	m.queue_free(); await tree.process_frame
