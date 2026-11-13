@@ -1,0 +1,52 @@
+name: Build IPA
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+env:
+  GODOT_VERSION: "4.5-stable"
+jobs:
+  build:
+    runs-on: macos-15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Godot + export templates
+        run: |
+          set -e
+          BASE=https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}
+          curl -sL "$BASE/Godot_v${GODOT_VERSION}_macos.universal.zip" -o godot.zip
+          unzip -q godot.zip
+          sudo mv Godot.app /Applications/Godot.app
+          curl -sL "$BASE/Godot_v${GODOT_VERSION}_export_templates.tpz" -o tpl.tpz
+          TDIR="$HOME/Library/Application Support/Godot/export_templates/4.5.stable"
+          mkdir -p "$TDIR"
+          unzip -q tpl.tpz -d tplx
+          mv tplx/templates/* "$TDIR/"
+      - name: Import assets
+        run: /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --import || true
+      - name: Export Xcode project
+        run: |
+          mkdir -p build/ios
+          /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --export-release "iOS" build/ios/NightFall.xcodeproj
+          ls build/ios
+      - name: Build unsigned archive
+        run: |
+          cd build/ios
+          xcodebuild -project NightFall.xcodeproj -scheme NightFall -configuration Release \
+            -sdk iphoneos -arch arm64 -archivePath NightFall.xcarchive archive \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM=""
+      - name: Package IPA
+        run: |
+          cd build/ios
+          mkdir Payload
+          cp -R NightFall.xcarchive/Products/Applications/*.app Payload/
+          zip -qry Nightfall.ipa Payload
+          ls -la Nightfall.ipa
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest build/ios/Nightfall.ipa --title "Latest build" --notes "Unsigned IPA for Sideloadly" --target ${{ github.sha }}
