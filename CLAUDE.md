@@ -10,7 +10,7 @@ Owner: Rashid (Arabic UI, plays with friends, installs the IPA with Sideloadly).
 
 ## Files
 - `scripts/main.gd` — the game scene: start-screen campfire, local player (survivor third person / killer first person), touch UI, remote players, audio, minimap, results.
-- `scripts/world.gd` (`NightWorld`) — procedural maps (`forest`, `village`, `fareej`): terrain, wall + gates, buildings/houses, the market, props, generators, hooks, lockers, pallets, hatches, crows. `configure(map, seed)` decides the layout; `build()` creates nodes over several frames.
+- `scripts/world.gd` (`NightWorld`) — procedural maps (`forest`, `village`, `fareej`): terrain, wall + gates, buildings/houses, the market, props, generators, hooks, lockers, pallets, hatches. `configure(map, seed)` decides the layout; `build()` creates nodes over several frames.
 - `scripts/rules.gd` (`Rules`) — match rules used in trial (offline) mode. **`server/rules.js` is the same logic for online play — change both together.**
 - `scripts/net.gd` (autoload `Net`) — WebSocket client, username, friends list, XP (stored in `user://profile.cfg`).
 - `scripts/graphics.gd` (autoload `Gfx`) — graphics settings menu, FPS modes, adaptive quality governor.
@@ -27,7 +27,7 @@ Inputs (`d.k`): rep, skill, escape, hit, pickup, hook, rescue, struggle, heal, l
 ```
 godot --headless --path . --import            # after adding class_name scripts or assets
 godot --headless --path . res://tools/smoke.tscn   # offline survivor + killer flow
-godot --headless --path . res://tools/new.tscn     # fareej, hatch, flashlight, crows, market blackout
+godot --headless --path . res://tools/new.tscn     # fareej, hatch, flashlight, market blackout
 NF_URL=ws://127.0.0.1:8099 godot --headless --path . res://tools/online.tscn   # needs server + a bot
 ```
 Screenshots: run a scene under `xvfb-run` (software GL, slow) and save the viewport texture.

@@ -10,6 +10,7 @@ const TREE_CHUNK := 50.0
 const GRASS_CHUNK := 20.0
 const GRASS_PER_CHUNK := 700
 const WALL := HALF - 8.0 # perimeter wall line; the exit gates are set into it
+const ROAD_LEN := 60.0 # the escape road behind each gate; you are out when you reach its end
 
 # each: x, z, yaw, width, depth, wall height
 const FOREST_BUILDINGS := [
@@ -44,8 +45,6 @@ const MARKET_D := 10.0
 var door_points: Array = [] # [Vector3, yaw] every doorway
 var hatch_points: Array[Vector3] = []
 var hatch_nodes: Array = []
-var crow_points: Array[Vector3] = []
-var crow_nodes: Array = []
 var relief := 1.0 # terrain height multiplier (0 = flat)
 var grass_per_chunk := GRASS_PER_CHUNK
 var market_lights: Array = []
@@ -91,7 +90,7 @@ func _random_site(rng: RandomNumberGenerator, pad: float, lo: float, hi: float) 
 		if not in_site(p.x, p.y, pad) and not on_street(p.x, p.y, 1.0): return p
 	return Vector2(lo, lo)
 
-## `seed` shuffles where the generators, hooks, pallets, hatches and crows are, so every round plays differently.
+## `seed` shuffles where the generators, hooks, pallets, hatches are, so every round plays differently.
 ## Everyone in a room gets the same seed from the server, so they all build the same layout.
 func configure(id: String, seed := 1) -> void:
 	map_id = id
@@ -125,6 +124,7 @@ func configure(id: String, seed := 1) -> void:
 			buildings.append([hx, -27.0, PI, 10.0, 8.0, 3.4])
 			buildings.append([hx, 27.0, 0.0, 10.0, 8.0, 3.4])
 		sites.append([16.0, 27.0, 0.0, 9.5]) # the mosque
+		sites.append([9.0, -11.0, 0.0, 3.0]) # the flag
 	else:
 		noise.seed = 1337
 		buildings = FOREST_BUILDINGS.duplicate(true)
@@ -161,7 +161,7 @@ func configure(id: String, seed := 1) -> void:
 	for g in [[0.0, -WALL, 0.0], [0.0, WALL, PI]]:
 		sites.append([g[0], g[1], _raw_h(g[0], g[1]), 8.0])
 		gate_points.append([Vector3(g[0], _raw_h(g[0], g[1]), g[1]), g[2]])
-	# 9 hooks, 5 possible hatches, 8 flocks of crows: anywhere free
+	# 9 hooks and 5 possible hatches: anywhere free
 	for hi in 9:
 		var hp := _random_site(rng, 3.5, 22.0, 100.0)
 		sites.append([hp.x, hp.y, _raw_h(hp.x, hp.y), 2.5])
@@ -170,9 +170,6 @@ func configure(id: String, seed := 1) -> void:
 		var hp := _random_site(rng, 3.0, 30.0, 100.0)
 		sites.append([hp.x, hp.y, _raw_h(hp.x, hp.y), 2.2])
 		hatch_points.append(Vector3(hp.x, _raw_h(hp.x, hp.y), hp.y))
-	for ci in 8:
-		var cp := _random_site(rng, 2.0, 18.0, 100.0)
-		crow_points.append(Vector3(cp.x, height(cp.x, cp.y), cp.y))
 	_plan_trees()
 
 func _plan_trees() -> void:
@@ -408,14 +405,16 @@ func _build_terrain() -> void:
 	shape.set_faces(faces)
 	cs.shape = shape
 	body.add_child(cs)
-	for k in 4: # invisible map border
-		var w := CollisionShape3D.new()
-		var bs := BoxShape3D.new()
-		bs.size = Vector3(SIZE, 30.0, 2.0)
-		w.shape = bs
-		w.rotation.y = k * PI / 2.0
-		w.position = Vector3(0, 5.0, HALF - 1.0).rotated(Vector3.UP, k * PI / 2.0)
-		body.add_child(w)
+	for k in 4: # invisible map border; the two gate sides leave an opening for the escape road
+		for part in ([-1.0, 1.0] if k % 2 == 0 else [0.0]):
+			var w := CollisionShape3D.new()
+			var bs := BoxShape3D.new()
+			var length := SIZE if part == 0.0 else HALF - 5.0
+			bs.size = Vector3(length, 30.0, 2.0)
+			w.shape = bs
+			w.rotation.y = k * PI / 2.0
+			w.position = Vector3(part * (5.0 + length / 2.0), 5.0, HALF - 1.0).rotated(Vector3.UP, k * PI / 2.0)
+			body.add_child(w)
 	add_child(body)
 
 # ---------------- buildings ----------------
@@ -660,15 +659,48 @@ func _build_objectives() -> void:
 			body.add_child(tl)
 		add_child(body)
 		gate_nodes.append({"doors": doors, "light": light, "mat": sign_mat, "state": 0, "open_w": open_w})
+		# the escape road: a long walled lane behind the gate (local -z is "out")
+		var road_mat := _flat(Color(0.07, 0.065, 0.06), 0.8)
+		var lane_w := 9.0
+		var z_mid := -(8.0 + ROAD_LEN) / 2.0
+		_box(body, Vector3(lane_w, 1.0, ROAD_LEN + 8.0), Vector3(0, gy - 0.48, z_mid - 0.5), road_mat)
+		for sx in [-1.0, 1.0]:
+			_box(body, Vector3(0.6, 9.0, ROAD_LEN + 2.0), Vector3(sx * (lane_w / 2.0 + 0.3), gy + 3.5, -(ROAD_LEN + 2.0) / 2.0 - 0.7), _mat.concrete)
+		_box(body, Vector3(lane_w + 1.2, 9.0, 0.6), Vector3(0, gy + 3.5, -ROAD_LEN - 4.0), _mat.concrete) # dead end behind the finish
+		for i in int(ROAD_LEN / 12.0): # lamps down the lane, alternating sides, dimmer the further you go
+			var lz := -8.0 - i * 12.0
+			var sx := -1.0 if i % 2 == 0 else 1.0
+			_mesh_box(body, Vector3(0.12, 4.0, 0.12), Vector3(sx * (lane_w / 2.0 - 0.3), gy + 2.0, lz), _mat.metal)
+			_mesh_box(body, Vector3(0.3, 0.12, 0.3), Vector3(sx * (lane_w / 2.0 - 0.5), gy + 4.0, lz), _flat(Color(1.0, 0.85, 0.55), 0.5, 0.0, 3.0))
+			var ll := OmniLight3D.new()
+			ll.position = Vector3(sx * (lane_w / 2.0 - 0.9), gy + 3.6, lz)
+			ll.light_color = Color(1.0, 0.82, 0.55)
+			ll.light_energy = 1.6
+			ll.omni_range = 9.0
+			body.add_child(ll)
+			flicker.append(ll)
+		for i in 9: # dashed centre line
+			_mesh_box(body, Vector3(0.16, 0.02, 2.4), Vector3(0, gy + 0.03, -5.0 - i * 6.5), _flat(Color(0.7, 0.65, 0.3)))
+		# the finish: a bright arch you run into
+		var finish := _flat(Color(0.8, 1.0, 0.85), 0.5, 0.0, 4.0)
+		_mesh_box(body, Vector3(lane_w, 0.5, 0.3), Vector3(0, gy + 4.6, -ROAD_LEN), finish)
+		for sx in [-1.0, 1.0]: _mesh_box(body, Vector3(0.4, 4.8, 0.3), Vector3(sx * (lane_w / 2.0 - 0.2), gy + 2.4, -ROAD_LEN), finish)
+		_sign_text(body, "الخروج", Vector3(0, gy + 5.6, -ROAD_LEN + 0.1), 110, Color(0.6, 1.0, 0.7))
+		var fl := OmniLight3D.new()
+		fl.position = Vector3(0, gy + 3.0, -ROAD_LEN + 1.5)
+		fl.light_color = Color(0.7, 1.0, 0.8)
+		fl.light_energy = 5.0
+		fl.omni_range = 18.0
+		body.add_child(fl)
 
-## True when a position is past an open gate (outside the wall).
+## True when a position has reached the end of a gate's escape road.
 func is_outside_gate(i: int, pos: Vector3) -> bool:
 	var gp: Vector3 = gate_points[i][0]
 	var outward := Vector3(gp.x, 0, gp.z).normalized()
 	var rel := pos - gp
 	var out_d := rel.dot(outward)
 	var lateral := absf(rel.dot(outward.cross(Vector3.UP)))
-	return out_d > 1.6 and lateral < 3.4
+	return out_d > ROAD_LEN - 1.5 and lateral < 5.5
 
 func set_gen_done(i: int) -> void:
 	if i >= gen_nodes.size(): return
@@ -967,7 +999,7 @@ func _build_scatter() -> void:
 			_mesh_box(body, Vector3(0.18, 1.5, 0.2), Vector3(ox - 1.5, 0.75, 0), _mat.wood)
 		add_child(body)
 
-# ---------------- hatch, crows, market blackout ----------------
+# ---------------- hatch, market blackout ----------------
 func _build_extras() -> void:
 	for hp in hatch_points: # all hidden until the rules open one
 		var root := Node3D.new()
@@ -984,40 +1016,9 @@ func _build_extras() -> void:
 		root.visible = false
 		add_child(root)
 		hatch_nodes.append(root)
-	var black := _flat(Color(0.015, 0.015, 0.02), 0.6)
-	for cp in crow_points:
-		var root := Node3D.new()
-		root.position = cp
-		for k in 4:
-			var bird := Node3D.new()
-			bird.position = Vector3(cos(k * 1.7) * 0.7, 0.12, sin(k * 1.7) * 0.7)
-			bird.rotation.y = k * 2.1
-			_mesh_box(bird, Vector3(0.14, 0.14, 0.34), Vector3.ZERO, black)
-			_mesh_box(bird, Vector3(0.5, 0.03, 0.18), Vector3(0, 0.06, 0.02), black)
-			_mesh_box(bird, Vector3(0.05, 0.05, 0.12), Vector3(0, 0.05, 0.2), _flat(Color(0.25, 0.2, 0.1)))
-			root.add_child(bird)
-		add_child(root)
-		crow_nodes.append({"root": root, "cool": 0.0})
 
 func set_hatch(i: int) -> void:
 	for k in hatch_nodes.size(): hatch_nodes[k].visible = k == i
-
-## Startle a flock: the birds burst upward and stay away for a while. Returns false if they are already gone.
-func scare_crows(i: int) -> bool:
-	if i >= crow_nodes.size(): return false
-	var c: Dictionary = crow_nodes[i]
-	if c.cool > 0.0: return false
-	c.cool = 45.0
-	var k := 0
-	for bird in c.root.get_children():
-		var home: Vector3 = bird.position
-		var tw := create_tween()
-		tw.tween_property(bird, "position", home + Vector3(cos(k * 1.7) * 9.0, 14.0 + k * 2.0, sin(k * 1.7) * 9.0), 2.2).set_ease(Tween.EASE_OUT)
-		tw.tween_callback(func(): bird.visible = false)
-		tw.tween_interval(40.0)
-		tw.tween_callback(func(): bird.position = home; bird.visible = true)
-		k += 1
-	return true
 
 func in_market(pos: Vector3) -> bool:
 	var ml: Vector3 = Basis(Vector3.UP, market.yaw).inverse() * (pos - market.pos)
@@ -1096,6 +1097,39 @@ func _build_fareej() -> void:
 	for lx in [-90.0, -60.0, -30.0, 0.0, 30.0]:
 		_lamp_post(Vector3(lx + 13.0, 0, -51.5), 0.0)
 		_lamp_post(Vector3(lx, 0, 51.5), PI)
+	# the flag of Kuwait on a tall pole, lit from below, waving
+	var fp := StaticBody3D.new()
+	fp.position = Vector3(9.0, 0, -11.0)
+	_box(fp, Vector3(1.6, 0.5, 1.6), Vector3(0, 0.25, 0), _mat.concrete)
+	_box(fp, Vector3(0.16, 13.0, 0.16), Vector3(0, 6.5, 0), _flat(Color(0.75, 0.75, 0.78), 0.3, 0.8))
+	var ball := MeshInstance3D.new()
+	var bsm := SphereMesh.new()
+	bsm.radius = 0.2; bsm.height = 0.4
+	bsm.material = _flat(Color(0.85, 0.7, 0.25), 0.3, 0.9)
+	ball.mesh = bsm
+	ball.position = Vector3(0, 13.15, 0)
+	fp.add_child(ball)
+	var flag := MeshInstance3D.new()
+	var fm := PlaneMesh.new()
+	fm.orientation = PlaneMesh.FACE_Z
+	fm.size = Vector2(5.0, 2.5)
+	fm.subdivide_width = 28
+	fm.subdivide_depth = 6
+	var fsm := ShaderMaterial.new()
+	fsm.shader = load("res://shaders/flag.gdshader")
+	fm.material = fsm
+	flag.mesh = fm
+	flag.position = Vector3(2.58, 11.6, 0)
+	flag.extra_cull_margin = 2.0
+	fp.add_child(flag)
+	var fspot := SpotLight3D.new()
+	fspot.position = Vector3(2.5, 1.0, 5.0)
+	fspot.rotation = Vector3(1.12, 0, 0)
+	fspot.light_energy = 8.0
+	fspot.spot_range = 20.0
+	fspot.spot_angle = 22.0
+	fp.add_child(fspot)
+	add_child(fp)
 	# mosque
 	var cream := _flat(Color(0.82, 0.78, 0.66))
 	var green := _flat(Color(0.1, 0.38, 0.25), 0.4, 0.3)
@@ -1398,7 +1432,6 @@ func _process(_dt: float) -> void:
 	var t := Time.get_ticks_msec() / 1000.0
 	for i in flicker.size():
 		flicker[i].light_energy = 1.6 * (0.75 + 0.25 * noise.get_noise_1d(t * 220.0 + i * 50.0) + 0.1 * sin(t * 13.0 + i))
-	for c in crow_nodes: c.cool = maxf(c.cool - _dt, 0.0)
 	market_t = maxf(market_t - _dt, 0.0)
 	for ml in market_lights: # blackout while the killer is inside; a rare stutter otherwise
 		var base: float = ml[1]

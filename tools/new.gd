@@ -12,7 +12,7 @@ func _ready():
 		await tree.process_frame
 		if m.world.ready_done: break
 	var w = m.world
-	print("fareej: start ms=", Time.get_ticks_msec() - t0, " houses=", w.buildings.size(), " trees=", w.tree_plan.size(), " gens=", w.gen_points.size(), " hooks=", w.hook_points.size(), " hatches=", w.hatch_points.size(), " crows=", w.crow_points.size(), " lights=", w.find_children("*", "OmniLight3D", true, false).size(), " lobby freed=", m.lobby_scene == null)
+	print("fareej: start ms=", Time.get_ticks_msec() - t0, " houses=", w.buildings.size(), " trees=", w.tree_plan.size(), " gens=", w.gen_points.size(), " hooks=", w.hook_points.size(), " hatches=", w.hatch_points.size(), " lights=", w.find_children("*", "OmniLight3D", true, false).size(), " lobby freed=", m.lobby_scene == null)
 	var w2 := NightWorld.new(); w2.configure("fareej", 5); var w3 := NightWorld.new(); w3.configure("fareej", 5); var w4 := NightWorld.new(); w4.configure("fareej", 6)
 	print("seeded: same seed same gens=", w2.gen_points == w3.gen_points, " other seed differs=", w2.gen_points != w4.gen_points)
 	# walk into a house through gate + door
@@ -31,11 +31,6 @@ func _ready():
 	m.battery = 0.1
 	for i in 30: await tree.physics_frame
 	print("battery dead -> on=", m.light_on)
-	# crows
-	m.body.position = w.crow_points[0] + Vector3(8, 0.3, 0); m.yaw = PI / 2.0; m.stick_vec = Vector2(0, -1)
-	for i in 60: await tree.physics_frame
-	m.stick_vec = Vector2.ZERO
-	print("crows scared cooldown=", snappedf(w.crow_nodes[0].cool, 0.1))
 	# market blackout
 	var k = m.remotes["K"]
 	k.pos = w.market.pos + Vector3(0, 0.2, 0); k.node.position = k.pos
@@ -50,6 +45,8 @@ func _ready():
 	print("hatch index=", m.rules.hatch, " node visible=", w.hatch_nodes[m.rules.hatch].visible if m.rules.hatch >= 0 else false)
 	m.body.position = w.hatch_points[m.rules.hatch] + Vector3(0.5, 0.3, 0)
 	for i in 20: await tree.physics_frame
+	print("escaped, watching=", m.spectating, " over=", m.rules.over, " banner=", snappedf(m.escape_banner, 0.1))
+	for i in 300: await tree.physics_frame
 	for i in 5: await tree.process_frame
 	print("after hatch: ", m.rules.hp("P"), " over=", m.rules.over, " score=", m.rules.score, " xp=", Net.xp, " level=", Net.level())
 	tree.quit()
