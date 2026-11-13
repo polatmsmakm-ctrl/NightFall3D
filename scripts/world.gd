@@ -1044,6 +1044,12 @@ func set_blood_moon(on: bool) -> void:
 	tw.tween_property(env, "ambient_light_color", Color(0.26, 0.15, 0.17) if on else Color(0.16, 0.2, 0.32), d)
 	tw.tween_property(env, "fog_light_color", Color(0.14, 0.05, 0.05) if on else Color(0.07, 0.09, 0.14), d)
 
+# 0..1: the moon swells as it falls toward the map (drives the sky shader and the moonlight)
+func set_moon_near(v: float) -> void:
+	if _sky_mat == null: return
+	_sky_mat.set_shader_parameter("near", clampf(v, 0.0, 1.0))
+	if _blood and v > 0.03: moon.light_energy = 1.1 + 2.2 * v * v
+
 func set_market_dark(dark: bool) -> void:
 	if dark == market_dark: return
 	market_dark = dark

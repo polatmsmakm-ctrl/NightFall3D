@@ -1,6 +1,7 @@
 // Match rules (server authoritative). Mirrors scripts/rules.gd — keep the two in step.
 const NEED = 5, GEN_TIME = 60, HEAL_TIME = 8, SELF_HEAL_TIME = 12, HOOK_TIME = [60, 30];
 const BLEED_TIME = 120, HIT_COOLDOWN = 1.5, POWER_CD = 20, STUN_TIME = 2.5;
+const DOOM_TIME = 120; // once the gates have power the moon falls: this long to get out
 const MASH_STEP = 0.03, MASH_DECAY = 0.1; // "free yourself": keep tapping or the bar drains
 const LIVE = ['ok', 'hurt', 'down', 'carried', 'hooked'];
 const REACH = 4.5; // generous: positions arrive ~15 times a second
@@ -9,7 +10,7 @@ class Rules {
   constructor(players) {
     this.gens = []; this.gates = []; this.pallets = []; this.s = {}; this.roles = {};
     this.killer = ''; this.carrying = ''; this.stun = 0; this.powerCd = 0;
-    this.healers = {}; this.lastHit = {}; this.powered = false; this.over = false; this.clock = 0;
+    this.healers = {}; this.lastHit = {}; this.powered = false; this.doom = -1; this.over = false; this.clock = 0;
     this.pos = {}; this.layout = null; this.ready = false; this.hatch = -1; this.score = {};
     for (const p of players) {
       this.roles[p.name] = p.role;
@@ -178,8 +179,17 @@ class Rules {
     }
     if (!this.powered && this.doneCount() >= NEED) {
       this.powered = true;
+      this.doom = DOOM_TIME;
       for (const g of this.gens) g.reps = {};
       for (const g of this.gates) g.open = true;
+    }
+    if (this.powered && this.doom > 0) {
+      this.doom = Math.max(this.doom - dt, 0);
+      if (this.doom <= 0) { // the moon lands: nobody left inside survives
+        for (const n in this.s) if (LIVE.includes(this.s[n].hp)) this.s[n].hp = 'dead';
+        for (const g of this.gens) g.reps = {};
+        this.healers = {}; this.carrying = '';
+      }
     }
     for (const n in this.s) {
       const p = this.s[n];
@@ -215,7 +225,7 @@ class Rules {
     for (const n in this.s) { const p = this.s[n]; ss[n] = [p.hp, p.hooks, p.hook_i, Math.ceil(p.t), r3(p.heal), p.locker, p.item, r3(p.esc)]; }
     return {
       k: 'gs', g: this.gens.map((g) => r3(g.p)), d: this.gens.map((g) => g.done), to: this.gates.map((g) => g.open),
-      pw: this.powered, s: ss, pl: this.pallets, kc: this.carrying, ks: r3(this.stun), kp: Math.round(this.powerCd * 10) / 10, ov: this.over, hx: this.hatch,
+      pw: this.powered, s: ss, pl: this.pallets, kc: this.carrying, ks: r3(this.stun), kp: Math.round(this.powerCd * 10) / 10, ov: this.over, hx: this.hatch, dm: Math.round(this.doom * 10) / 10,
       sc: Object.fromEntries(Object.entries(this.score).map(([n, v]) => [n, Math.round(v)])),
     };
   }

@@ -5,7 +5,7 @@ extends CanvasLayer
 signal start_game(cfg: Dictionary)
 
 const MAPS := {"forest": "الغابة", "village": "القرية المهجورة", "fareej": "الفريج"}
-const CHARS := {"killer": "القاتل", "survivor1": "ناجي 1", "survivor2": "ناجي 2", "survivor3": "ناجي 3", "survivor4": "ناجي 4"}
+const CHARS := {"killer": "القاتل", "survivor1": "ناجي 1", "survivor2": "الحمراء", "survivor3": "ناجي 3", "survivor4": "ناجي 4", "survivor5": "المقاتلة", "survivor6": "الممرضة", "survivor7": "الطالبة"}
 const ERRORS := {"no_room": "ما في غرفة بهالكود", "room_full": "الغرفة ممتلئة", "in_game": "اللعبة بدأت بالغرفة",
 	"killer_taken": "في قاتل بالغرفة", "offline": "صديقك مو متصل", "bad_name": "الاسم لازم 2 إلى 16 حرف بدون مسافات",
 	"name_taken": "الاسم مستخدم الحين، اختر غيره"}
@@ -221,8 +221,13 @@ func _page_lobby() -> void:
 	else: bs.modulate = Color(1, 0.75, 0.3)
 	if str(me.get("role", "")) == "survivor":
 		var h3 := _row()
-		for id in ["survivor1", "survivor2", "survivor3", "survivor4"]:
+		var k := 0
+		for id in CHARS:
+			if id == "killer": continue
+			if k == 4: h3 = _row() # second row: the list no longer fits on one
+			k += 1
 			var b := _button(CHARS[id], func(): Net.send({"t": "set", "char": id}), h3)
+			b.add_theme_font_size_override("font_size", 18)
 			if str(me.get("char", "")) == id: b.modulate = Color(1, 0.75, 0.3)
 	_button("دعوة الأصدقاء", func(): open("friends"))
 	if host: _button("ابدأ اللعب", func(): Net.send({"t": "start"}))
@@ -236,7 +241,10 @@ func _page_offline() -> void:
 		var b := _button(MAPS[id], func(): off_map = id; _refresh(), h)
 		if off_map == id: b.modulate = Color(1, 0.75, 0.3)
 	var h2 := _row()
+	var k := 0
 	for id in CHARS:
+		if k == 4: h2 = _row()
+		k += 1
 		var b := _button(CHARS[id], func(): off_char = id; _refresh(), h2)
 		b.add_theme_font_size_override("font_size", 18)
 		if off_char == id: b.modulate = Color(1, 0.75, 0.3)

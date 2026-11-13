@@ -2,6 +2,7 @@ shader_type sky;
 // Night sky: big moon with surface detail, twinkling stars, drifting clouds.
 uniform vec3 moon_dir = vec3(0.3, 0.32, -0.9);
 uniform float blood : hint_range(0.0, 1.0) = 0.0; // 1 = blood moon (gates open)
+uniform float near : hint_range(0.0, 1.0) = 0.0; // 0..1: the moon falling toward the ground
 uniform sampler2D noise_tex : repeat_enable, filter_linear_mipmap;
 
 float hash(vec3 p) {
@@ -20,16 +21,16 @@ void sky() {
 	col += vec3(star * (0.6 + 0.4 * sin(TIME * 2.0 + s * 100.0)));
 	vec3 md = normalize(moon_dir);
 	float ang = acos(clamp(dot(d, md), -1.0, 1.0));
-	float r = 0.055;
+	float r = 0.055 * (1.0 + 2.0 * near + 9.0 * near * near * near);
 	float disc = smoothstep(r, r * 0.96, ang);
 	vec3 right = normalize(cross(md, vec3(0.0, 1.0, 0.0)));
 	vec3 up = cross(right, md);
 	vec2 muv = vec2(dot(d, right), dot(d, up)) / r;
-	float crater = texture(noise_tex, muv * 0.35 + 0.5).r;
+	float crater = texture(noise_tex, muv * (0.35 + 0.5 * near) + 0.5).r;
 	float limb = sqrt(max(0.0, 1.0 - dot(muv, muv)));
 	col = mix(col, col * vec3(1.5, 0.45, 0.4) + vec3(0.025, 0.0, 0.0) * (1.0 - h), blood);
 	vec3 mooncol = mix(vec3(0.95, 0.93, 0.85), vec3(0.8, 0.11, 0.06), blood) * (0.55 + 0.6 * crater) * (0.5 + 0.5 * limb);
-	col += mix(vec3(0.5, 0.6, 0.8), vec3(0.95, 0.12, 0.06), blood) * (exp(-ang * 9.0) * 0.35 + exp(-ang * 40.0) * 0.4);
+	col += mix(vec3(0.5, 0.6, 0.8), vec3(0.95, 0.12, 0.06), blood) * (exp(-ang * 9.0 / (1.0 + 4.0 * near)) * (0.35 + 0.5 * near) + exp(-ang * 40.0 / (1.0 + 4.0 * near)) * 0.4);
 	col = mix(col, mooncol * 1.6, disc);
 	if (d.y > 0.0) {
 		vec2 cuv = d.xz / (d.y + 0.15) * 0.25 + TIME * vec2(0.004, 0.0015);

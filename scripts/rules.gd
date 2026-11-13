@@ -12,6 +12,7 @@ const BLEED_TIME := 120.0
 const HIT_COOLDOWN := 1.5
 const POWER_CD := 20.0
 const STUN_TIME := 2.5
+const DOOM_TIME := 120.0 # once the gates have power the moon falls: this long to get out
 const MASH_STEP := 0.03 # each tap on "free yourself"
 const MASH_DECAY := 0.1 # lost per second, so you have to keep hammering the button
 const LIVE := ["ok", "hurt", "down", "carried", "hooked"]
@@ -28,6 +29,7 @@ var power_cd := 0.0
 var healers := {} # healer -> target
 var last_hit := {}
 var powered := false
+var doom := -1.0 # seconds until the moon hits (-1: not falling yet)
 var over := false
 var clock := 0.0
 var n_hatch := 0
@@ -74,6 +76,11 @@ func hook_user(i: int) -> String:
 func _drop(name: String) -> void:
 	for g in gens: g.reps.erase(name)
 	healers.erase(name)
+
+func _drop_all() -> void:
+	for g in gens: g.reps.clear()
+	healers.clear()
+	carrying = ""
 
 func _down(name: String) -> void:
 	s[name].hp = "down"; s[name].t = BLEED_TIME; s[name].heal = 0.0
@@ -191,8 +198,15 @@ func tick(dt: float) -> void:
 			g.p = 1.0; g.done = true; g.reps.clear()
 	if not powered and done_count() >= NEED:
 		powered = true
+		doom = DOOM_TIME
 		for g in gens: g.reps.clear()
 		for g in gates: g.open = true
+	if powered and doom > 0.0:
+		doom = maxf(doom - dt, 0.0)
+		if doom <= 0.0: # the moon lands: nobody left inside survives
+			for n in s:
+				if s[n].hp in LIVE: s[n].hp = "dead"
+			_drop_all()
 	for n in s:
 		var p: Dictionary = s[n]
 		if p.hp == "hooked": p.esc = maxf(p.esc - MASH_DECAY * dt, 0.0)
@@ -232,7 +246,7 @@ func snapshot() -> Dictionary:
 	for n in s:
 		var p: Dictionary = s[n]
 		ss[n] = [p.hp, p.hooks, p.hook_i, ceili(p.t), snappedf(p.heal, 0.001), p.locker, p.item, snappedf(p.esc, 0.001)]
-	return {"k": "gs", "g": gp, "d": gd, "to": to, "pw": powered, "s": ss, "pl": pallets, "kc": carrying, "ks": snappedf(stun, 0.01), "kp": snappedf(power_cd, 0.1), "ov": over, "hx": hatch, "sc": sc}
+	return {"k": "gs", "g": gp, "d": gd, "to": to, "pw": powered, "s": ss, "pl": pallets, "kc": carrying, "ks": snappedf(stun, 0.01), "kp": snappedf(power_cd, 0.1), "ov": over, "hx": hatch, "sc": sc, "dm": snappedf(doom, 0.1)}
 
 func apply(v: Dictionary) -> void:
 	for i in mini(gens.size(), v.g.size()):
@@ -248,4 +262,5 @@ func apply(v: Dictionary) -> void:
 	power_cd = float(v.kp)
 	over = bool(v.ov)
 	hatch = int(v.get("hx", -1))
+	doom = float(v.get("dm", -1.0))
 	for n in v.get("sc", {}): score[n] = float(v.sc[n])

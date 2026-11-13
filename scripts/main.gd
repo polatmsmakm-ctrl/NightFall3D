@@ -10,7 +10,7 @@ const CARRY_SPEED := 3.6
 const NATURAL := {"walk": 1.3, "run": 3.7, "crouchwalk": 1.0, "injured": 1.6}
 const ACCEL := 20.0
 const DECEL := 28.0
-const SFX := ["gate", "heart", "breath", "steps_out", "steps_in", "gen_run", "chase", "ambient", "rope", "male_pain", "scream1", "scream2", "oof1", "oof2", "oof3"]
+const SFX := ["gate", "heart", "breath", "steps_out", "steps_in", "gen_run", "chase", "ambient", "doom", "rope", "male_pain", "scream1", "scream2", "oof1", "oof2", "oof3"]
 const MALE := ["survivor1", "killer"] # the other characters use the female voice clips
 const TERROR_RADIUS := 24.0 # survivors start to feel the killer inside this distance
 
@@ -74,6 +74,9 @@ var my_state := "ok"
 var last_state := "ok"
 var last_locker := -1
 var was_powered := false
+var doom_music: AudioStreamPlayer
+var main_cam: Camera3D
+var impact_t := -1.0 # seconds since the moon hit (-1: it has not)
 var danger := 0.0 # survivors: how close the killer is (0..1)
 var noise := 0.0 # killer: loudest nearby survivor (0..1)
 var noise_dir := 0.0
@@ -389,7 +392,7 @@ func _build_lobby_scene() -> void:
 	fire.shadow_enabled = true
 	lobby_scene.add_child(fire)
 	# the cast: survivors around the fire, the killer watching from the tree line
-	var seats := [["survivor1", -1.05, 2.1], ["survivor2", -0.38, 2.2], ["survivor3", 0.42, 2.2], ["survivor4", 1.1, 2.1]]
+	var seats := [["survivor1", -1.05, 2.1], ["survivor2", -0.38, 2.2], ["survivor5", 0.42, 2.2], ["survivor6", 1.1, 2.1]]
 	for st in seats:
 		var r := CharacterRig.new()
 		lobby_scene.add_child(r)
@@ -496,6 +499,7 @@ func _build_player(char_name: String, at: Vector3) -> void:
 	var cam := Camera3D.new()
 	cam.far = 400.0
 	arm.add_child(cam)
+	main_cam = cam
 	var lamp := OmniLight3D.new()
 	lamp.light_color = Color(1.0, 0.93, 0.82)
 	cam_pivot.add_child(lamp)
@@ -583,6 +587,10 @@ func _build_audio() -> void:
 		(sounds[n] as AudioStreamMP3).loop = true
 	amb = _loop_player("ambient", -13.0, true)
 	chase_music = _loop_player("chase", -60.0)
+	doom_music = AudioStreamPlayer.new()
+	doom_music.stream = sounds.doom
+	doom_music.volume_db = -2.0
+	add_child(doom_music)
 	heart = _loop_player("heart", -60.0)
 	breath = _loop_player("breath", -60.0)
 	my_steps = _loop_player("steps_out", -60.0)
@@ -927,6 +935,12 @@ func _draw_ui() -> void:
 	var s := get_viewport().get_visible_rect().size
 	var mid := s / 2.0
 	# survivors: red edges pulse when the killer is close
+	if rules.powered and rules.doom >= 0.0:
+		var near := 1.0 - rules.doom / Rules.DOOM_TIME
+		if near > 0.6: ui.draw_rect(Rect2(Vector2.ZERO, s), Color(0.9, 0.1, 0.02, (near - 0.6) * 0.45)) # the sky closing in
+		if impact_t >= 0.0:
+			var wht := clampf(1.0 - impact_t / 1.2, 0.0, 1.0)
+			ui.draw_rect(Rect2(Vector2.ZERO, s), Color(1.0, 0.25 + 0.75 * wht, 0.1 + 0.9 * wht, clampf(2.0 - impact_t * 0.45, 0.0, 1.0)))
 	if my_role == "survivor" and danger > 0.0:
 		var pulse := 0.6 + 0.4 * sin(Time.get_ticks_msec() / 1000.0 * lerpf(5.0, 12.0, danger))
 		ui.draw_rect(Rect2(Vector2.ZERO, s), Color(0.8, 0.0, 0.0, danger * 0.16 * pulse)) # whole screen goes a little red
@@ -952,9 +966,9 @@ func _draw_ui() -> void:
 	# objective
 	var top := Vector2(mid.x, 46)
 	if not rules.powered: _text(top, "المولدات %d / %d" % [rules.done_count(), Rules.NEED], 26, Color(1, 0.9, 0.6))
-	elif my_role == "killer": _text(top, "البوابات انفتحت — امنعهم من الهرب", 24, Color(1, 0.5, 0.4))
+	elif my_role == "killer": _text(top, "امنعهم من الهرب — القمر يوصل بعد %d:%02d" % [int(ceil(rules.doom)) / 60, int(ceil(rules.doom)) % 60], 24, Color(1, 0.5, 0.4))
 	elif my_state in ["escaped", "dead"]: _text(top, "باقي %d من ربعك داخل" % _others_alive().size(), 24, Color(1, 0.9, 0.6))
-	else: _text(top, "البوابات انفتحت — اركض لآخر طريق الخروج!", 26, Color(0.5, 1, 0.6))
+	else: _text(top, "اهرب قبل لا ينزل القمر!  %d:%02d" % [int(ceil(rules.doom)) / 60, int(ceil(rules.doom)) % 60], 28, Color(1, 0.45, 0.35) if rules.doom < 30.0 else Color(0.5, 1, 0.6))
 	var sub := top + Vector2(0, 32)
 	if my_role == "survivor":
 		var me: Dictionary = rules.s.get(my_name, {})
@@ -1407,7 +1421,8 @@ func _process(dt: float) -> void:
 		world.set_blood_moon(true)
 		for g in world.gate_points: _sfx("gate", g[0] + Vector3(0, 3, 0), 8.0)
 		_sfx("gate", null, -12.0)
-		_flash("اشتغلت الكهرباء — البوابات انفتحت!")
+		doom_music.play()
+		_flash("البوابات انفتحت — القمر نازل عليكم! عندكم دقيقتين")
 	# survivors feel the killer coming: heartbeat inside the terror radius, heavy breathing when he is very close
 	danger = 0.0
 	var kdist := 999.0
@@ -1442,7 +1457,21 @@ func _process(dt: float) -> void:
 	chase_music.volume_db = lerpf(chase_music.volume_db, -6.0 if chasing else -60.0, 1.0 - exp(-2.5 * dt))
 	if chase_music.playing and not chasing and chase_music.volume_db < -50.0: chase_music.stop()
 	amb.volume_db = lerpf(amb.volume_db, -30.0 if chasing else -13.0, fade)
-	if rules.over and not results.visible: _show_results()
+	# the end of the world: the moon grows in the sky for two minutes, then lands
+	if rules.powered and rules.doom >= 0.0:
+		var near := 1.0 - rules.doom / Rules.DOOM_TIME
+		world.set_moon_near(near)
+		var rumble := clampf((near - 0.75) / 0.25, 0.0, 1.0)
+		if impact_t >= 0.0: rumble = maxf(1.0 - impact_t / 3.0, 0.0) * 2.5
+		if main_cam:
+			main_cam.h_offset = randf_range(-1.0, 1.0) * 0.07 * rumble
+			main_cam.v_offset = randf_range(-1.0, 1.0) * 0.07 * rumble
+		if rules.doom <= 0.0 and impact_t < 0.0:
+			impact_t = 0.0
+			_flash("القمر ضرب الأرض")
+	if impact_t >= 0.0: impact_t += dt
+	amb.volume_db = minf(amb.volume_db, -40.0) if doom_music.playing else amb.volume_db
+	if rules.over and not results.visible and (impact_t < 0.0 or impact_t > 3.5): _show_results()
 
 func _physics_process(delta: float) -> void:
 	if not started: return
