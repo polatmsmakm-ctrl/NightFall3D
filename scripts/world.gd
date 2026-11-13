@@ -1,0 +1,515 @@
+class_name NightWorld
+extends Node3D
+## Procedural night map: sky, terrain, forest, grass, abandoned buildings, particles.
+## Everything is generated in code (no downloaded assets). Built in stages so the app stays responsive.
+
+const SIZE := 200.0
+const CELL := 2.0
+const HALF := SIZE / 2.0
+const TREE_CHUNK := 50.0
+const GRASS_CHUNK := 20.0
+const GRASS_PER_CHUNK := 700
+
+# x, z, yaw, width, depth, wall height
+const BUILDINGS := [
+	[18.0, -16.0, 0.3, 7.0, 6.0, 3.0],
+	[-26.0, 10.0, 1.2, 6.0, 5.0, 2.8],
+	[30.0, 28.0, -0.6, 9.0, 7.0, 3.4],
+	[-12.0, -40.0, 0.0, 6.0, 6.0, 2.8],
+	[-44.0, -30.0, 2.0, 7.0, 5.0, 3.0],
+	[46.0, -42.0, 0.9, 6.0, 5.0, 2.8],
+	[2.0, 50.0, -1.3, 8.0, 6.0, 3.2],
+]
+
+var noise := FastNoiseLite.new()
+var sites: Array = [] # [x, z, flat height, radius]
+var moon_dir := Vector3(0.3, 0.32, -0.9).normalized()
+var moon: DirectionalLight3D
+var env: Environment
+var follow: Node3D
+var dust: GPUParticles3D
+var leaves: GPUParticles3D
+var flicker: Array[OmniLight3D] = []
+var grass_nodes: Array[MultiMeshInstance3D] = []
+var grass_counts: Array[int] = []
+var ready_done := false
+var _sky_noise: NoiseTexture2D
+var _mat := {}
+
+func _init() -> void:
+	noise.seed = 1337
+	noise.frequency = 0.012
+	noise.fractal_octaves = 4
+	sites.append([0.0, 0.0, _raw_h(0.0, 0.0), 6.0])
+	for b in BUILDINGS:
+		sites.append([b[0], b[1], _raw_h(b[0], b[1]), maxf(b[3], b[4]) * 0.75 + 1.0])
+
+func _raw_h(x: float, z: float) -> float:
+	return noise.get_noise_2d(x, z) * 2.4 + noise.get_noise_2d(x * 3.0 + 50.0, z * 3.0) * 0.35
+
+func height(x: float, z: float) -> float:
+	var h := _raw_h(x, z)
+	for s in sites:
+		var d := Vector2(x - s[0], z - s[1]).length()
+		if d < s[3] + 7.0:
+			h = lerpf(s[2], h, smoothstep(s[3], s[3] + 7.0, d))
+	return h
+
+func in_site(x: float, z: float, pad := 0.0) -> bool:
+	for s in sites:
+		if Vector2(x - s[0], z - s[1]).length() < s[3] + pad: return true
+	return false
+
+func build() -> void:
+	_make_materials()
+	_build_environment()
+	_build_terrain()
+	await get_tree().process_frame
+	_build_buildings()
+	await get_tree().process_frame
+	_build_trees()
+	await get_tree().process_frame
+	_build_rocks()
+	await _build_grass()
+	_build_particles()
+	_build_probe()
+	Gfx.changed.connect(_apply_quality)
+	_apply_quality()
+	ready_done = true
+
+# ---------------- materials (procedural PBR: albedo + normal + roughness) ----------------
+func _noise_tex(freq: float, size: int, normal := false, ramp: Gradient = null) -> NoiseTexture2D:
+	var t := NoiseTexture2D.new()
+	var nz := FastNoiseLite.new()
+	nz.frequency = freq; nz.fractal_octaves = 5; nz.seed = 3
+	t.noise = nz; t.width = size; t.height = size
+	t.seamless = true; t.generate_mipmaps = true
+	t.as_normal_map = normal; t.bump_strength = 6.0
+	if ramp: t.color_ramp = ramp
+	return t
+
+func _grad(a: Color, b: Color) -> Gradient:
+	var g := Gradient.new()
+	g.set_color(0, a); g.set_color(1, b)
+	return g
+
+func _pbr(c1: Color, c2: Color, freq: float, uv: Vector3, rough: float, metal := 0.0) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = _noise_tex(freq, 512, false, _grad(c1, c2))
+	m.normal_enabled = true
+	m.normal_texture = _noise_tex(freq, 512, true)
+	m.roughness = rough
+	m.roughness_texture = _noise_tex(freq * 2.0, 256, false, _grad(Color(0.7, 0.7, 0.7), Color.WHITE))
+	m.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
+	m.metallic = metal
+	m.uv1_triplanar = true; m.uv1_world_triplanar = true; m.uv1_scale = uv
+	return m
+
+func _make_materials() -> void:
+	_sky_noise = _noise_tex(0.02, 512)
+	_mat.ground = _pbr(Color(0.035, 0.045, 0.025), Color(0.1, 0.085, 0.055), 0.02, Vector3(0.12, 0.12, 0.12), 1.0)
+	_mat.wood = _pbr(Color(0.07, 0.05, 0.035), Color(0.2, 0.15, 0.1), 0.03, Vector3(1.4, 0.12, 1.4), 0.85)
+	_mat.metal = _pbr(Color(0.12, 0.06, 0.04), Color(0.3, 0.3, 0.32), 0.015, Vector3(0.5, 0.5, 0.5), 0.55, 0.8)
+	_mat.concrete = _pbr(Color(0.14, 0.14, 0.13), Color(0.3, 0.3, 0.28), 0.03, Vector3(0.4, 0.4, 0.4), 0.9)
+	_mat.bark = _pbr(Color(0.03, 0.022, 0.016), Color(0.11, 0.085, 0.06), 0.04, Vector3(2.0, 0.25, 2.0), 0.95)
+	_mat.rock = _pbr(Color(0.07, 0.07, 0.075), Color(0.22, 0.22, 0.21), 0.02, Vector3(0.5, 0.5, 0.5), 0.9)
+	var fol := ShaderMaterial.new()
+	fol.shader = load("res://shaders/foliage.gdshader")
+	fol.set_shader_parameter("noise_tex", _sky_noise)
+	_mat.foliage = fol
+	var gr := ShaderMaterial.new()
+	gr.shader = load("res://shaders/grass.gdshader")
+	_mat.grass = gr
+
+# ---------------- environment ----------------
+func _build_environment() -> void:
+	env = Environment.new()
+	var sm := ShaderMaterial.new()
+	sm.shader = load("res://shaders/sky.gdshader")
+	sm.set_shader_parameter("moon_dir", moon_dir)
+	sm.set_shader_parameter("noise_tex", _sky_noise)
+	var sky := Sky.new()
+	sky.sky_material = sm
+	sky.radiance_size = Sky.RADIANCE_SIZE_32
+	sky.process_mode = Sky.PROCESS_MODE_INCREMENTAL
+	env.background_mode = Environment.BG_SKY
+	env.sky = sky
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color(0.16, 0.2, 0.32)
+	env.ambient_light_energy = 0.95
+	env.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED
+	env.tonemap_mode = Environment.TONE_MAPPER_ACES
+	env.tonemap_white = 6.0
+	env.fog_enabled = true
+	env.fog_light_color = Color(0.07, 0.09, 0.14)
+	env.fog_density = 0.016
+	env.fog_sky_affect = 0.25
+	env.fog_sun_scatter = 0.15
+	env.fog_height = 2.0
+	env.fog_height_density = 0.12
+	env.glow_enabled = true
+	env.glow_intensity = 0.5
+	env.glow_bloom = 0.03
+	env.glow_hdr_threshold = 1.1
+	env.adjustment_enabled = true
+	env.adjustment_contrast = 1.12
+	env.adjustment_saturation = 0.82
+	var we := WorldEnvironment.new()
+	we.environment = env
+	add_child(we)
+	moon = DirectionalLight3D.new()
+	moon.basis = Basis.looking_at(-moon_dir)
+	moon.light_color = Color(0.55, 0.65, 0.95)
+	moon.light_energy = 1.1
+	moon.shadow_enabled = true
+	moon.directional_shadow_blend_splits = true
+	add_child(moon)
+
+# ---------------- terrain ----------------
+func _build_terrain() -> void:
+	var n := int(SIZE / CELL)
+	var verts := PackedVector3Array()
+	var norms := PackedVector3Array()
+	var idx := PackedInt32Array()
+	for j in n + 1:
+		for i in n + 1:
+			var x := -HALF + i * CELL
+			var z := -HALF + j * CELL
+			verts.append(Vector3(x, height(x, z), z))
+			norms.append(Vector3(height(x - 1.0, z) - height(x + 1.0, z), 2.0, height(x, z - 1.0) - height(x, z + 1.0)).normalized())
+	for j in n:
+		for i in n:
+			var a := j * (n + 1) + i
+			var b := a + 1
+			var c := a + n + 1
+			var d := c + 1
+			idx.append_array(PackedInt32Array([a, b, c, b, d, c]))
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = verts
+	arr[Mesh.ARRAY_NORMAL] = norms
+	arr[Mesh.ARRAY_INDEX] = idx
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	mesh.surface_set_material(0, _mat.ground)
+	var body := StaticBody3D.new()
+	body.name = "Terrain"
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	body.add_child(mi)
+	var cs := CollisionShape3D.new()
+	cs.shape = mesh.create_trimesh_shape()
+	body.add_child(cs)
+	for k in 4: # invisible map border
+		var w := CollisionShape3D.new()
+		var bs := BoxShape3D.new()
+		bs.size = Vector3(SIZE, 30.0, 2.0)
+		w.shape = bs
+		w.rotation.y = k * PI / 2.0
+		w.position = Vector3(0, 5.0, HALF - 5.0).rotated(Vector3.UP, k * PI / 2.0)
+		body.add_child(w)
+	add_child(body)
+
+# ---------------- buildings ----------------
+func _box(parent: Node3D, size: Vector3, pos: Vector3, mat: Material, occlude := false, rot := Vector3.ZERO) -> void:
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = size
+	bm.material = mat
+	mi.mesh = bm
+	mi.position = pos; mi.rotation = rot
+	parent.add_child(mi)
+	var cs := CollisionShape3D.new()
+	var sh := BoxShape3D.new()
+	sh.size = size
+	cs.shape = sh
+	cs.position = pos; cs.rotation = rot
+	parent.add_child(cs)
+	if occlude:
+		var oc := OccluderInstance3D.new()
+		var bo := BoxOccluder3D.new()
+		bo.size = size * 0.96
+		oc.occluder = bo
+		oc.position = pos; oc.rotation = rot
+		parent.add_child(oc)
+
+func _build_buildings() -> void:
+	var idx := 0
+	for b in BUILDINGS:
+		var w: float = b[3]; var d: float = b[4]; var hgt: float = b[5]
+		var t := 0.2
+		var body := StaticBody3D.new()
+		body.name = "Building%d" % idx
+		body.position = Vector3(b[0], _raw_h(b[0], b[1]), b[1])
+		body.rotation.y = b[2]
+		_box(body, Vector3(w + 0.6, 1.2, d + 0.6), Vector3(0, -0.5, 0), _mat.concrete)
+		var y0 := 0.1
+		_box(body, Vector3(w, hgt, t), Vector3(0, y0 + hgt / 2.0, -d / 2.0), _mat.wood, true) # back
+		_box(body, Vector3(t, hgt, d), Vector3(w / 2.0, y0 + hgt / 2.0, 0), _mat.wood, true) # right
+		# left wall with a window gap
+		var seg := (d - 1.4) / 2.0
+		_box(body, Vector3(t, hgt, seg), Vector3(-w / 2.0, y0 + hgt / 2.0, -d / 2.0 + seg / 2.0), _mat.wood)
+		_box(body, Vector3(t, hgt, seg), Vector3(-w / 2.0, y0 + hgt / 2.0, d / 2.0 - seg / 2.0), _mat.wood)
+		_box(body, Vector3(t, 1.0, 1.4), Vector3(-w / 2.0, y0 + 0.5, 0), _mat.wood)
+		_box(body, Vector3(t, hgt - 2.1, 1.4), Vector3(-w / 2.0, y0 + 2.1 + (hgt - 2.1) / 2.0, 0), _mat.wood)
+		# front wall with a door gap
+		var fw := (w - 1.3) / 2.0
+		_box(body, Vector3(fw, hgt, t), Vector3(-w / 2.0 + fw / 2.0, y0 + hgt / 2.0, d / 2.0), _mat.wood)
+		_box(body, Vector3(fw, hgt, t), Vector3(w / 2.0 - fw / 2.0, y0 + hgt / 2.0, d / 2.0), _mat.wood)
+		_box(body, Vector3(1.3, hgt - 2.2, t), Vector3(0, y0 + 2.2 + (hgt - 2.2) / 2.0, d / 2.0), _mat.wood)
+		# leaning sheet-metal roof
+		_box(body, Vector3(w + 1.0, 0.1, d + 1.0), Vector3(0, y0 + hgt + 0.3, 0), _mat.metal, false, Vector3(0, 0, 0.1))
+		if idx % 3 == 0: # a weak flickering lamp inside some buildings (no shadows)
+			var l := OmniLight3D.new()
+			l.position = Vector3(0, y0 + hgt - 0.5, 0)
+			l.light_color = Color(1.0, 0.62, 0.3)
+			l.light_energy = 1.6
+			l.omni_range = 7.0
+			body.add_child(l)
+			flicker.append(l)
+		add_child(body)
+		idx += 1
+
+# ---------------- trees (MultiMesh + 2 LOD levels per chunk) ----------------
+func _tree_mesh(variant: int, hi: bool) -> ArrayMesh:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 100 + variant
+	var hgt := rng.randf_range(8.0, 12.0)
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var trunk := CylinderMesh.new()
+	trunk.top_radius = 0.06; trunk.bottom_radius = 0.28; trunk.height = hgt
+	trunk.radial_segments = 10 if hi else 5
+	trunk.rings = 2 if hi else 1
+	st.append_from(trunk, 0, Transform3D(Basis(), Vector3(0, hgt / 2.0 - 0.4, 0)))
+	var mesh := st.commit()
+	mesh.surface_set_material(0, _mat.bark)
+	var sf := SurfaceTool.new()
+	sf.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var layers := 7 if hi else 4
+	for i in layers:
+		var f := float(i) / float(layers - 1)
+		var cone := CylinderMesh.new()
+		cone.top_radius = 0.0
+		cone.bottom_radius = lerpf(2.6, 0.7, f) * rng.randf_range(0.85, 1.1)
+		cone.height = lerpf(3.2, 1.8, f)
+		cone.radial_segments = 9 if hi else 6
+		cone.rings = 1
+		cone.cap_bottom = false
+		var bs := Basis(Vector3.UP, rng.randf() * TAU) * Basis(Vector3.RIGHT, rng.randf_range(-0.06, 0.06))
+		sf.append_from(cone, 0, Transform3D(bs, Vector3(0, lerpf(hgt * 0.32, hgt - 0.6, f), 0)))
+	sf.commit(mesh)
+	mesh.surface_set_material(1, _mat.foliage)
+	return mesh
+
+func _build_trees() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 21
+	var meshes := []
+	for v in 2: meshes.append([_tree_mesh(v, true), _tree_mesh(v, false)])
+	var buckets := {} # "cx_cz_variant" -> Array[Transform3D]
+	var body := StaticBody3D.new()
+	body.name = "TreeTrunks"
+	var trunk_shape := CylinderShape3D.new()
+	trunk_shape.radius = 0.3; trunk_shape.height = 5.0
+	var placed := 0
+	var tries := 0
+	while placed < 320 and tries < 4000:
+		tries += 1
+		var x := rng.randf_range(-HALF + 4.0, HALF - 4.0)
+		var z := rng.randf_range(-HALF + 4.0, HALF - 4.0)
+		if in_site(x, z, 2.5): continue
+		# sparser in the middle, dense toward the border
+		var edge := maxf(absf(x), absf(z)) / HALF
+		if rng.randf() > lerpf(0.35, 1.0, edge): continue
+		var y := height(x, z)
+		var v := rng.randi() % 2
+		var cx := int(floor((x + HALF) / TREE_CHUNK))
+		var cz := int(floor((z + HALF) / TREE_CHUNK))
+		var key := "%d_%d_%d" % [cx, cz, v]
+		if not buckets.has(key): buckets[key] = []
+		var center := Vector3((cx + 0.5) * TREE_CHUNK - HALF, 0, (cz + 0.5) * TREE_CHUNK - HALF)
+		var sc := rng.randf_range(0.8, 1.25)
+		var bs := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc, sc, sc))
+		buckets[key].append(Transform3D(bs, Vector3(x, y, z) - center))
+		var cs := CollisionShape3D.new()
+		cs.shape = trunk_shape
+		cs.position = Vector3(x, y + 2.0, z)
+		body.add_child(cs)
+		placed += 1
+	add_child(body)
+	for key in buckets:
+		var parts: PackedStringArray = key.split("_")
+		var center := Vector3((int(parts[0]) + 0.5) * TREE_CHUNK - HALF, 0, (int(parts[1]) + 0.5) * TREE_CHUNK - HALF)
+		var list: Array = buckets[key]
+		for lod in 2:
+			var mm := MultiMesh.new()
+			mm.transform_format = MultiMesh.TRANSFORM_3D
+			mm.mesh = meshes[int(parts[2])][lod]
+			mm.instance_count = list.size()
+			for i in list.size(): mm.set_instance_transform(i, list[i])
+			var mmi := MultiMeshInstance3D.new()
+			mmi.multimesh = mm
+			mmi.position = center
+			if lod == 0: mmi.visibility_range_end = 70.0
+			else:
+				mmi.visibility_range_begin = 70.0
+				mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			add_child(mmi)
+
+func _build_rocks() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	var sm := SphereMesh.new()
+	sm.radius = 0.5; sm.height = 0.8; sm.radial_segments = 10; sm.rings = 5
+	sm.material = _mat.rock
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = sm
+	mm.instance_count = 70
+	for i in 70:
+		var x := rng.randf_range(-HALF + 6.0, HALF - 6.0)
+		var z := rng.randf_range(-HALF + 6.0, HALF - 6.0)
+		var bs := Basis.from_euler(Vector3(rng.randf() * 0.5, rng.randf() * TAU, rng.randf() * 0.5)).scaled(
+			Vector3(rng.randf_range(0.5, 1.8), rng.randf_range(0.4, 1.0), rng.randf_range(0.5, 1.6)))
+		mm.set_instance_transform(i, Transform3D(bs, Vector3(x, height(x, z) + 0.05, z)))
+	var mmi := MultiMeshInstance3D.new()
+	mmi.multimesh = mm
+	add_child(mmi)
+
+# ---------------- grass (MultiMesh chunks, wind in shader) ----------------
+func _grass_mesh() -> ArrayMesh:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 9
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.set_normal(Vector3.UP)
+	for b in 5:
+		var bs := Basis(Vector3.UP, rng.randf() * TAU)
+		var off := Vector3(rng.randf_range(-0.22, 0.22), 0, rng.randf_range(-0.22, 0.22))
+		var h := rng.randf_range(0.4, 0.75)
+		var lean := rng.randf_range(0.0, 0.18)
+		var p := [Vector3(-0.03, 0, 0), Vector3(0.03, 0, 0), Vector3(-0.022, h * 0.5, lean * 0.4),
+			Vector3(0.022, h * 0.5, lean * 0.4), Vector3(0, h, lean)]
+		var uvy := [0.0, 0.0, 0.5, 0.5, 1.0]
+		for k in [0, 1, 2, 1, 3, 2, 2, 3, 4]:
+			st.set_uv(Vector2(0.5, uvy[k]))
+			st.add_vertex(bs * p[k] + off)
+	var m := st.commit()
+	m.surface_set_material(0, _mat.grass)
+	return m
+
+func _build_grass() -> void:
+	var mesh := _grass_mesh()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 77
+	var n := int(SIZE / GRASS_CHUNK)
+	for cz in n:
+		for cx in n:
+			var center := Vector3((cx + 0.5) * GRASS_CHUNK - HALF, 0, (cz + 0.5) * GRASS_CHUNK - HALF)
+			center.y = height(center.x, center.z)
+			var list: Array[Transform3D] = []
+			for i in GRASS_PER_CHUNK:
+				var x := center.x + rng.randf_range(-GRASS_CHUNK / 2.0, GRASS_CHUNK / 2.0)
+				var z := center.z + rng.randf_range(-GRASS_CHUNK / 2.0, GRASS_CHUNK / 2.0)
+				if in_site(x, z, -1.0): continue
+				var sc := rng.randf_range(0.8, 1.5)
+				var bs := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc, sc, sc))
+				list.append(Transform3D(bs, Vector3(x, height(x, z), z) - center))
+			if list.is_empty(): continue
+			var mm := MultiMesh.new()
+			mm.transform_format = MultiMesh.TRANSFORM_3D
+			mm.mesh = mesh
+			mm.instance_count = list.size()
+			for i in list.size(): mm.set_instance_transform(i, list[i])
+			var mmi := MultiMeshInstance3D.new()
+			mmi.multimesh = mm
+			mmi.position = center
+			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			add_child(mmi)
+			grass_nodes.append(mmi)
+			grass_counts.append(list.size())
+		await get_tree().process_frame
+
+# ---------------- particles ----------------
+func _build_particles() -> void:
+	dust = GPUParticles3D.new()
+	var pm := ParticleProcessMaterial.new()
+	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	pm.emission_box_extents = Vector3(12, 3, 12)
+	pm.gravity = Vector3(0.15, -0.03, 0.05)
+	pm.initial_velocity_min = 0.05; pm.initial_velocity_max = 0.2
+	pm.spread = 180.0
+	dust.process_material = pm
+	var q := QuadMesh.new()
+	q.size = Vector2(0.02, 0.02)
+	var dm := StandardMaterial3D.new()
+	dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	dm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	dm.albedo_color = Color(0.8, 0.85, 1.0, 0.14)
+	dm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	q.material = dm
+	dust.draw_pass_1 = q
+	dust.lifetime = 8.0; dust.preprocess = 8.0
+	dust.visibility_aabb = AABB(Vector3(-20, -8, -20), Vector3(40, 16, 40))
+	dust.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(dust)
+	leaves = GPUParticles3D.new()
+	var lp := ParticleProcessMaterial.new()
+	lp.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	lp.emission_box_extents = Vector3(14, 0.5, 14)
+	lp.gravity = Vector3(0.7, -1.1, 0.25)
+	lp.initial_velocity_min = 0.2; lp.initial_velocity_max = 0.8
+	lp.spread = 180.0
+	lp.angle_min = 0.0; lp.angle_max = 360.0
+	lp.angular_velocity_min = -160.0; lp.angular_velocity_max = 160.0
+	lp.scale_min = 0.7; lp.scale_max = 1.3
+	leaves.process_material = lp
+	var lq := QuadMesh.new()
+	lq.size = Vector2(0.12, 0.07)
+	var lm := StandardMaterial3D.new()
+	lm.albedo_color = Color(0.2, 0.11, 0.04)
+	lm.cull_mode = BaseMaterial3D.CULL_DISABLED
+	lm.roughness = 0.9
+	lm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	lq.material = lm
+	leaves.draw_pass_1 = lq
+	leaves.lifetime = 7.0; leaves.preprocess = 7.0
+	leaves.visibility_aabb = AABB(Vector3(-22, -12, -22), Vector3(44, 20, 44))
+	leaves.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(leaves)
+
+func _build_probe() -> void:
+	var p := ReflectionProbe.new()
+	p.size = Vector3(SIZE, 40.0, SIZE)
+	p.position = Vector3(0, 8.0, 0)
+	p.update_mode = ReflectionProbe.UPDATE_ONCE
+	p.ambient_mode = ReflectionProbe.AMBIENT_DISABLED
+	p.max_distance = 120.0
+	add_child(p)
+
+# ---------------- quality ----------------
+func _apply_quality() -> void:
+	var fx := Gfx.eff_effects()
+	var sh := Gfx.eff_shadows()
+	env.glow_enabled = fx >= 1
+	if dust:
+		var da: int = [40, 90, 160][fx]
+		if dust.amount != da: dust.amount = da
+		var la: int = [12, 25, 45][fx]
+		if leaves.amount != la: leaves.amount = la
+	var factor: float = [0.4, 0.7, 1.0][fx]
+	var rng: float = [22.0, 30.0, 38.0][fx]
+	for i in grass_nodes.size():
+		grass_nodes[i].multimesh.visible_instance_count = int(grass_counts[i] * factor)
+		grass_nodes[i].visibility_range_end = rng + GRASS_CHUNK * 0.7
+	moon.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL if sh == 0 else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	moon.directional_shadow_max_distance = [30.0, 50.0, 70.0][sh]
+
+func _process(_dt: float) -> void:
+	var t := Time.get_ticks_msec() / 1000.0
+	for i in flicker.size():
+		flicker[i].light_energy = 1.6 * (0.75 + 0.25 * noise.get_noise_1d(t * 220.0 + i * 50.0) + 0.1 * sin(t * 13.0 + i))
+	if follow and dust:
+		dust.global_position = follow.global_position + Vector3(0, 2.0, 0)
+		leaves.global_position = follow.global_position + Vector3(0, 7.0, 0)

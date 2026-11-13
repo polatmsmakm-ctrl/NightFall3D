@@ -5,11 +5,20 @@ config/name="NightFall"
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.5", "Mobile")
 
+[autoload]
+Gfx="*res://scripts/graphics.gd"
+
 [display]
 window/size/viewport_width=1280
 window/size/viewport_height=720
 window/handheld/orientation=4
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/ios/allow_high_refresh_rate=true
 
 [rendering]
 renderer/rendering_method="mobile"
+rendering_device/driver.ios="metal"
+anti_aliasing/quality/msaa_3d=1
+occlusion_culling/use_occlusion_culling=true
 textures/vram_compression/import_etc2_astc=true

@@ -13,6 +13,7 @@ var stick_origin := Vector2.ZERO
 var stick_vec := Vector2.ZERO
 var look_id := -1
 var ui_stick: Control
+var world: NightWorld
 
 func _ready() -> void:
 	_build_world()
@@ -20,50 +21,21 @@ func _ready() -> void:
 	_build_ui()
 
 func _build_world() -> void:
-	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.02, 0.03, 0.05)
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.25, 0.3, 0.45)
-	env.ambient_light_energy = 0.6
-	env.fog_enabled = true
-	env.fog_light_color = Color(0.08, 0.1, 0.14)
-	env.fog_density = 0.035
-	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	var we := WorldEnvironment.new(); we.environment = env; add_child(we)
-	var moon := DirectionalLight3D.new()
-	moon.rotation_degrees = Vector3(-50, 30, 0)
-	moon.light_color = Color(0.55, 0.65, 0.95)
-	moon.light_energy = 0.9
-	moon.shadow_enabled = true
-	add_child(moon)
-	var ground := StaticBody3D.new()
-	var gm := MeshInstance3D.new()
-	var plane := PlaneMesh.new(); plane.size = Vector2(200, 200)
-	var gmat := StandardMaterial3D.new(); gmat.albedo_color = Color(0.1, 0.12, 0.08); gmat.roughness = 1.0
-	plane.material = gmat; gm.mesh = plane; ground.add_child(gm)
-	var gc := CollisionShape3D.new(); var gs := WorldBoundaryShape3D.new(); gc.shape = gs; ground.add_child(gc)
-	add_child(ground)
-	var rng := RandomNumberGenerator.new(); rng.seed = 7
-	for i in 40: # placeholder obstacles so movement is testable
-		var b := StaticBody3D.new()
-		var m := MeshInstance3D.new(); var bm := BoxMesh.new()
-		bm.size = Vector3(rng.randf_range(1, 4), rng.randf_range(1.5, 4), rng.randf_range(1, 4))
-		var mat := StandardMaterial3D.new(); mat.albedo_color = Color(0.2, 0.18, 0.16); bm.material = mat
-		m.mesh = bm; b.add_child(m)
-		var c := CollisionShape3D.new(); var bs := BoxShape3D.new(); bs.size = bm.size; c.shape = bs; b.add_child(c)
-		b.position = Vector3(rng.randf_range(-40, 40), bm.size.y / 2, rng.randf_range(-40, 40))
-		if b.position.length() < 5: b.position.x += 8
-		add_child(b)
+	world = NightWorld.new()
+	add_child(world)
+	world.build() # staged: terrain first, then the rest over the next frames
 
 func _build_player(char_name: String) -> void:
 	body = CharacterBody3D.new()
 	var cs := CollisionShape3D.new(); var cap := CapsuleShape3D.new(); cap.radius = 0.35; cap.height = 1.8
 	cs.shape = cap; cs.position.y = 0.9; body.add_child(cs)
 	rig = CharacterRig.new(); body.add_child(rig); rig.setup(char_name)
+	body.position = Vector3(0, world.height(0, 0) + 0.3, 0)
+	body.floor_snap_length = 0.5
 	add_child(body)
+	world.follow = body
 	cam_pivot = Node3D.new(); cam_pivot.position.y = 1.6; body.add_child(cam_pivot)
-	var cam := Camera3D.new(); cam.position = Vector3(0, 0.3, 3.6); cam_pivot.add_child(cam)
+	var cam := Camera3D.new(); cam.position = Vector3(0, 0.3, 3.6); cam.far = 400.0; cam_pivot.add_child(cam)
 	var lamp := OmniLight3D.new(); lamp.position = Vector3(0, 2.2, 0.5); lamp.light_energy = 1.2; lamp.omni_range = 9
 	lamp.light_color = Color(1.0, 0.8, 0.55); body.add_child(lamp)
 
@@ -79,6 +51,8 @@ func _draw_stick() -> void:
 	ui_stick.draw_circle(stick_origin + stick_vec * 70, 32, Color(1, 1, 1, 0.35))
 
 func _input(e: InputEvent) -> void:
+	if (e is InputEventScreenTouch or e is InputEventMouseButton) and e.pressed and Gfx.in_ui(e.position): return
+	if Gfx.menu_open: return
 	var half := get_viewport().get_visible_rect().size.x / 2.0
 	if e is InputEventScreenTouch:
 		if e.pressed:
@@ -117,7 +91,7 @@ func _physics_process(delta: float) -> void:
 	var target := dir.normalized() * speed * move.length() if move.length() > 0.05 else Vector3.ZERO
 	body.velocity.x = move_toward(body.velocity.x, target.x, 30.0 * delta)
 	body.velocity.z = move_toward(body.velocity.z, target.z, 30.0 * delta)
-	body.velocity.y = -2.0
+	body.velocity.y = -2.0 if body.is_on_floor() else body.velocity.y - 22.0 * delta
 	body.move_and_slide()
 	var hv := Vector2(body.velocity.x, body.velocity.z)
 	if hv.length() > 0.2:

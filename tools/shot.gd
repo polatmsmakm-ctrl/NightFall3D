@@ -1,12 +1,14 @@
-extends SceneTree
-func _init():
+extends Node
+func _ready():
 	var m = load("res://scenes/main.tscn").instantiate()
-	root.add_child(m)
-	m.rig.play("walk")
-	m.set_physics_process(false)
-	m.yaw = 0.6
-	for i in 20: await process_frame
-	m.rig.player.seek(0.3, true)
-	for i in 5: await process_frame
-	root.get_texture().get_image().save_png("/tmp/shot.png")
-	quit()
+	get_tree().root.add_child.call_deferred(m)
+	for i in 200: await get_tree().process_frame
+	var names := ["a", "b", "c"]
+	var yaws := [0.0, 2.2, 4.0]
+	for k in 3:
+		m.yaw = yaws[k]
+		m.pitch = -0.05 if k == 0 else -0.2
+		for i in 30: await get_tree().process_frame
+		get_tree().root.get_texture().get_image().save_png("/tmp/shot_%s.png" % names[k])
+	print("SHOTS DONE ready=", m.world.ready_done)
+	get_tree().quit()
