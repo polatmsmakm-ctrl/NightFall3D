@@ -41,6 +41,16 @@ var pallet_nodes: Array = []
 var market := {} # {pos, yaw, w, d}: the strip mall (restaurant, supermarket, laundry)
 const MARKET_W := 27.0
 const MARKET_D := 10.0
+var door_points: Array = [] # [Vector3, yaw] every doorway
+var hatch_points: Array[Vector3] = []
+var hatch_nodes: Array = []
+var crow_points: Array[Vector3] = []
+var crow_nodes: Array = []
+var relief := 1.0 # terrain height multiplier (0 = flat)
+var grass_per_chunk := GRASS_PER_CHUNK
+var market_lights: Array = []
+var market_dark := false
+var market_t := 0.0
 var gen_nodes: Array = []
 var gate_nodes: Array = []
 var noise := FastNoiseLite.new()
@@ -59,8 +69,34 @@ var tree_positions: Array[Vector3] = []
 var _sky_noise: NoiseTexture2D
 var _mat := {}
 
-func configure(id: String) -> void:
+func _local(b: Array, v: Vector3) -> Vector3: # building-local point -> world
+	return Vector3(b[0], _raw_h(b[0], b[1]) + 0.1, b[1]) + Basis(Vector3.UP, b[2]) * v
+
+func _shuffled(n: int, rng: RandomNumberGenerator) -> Array:
+	var idx := range(n)
+	for i in range(n - 1, 0, -1):
+		var j := rng.randi_range(0, i)
+		var tmp = idx[i]; idx[i] = idx[j]; idx[j] = tmp
+	return idx
+
+## Streets and other strips that must stay clear (only the fareej map has them).
+func on_street(x: float, z: float, pad := 0.0) -> bool:
+	if map_id != "fareej": return false
+	return absf(absf(z) - 47.0) < 4.0 + pad or absf(z) < 4.5 + pad or (absf(x + 13.0) < 4.0 + pad and absf(z) < 47.0)
+
+func _random_site(rng: RandomNumberGenerator, pad: float, lo: float, hi: float) -> Vector2:
+	for k in 200:
+		var p := Vector2.from_angle(rng.randf() * TAU) * rng.randf_range(lo, hi)
+		if absf(p.x) > WALL - 8.0 or absf(p.y) > WALL - 8.0: continue
+		if not in_site(p.x, p.y, pad) and not on_street(p.x, p.y, 1.0): return p
+	return Vector2(lo, lo)
+
+## `seed` shuffles where the generators, hooks, pallets, hatches and crows are, so every round plays differently.
+## Everyone in a room gets the same seed from the server, so they all build the same layout.
+func configure(id: String, seed := 1) -> void:
 	map_id = id
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed
 	noise.frequency = 0.012
 	noise.fractal_octaves = 4
 	if id == "village":
@@ -68,63 +104,75 @@ func configure(id: String) -> void:
 		tree_count = 250
 		fog_density = 0.011
 		moon_dir = Vector3(-0.45, 0.36, -0.8).normalized()
-		var rng := RandomNumberGenerator.new()
-		rng.seed = 11
+		var lay := RandomNumberGenerator.new()
+		lay.seed = 11
 		for i in range(-2, 3):
 			for j in range(-1, 2):
 				if (i == 0 and j == 0) or (i == 2 and j == 0): continue # centre spawn, and the market's plot
-				buildings.append([i * 28.0 + rng.randf_range(-4, 4), j * 31.0 + rng.randf_range(-4, 4),
-					rng.randf() * TAU, rng.randf_range(6.0, 9.0), rng.randf_range(5.0, 7.0), rng.randf_range(2.8, 3.4)])
+				buildings.append([i * 28.0 + lay.randf_range(-4, 4), j * 31.0 + lay.randf_range(-4, 4),
+					lay.randf() * TAU, lay.randf_range(6.0, 9.0), lay.randf_range(5.0, 7.0), lay.randf_range(2.8, 3.4)])
+	elif id == "fareej": # a Kuwaiti neighbourhood: walled houses on streets around the market, flat sandy ground
+		noise.seed = 77
+		relief = 0.0
+		tree_count = 90
+		grass_per_chunk = 60
+		fog_density = 0.009
+		moon_dir = Vector3(0.5, 0.4, 0.76).normalized()
+		for hx in [-78.0, -52.0, -26.0, 0.0, 26.0]:
+			buildings.append([hx, -66.0, 0.0, 10.0, 8.0, 3.4])
+			buildings.append([hx, 66.0, PI, 10.0, 8.0, 3.4])
+		for hx in [-78.0, -52.0, -34.0]:
+			buildings.append([hx, -27.0, PI, 10.0, 8.0, 3.4])
+			buildings.append([hx, 27.0, 0.0, 10.0, 8.0, 3.4])
+		sites.append([16.0, 27.0, 0.0, 9.5]) # the mosque
 	else:
 		noise.seed = 1337
 		buildings = FOREST_BUILDINGS.duplicate(true)
 	sites.append([0.0, 0.0, _raw_h(0.0, 0.0), 6.0])
 	for b in buildings:
-		sites.append([b[0], b[1], _raw_h(b[0], b[1]), maxf(b[3], b[4]) * 0.75 + 1.0])
-	# 7 generators, each beside the front door of a building
-	var step := maxi(1, buildings.size() / 7)
-	for gi in 7:
-		var b: Array = buildings[(gi * step) % buildings.size()]
-		var lx: float = -b[3] / 2.0 + 1.2
-		var lz: float = b[4] / 2.0 + 1.5
-		var gx: float = b[0] + lx * cos(b[2]) + lz * sin(b[2])
-		var gz: float = b[1] - lx * sin(b[2]) + lz * cos(b[2])
-		gen_points.append(Vector3(gx, _raw_h(b[0], b[1]) + 0.1, gz))
+		sites.append([b[0], b[1], _raw_h(b[0], b[1]), maxf(b[3], b[4]) * (1.05 if id == "fareej" else 0.75) + 1.0])
 	# the market: a big flat plot on the east side, shop fronts facing the middle of the map
 	var mh := _raw_h(56.0, 2.0)
 	sites.append([56.0, 2.0, mh, 21.0])
 	market = {"pos": Vector3(62.0, mh, 2.0), "yaw": -PI / 2.0, "w": MARKET_W, "d": MARKET_D}
-	# each of the first 8 buildings: a locker inside, a pallet at the door, a vault window on the left wall
-	for bi in mini(buildings.size(), 8):
-		var b: Array = buildings[bi]
-		var base := Vector3(b[0], _raw_h(b[0], b[1]) + 0.1, b[1])
-		var rot := Basis(Vector3.UP, b[2])
-		locker_points.append([base + rot * Vector3(b[3] / 2.0 - 0.75, 0, -b[4] / 2.0 + 0.6), b[2]])
-		pallet_points.append([base + rot * Vector3(0, 0, b[4] / 2.0), b[2]])
-		window_points.append([base + rot * Vector3(-b[3] / 2.0, 0, 0), rot * Vector3(-1, 0, 0)])
-	# market extras: two lockers, a pallet at the supermarket's back door, a vault window on the restaurant's side
 	var mrot := Basis(Vector3.UP, market.yaw)
 	var mbase: Vector3 = market.pos + Vector3(0, 0.15, 0)
+	# 7 generators out of all the possible spots (beside a front door, or on the market's parking)
+	var gen_spots: Array[Vector3] = []
+	for b in buildings: gen_spots.append(_local(b, Vector3(-b[3] / 2.0 + 1.2, 0, b[4] / 2.0 + 1.5)))
+	gen_spots.append(mbase + mrot * Vector3(-11.5, -0.05, MARKET_D / 2.0 + 4.6))
+	gen_spots.append(mbase + mrot * Vector3(11.5, -0.05, MARKET_D / 2.0 + 4.6))
+	var order := _shuffled(gen_spots.size(), rng)
+	for k in 7: gen_points.append(gen_spots[order[k]])
+	# doors (used for creaks) and 9 pallets out of them
+	for b in buildings: door_points.append([_local(b, Vector3(0, 0, b[4] / 2.0)), b[2]])
+	door_points.append([mbase + mrot * Vector3(0, 0, -MARKET_D / 2.0), market.yaw])
+	order = _shuffled(door_points.size(), rng)
+	for k in mini(9, door_points.size()): pallet_points.append(door_points[order[k]])
+	# lockers and vault windows: the first 8 buildings, plus the market
+	for bi in mini(buildings.size(), 8):
+		var b: Array = buildings[bi]
+		locker_points.append([_local(b, Vector3(b[3] / 2.0 - 0.75, 0, -b[4] / 2.0 + 0.6)), b[2]])
+		window_points.append([_local(b, Vector3(-b[3] / 2.0, 0, 0)), Basis(Vector3.UP, b[2]) * Vector3(-1, 0, 0)])
 	locker_points.append([mbase + mrot * Vector3(12.6, 0, -4.3), market.yaw])
 	locker_points.append([mbase + mrot * Vector3(-12.6, 0, -4.3), market.yaw])
-	pallet_points.append([mbase + mrot * Vector3(0, 0, -MARKET_D / 2.0), market.yaw])
 	window_points.append([mbase + mrot * Vector3(-MARKET_W / 2.0, 0, 1.0), mrot * Vector3(-1, 0, 0)])
-	# 6 hooks on a ring between the buildings
-	for hi in 9: # six on an inner ring, three further out
-		var ring := 40.0 if hi < 6 else 80.0
-		var ang := hi * TAU / 6.0 + 0.5 if hi < 6 else (hi - 6) * TAU / 3.0 + 2.2
-		var hp := Vector2.from_angle(ang) * ring
-		var tries := 0
-		while in_site(hp.x, hp.y, 3.5) and tries < 20:
-			tries += 1
-			ang += 0.17
-			hp = Vector2.from_angle(ang) * (ring + tries * 1.5)
-		sites.append([hp.x, hp.y, _raw_h(hp.x, hp.y), 2.5])
-		hook_points.append(Vector3(hp.x, _raw_h(hp.x, hp.y), hp.y))
 	# 2 exit gates on opposite edges
 	for g in [[0.0, -WALL, 0.0], [0.0, WALL, PI]]:
 		sites.append([g[0], g[1], _raw_h(g[0], g[1]), 8.0])
 		gate_points.append([Vector3(g[0], _raw_h(g[0], g[1]), g[1]), g[2]])
+	# 9 hooks, 5 possible hatches, 8 flocks of crows: anywhere free
+	for hi in 9:
+		var hp := _random_site(rng, 3.5, 22.0, 100.0)
+		sites.append([hp.x, hp.y, _raw_h(hp.x, hp.y), 2.5])
+		hook_points.append(Vector3(hp.x, _raw_h(hp.x, hp.y), hp.y))
+	for hi in 5:
+		var hp := _random_site(rng, 3.0, 30.0, 100.0)
+		sites.append([hp.x, hp.y, _raw_h(hp.x, hp.y), 2.2])
+		hatch_points.append(Vector3(hp.x, _raw_h(hp.x, hp.y), hp.y))
+	for ci in 8:
+		var cp := _random_site(rng, 2.0, 18.0, 100.0)
+		crow_points.append(Vector3(cp.x, height(cp.x, cp.y), cp.y))
 	_plan_trees()
 
 func _plan_trees() -> void:
@@ -137,6 +185,7 @@ func _plan_trees() -> void:
 		var z := rng.randf_range(-HALF + 4.0, HALF - 4.0)
 		if in_site(x, z, 2.5): continue
 		if absf(absf(x) - WALL) < 2.2 or absf(absf(z) - WALL) < 2.2: continue # keep the wall clear
+		if on_street(x, z, 1.5): continue
 		var edge := maxf(absf(x), absf(z)) / HALF
 		if rng.randf() > lerpf(0.35, 1.0, edge): continue
 		tree_plan.append([x, height(x, z), z, rng.randi() % 2, rng.randf_range(0.8, 1.25), rng.randf() * TAU])
@@ -149,9 +198,11 @@ func surface_at(pos: Vector3) -> String:
 	for b in buildings:
 		var bl: Vector3 = Basis(Vector3.UP, b[2]).inverse() * (pos - Vector3(b[0], pos.y, b[1]))
 		if absf(bl.x) < b[3] / 2.0 + 0.3 and absf(bl.z) < b[4] / 2.0 + 0.3: return "indoor"
-	return "sand" if in_site(pos.x, pos.z, 0.0) else "grass"
+	if on_street(pos.x, pos.z): return "indoor" # asphalt
+	return "sand" if (map_id == "fareej" or in_site(pos.x, pos.z, 0.0)) else "grass"
 
 func _sandiness(x: float, z: float) -> float:
+	if map_id == "fareej": return 1.0
 	var v := 0.0
 	for st in sites:
 		var d := Vector2(x - st[0], z - st[1]).length()
@@ -176,7 +227,7 @@ func spawn_point(role: String, slot: int) -> Vector3:
 	return Vector3(p.x, height(p.x, p.y) + 0.3, p.y)
 
 func _raw_h(x: float, z: float) -> float:
-	return noise.get_noise_2d(x, z) * 2.4 + noise.get_noise_2d(x * 3.0 + 50.0, z * 3.0) * 0.35
+	return (noise.get_noise_2d(x, z) * 2.4 + noise.get_noise_2d(x * 3.0 + 50.0, z * 3.0) * 0.35) * relief
 
 func height(x: float, z: float) -> float:
 	var h := _raw_h(x, z)
@@ -196,8 +247,10 @@ func build() -> void:
 	_build_environment()
 	_build_terrain()
 	await get_tree().process_frame
-	_build_buildings()
+	if map_id == "fareej": _build_fareej()
+	else: _build_buildings()
 	_build_objectives()
+	_build_extras()
 	_build_market()
 	await get_tree().process_frame
 	_build_scatter()
@@ -275,7 +328,7 @@ func _build_environment() -> void:
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color(0.16, 0.2, 0.32)
-	env.ambient_light_energy = 1.5
+	env.ambient_light_energy = 0.8 # dark: survivors carry flashlights
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	env.tonemap_white = 6.0
@@ -744,12 +797,14 @@ func _build_market() -> void:
 		lamp.light_energy = 1.5
 		lamp.omni_range = 10.0
 		body.add_child(lamp)
+		market_lights.append([lamp, 1.5])
 		var glow := OmniLight3D.new() # light the signs spill on the sidewalk and parking
 		glow.position = Vector3(cx, y0 + 3.0, D / 2.0 + 2.5)
 		glow.light_color = [Color(1.0, 0.8, 0.5), Color(1.0, 0.25, 0.2), Color(0.3, 0.45, 1.0)][k]
 		glow.light_energy = 2.6
 		glow.omni_range = 11.0
 		body.add_child(glow)
+		market_lights.append([glow, 2.6])
 	_mesh_box(body, Vector3(W / 3.0 - 0.9, 0.08, 1.7), Vector3(-W / 3.0, y0 + 2.75, D / 2.0 + 1.0), _flat(Color(0.75, 0.2, 0.1)), Vector3(0.22, 0, 0)) # awning
 	# restaurant: tables, chairs, counter
 	var wood := _flat(Color(0.35, 0.2, 0.1), 0.6)
@@ -792,7 +847,7 @@ func _free_spot(rng: RandomNumberGenerator, pad: float) -> Vector3:
 	for k in 60:
 		var x := rng.randf_range(-WALL + 8.0, WALL - 8.0)
 		var z := rng.randf_range(-WALL + 8.0, WALL - 8.0)
-		if in_site(x, z, pad) or near_tree(x, z, pad + 1.0): continue
+		if in_site(x, z, pad) or near_tree(x, z, pad + 1.0) or on_street(x, z, pad): continue
 		return Vector3(x, height(x, z), z)
 	return Vector3.INF
 
@@ -912,6 +967,179 @@ func _build_scatter() -> void:
 			_mesh_box(body, Vector3(0.18, 1.5, 0.2), Vector3(ox - 1.5, 0.75, 0), _mat.wood)
 		add_child(body)
 
+# ---------------- hatch, crows, market blackout ----------------
+func _build_extras() -> void:
+	for hp in hatch_points: # all hidden until the rules open one
+		var root := Node3D.new()
+		root.position = hp
+		_mesh_box(root, Vector3(1.9, 0.12, 1.9), Vector3(0, 0.06, 0), _mat.metal)
+		_mesh_box(root, Vector3(1.5, 0.05, 1.5), Vector3(0, 0.13, 0), _flat(Color(0.01, 0.01, 0.01)))
+		_mesh_box(root, Vector3(1.6, 0.1, 1.6), Vector3(0, 0.9, -0.85), _mat.metal, Vector3(1.25, 0, 0)) # lid standing open
+		var l := OmniLight3D.new()
+		l.position = Vector3(0, 0.8, 0)
+		l.light_color = Color(0.5, 1.0, 0.7)
+		l.light_energy = 2.0
+		l.omni_range = 7.0
+		root.add_child(l)
+		root.visible = false
+		add_child(root)
+		hatch_nodes.append(root)
+	var black := _flat(Color(0.015, 0.015, 0.02), 0.6)
+	for cp in crow_points:
+		var root := Node3D.new()
+		root.position = cp
+		for k in 4:
+			var bird := Node3D.new()
+			bird.position = Vector3(cos(k * 1.7) * 0.7, 0.12, sin(k * 1.7) * 0.7)
+			bird.rotation.y = k * 2.1
+			_mesh_box(bird, Vector3(0.14, 0.14, 0.34), Vector3.ZERO, black)
+			_mesh_box(bird, Vector3(0.5, 0.03, 0.18), Vector3(0, 0.06, 0.02), black)
+			_mesh_box(bird, Vector3(0.05, 0.05, 0.12), Vector3(0, 0.05, 0.2), _flat(Color(0.25, 0.2, 0.1)))
+			root.add_child(bird)
+		add_child(root)
+		crow_nodes.append({"root": root, "cool": 0.0})
+
+func set_hatch(i: int) -> void:
+	for k in hatch_nodes.size(): hatch_nodes[k].visible = k == i
+
+## Startle a flock: the birds burst upward and stay away for a while. Returns false if they are already gone.
+func scare_crows(i: int) -> bool:
+	if i >= crow_nodes.size(): return false
+	var c: Dictionary = crow_nodes[i]
+	if c.cool > 0.0: return false
+	c.cool = 45.0
+	var k := 0
+	for bird in c.root.get_children():
+		var home: Vector3 = bird.position
+		var tw := create_tween()
+		tw.tween_property(bird, "position", home + Vector3(cos(k * 1.7) * 9.0, 14.0 + k * 2.0, sin(k * 1.7) * 9.0), 2.2).set_ease(Tween.EASE_OUT)
+		tw.tween_callback(func(): bird.visible = false)
+		tw.tween_interval(40.0)
+		tw.tween_callback(func(): bird.position = home; bird.visible = true)
+		k += 1
+	return true
+
+func in_market(pos: Vector3) -> bool:
+	var ml: Vector3 = Basis(Vector3.UP, market.yaw).inverse() * (pos - market.pos)
+	return absf(ml.x) < MARKET_W / 2.0 and absf(ml.z) < MARKET_D / 2.0
+
+## The market's lights die when the killer walks in, and come back a moment after he leaves.
+func set_market_dark(dark: bool) -> void:
+	if dark == market_dark: return
+	market_dark = dark
+	market_t = 1.2 # flicker for a moment before settling
+
+# ---------------- the fareej: walled Kuwaiti houses, streets, a small mosque ----------------
+func _build_fareej() -> void:
+	var plaster := [_flat(Color(0.72, 0.66, 0.54)), _flat(Color(0.78, 0.74, 0.66)), _flat(Color(0.64, 0.56, 0.46)), _flat(Color(0.7, 0.7, 0.68))]
+	var dark_glass := _flat(Color(0.03, 0.05, 0.08), 0.1, 0.6)
+	var door_wood := _flat(Color(0.25, 0.14, 0.07), 0.6)
+	var idx := 0
+	for b in buildings:
+		var w: float = b[3]; var d: float = b[4]; var H: float = b[5]
+		var mat: StandardMaterial3D = plaster[idx % plaster.size()]
+		var y0 := 0.1
+		var body := StaticBody3D.new()
+		body.name = "House%d" % idx
+		body.position = Vector3(b[0], _raw_h(b[0], b[1]), b[1])
+		body.rotation.y = b[2]
+		_box(body, Vector3(w + 0.4, 0.3, d + 0.4), Vector3(0, -0.05, 0), _mat.concrete)
+		_box(body, Vector3(w, H, 0.25), Vector3(0, y0 + H / 2.0, -d / 2.0), mat, true)
+		_box(body, Vector3(0.25, H, d), Vector3(w / 2.0, y0 + H / 2.0, 0), mat, true)
+		_wall_with_gap(body, false, -w / 2.0, -d / 2.0, d / 2.0, -0.7, 0.7, y0, H, 1.0, 2.1, mat, 0.25) # vault window
+		_wall_with_gap(body, true, d / 2.0, -w / 2.0, w / 2.0, -0.65, 0.65, y0, H, 0.0, 2.2, mat, 0.25) # front door
+		_wall_with_gap(body, false, 1.6, -d / 2.0, d / 2.0, 0.4, 1.7, y0, H, 0.0, 2.2, mat, 0.2) # inner wall with a doorway
+		_mesh_box(body, Vector3(1.5, 0.12, 0.3), Vector3(0, y0 + 2.26, d / 2.0), door_wood)
+		_box(body, Vector3(w + 0.5, 0.25, d + 0.5), Vector3(0, y0 + H + 0.12, 0), mat)
+		for side in [[0.0, d / 2.0 + 0.15, w + 0.5, 0.2], [0.0, -d / 2.0 - 0.15, w + 0.5, 0.2], [w / 2.0 + 0.15, 0.0, 0.2, d + 0.5], [-w / 2.0 - 0.15, 0.0, 0.2, d + 0.5]]:
+			_mesh_box(body, Vector3(side[2], 0.6, side[3]), Vector3(side[0], y0 + H + 0.5, side[1]), mat) # roof parapet
+		# upper floor block (not enterable), windows, water tank, AC unit
+		_mesh_box(body, Vector3(w * 0.55, 2.7, d * 0.7), Vector3(-w * 0.2, y0 + H + 1.6, -d * 0.1), mat)
+		_mesh_box(body, Vector3(w * 0.6, 0.2, d * 0.75), Vector3(-w * 0.2, y0 + H + 3.05, -d * 0.1), mat)
+		for wx in [-w * 0.34, -w * 0.06]:
+			_mesh_box(body, Vector3(1.0, 1.1, 0.08), Vector3(wx, y0 + H + 1.7, -d * 0.1 + d * 0.35), dark_glass)
+		var tank := MeshInstance3D.new()
+		var cyl := CylinderMesh.new()
+		cyl.top_radius = 0.6; cyl.bottom_radius = 0.6; cyl.height = 1.3; cyl.radial_segments = 12
+		cyl.material = _flat(Color(0.85, 0.85, 0.82), 0.5)
+		tank.mesh = cyl
+		tank.position = Vector3(w * 0.3, y0 + H + 0.9, -d * 0.25)
+		body.add_child(tank)
+		_mesh_box(body, Vector3(0.9, 0.6, 0.5), Vector3(w * 0.3, y0 + H + 0.55, d * 0.2), _flat(Color(0.6, 0.6, 0.6), 0.5, 0.4))
+		# compound wall with a gate opening in front
+		var cw := w / 2.0 + 3.0
+		var cd := d / 2.0 + 3.0
+		_box(body, Vector3(cw * 2.0, 2.2, 0.2), Vector3(0, 1.1, -cd), mat, true)
+		_box(body, Vector3(0.2, 2.2, cd * 2.0), Vector3(cw, 1.1, 0), mat, true)
+		_box(body, Vector3(0.2, 2.2, cd * 2.0), Vector3(-cw, 1.1, 0), mat, true)
+		_wall_with_gap(body, true, cd, -cw, cw, -1.4, 1.4, 0.0, 2.2, 0.0, 2.2, mat, 0.2)
+		for gx in [-1.55, 1.55]: _mesh_box(body, Vector3(0.35, 2.6, 0.35), Vector3(gx, 1.3, cd), mat)
+		if idx % 2 == 0: _car(Vector3(w / 2.0 + 1.55, 0.05, 0.3), 0.04, [Color(0.75, 0.75, 0.78), Color(0.1, 0.1, 0.12), Color(0.35, 0.05, 0.05)][idx % 3], body)
+		if idx % 3 == 0:
+			var l := OmniLight3D.new()
+			l.position = Vector3(-1.5, y0 + H - 0.5, 0)
+			l.light_color = Color(1.0, 0.75, 0.45)
+			l.light_energy = 1.6
+			l.omni_range = 7.0
+			body.add_child(l)
+			flicker.append(l)
+		add_child(body)
+		idx += 1
+	# streets
+	var asphalt := _flat(Color(0.05, 0.05, 0.055), 0.4)
+	var paint := _flat(Color(0.75, 0.7, 0.3))
+	for st in [[-30.0, -47.0, 150.0, 7.0], [-30.0, 47.0, 150.0, 7.0], [-28.0, 0.0, 142.0, 8.0], [-13.0, 0.0, 7.0, 94.0]]:
+		_mesh_box(self, Vector3(st[2], 0.08, st[3]), Vector3(st[0], 0.02, st[1]), asphalt)
+		if st[2] > st[3]:
+			for k in int(st[2] / 8.0):
+				_mesh_box(self, Vector3(3.0, 0.02, 0.18), Vector3(st[0] - st[2] / 2.0 + 4.0 + k * 8.0, 0.07, st[1]), paint)
+	for lx in [-90.0, -60.0, -30.0, 0.0, 30.0]:
+		_lamp_post(Vector3(lx + 13.0, 0, -51.5), 0.0)
+		_lamp_post(Vector3(lx, 0, 51.5), PI)
+	# mosque
+	var cream := _flat(Color(0.82, 0.78, 0.66))
+	var green := _flat(Color(0.1, 0.38, 0.25), 0.4, 0.3)
+	var mq := StaticBody3D.new()
+	mq.position = Vector3(16.0, 0, 27.0)
+	_box(mq, Vector3(11.0, 5.5, 9.0), Vector3(0, 2.75, 0), cream, true)
+	_mesh_box(mq, Vector3(11.6, 0.4, 9.6), Vector3(0, 5.6, 0), cream)
+	_mesh_box(mq, Vector3(1.8, 3.0, 0.2), Vector3(0, 1.5, -4.55), _flat(Color(0.2, 0.12, 0.06)))
+	var dome := MeshInstance3D.new()
+	var sph := SphereMesh.new()
+	sph.radius = 3.0; sph.height = 4.6; sph.is_hemisphere = false
+	sph.material = green
+	dome.mesh = sph
+	dome.position = Vector3(0, 6.6, 0)
+	mq.add_child(dome)
+	var tower := MeshInstance3D.new()
+	var tc := CylinderMesh.new()
+	tc.top_radius = 0.75; tc.bottom_radius = 1.0; tc.height = 15.0; tc.radial_segments = 12
+	tc.material = cream
+	tower.mesh = tc
+	tower.position = Vector3(-4.3, 7.5, 3.3)
+	mq.add_child(tower)
+	var tcs := CollisionShape3D.new()
+	var tsh := CylinderShape3D.new()
+	tsh.radius = 1.0; tsh.height = 15.0
+	tcs.shape = tsh
+	tcs.position = tower.position
+	mq.add_child(tcs)
+	_mesh_box(mq, Vector3(2.4, 0.3, 2.4), Vector3(-4.3, 11.5, 3.3), cream)
+	var cap := MeshInstance3D.new()
+	var cc := CylinderMesh.new()
+	cc.top_radius = 0.0; cc.bottom_radius = 0.9; cc.height = 2.2
+	cc.material = green
+	cap.mesh = cc
+	cap.position = Vector3(-4.3, 16.1, 3.3)
+	mq.add_child(cap)
+	var ml := OmniLight3D.new()
+	ml.position = Vector3(-4.3, 12.4, 3.3)
+	ml.light_color = Color(0.4, 1.0, 0.6)
+	ml.light_energy = 2.5
+	ml.omni_range = 14.0
+	mq.add_child(ml)
+	add_child(mq)
+
 # ---------------- trees (MultiMesh + 2 LOD levels per chunk) ----------------
 func _tree_mesh(variant: int, hi: bool) -> ArrayMesh:
 	var rng := RandomNumberGenerator.new()
@@ -944,9 +1172,40 @@ func _tree_mesh(variant: int, hi: bool) -> ArrayMesh:
 	mesh.surface_set_material(1, _mat.foliage)
 	return mesh
 
+func _palm_mesh(variant: int, hi: bool) -> ArrayMesh:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 300 + variant
+	var hgt := rng.randf_range(6.5, 9.0)
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var trunk := CylinderMesh.new()
+	trunk.top_radius = 0.2; trunk.bottom_radius = 0.34; trunk.height = hgt
+	trunk.radial_segments = 8 if hi else 5
+	trunk.rings = 3 if hi else 1
+	st.append_from(trunk, 0, Transform3D(Basis(), Vector3(0, hgt / 2.0 - 0.3, 0)))
+	var mesh := st.commit()
+	mesh.surface_set_material(0, _mat.bark)
+	var sf := SurfaceTool.new()
+	sf.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var fronds := 11 if hi else 6
+	for i in fronds: # long drooping fronds around the crown
+		var frond := CylinderMesh.new()
+		frond.top_radius = 0.0; frond.bottom_radius = 0.42
+		frond.height = rng.randf_range(3.0, 4.0)
+		frond.radial_segments = 4; frond.rings = 1; frond.cap_bottom = false
+		var yaw := i * TAU / fronds + rng.randf_range(-0.2, 0.2)
+		var droop := rng.randf_range(1.75, 2.2) # tip points outward and down
+		var bs := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, droop) * Basis.from_scale(Vector3(1.0, 1.0, 0.18))
+		sf.append_from(frond, 0, Transform3D(bs, Vector3(0, hgt - 0.2, 0) + bs * Vector3(0, frond.height / 2.0, 0)))
+	sf.commit(mesh)
+	mesh.surface_set_material(1, _mat.foliage)
+	return mesh
+
 func _build_trees() -> void:
 	var meshes := []
-	for v in 2: meshes.append([_tree_mesh(v, true), _tree_mesh(v, false)])
+	for v in 2:
+		if map_id == "fareej": meshes.append([_palm_mesh(v, true), _palm_mesh(v, false)])
+		else: meshes.append([_tree_mesh(v, true), _tree_mesh(v, false)])
 	var buckets := {} # "cx_cz_variant" -> Array[Transform3D]
 	var body := StaticBody3D.new()
 	body.name = "TreeTrunks"
@@ -1038,10 +1297,10 @@ func _build_grass() -> void:
 			var center := Vector3((cx + 0.5) * GRASS_CHUNK - HALF, 0, (cz + 0.5) * GRASS_CHUNK - HALF)
 			center.y = height(center.x, center.z)
 			var list: Array[Transform3D] = []
-			for i in GRASS_PER_CHUNK:
+			for i in grass_per_chunk:
 				var x := center.x + rng.randf_range(-GRASS_CHUNK / 2.0, GRASS_CHUNK / 2.0)
 				var z := center.z + rng.randf_range(-GRASS_CHUNK / 2.0, GRASS_CHUNK / 2.0)
-				if in_site(x, z, -1.0): continue
+				if in_site(x, z, -1.0) or on_street(x, z, 0.5): continue
 				var sc := rng.randf_range(0.8, 1.5)
 				var bs := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc, sc, sc))
 				list.append(Transform3D(bs, Vector3(x, height(x, z), z) - center))
@@ -1139,6 +1398,13 @@ func _process(_dt: float) -> void:
 	var t := Time.get_ticks_msec() / 1000.0
 	for i in flicker.size():
 		flicker[i].light_energy = 1.6 * (0.75 + 0.25 * noise.get_noise_1d(t * 220.0 + i * 50.0) + 0.1 * sin(t * 13.0 + i))
+	for c in crow_nodes: c.cool = maxf(c.cool - _dt, 0.0)
+	market_t = maxf(market_t - _dt, 0.0)
+	for ml in market_lights: # blackout while the killer is inside; a rare stutter otherwise
+		var base: float = ml[1]
+		if market_t > 0.0: ml[0].light_energy = base if sin(t * 43.0) > 0.1 else 0.0
+		elif market_dark: ml[0].light_energy = 0.0
+		else: ml[0].light_energy = base * (0.25 if (sin(t * 0.37) > 0.985 and sin(t * 31.0) > 0.0) else 1.0)
 	for g in gen_nodes: # a generator about to start: its lamps stutter on and off
 		if g.done: continue
 		if g.blink:

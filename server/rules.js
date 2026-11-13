@@ -10,9 +10,10 @@ class Rules {
     this.gens = []; this.gates = []; this.pallets = []; this.s = {}; this.roles = {};
     this.killer = ''; this.carrying = ''; this.stun = 0; this.powerCd = 0;
     this.healers = {}; this.lastHit = {}; this.powered = false; this.over = false; this.clock = 0;
-    this.pos = {}; this.layout = null; this.ready = false;
+    this.pos = {}; this.layout = null; this.ready = false; this.hatch = -1; this.score = {};
     for (const p of players) {
       this.roles[p.name] = p.role;
+      this.score[p.name] = 0;
       if (p.role === 'killer') this.killer = p.name;
       else this.s[p.name] = { hp: 'ok', hooks: 0, hook_i: -1, t: 0, heal: 0, locker: -1, item: true, tries: 0 };
     }
@@ -26,6 +27,7 @@ class Rules {
     for (let i = 0; i < l.p.length; i++) this.pallets.push(0);
     this.ready = true;
   }
+  add(name, pts) { if (name in this.score) this.score[name] += pts; }
   setPos(name, p) { this.pos[name] = p; }
   near(name, xz, r = REACH) {
     const a = this.pos[name];
@@ -60,18 +62,22 @@ class Rules {
         break;
       case 'skill':
         if (i >= 0 && i < this.gens.length && this.gens[i].reps[from]) {
-          if (d.ok) this.gens[i].p = Math.min(this.gens[i].p + 0.03, 1);
+          if (d.ok) { this.gens[i].p = Math.min(this.gens[i].p + 0.03, 1); this.add(from, 5); }
           else { this.gens[i].p = Math.max(this.gens[i].p - 0.08, 0); out.push({ k: 'boom', i }); }
         }
         break;
       case 'escape':
-        if (this.freeNow(from) && this.powered) { this.s[from].hp = 'escaped'; this.drop(from); }
+        {
+          const viaHatch = this.hatch >= 0 && d.h === true && this.near(from, (L.x || [])[this.hatch]);
+          if (this.freeNow(from) && (this.powered || viaHatch)) { this.s[from].hp = 'escaped'; this.add(from, 150); this.drop(from); }
+        }
         break;
       case 'hit':
         if (isKiller && this.stun <= 0 && this.carrying === '' && this.freeNow(n) && this.nearPlayer(from, n)
           && this.clock - (this.lastHit[n] ?? -99) > HIT_COOLDOWN) {
           this.lastHit[n] = this.clock;
           if (this.s[n].hp === 'ok') { this.s[n].hp = 'hurt'; this.s[n].heal = 0; this.drop(n); } else this.down(n);
+          this.add(from, this.s[n].hp === 'hurt' ? 30 : 50);
           out.push({ k: 'hurt', n, s: this.s[n].hp });
         }
         break;
@@ -86,6 +92,7 @@ class Rules {
           p.hooks += 1;
           if (p.hooks >= 3) p.hp = 'dead';
           else { p.hp = 'hooked'; p.hook_i = i; p.t = HOOK_TIME[p.hooks - 1]; p.tries = 0; }
+          this.add(from, p.hp === 'hooked' ? 80 : 180);
           out.push({ k: 'hooked', n: this.carrying, s: p.hp });
           this.carrying = '';
         }
@@ -93,6 +100,7 @@ class Rules {
       case 'rescue':
         if (this.freeNow(from) && this.hp(n) === 'hooked' && this.near(from, L.h[this.s[n].hook_i])) {
           const p = this.s[n]; p.hp = 'hurt'; p.hook_i = -1; p.heal = 0;
+          this.add(from, 60);
           out.push({ k: 'rescued', n, by: from });
         }
         break;
@@ -100,7 +108,7 @@ class Rules {
         const p = this.s[from];
         if (p && p.hp === 'hooked' && p.tries < MAX_TRIES) {
           p.tries += 1;
-          if (Math.random() < STRUGGLE_CHANCE) { p.hp = 'hurt'; p.hook_i = -1; p.heal = 0; out.push({ k: 'rescued', n: from, by: from }); }
+          if (Math.random() < STRUGGLE_CHANCE) { p.hp = 'hurt'; p.hook_i = -1; p.heal = 0; this.add(from, 30); out.push({ k: 'rescued', n: from, by: from }); }
           else { p.t -= STRUGGLE_COST; out.push({ k: 'struggle', n: from }); }
         }
         break;
@@ -128,12 +136,12 @@ class Rules {
         if (this.freeNow(from) && i >= 0 && i < this.pallets.length && this.pallets[i] === 0 && this.near(from, L.p[i])) {
           this.pallets[i] = 1;
           out.push({ k: 'pallet', i });
-          if (this.killer && this.pos[this.killer] && this.near(this.killer, L.p[i], 2.3)) { this.stun = STUN_TIME; out.push({ k: 'stun' }); }
+          if (this.killer && this.pos[this.killer] && this.near(this.killer, L.p[i], 2.3)) { this.stun = STUN_TIME; this.add(from, 50); out.push({ k: 'stun' }); }
         }
         break;
       case 'break':
         if (isKiller && i >= 0 && i < this.pallets.length && this.pallets[i] === 1 && this.near(from, L.p[i])) {
-          this.pallets[i] = 2; out.push({ k: 'broke', i });
+          this.pallets[i] = 2; this.add(from, 10); out.push({ k: 'broke', i });
         }
         break;
       case 'power':
@@ -164,6 +172,7 @@ class Rules {
     for (const g of this.gens) {
       if (g.done || this.powered) continue;
       g.p += dt * Object.keys(g.reps).length / GEN_TIME;
+      for (const r of Object.keys(g.reps)) this.add(r, dt * 100 / GEN_TIME);
       if (g.p >= 1) { g.p = 1; g.done = true; g.reps = {}; }
     }
     if (!this.powered && this.doneCount() >= NEED) {
@@ -173,7 +182,7 @@ class Rules {
     }
     for (const n in this.s) {
       const p = this.s[n];
-      if (p.hp === 'hooked' || p.hp === 'down') { p.t -= dt; if (p.t <= 0) p.hp = 'dead'; }
+      if (p.hp === 'hooked' || p.hp === 'down') { p.t -= dt; if (p.t <= 0) { p.hp = 'dead'; this.add(this.killer, 100); } }
     }
     for (const h of Object.keys(this.healers)) {
       const tgt = this.healers[h];
@@ -185,12 +194,17 @@ class Rules {
       if (p.heal >= 1) {
         p.heal = 0;
         p.hp = p.hp === 'down' ? 'hurt' : 'ok';
+        this.add(h, self ? 20 : 40);
         if (self) p.item = false;
         delete this.healers[h];
       }
     }
     const names = Object.keys(this.s);
-    if (names.length > 0 && !names.some((n) => LIVE.includes(this.s[n].hp))) this.over = true;
+    const live = names.filter((n) => LIVE.includes(this.s[n].hp)).length;
+    if (names.length > 0 && live === 0) this.over = true;
+    else if (live === 1 && names.length > 1 && this.hatch < 0 && !this.powered && this.layout.x && this.layout.x.length > 0) {
+      this.hatch = Math.floor(Math.random() * this.layout.x.length); // last one standing: a way out opens somewhere
+    }
   }
 
   snapshot() {
@@ -199,7 +213,8 @@ class Rules {
     for (const n in this.s) { const p = this.s[n]; ss[n] = [p.hp, p.hooks, p.hook_i, Math.ceil(p.t), r3(p.heal), p.locker, p.item, p.tries]; }
     return {
       k: 'gs', g: this.gens.map((g) => r3(g.p)), d: this.gens.map((g) => g.done), to: this.gates.map((g) => g.open),
-      pw: this.powered, s: ss, pl: this.pallets, kc: this.carrying, ks: r3(this.stun), kp: Math.round(this.powerCd * 10) / 10, ov: this.over,
+      pw: this.powered, s: ss, pl: this.pallets, kc: this.carrying, ks: r3(this.stun), kp: Math.round(this.powerCd * 10) / 10, ov: this.over, hx: this.hatch,
+      sc: Object.fromEntries(Object.entries(this.score).map(([n, v]) => [n, Math.round(v)])),
     };
   }
 }

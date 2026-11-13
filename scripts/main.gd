@@ -11,6 +11,7 @@ const NATURAL := {"walk": 1.3, "run": 3.7, "crouchwalk": 1.0, "injured": 1.6}
 const ACCEL := 20.0
 const DECEL := 28.0
 const SFX := {"gen_loop": "wav", "hit": "wav", "ding": "wav", "boom": "wav", "pallet": "wav", "hurt": "wav", "gate": "mp3",
+	"crow": "wav", "creak": "wav", "click": "wav", "hatch": "wav",
 	"heart": "mp3", "breath": "mp3", "steps_out": "mp3", "steps_in": "mp3", "gen_run": "mp3", "chase": "mp3", "ambient": "mp3"}
 const TERROR_RADIUS := 24.0 # survivors start to feel the killer inside this distance
 
@@ -74,6 +75,13 @@ var was_powered := false
 var danger := 0.0 # survivors: how close the killer is (0..1)
 var noise := 0.0 # killer: loudest nearby survivor (0..1)
 var noise_dir := 0.0
+var flash_light: SpotLight3D
+var light_on := false
+var battery := 100.0 # percent; a full charge lasts about two and a half minutes
+var door_cool := {}
+var last_hatch := -1
+var xp_saved := false
+var lobby_scene: Node3D
 var thrash := {} # name -> seconds of hard thrashing left (after a failed escape attempt)
 
 func _ready() -> void:
@@ -81,6 +89,105 @@ func _ready() -> void:
 	add_child(menu)
 	menu.start_game.connect(_start)
 	Net.message.connect(_on_net)
+	_build_lobby_scene()
+
+## Start screen: the five characters gathered around a campfire, camera drifting slowly around them.
+func _build_lobby_scene() -> void:
+	lobby_scene = Node3D.new()
+	add_child(lobby_scene)
+	var env := Environment.new()
+	env.background_mode = Environment.BG_COLOR
+	env.background_color = Color(0.008, 0.01, 0.018)
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color(0.1, 0.13, 0.22)
+	env.ambient_light_energy = 0.6
+	env.fog_enabled = true
+	env.fog_light_color = Color(0.02, 0.025, 0.04)
+	env.fog_density = 0.06
+	env.glow_enabled = true
+	env.tonemap_mode = Environment.TONE_MAPPER_ACES
+	var we := WorldEnvironment.new()
+	we.environment = env
+	lobby_scene.add_child(we)
+	var ground := MeshInstance3D.new()
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(60, 60)
+	var gm := StandardMaterial3D.new()
+	gm.albedo_color = Color(0.09, 0.08, 0.06)
+	gm.roughness = 1.0
+	pm.material = gm
+	ground.mesh = pm
+	lobby_scene.add_child(ground)
+	var wood := StandardMaterial3D.new()
+	wood.albedo_color = Color(0.16, 0.09, 0.05)
+	for k in 5: # logs
+		var log := MeshInstance3D.new()
+		var cyl := CylinderMesh.new()
+		cyl.top_radius = 0.07; cyl.bottom_radius = 0.09; cyl.height = 0.9
+		cyl.material = wood
+		log.mesh = cyl
+		log.rotation = Vector3(1.05, k * TAU / 5.0, 0)
+		log.position = Vector3(sin(k * TAU / 5.0) * 0.18, 0.28, cos(k * TAU / 5.0) * 0.18)
+		lobby_scene.add_child(log)
+	var fire := OmniLight3D.new()
+	fire.name = "Fire"
+	fire.position = Vector3(0, 0.7, 0)
+	fire.light_color = Color(1.0, 0.55, 0.2)
+	fire.light_energy = 3.2
+	fire.omni_range = 9.0
+	fire.shadow_enabled = true
+	lobby_scene.add_child(fire)
+	var flames := GPUParticles3D.new()
+	var fp := ParticleProcessMaterial.new()
+	fp.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+	fp.emission_sphere_radius = 0.18
+	fp.gravity = Vector3(0, 2.2, 0)
+	fp.initial_velocity_min = 0.2; fp.initial_velocity_max = 0.7
+	fp.direction = Vector3.UP
+	fp.spread = 25.0
+	fp.scale_min = 0.5; fp.scale_max = 1.2
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(1.0, 0.8, 0.3, 0.9)); ramp.set_color(1, Color(0.9, 0.15, 0.02, 0.0))
+	var gt := GradientTexture1D.new()
+	gt.gradient = ramp
+	fp.color_ramp = gt
+	flames.process_material = fp
+	var fq := QuadMesh.new()
+	fq.size = Vector2(0.22, 0.22)
+	var fm := StandardMaterial3D.new()
+	fm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	fm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	fm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	fm.vertex_color_use_as_albedo = true
+	fm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	fq.material = fm
+	flames.draw_pass_1 = fq
+	flames.amount = 60
+	flames.lifetime = 0.9
+	flames.position = Vector3(0, 0.3, 0)
+	lobby_scene.add_child(flames)
+	var chars := ["survivor1", "survivor2", "killer", "survivor3", "survivor4"]
+	for k in chars.size():
+		var ang := -1.25 + k * 0.62
+		var r := CharacterRig.new()
+		lobby_scene.add_child(r)
+		r.setup(chars[k], ["campfire", "idle"])
+		var dist := 2.9 if chars[k] == "killer" else 2.1
+		r.position = Vector3(sin(ang) * dist, 0, -cos(ang) * dist)
+		r.rotation.y = atan2(-r.position.x, -r.position.z)
+		if chars[k] == "killer": r.play("idle")
+		else:
+			r.play("campfire")
+			r.player.seek(3.0 + k * 1.7, true)
+	var pivot := Node3D.new()
+	pivot.name = "Pivot"
+	lobby_scene.add_child(pivot)
+	var cam := Camera3D.new()
+	cam.position = Vector3(-1.9, 1.5, 5.2) # fire sits right of centre: the menu column is on the left
+	cam.rotation = Vector3(-0.1, -0.05, 0)
+	cam.fov = 55.0
+	pivot.add_child(cam)
+	cam.current = true
 
 func _start(c: Dictionary) -> void:
 	if started: return
@@ -88,12 +195,15 @@ func _start(c: Dictionary) -> void:
 	offline = c.get("offline", false)
 	my_name = str(c.me)
 	menu.visible = false
+	if lobby_scene:
+		lobby_scene.queue_free()
+		lobby_scene = null
 	world = NightWorld.new()
-	world.configure(str(c.map))
+	world.configure(str(c.map), int(c.get("seed", randi() % 1000000) if not offline else randi() % 1000000))
 	add_child(world)
 	world.build() # staged: terrain + buildings + objectives first, the rest over the next frames
 	rules = Rules.new()
-	rules.setup(world.gen_points.size(), world.gate_points.size(), world.pallet_points.size(), c.players)
+	rules.setup(world.gen_points.size(), world.gate_points.size(), world.pallet_points.size(), world.hatch_points.size(), c.players)
 	for p in c.players:
 		if str(p.name) == my_name:
 			my_role = str(p.role)
@@ -105,7 +215,8 @@ func _start(c: Dictionary) -> void:
 	_build_ui()
 	if not offline:
 		var xz := func(v: Vector3) -> Array: return [snappedf(v.x, 0.1), snappedf(v.z, 0.1)]
-		var lay := {"g": [], "h": [], "p": []}
+		var lay := {"g": [], "h": [], "p": [], "x": []}
+		for v in world.hatch_points: lay.x.append(xz.call(v))
 		for v in world.gen_points: lay.g.append(xz.call(v))
 		for v in world.hook_points: lay.h.append(xz.call(v))
 		for v in world.pallet_points: lay.p.append(xz.call(v[0]))
@@ -150,13 +261,26 @@ func _build_player(char_name: String, at: Vector3) -> void:
 		cam.near = 0.1
 		rig.visible = false
 		lamp.position = Vector3(0, 0.3, -0.5)
-		lamp.light_energy = 1.0; lamp.omni_range = 11.0
+		lamp.light_energy = 0.8; lamp.omni_range = 11.0
 	else: # third person
 		arm.spring_length = 3.4
 		arm.position.y = 0.3
 		cam.fov = 70.0
 		lamp.position = Vector3(0.6, 0.9, 1.6)
-		lamp.light_energy = 1.5; lamp.omni_range = 9.0
+		lamp.light_energy = 0.45; lamp.omni_range = 7.0 # just enough to read your own character; the flashlight does the rest
+		flash_light = _make_flashlight()
+		flash_light.position = Vector3(0, 1.45, 0)
+		body.add_child(flash_light)
+
+func _make_flashlight() -> SpotLight3D:
+	var l := SpotLight3D.new()
+	l.light_color = Color(1.0, 0.95, 0.85)
+	l.light_energy = 7.0
+	l.spot_range = 24.0
+	l.spot_angle = 26.0
+	l.spot_attenuation = 0.7
+	l.visible = false
+	return l
 
 func _add_remote(p: Dictionary) -> void:
 	var node := Node3D.new()
@@ -183,13 +307,19 @@ func _add_remote(p: Dictionary) -> void:
 	glow.light_energy = 0.5; glow.omni_range = 3.5
 	if str(p.role) == "killer": glow.light_color = Color(1, 0.25, 0.2)
 	node.add_child(glow)
+	var torch: SpotLight3D = null
+	if str(p.role) == "survivor": # other survivors' flashlights are real lights: the killer can spot them
+		torch = _make_flashlight()
+		torch.position = Vector3(0, 1.45, 0.2)
+		torch.rotation.y = PI
+		r.add_child(torch)
 	var steps := AudioStreamPlayer3D.new()
 	steps.stream = sounds.steps_out
 	steps.unit_size = 4.0
 	steps.max_distance = 32.0
 	node.add_child(steps)
 	add_child(node)
-	remotes[str(p.name)] = {"node": node, "rig": r, "pos": node.position, "yaw": 0.0, "anim": "idle", "role": str(p.role), "step": 0.0, "steps": steps}
+	remotes[str(p.name)] = {"node": node, "rig": r, "pos": node.position, "yaw": 0.0, "anim": "idle", "role": str(p.role), "step": 0.0, "steps": steps, "torch": torch, "lit": false}
 
 # ---------------- audio ----------------
 func _loop_player(stream_name: String, db: float, autoplay := false) -> AudioStreamPlayer:
@@ -299,6 +429,7 @@ func _on_net(m: Dictionary) -> void:
 				r.pos = Vector3(m.p[0], m.p[1], m.p[2])
 				r.yaw = float(m.p[3])
 				r.anim = str(m.a)
+				r.lit = int(m.get("f", 0)) == 1
 		"ev":
 			var d = m.get("d")
 			if d is Dictionary and str(m.get("n", "?")) == "": # only the server referees
@@ -351,6 +482,10 @@ func _on_event(e: Dictionary) -> void:
 		"empty":
 			if my_role == "killer": _flash("الخزانة فاضية")
 		"pallet": _sfx("pallet", world.pallet_points[int(e.i)][0], 4.0)
+		"crows":
+			if world.scare_crows(int(e.i)):
+				_sfx("crow", world.crow_points[int(e.i)] + Vector3(0, 6, 0), 10.0)
+				if my_role == "killer": _flash("غربان طارت! أحد يركض هناك")
 		"broke": _sfx("pallet", world.pallet_points[int(e.i)][0], 2.0, 0.7)
 		"stun":
 			if my_role == "killer": _flash("انصعقت!")
@@ -418,14 +553,31 @@ func _show_results() -> void:
 	title.add_theme_font_size_override("font_size", 34)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(title)
-	for n in rules.s:
+	# ranking by points
+	var names: Array = rules.score.keys()
+	names.sort_custom(func(x, y): return rules.score[x] > rules.score[y])
+	var rank := 1
+	for n in names:
 		var l := Label.new()
-		var esc: bool = rules.s[n].hp == "escaped"
-		l.text = "%s — %s" % [n, "هرب" if esc else "مات"]
+		var what := "القاتل"
+		if rules.s.has(n): what = "هرب" if rules.s[n].hp == "escaped" else "مات"
+		l.text = "%d. %s — %d نقطة (%s)" % [rank, n, roundi(rules.score[n]), what]
 		l.add_theme_font_size_override("font_size", 24)
-		l.add_theme_color_override("font_color", Color(0.5, 1, 0.6) if esc else Color(1, 0.45, 0.4))
+		l.add_theme_color_override("font_color", Color(1, 0.85, 0.4) if n == my_name else (Color(1, 0.5, 0.45) if not rules.s.has(n) else Color(0.8, 0.9, 1)))
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		v.add_child(l)
+		rank += 1
+	if not xp_saved: # points become experience; levels are kept on the phone
+		xp_saved = true
+		var before := Net.level()
+		Net.xp += roundi(rules.score.get(my_name, 0.0))
+		Net.save()
+		var lv := Label.new()
+		lv.text = "المستوى %d%s  •  الخبرة %d" % [Net.level(), "  (ترقية!)" if Net.level() > before else "", Net.xp]
+		lv.add_theme_font_size_override("font_size", 22)
+		lv.add_theme_color_override("font_color", Color(0.6, 1, 0.7))
+		lv.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(lv)
 	var b := Button.new()
 	b.text = "رجوع"
 	b.custom_minimum_size.y = 56
@@ -453,6 +605,7 @@ func _buttons() -> Array:
 		out.append([Vector2(s.x - 215, s.y - 215), 44.0, "قفز", "vault", ctx.has("vault")])
 		out.append([Vector2(s.x - 375, s.y - 68), 40.0, "علاج", "heal", ctx.has("heal")])
 		out.append([Vector2(s.x - 345, s.y - 170), 40.0, "حقيبة", "item", ctx.has("item")])
+		out.append([Vector2(s.x - 88, s.y - 352), 40.0, "كشاف", "light", battery > 0.0])
 	return out
 
 func _text(pos: Vector2, t: String, size: int, col := Color.WHITE, width := 700.0) -> void:
@@ -473,11 +626,13 @@ func _draw_ui() -> void:
 		ui.draw_circle(stick_origin + stick_vec * 70, 32, Color(1, 1, 1, 0.35))
 	for b in _buttons():
 		var id: String = b[3]
-		var on: bool = (id == "crouch" and crouch) or (id == "sprint" and sprint) or (not hold.is_empty() and hold.btn == id)
+		var on: bool = (id == "crouch" and crouch) or (id == "sprint" and sprint) or (id == "light" and light_on) or (not hold.is_empty() and hold.btn == id)
 		var col := Color(0.9, 0.2, 0.2, 0.5) if on else Color(1, 1, 1, 0.17 if b[4] else 0.06)
 		ui.draw_circle(b[0], b[1], col)
 		ui.draw_arc(b[0], b[1], 0, TAU, 40, Color(1, 1, 1, 0.55 if b[4] else 0.2), 2.0)
 		ui.draw_string(Net.font, b[0] + Vector2(-b[1], 8), b[2], HORIZONTAL_ALIGNMENT_CENTER, b[1] * 2.0, 21, Color(1, 1, 1, 1.0 if b[4] else 0.4))
+		if id == "light": # battery ring
+			ui.draw_arc(b[0], b[1] + 5.0, -PI / 2.0, -PI / 2.0 + TAU * battery / 100.0, 32, Color(1, 0.9, 0.4) if battery > 25.0 else Color(1, 0.3, 0.2), 4.0)
 		if id == "power": # power indicator: ring refills during the cooldown
 			var f := 1.0 - rules.power_cd / Rules.POWER_CD
 			ui.draw_arc(b[0], b[1] + 5.0, -PI / 2.0, -PI / 2.0 + TAU * f, 40, Color(1, 0.5, 0.2) if f < 1.0 else Color(0.4, 1, 0.5), 5.0)
@@ -568,6 +723,9 @@ func _draw_minimap() -> void:
 	for i in world.gate_points.size():
 		var p: Vector3 = world.gate_points[i][0]
 		minimap.draw_rect(Rect2(c + Vector2(p.x, p.z) * k - Vector2(7, 3), Vector2(14, 6)), Color(0.4, 1, 0.5) if rules.gates[i].open else Color(1, 0.3, 0.25))
+	if rules.hatch >= 0 and my_role == "survivor":
+		var hp2: Vector3 = world.hatch_points[rules.hatch]
+		minimap.draw_circle(c + Vector2(hp2.x, hp2.z) * k, 5.0, Color(0.5, 1, 0.7))
 	for n in remotes: # survivors see their team; the killer has to hunt
 		var r = remotes[n]
 		if my_role == "survivor" and r.role == "survivor" and r.node.visible:
@@ -625,6 +783,7 @@ func _update_ctx() -> void:
 		if rules.powered:
 			for i in world.gate_points.size():
 				if world.is_outside_gate(i, pos): _ev({"k": "escape"})
+		if rules.hatch >= 0 and _near(pos, world.hatch_points[rules.hatch], 1.5): _ev({"k": "escape", "h": true})
 	elif rules.stun <= 0.0:
 		if rules.carrying != "":
 			for i in world.hook_points.size():
@@ -653,6 +812,10 @@ func _press(id: String, touch: int) -> void:
 		"crouch":
 			crouch = not crouch
 			if crouch: sprint = false
+		"light":
+			if battery > 0.0 or light_on:
+				light_on = not light_on
+				_sfx("click", null, -6.0)
 		"attack":
 			if attack_cd <= 0.0 and rules.stun <= 0.0 and rules.carrying == "":
 				attack_t = 1.1
@@ -769,12 +932,16 @@ func me_locker() -> int:
 func _hook_pose(r: CharacterRig, n: String, dt: float) -> void:
 	var t := Time.get_ticks_msec() / 1000.0 + float(n.hash() % 100)
 	var hard: float = 2.6 if thrash.get(n, 0.0) > 0.0 else 1.0
-	r.position.y = lerpf(r.position.y, 0.85 + 0.05 * sin(t * 6.0 * hard), 1.0 - exp(-10.0 * dt))
-	r.rotation = Vector3(0.1 * hard * sin(t * 3.3 * hard), 0.25 * hard * sin(t * 1.7 * hard), 0.13 * hard * sin(t * 4.6 * hard))
-	r.play("run", 0.45 * hard)
+	r.position.y = lerpf(r.position.y, 0.62 + 0.04 * sin(t * 6.0 * hard), 1.0 - exp(-10.0 * dt))
+	r.rotation = Vector3(0.07 * hard * sin(t * 3.3 * hard), 0.22 * hard * sin(t * 1.7 * hard), 0.1 * hard * sin(t * 4.6 * hard))
+	r.play("hang", 1.0 * hard)
 
 # ---------------- per-frame ----------------
 func _process(dt: float) -> void:
+	if lobby_scene:
+		var tt := Time.get_ticks_msec() / 1000.0
+		(lobby_scene.get_node("Fire") as OmniLight3D).light_energy = 3.2 * (0.8 + 0.2 * sin(tt * 11.0) * sin(tt * 4.3))
+		(lobby_scene.get_node("Pivot") as Node3D).rotation.y = 0.12 * sin(tt * 0.15)
 	if not started: return
 	flash_t = maxf(flash_t - dt, 0.0)
 	for i in boom_t.keys(): boom_t[i] = maxf(boom_t[i] - dt, 0.0)
@@ -791,10 +958,10 @@ func _process(dt: float) -> void:
 		var target: Vector3 = r.pos
 		var lift := 0.0
 		if st == "carried":
-			target = kpos; lift = 1.0; anim = "dying"
+			target = kpos; lift = 0.25; anim = "carried"
 		elif st == "hooked":
 			target = world.hook_points[rules.s[n].hook_i] + Vector3(0, 0, 0.9)
-		elif st == "down" or st == "dead": anim = "dying"
+		elif st == "dead" or (st == "down" and anim != "crawl"): anim = "dying"
 		elif st == "hurt" and anim == "idle": anim = "injured"
 		r.node.position = r.node.position.lerp(target, w)
 		if st == "hooked":
@@ -804,8 +971,9 @@ func _process(dt: float) -> void:
 			r.rig.rotation = Vector3(0, lerp_angle(r.rig.rotation.y, r.yaw, w), 0)
 			r.rig.play(anim)
 		r.node.visible = st != "escaped" and not (rules.s.has(n) and rules.s[n].locker >= 0)
+		if r.torch: r.torch.visible = r.lit and st in ["ok", "hurt"]
 		# footsteps are 3D and depend on the ground; the killer also gets scratch marks and the detection indicator
-		var moving: bool = r.node.visible and anim in ["run", "walk", "injured"]
+		var moving: bool = r.node.visible and anim in ["run", "walk", "injured", "carry"]
 		_steps(r.steps, r.node.position, moving, anim == "run", 4.0 if r.role == "killer" else 0.0)
 		if anim == "run" and r.node.visible and my_role == "killer" and r.role == "survivor":
 			r.step -= dt
@@ -843,6 +1011,32 @@ func _process(dt: float) -> void:
 		# the killer only notices the flicker from within 8 m
 		if i < world.gen_nodes.size(): world.gen_nodes[i].blink = ending and (my_role != "killer" or body.position.distance_to(world.gen_points[i]) < 8.0)
 	for i in rules.gates.size(): world.set_gate_state(i, rules.gates[i].open)
+	if rules.hatch != last_hatch:
+		last_hatch = rules.hatch
+		world.set_hatch(rules.hatch)
+		if rules.hatch >= 0:
+			_sfx("hatch", world.hatch_points[rules.hatch], 8.0)
+			_flash("انفتحت فتحة هروب! دوّر عليها" if my_role == "survivor" else "انفتحت فتحة هروب — لا تخليه يوصلها")
+	world.set_market_dark(rules.killer != "" and world.in_market(kpos))
+	# runners startle crows; anyone passing a doorway makes it creak
+	for n in door_cool.keys(): door_cool[n] = maxf(door_cool[n] - dt, 0.0)
+	var movers := []
+	if my_role == "survivor" and my_state in ["ok", "hurt"] and Vector2(body.velocity.x, body.velocity.z).length() > 2.6: movers.append(body.position)
+	for n in remotes:
+		if remotes[n].role == "survivor" and remotes[n].anim == "run" and remotes[n].node.visible: movers.append(remotes[n].node.position)
+	for mp in movers:
+		for i in world.crow_points.size():
+			if _near(mp, world.crow_points[i], 6.5): _on_event({"k": "crows", "i": i})
+	var walkers := [body.position]
+	for n in remotes:
+		if remotes[n].node.visible: walkers.append(remotes[n].node.position)
+	for i in world.door_points.size():
+		if door_cool.get(i, 0.0) > 0.0: continue
+		for wp in walkers:
+			if _near(wp, world.door_points[i][0], 0.8):
+				door_cool[i] = 5.0
+				_sfx("creak", world.door_points[i][0] + Vector3(0, 1.5, 0), 2.0, randf_range(0.85, 1.15))
+				break
 	for i in rules.pallets.size(): world.set_pallet_state(i, rules.pallets[i])
 	if rules.powered and not was_powered:
 		was_powered = true
@@ -903,8 +1097,8 @@ func _physics_process(delta: float) -> void:
 	var pinned := true
 	if my_state == "carried":
 		body.position = _pos_of(rules.killer)
-		rig.position.y = 1.0
-		rig.play("dying")
+		rig.position.y = 0.25
+		rig.play("carried")
 	elif my_state == "hooked":
 		body.position = world.hook_points[me.hook_i] + Vector3(0, 0, 0.9)
 		_hook_pose(rig, my_name, delta)
@@ -918,7 +1112,7 @@ func _physics_process(delta: float) -> void:
 		body.position = p
 		var dv: Vector3 = (vault.to as Vector3) - (vault.from as Vector3)
 		rig.rotation.y = atan2(dv.x, dv.z)
-		rig.play("run", 1.2)
+		rig.play("vault", 1.17 / float(vault.dur))
 		if f >= 1.0: vault = {}
 	else:
 		pinned = false
@@ -929,11 +1123,19 @@ func _physics_process(delta: float) -> void:
 		body.position = lp[0] + Basis(Vector3.UP, lp[1]) * Vector3(0, 0, 1.1)
 	last_locker = locker
 	if my_role == "survivor": rig.visible = locker < 0 and my_state != "escaped"
-	cshape.disabled = pinned or my_state in ["down", "dead", "escaped"]
+	cshape.disabled = pinned or my_state in ["dead", "escaped"]
 	if pinned:
 		body.velocity = Vector3.ZERO
 	else:
 		_move(delta)
+	if flash_light: # flashlight follows where I look; the battery drains while it is on
+		if light_on:
+			battery = maxf(battery - delta * 100.0 / 150.0, 0.0)
+			if battery <= 0.0 or not (my_state in ["ok", "hurt"]) or locker >= 0: light_on = false
+		flash_light.visible = light_on
+		flash_light.rotation = Vector3(pitch * 0.7 + 0.05, yaw, 0)
+		if light_on and battery < 12.0: flash_light.light_energy = 7.0 * (0.4 + 0.6 * absf(sin(Time.get_ticks_msec() / 90.0))) # dying battery flickers
+		else: flash_light.light_energy = 7.0
 	var spd := Vector2(body.velocity.x, body.velocity.z).length()
 	_steps(my_steps, body.position, not pinned and spd > 0.4 and not crouch and body.is_on_floor(), spd > 2.6, -8.0)
 	last_state = my_state
@@ -942,10 +1144,10 @@ func _physics_process(delta: float) -> void:
 		if send_t <= 0.0:
 			send_t = 1.0 / 15.0
 			var p := body.position
-			Net.send({"t": "st", "p": [snappedf(p.x, 0.01), snappedf(p.y, 0.01), snappedf(p.z, 0.01), snappedf(rig.rotation.y, 0.01)], "a": rig.current})
+			Net.send({"t": "st", "p": [snappedf(p.x, 0.01), snappedf(p.y, 0.01), snappedf(p.z, 0.01), snappedf(rig.rotation.y, 0.01)], "a": rig.current, "f": 1 if light_on else 0})
 
 func _move(delta: float) -> void:
-	var frozen: bool = rules.over or my_state in ["down", "dead", "escaped"] or not hold.is_empty() or (my_role == "killer" and rules.stun > 0.0)
+	var frozen: bool = rules.over or my_state in ["dead", "escaped"] or not hold.is_empty() or (my_role == "killer" and rules.stun > 0.0)
 	var move := stick_vec
 	if move == Vector2.ZERO:
 		move = Vector2(float(Input.is_key_pressed(KEY_D)) - float(Input.is_key_pressed(KEY_A)),
@@ -953,6 +1155,7 @@ func _move(delta: float) -> void:
 	if frozen: move = Vector2.ZERO
 	var speed: float = RUN[my_role] if (sprint or my_role == "killer") else WALK[my_role]
 	if crouch: speed = CROUCH_SPEED
+	if my_state == "down": speed = 0.45 # crawling
 	if my_role == "killer" and rules.carrying != "": speed = CARRY_SPEED
 	if boost_t > 0.0: speed *= 1.5
 	var dir := Basis(Vector3.UP, yaw) * Vector3(move.x, 0, move.y)
@@ -986,8 +1189,12 @@ func _move(delta: float) -> void:
 				_ev({"k": "hit", "n": n})
 				break
 	# animation
-	if my_state == "down" or my_state == "dead":
+	if my_state == "dead":
 		rig.play("dying")
+	elif my_state == "down":
+		if v > 0.1: rig.play("crawl", 1.0)
+		elif rig.current != "crawl": rig.play("dying")
+		else: rig.play("crawl", 0.0001)
 	elif attack_t > 0.0:
 		pass # the swing plays through
 	elif not hold.is_empty():
@@ -1000,12 +1207,14 @@ func _move(delta: float) -> void:
 			"break": tp = world.pallet_points[hold.i][0]
 		if tp != body.position and my_role != "killer":
 			rig.rotation.y = lerp_angle(rig.rotation.y, atan2(tp.x - body.position.x, tp.z - body.position.z), 10.0 * delta)
-		rig.play("hide")
+		rig.play("repair" if hold.kind in ["rep", "heal"] else "hide")
 	elif crouch:
 		if v > 0.25: rig.play("crouchwalk", clampf(v / NATURAL.crouchwalk, 0.5, 1.6))
 		else: rig.play("hide")
 	elif v > 0.25:
-		if v > 2.6:
+		if my_role == "killer" and rules.carrying != "":
+			rig.play("carry", clampf(v / 1.4, 0.8, 2.6))
+		elif v > 2.6:
 			rig.play("run", clampf(v / NATURAL.run, 0.7, 1.7))
 		elif my_state == "hurt": rig.play("injured", clampf(v / NATURAL.injured, 0.6, 1.6))
 		else: rig.play("walk", clampf(v / NATURAL.walk, 0.6, 1.7))

@@ -14,6 +14,7 @@ var online := {}
 var state := "off" # off / connecting / online / name_taken
 var room := {}
 var font: FontFile
+var xp := 0
 
 var _ws: WebSocketPeer
 var _hello := false
@@ -32,6 +33,7 @@ func _ready() -> void:
 		username = c.get_value("p", "name", "")
 		friends = c.get_value("p", "friends", [])
 		url = c.get_value("p", "url", DEFAULT_URL)
+		xp = int(c.get_value("p", "xp", 0))
 	var env_url := OS.get_environment("NF_URL")
 	if env_url != "": url = env_url
 
@@ -40,7 +42,11 @@ func save() -> void:
 	c.set_value("p", "name", username)
 	c.set_value("p", "friends", friends)
 	c.set_value("p", "url", url)
+	c.set_value("p", "xp", xp)
 	c.save(PATH)
+
+func level() -> int:
+	return 1 + int(sqrt(xp / 200.0))
 
 func configure(new_name: String, new_url: String) -> void:
 	username = new_name.strip_edges()

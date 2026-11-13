@@ -4,7 +4,7 @@ extends CanvasLayer
 
 signal start_game(cfg: Dictionary)
 
-const MAPS := {"forest": "الغابة", "village": "القرية المهجورة"}
+const MAPS := {"forest": "الغابة", "village": "القرية المهجورة", "fareej": "الفريج"}
 const CHARS := {"killer": "القاتل", "survivor1": "ناجي 1", "survivor2": "ناجي 2", "survivor3": "ناجي 3", "survivor4": "ناجي 4"}
 const ERRORS := {"no_room": "ما في غرفة بهالكود", "room_full": "الغرفة ممتلئة", "in_game": "اللعبة بدأت بالغرفة",
 	"killer_taken": "في قاتل بالغرفة", "offline": "صديقك مو متصل", "bad_name": "الاسم لازم 2 إلى 16 حرف بدون مسافات",
@@ -21,7 +21,7 @@ var off_char := "killer"
 func _ready() -> void:
 	layer = 10
 	var bg := ColorRect.new()
-	bg.color = Color(0.03, 0.035, 0.05)
+	bg.color = Color(0.0, 0.0, 0.0, 0.28) # the campfire scene shows through
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
 	var sc := ScrollContainer.new()
@@ -29,12 +29,12 @@ func _ready() -> void:
 	sc.offset_top = 20; sc.offset_bottom = -20
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	add_child(sc)
-	var center := CenterContainer.new()
-	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sc.offset_left = 36
+	var center := MarginContainer.new() # menu column sits on the left; the fire is on the right
 	center.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	sc.add_child(center)
 	box = VBoxContainer.new()
-	box.custom_minimum_size.x = 600
+	box.custom_minimum_size.x = 540
 	box.add_theme_constant_override("separation", 10)
 	var th := Theme.new()
 	th.default_font_size = 24
@@ -58,7 +58,7 @@ func _on_msg(m: Dictionary) -> void:
 				if page != "friends": page = "lobby"
 			elif page == "lobby" or page == "friends": page = "main"
 		"started":
-			start_game.emit({"map": m.map, "players": m.players, "me": Net.username, "offline": false})
+			start_game.emit({"map": m.map, "players": m.players, "me": Net.username, "offline": false, "seed": int(m.get("seed", 1))})
 			return
 		"invite": invite = m
 		"error": toast = ERRORS.get(str(m.code), str(m.code))
@@ -148,6 +148,7 @@ func _page_name() -> void:
 
 func _page_main() -> void:
 	_label(_status(), 20, Color(0.6, 0.9, 0.6) if Net.state == "online" else Color(0.8, 0.8, 0.8))
+	_label("المستوى %d  •  الخبرة %d" % [Net.level(), Net.xp], 20, Color(1, 0.85, 0.4))
 	var on := Net.state == "online"
 	_button("إنشاء غرفة", func(): Net.send({"t": "create", "map": "forest"}), null, on)
 	var h := _row()

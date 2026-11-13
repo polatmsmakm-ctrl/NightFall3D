@@ -2,15 +2,15 @@ class_name CharacterRig
 extends Node3D
 ## Loads a rigged character GLB and attaches Mixamo animations (separate GLBs) to it.
 
-const ANIMS := ["idle", "walk", "run", "sprint", "crouchwalk", "hide", "attack", "injured", "dying"]
-const LOOPING := ["idle", "walk", "run", "sprint", "crouchwalk", "hide", "injured"]
+const ANIMS := ["idle", "walk", "run", "crouchwalk", "hide", "attack", "injured", "dying", "vault", "carry", "carried", "hang", "crawl", "repair"]
+const LOOPING := ["idle", "walk", "run", "sprint", "crouchwalk", "hide", "injured", "carry", "carried", "hang", "crawl", "repair", "campfire"]
 
 var model: Node3D
 var skeleton: Skeleton3D
 var player := AnimationPlayer.new()
 var current := ""
 
-func setup(char_name: String) -> void:
+func setup(char_name: String, anims: Array = ANIMS) -> void:
 	model = (load("res://assets/chars/%s.glb" % char_name) as PackedScene).instantiate()
 	add_child(model)
 	skeleton = model.find_children("*", "Skeleton3D", true, false)[0]
@@ -20,7 +20,7 @@ func setup(char_name: String) -> void:
 	var lib := AnimationLibrary.new()
 	var skel_path := str(model.get_path_to(skeleton))
 	var char_rest := skeleton.get_bone_rest(skeleton.find_bone("mixamorig_Hips")).origin
-	for a in ANIMS:
+	for a in anims:
 		var res = load("res://assets/anims/%s.glb" % a)
 		if res == null: continue
 		var inst: Node = (res as PackedScene).instantiate()

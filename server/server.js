@@ -6,7 +6,7 @@ const { Rules } = require('./rules');
 
 const PORT = process.env.PORT || 8080;
 const MAX_PLAYERS = 7;
-const MAPS = ['forest', 'village'];
+const MAPS = ['forest', 'village', 'fareej'];
 const CHARS = ['killer', 'survivor1', 'survivor2', 'survivor3', 'survivor4'];
 
 const users = new Map();   // lowercase name -> client
@@ -144,7 +144,7 @@ const handlers = {
     const p = m.p;
     if (!Array.isArray(p) || p.length !== 4 || !p.every(Number.isFinite)) return;
     if (r.rules) r.rules.setPos(c.name, p);
-    broadcast(r, { t: 'st', n: c.name, p, a: String(m.a || 'idle').slice(0, 12) }, c);
+    broadcast(r, { t: 'st', n: c.name, p, a: String(m.a || 'idle').slice(0, 12), f: m.f ? 1 : 0 }, c);
   },
   ev(c, m) { // a player's input; the server referees and tells everyone what happened
     const r = c.room;

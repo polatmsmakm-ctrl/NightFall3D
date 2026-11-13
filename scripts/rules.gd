@@ -31,15 +31,23 @@ var last_hit := {}
 var powered := false
 var over := false
 var clock := 0.0
+var n_hatch := 0
+var hatch := -1 # which hatch is open (-1: none): opens when one survivor is left
+var score := {} # name -> points
 
-func setup(n_gens: int, n_gates: int, n_pallets: int, players: Array) -> void:
+func setup(n_gens: int, n_gates: int, n_pallets: int, hatches: int, players: Array) -> void:
+	n_hatch = hatches
 	for i in n_gens: gens.append({"p": 0.0, "done": false, "reps": {}})
 	for i in n_gates: gates.append({"open": false})
 	for i in n_pallets: pallets.append(0)
 	for pl in players:
 		roles[str(pl.name)] = str(pl.role)
+		score[str(pl.name)] = 0.0
 		if str(pl.role) == "killer": killer = str(pl.name)
 		else: s[str(pl.name)] = {"hp": "ok", "hooks": 0, "hook_i": -1, "t": 0.0, "heal": 0.0, "locker": -1, "item": true, "tries": 0}
+
+func add(name: String, pts: float) -> void:
+	if score.has(name): score[name] += pts
 
 func done_count() -> int:
 	var n := 0
@@ -88,12 +96,14 @@ func handle(d: Dictionary, from: String) -> Array:
 			if i >= 0 and i < gens.size() and gens[i].reps.has(from):
 				if d.get("ok", false):
 					gens[i].p = minf(gens[i].p + 0.03, 1.0)
+					add(from, 5.0)
 				else:
 					gens[i].p = maxf(gens[i].p - 0.08, 0.0)
 					out.append({"k": "boom", "i": i})
 		"escape":
-			if free_now(from) and powered:
+			if free_now(from) and (powered or (hatch >= 0 and d.get("h", false))):
 				s[from].hp = "escaped"
+				add(from, 150.0)
 				_drop(from)
 		"hit":
 			if is_killer and stun <= 0.0 and carrying == "" and free_now(n) and clock - float(last_hit.get(n, -99.0)) > HIT_COOLDOWN:
@@ -102,6 +112,7 @@ func handle(d: Dictionary, from: String) -> Array:
 					s[n].hp = "hurt"; s[n].heal = 0.0
 					_drop(n)
 				else: _down(n)
+				add(from, 30.0 if s[n].hp == "hurt" else 50.0)
 				out.append({"k": "hurt", "n": n, "s": s[n].hp})
 		"pickup":
 			if is_killer and stun <= 0.0 and carrying == "" and hp(n) == "down":
@@ -114,17 +125,20 @@ func handle(d: Dictionary, from: String) -> Array:
 				if p.hooks >= 3: p.hp = "dead"
 				else:
 					p.hp = "hooked"; p.hook_i = i; p.t = HOOK_TIME[p.hooks - 1]; p.tries = 0
+				add(from, 80.0 if p.hp == "hooked" else 180.0)
 				out.append({"k": "hooked", "n": carrying, "s": p.hp})
 				carrying = ""
 		"rescue":
 			if free_now(from) and hp(n) == "hooked":
 				s[n].hp = "hurt"; s[n].hook_i = -1; s[n].heal = 0.0
+				add(from, 60.0)
 				out.append({"k": "rescued", "n": n, "by": from})
 		"struggle": # try to pull yourself off the hook: small chance, and every failure costs time
 			if hp(from) == "hooked" and s[from].tries < MAX_TRIES:
 				s[from].tries += 1
 				if randf() < STRUGGLE_CHANCE:
 					s[from].hp = "hurt"; s[from].hook_i = -1; s[from].heal = 0.0
+					add(from, 30.0)
 					out.append({"k": "rescued", "n": from, "by": from})
 				else:
 					s[from].t -= STRUGGLE_COST
@@ -157,6 +171,7 @@ func handle(d: Dictionary, from: String) -> Array:
 		"break":
 			if is_killer and i >= 0 and i < pallets.size() and pallets[i] == 1:
 				pallets[i] = 2
+				add(from, 10.0)
 				out.append({"k": "broke", "i": i})
 		"power":
 			if is_killer and power_cd <= 0.0 and stun <= 0.0 and carrying == "":
@@ -175,6 +190,7 @@ func tick(dt: float) -> void:
 	for g in gens:
 		if g.done or powered: continue
 		g.p += dt * g.reps.size() / GEN_TIME
+		for r in g.reps: add(r, dt * 100.0 / GEN_TIME) # one point per percent repaired
 		if g.p >= 1.0:
 			g.p = 1.0; g.done = true; g.reps.clear()
 	if not powered and done_count() >= NEED:
@@ -185,7 +201,9 @@ func tick(dt: float) -> void:
 		var p: Dictionary = s[n]
 		if p.hp == "hooked" or p.hp == "down":
 			p.t -= dt
-			if p.t <= 0.0: p.hp = "dead"
+			if p.t <= 0.0:
+				p.hp = "dead"
+				add(killer, 100.0)
 	for h in healers.keys():
 		var tgt: String = healers[h]
 		var p: Dictionary = s.get(tgt, {})
@@ -198,6 +216,7 @@ func tick(dt: float) -> void:
 		if p.heal >= 1.0:
 			p.heal = 0.0
 			p.hp = "hurt" if p.hp == "down" else "ok"
+			add(h, 20.0 if self_heal else 40.0)
 			if self_heal: p.item = false
 			healers.erase(h)
 	if s.size() > 0:
@@ -205,15 +224,18 @@ func tick(dt: float) -> void:
 		for n in s:
 			if s[n].hp in LIVE: live += 1
 		if live == 0: over = true
+		elif live == 1 and s.size() > 1 and hatch < 0 and n_hatch > 0 and not powered:
+			hatch = randi() % n_hatch # last one standing: a way out opens somewhere
 
 func snapshot() -> Dictionary:
-	var gp := []; var gd := []; var to := []; var ss := {}
+	var gp := []; var gd := []; var to := []; var ss := {}; var sc := {}
+	for n in score: sc[n] = roundi(score[n])
 	for g in gens: gp.append(snappedf(g.p, 0.001)); gd.append(g.done)
 	for g in gates: to.append(g.open)
 	for n in s:
 		var p: Dictionary = s[n]
 		ss[n] = [p.hp, p.hooks, p.hook_i, ceili(p.t), snappedf(p.heal, 0.001), p.locker, p.item, p.tries]
-	return {"k": "gs", "g": gp, "d": gd, "to": to, "pw": powered, "s": ss, "pl": pallets, "kc": carrying, "ks": snappedf(stun, 0.01), "kp": snappedf(power_cd, 0.1), "ov": over}
+	return {"k": "gs", "g": gp, "d": gd, "to": to, "pw": powered, "s": ss, "pl": pallets, "kc": carrying, "ks": snappedf(stun, 0.01), "kp": snappedf(power_cd, 0.1), "ov": over, "hx": hatch, "sc": sc}
 
 func apply(v: Dictionary) -> void:
 	for i in mini(gens.size(), v.g.size()):
@@ -228,3 +250,5 @@ func apply(v: Dictionary) -> void:
 	stun = float(v.ks)
 	power_cd = float(v.kp)
 	over = bool(v.ov)
+	hatch = int(v.get("hx", -1))
+	for n in v.get("sc", {}): score[n] = float(v.sc[n])
