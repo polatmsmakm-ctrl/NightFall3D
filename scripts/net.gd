@@ -15,6 +15,8 @@ var state := "off" # off / connecting / online / name_taken
 var room := {}
 var font: FontFile
 var xp := 0
+var escapes := 0   # how many rounds I got out of, all time
+var kills := 0     # survivors I killed as the killer, all time
 
 var _ws: WebSocketPeer
 var _hello := false
@@ -34,6 +36,8 @@ func _ready() -> void:
 		friends = c.get_value("p", "friends", [])
 		url = c.get_value("p", "url", DEFAULT_URL)
 		xp = int(c.get_value("p", "xp", 0))
+		escapes = int(c.get_value("p", "escapes", 0))
+		kills = int(c.get_value("p", "kills", 0))
 	var env_url := OS.get_environment("NF_URL")
 	if env_url != "": url = env_url
 
@@ -43,10 +47,29 @@ func save() -> void:
 	c.set_value("p", "friends", friends)
 	c.set_value("p", "url", url)
 	c.set_value("p", "xp", xp)
+	c.set_value("p", "escapes", escapes)
+	c.set_value("p", "kills", kills)
 	c.save(PATH)
 
 func level() -> int:
 	return 1 + int(sqrt(xp / 200.0))
+
+## Experience needed for the start of a level (level 1 starts at 0).
+func level_xp(lv: int) -> int:
+	return int(200.0 * pow(float(maxi(lv, 1) - 1), 2.0))
+
+## How far through the current level I am, 0..1 — for the bar on the player card.
+func level_progress() -> float:
+	var lv := level()
+	var a := level_xp(lv)
+	var b := level_xp(lv + 1)
+	return clampf(float(xp - a) / maxf(float(b - a), 1.0), 0.0, 1.0)
+
+## Keep the totals of a finished round next to the experience, on the phone.
+func record_match(got_out: int, killed: int) -> void:
+	escapes += maxi(got_out, 0)
+	kills += maxi(killed, 0)
+	save()
 
 func configure(new_name: String, new_url: String) -> void:
 	username = new_name.strip_edges()

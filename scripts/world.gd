@@ -67,6 +67,8 @@ var flicker: Array[OmniLight3D] = []
 var grass_nodes: Array[MultiMeshInstance3D] = []
 var grass_counts: Array[int] = []
 var ready_done := false
+const BUILD_STEPS := 5 # stages of build(); the loading screen shows build_step / BUILD_STEPS
+var build_step := 0
 var tree_positions: Array[Vector3] = []
 var _sky_noise: NoiseTexture2D
 var _mat := {}
@@ -246,18 +248,22 @@ func build() -> void:
 	_make_materials()
 	_build_environment()
 	_build_terrain()
+	build_step = 1
 	await get_tree().process_frame
 	if map_id == "fareej": _build_fareej()
 	else: _build_buildings()
 	_build_objectives()
 	_build_extras()
 	_build_market()
+	build_step = 2
 	await get_tree().process_frame
 	_build_scatter()
 	_build_trees()
+	build_step = 3
 	await get_tree().process_frame
 	_build_rocks()
 	await _build_grass()
+	build_step = 4
 	_build_particles()
 	_build_probe()
 	for l in find_children("*", "OmniLight3D", true, false): # far lights cost nothing
@@ -266,6 +272,7 @@ func build() -> void:
 		l.distance_fade_length = 12.0
 	Gfx.changed.connect(_apply_quality)
 	_apply_quality()
+	build_step = BUILD_STEPS
 	ready_done = true
 
 # ---------------- materials (procedural PBR: albedo + normal + roughness) ----------------

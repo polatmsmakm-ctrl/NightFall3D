@@ -35,6 +35,7 @@ var _good := 0
 var _hud: Label
 var _panel: PanelContainer
 var _opts := {}
+var _editor: NFControlsEdit
 var last_avg_ms := 0.0
 
 func _ready() -> void:
@@ -132,16 +133,16 @@ func in_ui(pos: Vector2) -> bool:
 
 func _build_ui() -> void:
 	var layer := CanvasLayer.new(); layer.layer = 20; add_child(layer)
-	var theme := Theme.new(); theme.default_font_size = 22
+	var theme := NFUI.theme()
 	_hud = Label.new(); _hud.position = Vector2(16, 10); _hud.theme = theme
 	_hud.add_theme_font_size_override("font_size", 16)
 	_hud.modulate = Color(1, 1, 1, 0.7); _hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(_hud)
-	var gear := Button.new(); gear.text = "Settings"; gear.theme = theme
+	var gear := Button.new(); gear.text = "الإعدادات"
 	gear.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
 	gear.offset_left = -140; gear.offset_right = -12; gear.offset_top = 12; gear.offset_bottom = 64
-	gear.focus_mode = Control.FOCUS_NONE
 	gear.pressed.connect(_toggle)
+	NFUI.dress(gear, "gear")
 	layer.add_child(gear)
 	_panel = PanelContainer.new(); _panel.theme = theme; _panel.visible = false
 	_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
@@ -152,16 +153,28 @@ func _build_ui() -> void:
 	for side in ["left", "right", "top", "bottom"]: m.add_theme_constant_override("margin_" + side, 20)
 	_panel.add_child(m)
 	var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 10); m.add_child(v)
-	var title := Label.new(); title.text = "Graphics"; title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; v.add_child(title)
-	_row(v, "fps", "FPS", ["Auto", "30", "60", "120"])
-	_row(v, "preset", "Graphics", ["Medium", "High", "Ultra"])
-	_row(v, "shadows", "Shadows", ["Low", "Medium", "High"])
-	_row(v, "aa", "Anti-Aliasing", ["Off", "2x", "4x"])
-	_row(v, "scale", "Render Resolution", ["85%", "90%", "100%"])
-	_row(v, "effects", "Effects Quality", ["Low", "Medium", "High"])
-	var close := Button.new(); close.text = "Close"; close.custom_minimum_size.y = 52
-	close.pressed.connect(_toggle); v.add_child(close)
+	var title := Label.new(); title.text = "الإعدادات"; title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; v.add_child(title)
+	_row(v, "fps", "الإطارات", ["تلقائي", "30", "60", "120"])
+	_row(v, "preset", "الجرافيكس", ["متوسط", "عالي", "فائق"])
+	_row(v, "shadows", "الظلال", ["منخفض", "متوسط", "عالي"])
+	_row(v, "aa", "تنعيم الحواف", ["مغلق", "2x", "4x"])
+	_row(v, "scale", "دقة الرسم", ["85%", "90%", "100%"])
+	_row(v, "effects", "جودة المؤثرات", ["منخفض", "متوسط", "عالي"])
+	var ctl := Button.new(); ctl.text = "أزرار التحكم (مكان وحجم)"; ctl.custom_minimum_size.y = 52
+	ctl.pressed.connect(_edit_controls); NFUI.dress(ctl, "gear"); v.add_child(ctl)
+	var close := Button.new(); close.text = "إغلاق"; close.custom_minimum_size.y = 52
+	close.pressed.connect(_toggle); NFUI.dress(close, "exit"); v.add_child(close)
 	_refresh()
+
+## The touch-layout editor, reachable without leaving the round (the game ignores input while it is up).
+func _edit_controls() -> void:
+	if _editor and is_instance_valid(_editor): return
+	_editor = NFControlsEdit.new()
+	_panel.visible = false
+	_editor.closed.connect(func() -> void:
+		_editor = null
+		_panel.visible = menu_open)
+	add_child(_editor)
 
 func _row(parent: Control, key: String, label: String, items: Array) -> void:
 	var h := HBoxContainer.new(); parent.add_child(h)

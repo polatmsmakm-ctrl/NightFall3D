@@ -13,10 +13,22 @@ const DECEL := 28.0
 const SFX := ["gate", "heart", "breath", "steps_out", "steps_in", "gen_run", "chase", "ambient", "doom", "rope", "male_pain", "scream1", "scream2", "oof1", "oof2", "oof3"]
 const MALE := ["survivor1", "killer"] # the other characters use the female voice clips
 const TERROR_RADIUS := 24.0 # survivors start to feel the killer inside this distance
+## quick signals: what the three buttons say, their icon, and how they look on a team-mate's screen
+const SIG_TEXT := ["تعال هني", "القاتل هني", "قاعد أصلّح"]
+const SIG_ICON := ["pin", "skull", "wrench"]
+const SIG_LIFE := 7.0
+const STATE_COL := {"ok": Color(0.55, 1.0, 0.6), "hurt": Color(1.0, 0.68, 0.25), "down": Color(1.0, 0.42, 0.28),
+	"carried": Color(1.0, 0.42, 0.28), "hooked": Color(1.0, 0.25, 0.25), "dead": Color(0.5, 0.5, 0.52), "escaped": Color(0.45, 0.8, 1.0)}
+const STATE_ICON := {"hurt": "drop", "down": "down", "carried": "carry", "hooked": "hook", "dead": "skull", "escaped": "out"}
+const STATE_WORD := {"ok": "سليم", "hurt": "مصاب", "down": "طايح", "carried": "محمول", "hooked": "خطاف", "dead": "ميت", "escaped": "هرب"}
 
 var menu: GameMenu
 var world: NightWorld
 var rules: Rules
+var loading: NFLoading        # the map-building screen, freed once the world is up
+var sigs: Array = []          # live quick signals: {n, k, pos, t}
+var sig_open := false         # the three-message panel is showing
+var sig_close := 0.0          # closes itself if untouched
 var body: CharacterBody3D
 var cshape: CollisionShape3D
 var rig: CharacterRig
@@ -24,7 +36,8 @@ var cam_pivot: Node3D
 var arm: SpringArm3D
 var ui: Control
 var minimap: Control
-var results: PanelContainer
+var hud_layer: CanvasLayer
+var results: NFResults # the end-of-round stage, built when the round is over
 var started := false
 var cfg := {}
 var offline := false
@@ -92,347 +105,16 @@ var match_time := 0.0
 var escape_banner := 0.0
 
 func _ready() -> void:
+	lobby_scene = NFLobby.new() # the campfire start screen (scripts/lobby.gd)
+	add_child(lobby_scene)
 	menu = GameMenu.new()
+	menu.lobby = lobby_scene
 	add_child(menu)
 	menu.start_game.connect(_start)
 	Net.message.connect(_on_net)
-	_build_lobby_scene()
 
-var _dot_tex: ImageTexture
-
-func _soft_dot() -> ImageTexture: # round, soft-edged sprite for fire / smoke / sparks (drawn once, ready immediately)
-	if _dot_tex: return _dot_tex
-	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
-	for y in 64:
-		for x in 64:
-			var d := Vector2(x - 31.5, y - 31.5).length() / 31.5
-			var a := clampf(1.0 - d, 0.0, 1.0)
-			img.set_pixel(x, y, Color(1, 1, 1, a * a))
-	_dot_tex = ImageTexture.create_from_image(img)
-	return _dot_tex
-
-func _fire_layer(parent: Node3D, amount: int, life: float, radius: float, rise: float, size: float, colors: Array, additive: bool, speed := Vector2(0.2, 0.7), spread := 18.0) -> GPUParticles3D:
-	var p := GPUParticles3D.new()
-	var m := ParticleProcessMaterial.new()
-	m.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
-	m.emission_sphere_radius = radius
-	m.gravity = Vector3(0, rise, 0)
-	m.direction = Vector3.UP
-	m.spread = spread
-	m.initial_velocity_min = speed.x; m.initial_velocity_max = speed.y
-	m.scale_min = 0.6; m.scale_max = 1.3
-	m.angle_min = 0.0; m.angle_max = 360.0
-	var curve := Curve.new() # flames swell, then thin out as they rise
-	curve.add_point(Vector2(0, 0.35)); curve.add_point(Vector2(0.25, 1.0)); curve.add_point(Vector2(1, 0.1 if additive else 1.6))
-	var ct := CurveTexture.new()
-	ct.curve = curve
-	m.scale_curve = ct
-	var g := Gradient.new()
-	g.offsets = PackedFloat32Array([0.0, 0.35, 1.0])
-	g.colors = PackedColorArray(colors)
-	var gt := GradientTexture1D.new()
-	gt.gradient = g
-	m.color_ramp = gt
-	p.process_material = m
-	var q := QuadMesh.new()
-	q.size = Vector2(size, size)
-	var mat := StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	if additive: mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	mat.albedo_texture = _soft_dot()
-	mat.vertex_color_use_as_albedo = true
-	mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
-	q.material = mat
-	p.draw_pass_1 = q
-	p.amount = amount
-	p.lifetime = life
-	p.preprocess = life
-	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	parent.add_child(p)
-	return p
-
-## Start screen: a camp in a forest clearing at night. The survivors warm themselves at a real-looking fire,
-## the killer waits between the trees. Fire crackle + the ambient track play here.
-func _build_lobby_scene() -> void:
-	lobby_scene = Node3D.new()
-	add_child(lobby_scene)
-	var kit := NightWorld.new() # borrow the world's materials and meshes (never added to the tree)
-	kit._make_materials()
-	var env := Environment.new()
-	var sm := ShaderMaterial.new()
-	sm.shader = load("res://shaders/sky.gdshader")
-	sm.set_shader_parameter("moon_dir", Vector3(0.35, 0.33, -0.88).normalized())
-	sm.set_shader_parameter("noise_tex", kit._sky_noise)
-	var sky := Sky.new()
-	sky.sky_material = sm
-	sky.radiance_size = Sky.RADIANCE_SIZE_32
-	env.background_mode = Environment.BG_SKY
-	env.sky = sky
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.14, 0.19, 0.34)
-	env.ambient_light_energy = 1.3
-	env.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED
-	env.fog_enabled = true
-	env.fog_light_color = Color(0.07, 0.1, 0.17)
-	env.fog_density = 0.022
-	env.fog_sky_affect = 0.15
-	env.glow_enabled = true
-	env.glow_intensity = 0.5
-	env.glow_bloom = 0.04
-	env.tonemap_mode = Environment.TONE_MAPPER_ACES
-	env.adjustment_enabled = true
-	env.adjustment_contrast = 1.1
-	var we := WorldEnvironment.new()
-	we.environment = env
-	lobby_scene.add_child(we)
-	var moon := DirectionalLight3D.new()
-	moon.basis = Basis.looking_at(-Vector3(0.35, 0.33, -0.88).normalized())
-	moon.light_color = Color(0.5, 0.6, 0.95)
-	moon.light_energy = 1.0
-	moon.shadow_enabled = true
-	lobby_scene.add_child(moon)
-	# ground: grass tinted, with a bare trampled circle around the fire
-	var ground := MeshInstance3D.new()
-	var pm := PlaneMesh.new()
-	pm.size = Vector2(160, 160)
-	var gm: StandardMaterial3D = kit._mat.ground.duplicate()
-	gm.vertex_color_use_as_albedo = false
-	gm.albedo_color = Color(0.42, 0.56, 0.34)
-	pm.material = gm
-	ground.mesh = pm
-	lobby_scene.add_child(ground)
-	var dirt := MeshInstance3D.new()
-	var dm := CylinderMesh.new()
-	dm.top_radius = 3.6; dm.bottom_radius = 3.9; dm.height = 0.04; dm.radial_segments = 28
-	var dmat: StandardMaterial3D = kit._mat.ground.duplicate()
-	dmat.vertex_color_use_as_albedo = false
-	dmat.albedo_color = Color(0.75, 0.6, 0.42)
-	dm.material = dmat
-	dirt.mesh = dm
-	dirt.position.y = 0.02
-	lobby_scene.add_child(dirt)
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 12
-	# forest all around, thicker behind the camp; a gap toward the camera
-	for v in 2:
-		var mm := MultiMesh.new()
-		mm.transform_format = MultiMesh.TRANSFORM_3D
-		mm.mesh = kit._tree_mesh(v, true)
-		var list: Array[Transform3D] = []
-		for i in 90:
-			var ang := rng.randf() * TAU
-			var dist := rng.randf_range(7.5, 46.0)
-			var pos := Vector3(sin(ang) * dist, 0, -cos(ang) * dist)
-			if pos.z > 3.0 and absf(pos.x) < 5.5: continue # keep the view open
-			var sc := rng.randf_range(0.8, 1.3)
-			list.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc, sc, sc)), pos))
-		mm.instance_count = list.size()
-		for i in list.size(): mm.set_instance_transform(i, list[i])
-		var mmi := MultiMeshInstance3D.new()
-		mmi.multimesh = mm
-		lobby_scene.add_child(mmi)
-	var grass := MultiMesh.new()
-	grass.transform_format = MultiMesh.TRANSFORM_3D
-	grass.mesh = kit._grass_mesh()
-	var blades: Array[Transform3D] = []
-	for i in 2600:
-		var ang := rng.randf() * TAU
-		var dist := rng.randf_range(3.9, 22.0)
-		var sc := rng.randf_range(0.8, 1.5)
-		blades.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc, sc, sc)), Vector3(sin(ang) * dist, 0, -cos(ang) * dist)))
-	grass.instance_count = blades.size()
-	for i in blades.size(): grass.set_instance_transform(i, blades[i])
-	var gi := MultiMeshInstance3D.new()
-	gi.multimesh = grass
-	gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	lobby_scene.add_child(gi)
-	# camp props: stone ring, sitting logs, tent, crate with a lantern, stump with an axe, backpacks
-	var rock: Material = kit._mat.rock
-	var wood: Material = kit._mat.wood
-	for k in 11:
-		var st := MeshInstance3D.new()
-		var sp := SphereMesh.new()
-		sp.radius = rng.randf_range(0.13, 0.2); sp.height = sp.radius * 1.5; sp.radial_segments = 8; sp.rings = 4
-		sp.material = rock
-		st.mesh = sp
-		st.position = Vector3(sin(k * TAU / 11.0) * 0.62, 0.07, cos(k * TAU / 11.0) * 0.62)
-		st.rotation.y = rng.randf() * TAU
-		lobby_scene.add_child(st)
-	for lg in [[Vector3(-2.3, 0.22, 1.9), 0.9], [Vector3(2.6, 0.22, 1.4), -0.7]]:
-		var log := MeshInstance3D.new()
-		var lc := CylinderMesh.new()
-		lc.top_radius = 0.22; lc.bottom_radius = 0.24; lc.height = 2.2; lc.radial_segments = 10
-		lc.material = kit._mat.bark
-		log.mesh = lc
-		log.rotation = Vector3(0, lg[1], PI / 2.0)
-		log.position = lg[0]
-		lobby_scene.add_child(log)
-	var tent_mat := StandardMaterial3D.new()
-	tent_mat.albedo_color = Color(0.2, 0.26, 0.18)
-	tent_mat.roughness = 0.9
-	tent_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	var tent := Node3D.new()
-	tent.position = Vector3(-4.6, 0, -3.4)
-	tent.rotation.y = 0.75
-	for sx in [-1.0, 1.0]:
-		var side := MeshInstance3D.new()
-		var bm := BoxMesh.new()
-		bm.size = Vector3(1.9, 0.05, 3.0)
-		bm.material = tent_mat
-		side.mesh = bm
-		side.position = Vector3(sx * 0.62, 0.75, 0)
-		side.rotation.z = sx * -0.9
-		tent.add_child(side)
-	lobby_scene.add_child(tent)
-	var crate := MeshInstance3D.new()
-	var cb := BoxMesh.new()
-	cb.size = Vector3(0.7, 0.6, 0.7)
-	cb.material = wood
-	crate.mesh = cb
-	crate.position = Vector3(3.4, 0.3, -1.6)
-	crate.rotation.y = 0.4
-	lobby_scene.add_child(crate)
-	var lantern := MeshInstance3D.new()
-	var lb := BoxMesh.new()
-	lb.size = Vector3(0.16, 0.26, 0.16)
-	var lmat := StandardMaterial3D.new()
-	lmat.albedo_color = Color(1.0, 0.8, 0.45)
-	lmat.emission_enabled = true
-	lmat.emission = Color(1.0, 0.75, 0.4)
-	lmat.emission_energy_multiplier = 3.0
-	lb.material = lmat
-	lantern.mesh = lb
-	lantern.position = Vector3(3.4, 0.73, -1.6)
-	lobby_scene.add_child(lantern)
-	var ll := OmniLight3D.new()
-	ll.position = Vector3(3.4, 0.9, -1.6)
-	ll.light_color = Color(1.0, 0.78, 0.45)
-	ll.light_energy = 0.9
-	ll.omni_range = 4.0
-	lobby_scene.add_child(ll)
-	var stump := MeshInstance3D.new()
-	var sc2 := CylinderMesh.new()
-	sc2.top_radius = 0.32; sc2.bottom_radius = 0.38; sc2.height = 0.5; sc2.radial_segments = 12
-	sc2.material = kit._mat.bark
-	stump.mesh = sc2
-	stump.position = Vector3(-3.6, 0.25, 0.6)
-	lobby_scene.add_child(stump)
-	var axe := Node3D.new()
-	axe.position = Vector3(-3.6, 0.55, 0.6)
-	axe.rotation = Vector3(0, 0.6, 0.5)
-	var handle := MeshInstance3D.new()
-	var hb := BoxMesh.new()
-	hb.size = Vector3(0.05, 0.75, 0.05)
-	hb.material = wood
-	handle.mesh = hb
-	handle.position.y = 0.3
-	axe.add_child(handle)
-	var head := MeshInstance3D.new()
-	var ab := BoxMesh.new()
-	ab.size = Vector3(0.26, 0.16, 0.04)
-	ab.material = kit._mat.metal
-	head.mesh = ab
-	head.position = Vector3(0.1, 0.02, 0)
-	axe.add_child(head)
-	lobby_scene.add_child(axe)
-	for bp in [[Vector3(-1.5, 0.2, 2.6), Color(0.25, 0.12, 0.08)], [Vector3(3.1, 0.2, 2.3), Color(0.1, 0.16, 0.24)]]:
-		var bag := MeshInstance3D.new()
-		var bb := BoxMesh.new()
-		bb.size = Vector3(0.42, 0.4, 0.3)
-		var bmat := StandardMaterial3D.new()
-		bmat.albedo_color = bp[1]
-		bb.material = bmat
-		bag.mesh = bb
-		bag.position = bp[0]
-		bag.rotation.y = rng.randf() * TAU
-		lobby_scene.add_child(bag)
-	# the fire: charred logs on a glowing ember bed, layered flames, sparks, smoke, flickering light with shadows
-	var char_mat := StandardMaterial3D.new()
-	char_mat.albedo_color = Color(0.05, 0.035, 0.03)
-	char_mat.emission_enabled = true
-	char_mat.emission = Color(1.0, 0.3, 0.05)
-	char_mat.emission_energy_multiplier = 0.5
-	for k in 6:
-		var log := MeshInstance3D.new()
-		var cyl := CylinderMesh.new()
-		cyl.top_radius = 0.06; cyl.bottom_radius = 0.085; cyl.height = 0.95; cyl.radial_segments = 8
-		cyl.material = char_mat
-		log.mesh = cyl
-		log.rotation = Vector3(1.0, k * TAU / 6.0, 0)
-		log.position = Vector3(sin(k * TAU / 6.0) * 0.2, 0.3, cos(k * TAU / 6.0) * 0.2)
-		lobby_scene.add_child(log)
-	var embers := MeshInstance3D.new()
-	var ec := CylinderMesh.new()
-	ec.top_radius = 0.42; ec.bottom_radius = 0.48; ec.height = 0.08; ec.radial_segments = 16
-	var emat := StandardMaterial3D.new()
-	emat.albedo_color = Color(0.2, 0.05, 0.02)
-	emat.emission_enabled = true
-	emat.emission = Color(1.0, 0.32, 0.05)
-	emat.emission_energy_multiplier = 2.5
-	ec.material = emat
-	embers.mesh = ec
-	embers.name = "Embers"
-	embers.position.y = 0.06
-	lobby_scene.add_child(embers)
-	var fire_root := Node3D.new()
-	fire_root.position = Vector3(0, 0.22, 0)
-	lobby_scene.add_child(fire_root)
-	_fire_layer(fire_root, 46, 0.75, 0.17, 1.5, 0.34, [Color(1.0, 0.5, 0.1, 0.0), Color(1.0, 0.36, 0.06, 0.42), Color(0.6, 0.06, 0.0, 0.0)], true, Vector2(0.15, 0.5)) # outer flames
-	_fire_layer(fire_root, 30, 0.5, 0.1, 1.3, 0.2, [Color(1.0, 0.9, 0.6, 0.0), Color(1.0, 0.8, 0.35, 0.5), Color(1.0, 0.35, 0.05, 0.0)], true, Vector2(0.1, 0.4)) # bright core
-	_fire_layer(fire_root, 22, 2.4, 0.2, 0.9, 0.04, [Color(1.0, 0.8, 0.4, 1.0), Color(1.0, 0.5, 0.1, 1.0), Color(1.0, 0.2, 0.0, 0.0)], true, Vector2(0.7, 2.0), 30.0) # sparks
-	var smoke := _fire_layer(fire_root, 18, 4.5, 0.15, 0.45, 0.6, [Color(0.1, 0.1, 0.1, 0.0), Color(0.14, 0.14, 0.15, 0.16), Color(0.1, 0.1, 0.11, 0.0)], false, Vector2(0.3, 0.6), 10.0)
-	smoke.position.y = 0.9
-	var fire := OmniLight3D.new()
-	fire.name = "Fire"
-	fire.position = Vector3(0, 0.75, 0)
-	fire.light_color = Color(1.0, 0.55, 0.2)
-	fire.light_energy = 3.4
-	fire.omni_range = 11.0
-	fire.shadow_enabled = true
-	lobby_scene.add_child(fire)
-	# the cast: survivors around the fire, the killer watching from the tree line
-	var seats := [["survivor1", -1.05, 2.1], ["survivor2", -0.38, 2.2], ["survivor5", 0.42, 2.2], ["survivor6", 1.1, 2.1]]
-	for st in seats:
-		var r := CharacterRig.new()
-		lobby_scene.add_child(r)
-		r.setup(st[0], ["campfire", "idle"])
-		r.position = Vector3(sin(st[1]) * st[2], 0, -cos(st[1]) * st[2])
-		r.rotation.y = atan2(-r.position.x, -r.position.z)
-		r.play("campfire")
-		r.player.seek(3.0 + absf(st[1]) * 2.3, true)
-	var killer := CharacterRig.new()
-	lobby_scene.add_child(killer)
-	killer.setup("killer", ["idle"])
-	killer.position = Vector3(1.6, 0, -7.4)
-	killer.rotation.y = atan2(-killer.position.x, -killer.position.z)
-	killer.play("idle")
-	var rim := OmniLight3D.new() # faint red rim so his outline reads in the dark
-	rim.position = Vector3(2.4, 2.2, -8.6)
-	rim.light_color = Color(1.0, 0.15, 0.1)
-	rim.light_energy = 1.4
-	rim.omni_range = 5.0
-	lobby_scene.add_child(rim)
-	var pivot := Node3D.new()
-	pivot.name = "Pivot"
-	lobby_scene.add_child(pivot)
-	var cam := Camera3D.new()
-	cam.position = Vector3(-2.1, 1.55, 6.0) # the camp sits right of centre: the menu column is on the left
-	cam.rotation = Vector3(-0.06, -0.06, 0)
-	cam.fov = 55.0
-	cam.far = 300.0
-	pivot.add_child(cam)
-	cam.current = true
-	# sound: the crackle the owner supplied, over the ambient track
-	for snd in [["campfire", -4.0], ["ambient", -14.0]]:
-		var a := AudioStreamPlayer.new()
-		var stream: AudioStreamMP3 = load("res://assets/sfx/%s.mp3" % snd[0])
-		stream.loop = true
-		a.stream = stream
-		a.volume_db = snd[1]
-		lobby_scene.add_child(a)
-		a.play()
-	kit.free()
+func results_shown() -> bool:
+	return results != null and is_instance_valid(results) and results.visible
 
 func _start(c: Dictionary) -> void:
 	if started: return
@@ -440,9 +122,13 @@ func _start(c: Dictionary) -> void:
 	offline = c.get("offline", false)
 	my_name = str(c.me)
 	menu.visible = false
+	menu.lobby = null
 	if lobby_scene:
 		lobby_scene.queue_free()
 		lobby_scene = null
+	loading = NFLoading.new() # covers the screen while the map builds itself over the next frames
+	loading.setup(str(c.map))
+	add_child(loading)
 	world = NightWorld.new()
 	world.configure(str(c.map), int(c.get("seed", randi() % 1000000) if not offline else randi() % 1000000))
 	add_child(world)
@@ -742,9 +428,29 @@ func _on_net(m: Dictionary) -> void:
 			if r:
 				r.node.queue_free()
 				remotes.erase(str(m.name))
+		"sig": # a team-mate's quick message (the server only relays it to their own side)
+			var sp = m.get("p")
+			if sp is Array and sp.size() == 2:
+				_add_sig(str(m.get("n", "?")), int(m.get("k", 0)), Vector3(float(sp[0]), body.position.y, float(sp[1])))
 		"room":
 			if not offline and (str(m.get("code", "")) == "" or str(m.get("state", "")) == "lobby"):
 				_to_menu()
+
+## Show a quick message on screen; `pos` is where the sender was when they sent it.
+func _add_sig(from: String, k: int, pos: Vector3) -> void:
+	k = clampi(k, 0, SIG_TEXT.size() - 1)
+	for sg in sigs: # one live message per player
+		if str(sg.n) == from:
+			sg.k = k; sg.pos = pos; sg.t = SIG_LIFE
+			return
+	sigs.append({"n": from, "k": k, "pos": pos, "t": SIG_LIFE})
+
+## Trial mode shows it on my own screen only; online the server passes it to my own side.
+func _send_sig(k: int) -> void:
+	sig_open = false
+	_add_sig(my_name, k, body.position)
+	if not offline:
+		Net.send({"t": "sig", "k": k, "p": [snappedf(body.position.x, 0.1), snappedf(body.position.z, 0.1)]})
 
 ## Send one of my inputs to the referee (the server, or the local rules in trial mode).
 func _ev(d: Dictionary) -> void:
@@ -803,6 +509,7 @@ func _leave() -> void:
 func _build_ui() -> void:
 	var layer := CanvasLayer.new()
 	add_child(layer)
+	hud_layer = layer
 	ui = Control.new()
 	ui.set_anchors_preset(Control.PRESET_FULL_RECT)
 	ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -816,86 +523,51 @@ func _build_ui() -> void:
 	minimap.draw.connect(_draw_minimap)
 	var leave := Button.new()
 	leave.text = "إنهاء الجولة" if (not offline and str(Net.room.get("host", "")) == my_name) else "خروج"
-	leave.focus_mode = Control.FOCUS_NONE
 	leave.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	leave.offset_left = -300; leave.offset_right = -152; leave.offset_top = 12; leave.offset_bottom = 64
+	leave.offset_left = -312 - _safe().y; leave.offset_right = -152 - _safe().y
+	leave.offset_top = 12; leave.offset_bottom = 64
 	leave.pressed.connect(_leave)
+	NFUI.dress(leave, "exit")
 	layer.add_child(leave)
-	results = PanelContainer.new()
-	results.visible = false
-	results.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	results.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	results.grow_vertical = Control.GROW_DIRECTION_BOTH
-	results.custom_minimum_size = Vector2(520, 0)
-	layer.add_child(results)
 
+## End of the round: the cast lines up on a dark stage (scripts/results.gd).
 func _show_results() -> void:
-	var m := MarginContainer.new()
-	for side in ["left", "right", "top", "bottom"]: m.add_theme_constant_override("margin_" + side, 24)
-	results.add_child(m)
-	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 10)
-	m.add_child(v)
 	var escaped := 0
+	var dead := 0
 	for n in rules.s:
 		if rules.s[n].hp == "escaped": escaped += 1
-	var title := Label.new()
-	if my_role == "killer": title.text = "انتهت الجولة — هرب %d من %d" % [escaped, rules.s.size()]
-	else: title.text = "تم الهروب بنجاح!" if rules.hp(my_name) == "escaped" else "ما نجوت"
-	title.add_theme_font_size_override("font_size", 34)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	v.add_child(title)
-	var stats := Label.new()
-	stats.text = "مدة الجولة %d:%02d  •  المولدات %d/%d  •  هرب %d من %d" % [int(match_time) / 60, int(match_time) % 60, rules.done_count(), Rules.NEED, escaped, rules.s.size()]
-	stats.add_theme_font_size_override("font_size", 20)
-	stats.add_theme_color_override("font_color", Color(0.8, 0.8, 0.8))
-	stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	stats.text_direction = Control.TEXT_DIRECTION_RTL
-	v.add_child(stats)
-	# ranking by points
+		elif rules.s[n].hp == "dead": dead += 1
+	var title := ""
+	if my_role == "killer": title = "انتهت الجولة — هرب %d من %d" % [escaped, rules.s.size()]
+	else: title = "تم الهروب بنجاح!" if rules.hp(my_name) == "escaped" else "ما نجوت"
+	var stats := "مدة الجولة %d:%02d  •  المولدات %d/%d  •  هرب %d من %d" % [int(match_time) / 60, int(match_time) % 60, rules.done_count(), Rules.NEED, escaped, rules.s.size()]
 	var names: Array = rules.score.keys()
 	names.sort_custom(func(x, y): return rules.score[x] > rules.score[y])
-	var rank := 1
+	var rows := []
 	for n in names:
-		var l := Label.new()
-		var what := "القاتل"
-		if rules.s.has(n): what = "هرب" if rules.s[n].hp == "escaped" else "مات"
-		l.text = "%d. %s — %d نقطة (%s)" % [rank, n, roundi(rules.score[n]), what]
-		l.text_direction = Control.TEXT_DIRECTION_RTL
-		l.add_theme_font_size_override("font_size", 24)
-		l.add_theme_color_override("font_color", Color(1, 0.85, 0.4) if n == my_name else (Color(1, 0.5, 0.45) if not rules.s.has(n) else Color(0.8, 0.9, 1)))
-		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		v.add_child(l)
-		rank += 1
-	if not xp_saved: # points become experience; levels are kept on the phone
+		rows.append({"name": n, "char": str(chars.get(n, "survivor1")),
+			"role": str(rules.roles.get(n, "survivor")),
+			"state": rules.hp(n) if rules.s.has(n) else "killer",
+			"score": float(rules.score[n]), "mine": n == my_name})
+	var xp_from := Net.xp
+	var gain := roundi(rules.score.get(my_name, 0.0))
+	if not xp_saved: # points become experience; levels, escapes and kills are kept on the phone
 		xp_saved = true
-		var before := Net.level()
-		Net.xp += roundi(rules.score.get(my_name, 0.0))
-		Net.save()
-		var lv := Label.new()
-		lv.text = "المستوى %d%s  •  الخبرة %d" % [Net.level(), "  (ترقية!)" if Net.level() > before else "", Net.xp]
-		lv.add_theme_font_size_override("font_size", 22)
-		lv.add_theme_color_override("font_color", Color(0.6, 1, 0.7))
-		lv.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		v.add_child(lv)
-	var b := Button.new()
-	b.text = "رجوع"
-	b.custom_minimum_size.y = 56
-	b.add_theme_font_size_override("font_size", 24)
-	b.pressed.connect(func():
-		if not offline and str(Net.room.get("host", "")) == my_name: Net.send({"t": "lobby"})
-		_to_menu())
-	v.add_child(b)
-	results.visible = true
+		Net.xp += gain
+		Net.record_match(1 if (my_role == "survivor" and rules.hp(my_name) == "escaped") else 0,
+			dead if my_role == "killer" else 0)
+	if hud_layer: hud_layer.visible = false # the stage replaces the HUD
+	results = NFResults.new()
+	add_child(results)
+	results.setup({"rows": rows, "title": title, "stats": stats, "xp_from": xp_from, "xp_to": xp_from + gain,
+		"escapes": Net.escapes, "kills": Net.kills,
+		"on_back": func() -> void:
+			if not offline and str(Net.room.get("host", "")) == my_name: Net.send({"t": "lobby"})
+			_to_menu()})
 
 ## Screen margins (left, right) in UI units to stay clear of the notch / Dynamic Island.
 func _safe() -> Vector2:
-	var win := Vector2(DisplayServer.window_get_size())
-	var area := DisplayServer.get_display_safe_area()
-	var vs := get_viewport().get_visible_rect().size
-	if win.x <= 0.0 or area.size.x <= 0: return Vector2.ZERO
-	var k := vs.x / win.x
-	return Vector2(maxf(area.position.x, 0.0) * k, maxf(win.x - float(area.position.x + area.size.x), 0.0) * k)
+	return NFUI.safe_insets(get_viewport())
 
 func _others_alive() -> Array:
 	var out := []
@@ -903,28 +575,48 @@ func _others_alive() -> Array:
 		if remotes[n].role == "survivor" and rules.hp(n) in Rules.LIVE: out.append(n)
 	return out
 
-## On-screen buttons. Each: center, radius, label, id, enabled.
+## On-screen buttons. Each: center, radius, label, id, enabled, icon.
+## Positions and sizes come from the player's own layout (scripts/controls.gd).
 func _buttons() -> Array:
-	var s := get_viewport().get_visible_rect().size
-	s.x -= _safe().y
+	var rect := NFControls.area(get_viewport())
 	var out := []
 	if spectating != "":
-		if _others_alive().size() > 1: out.append([Vector2(s.x - 130, s.y - 120), 62.0, "التالي", "next", true])
+		if _others_alive().size() > 1:
+			out.append([rect.position + rect.size - Vector2(130, 120), 62.0, "التالي", "next", true, "next"])
 		return out
-	if my_role == "killer":
-		out.append([Vector2(s.x - 115, s.y - 115), 62.0, "ضرب", "attack", attack_cd <= 0.0 and rules.carrying == ""])
-		out.append([Vector2(s.x - 262, s.y - 92), 50.0, "اندفاع", "power", rules.power_cd <= 0.0 and rules.carrying == ""])
-		var c = ctx.get("interact")
-		out.append([Vector2(s.x - 215, s.y - 222), 48.0, c.label if c else "حمل", "interact", c != null])
-	else:
-		var c = ctx.get("interact")
-		out.append([Vector2(s.x - 110, s.y - 110), 58.0, "ركض", "sprint", true])
-		out.append([Vector2(s.x - 252, s.y - 88), 50.0, c.label if c else "تفاعل", "interact", c != null])
-		out.append([Vector2(s.x - 88, s.y - 252), 44.0, "انحناء", "crouch", true])
-		out.append([Vector2(s.x - 215, s.y - 215), 44.0, "قفز", "vault", ctx.has("vault")])
-		out.append([Vector2(s.x - 375, s.y - 68), 40.0, "علاج", "heal", ctx.has("heal")])
-		out.append([Vector2(s.x - 345, s.y - 170), 40.0, "حقيبة", "item", ctx.has("item")])
-		out.append([Vector2(s.x - 88, s.y - 352), 40.0, "كشاف", "light", battery > 0.0])
+	var c = ctx.get("interact")
+	var lay := NFControls.layout("killer" if my_role == "killer" else "survivor")
+	for id in lay:
+		var e: Dictionary = lay[id]
+		var label := NFControls.label_of(id)
+		var icon := NFControls.icon_of(id)
+		var on := true
+		match id:
+			"interact": # the interact button becomes whatever is in reach
+				label = str(c.label) if c else ("حمل" if my_role == "killer" else "تفاعل")
+				icon = str(NFControls.CTX_ICON.get(str(c.kind), "hand")) if c else "hand"
+				on = c != null
+			"attack": on = attack_cd <= 0.0 and rules.carrying == ""
+			"power": on = rules.power_cd <= 0.0 and rules.carrying == ""
+			"vault": on = ctx.has("vault")
+			"heal": on = ctx.has("heal")
+			"item": on = ctx.has("item")
+			"light": on = battery > 0.0
+			"sig": on = my_state in ["ok", "hurt", "down", "hooked"]
+		out.append([NFControls.center_of(e, rect), float(e.r), label, id, on, icon])
+	return out
+
+## The three quick messages, stacked above the signal button. Each: rect, index.
+func _sig_buttons() -> Array:
+	if not sig_open: return []
+	var out := []
+	var at := Vector2(get_viewport().get_visible_rect().size.x / 2.0, 200.0)
+	for b in _buttons():
+		if b[3] == "sig": at = b[0]
+	var up: bool = at.y - 78.0 - 2.0 * 54.0 > 8.0 # no room above? drop the list underneath
+	for i in SIG_TEXT.size():
+		var dy: float = (-78.0 - i * 54.0) if up else (78.0 + i * 54.0)
+		out.append([Rect2(at + Vector2(-110.0, dy), Vector2(220.0, 48.0)), i])
 	return out
 
 func _text(pos: Vector2, t: String, size: int, col := Color.WHITE, width := 700.0) -> void:
@@ -951,11 +643,17 @@ func _draw_ui() -> void:
 		ui.draw_circle(stick_origin + stick_vec * 70, 32, Color(1, 1, 1, 0.35))
 	for b in _buttons():
 		var id: String = b[3]
-		var on: bool = (id == "crouch" and crouch) or (id == "sprint" and sprint) or (id == "light" and light_on) or (not hold.is_empty() and hold.btn == id)
-		var col := Color(0.9, 0.2, 0.2, 0.5) if on else Color(1, 1, 1, 0.17 if b[4] else 0.06)
-		ui.draw_circle(b[0], b[1], col)
-		ui.draw_arc(b[0], b[1], 0, TAU, 40, Color(1, 1, 1, 0.55 if b[4] else 0.2), 2.0)
-		ui.draw_string(Net.font, b[0] + Vector2(-b[1], 8), b[2], HORIZONTAL_ALIGNMENT_CENTER, b[1] * 2.0, 21, Color(1, 1, 1, 1.0 if b[4] else 0.4))
+		var r: float = b[1]
+		var live: bool = b[4]
+		var on: bool = (id == "crouch" and crouch) or (id == "sprint" and sprint) or (id == "light" and light_on) or (id == "sig" and sig_open) or (not hold.is_empty() and hold.btn == id)
+		# dark scratched plate with a dry-blood ring; it lights up red while held
+		ui.draw_circle(b[0], r, Color(0.42, 0.04, 0.05, 0.55) if on else Color(0.05, 0.045, 0.055, 0.5 if live else 0.3))
+		ui.draw_arc(b[0], r, 0, TAU, 44, Color(1, 0.25, 0.22, 0.95) if on else Color(0.72, 0.16, 0.16, 0.85 if live else 0.3), 2.5)
+		ui.draw_arc(b[0], r - 4.0, 0.2, 1.1, 10, Color(1, 1, 1, 0.12 if live else 0.05), 1.5)
+		var icol := Color(1, 1, 1, 1.0 if live else 0.38)
+		NFIcons.draw(ui, str(b[5]), b[0] - Vector2(0, r * 0.2), r * 0.82, icol)
+		ui.draw_string(Net.font, b[0] + Vector2(-r, r * 0.76), b[2], HORIZONTAL_ALIGNMENT_CENTER, r * 2.0,
+			int(clampf(r * 0.33, 13.0, 19.0)), icol)
 		if id == "light": # battery ring
 			ui.draw_arc(b[0], b[1] + 5.0, -PI / 2.0, -PI / 2.0 + TAU * battery / 100.0, 32, Color(1, 0.9, 0.4) if battery > 25.0 else Color(1, 0.3, 0.2), 4.0)
 		if id == "power": # power indicator: ring refills during the cooldown
@@ -963,13 +661,20 @@ func _draw_ui() -> void:
 			ui.draw_arc(b[0], b[1] + 5.0, -PI / 2.0, -PI / 2.0 + TAU * f, 40, Color(1, 0.5, 0.2) if f < 1.0 else Color(0.4, 1, 0.5), 5.0)
 		if id == "attack" and attack_cd > 0.0:
 			ui.draw_arc(b[0], b[1] + 5.0, -PI / 2.0, -PI / 2.0 + TAU * (1.0 - attack_cd / 2.4), 40, Color(1, 1, 1, 0.7), 4.0)
-	# objective
-	var top := Vector2(mid.x, 46)
-	if not rules.powered: _text(top, "المولدات %d / %d" % [rules.done_count(), Rules.NEED], 26, Color(1, 0.9, 0.6))
-	elif my_role == "killer": _text(top, "امنعهم من الهرب — القمر يوصل بعد %d:%02d" % [int(ceil(rules.doom)) / 60, int(ceil(rules.doom)) % 60], 24, Color(1, 0.5, 0.4))
-	elif my_state in ["escaped", "dead"]: _text(top, "باقي %d من ربعك داخل" % _others_alive().size(), 24, Color(1, 0.9, 0.6))
-	else: _text(top, "اهرب قبل لا ينزل القمر!  %d:%02d" % [int(ceil(rules.doom)) / 60, int(ceil(rules.doom)) % 60], 28, Color(1, 0.45, 0.35) if rules.doom < 30.0 else Color(0.5, 1, 0.6))
-	var sub := top + Vector2(0, 32)
+	# team status bar along the top, then the objective (or the falling-moon ring) under it
+	_draw_team(s)
+	var doom_up: bool = rules.powered and rules.doom >= 0.0
+	var top := Vector2(mid.x, 96)
+	if doom_up:
+		_draw_moon(Vector2(mid.x, 120.0))
+		if my_role == "killer": _text(Vector2(mid.x, 214), "امنعهم من الهرب قبل لا ينزل القمر", 22, Color(1, 0.5, 0.4))
+		elif my_state in ["escaped", "dead"]: _text(Vector2(mid.x, 214), "باقي %d من ربعك داخل" % _others_alive().size(), 22, Color(1, 0.9, 0.6))
+		else: _text(Vector2(mid.x, 214), "اهرب قبل لا ينزل القمر!", 24, Color(1, 0.45, 0.35))
+	elif my_role == "survivor" and my_state in ["escaped", "dead"]:
+		_text(top, "باقي %d من ربعك داخل" % _others_alive().size(), 24, Color(1, 0.9, 0.6))
+	else:
+		_text(top, "المولدات %d/%d" % [rules.done_count(), Rules.NEED], 26, Color(1, 0.9, 0.6))
+	var sub := Vector2(mid.x, 242.0) if doom_up else top + Vector2(0, 32)
 	if my_role == "survivor":
 		var me: Dictionary = rules.s.get(my_name, {})
 		match my_state:
@@ -1005,15 +710,6 @@ func _draw_ui() -> void:
 		if rules.carrying != "": _text(sub + Vector2(0, 84), "شايل %s — ودّه للخطاف" % rules.carrying, 20, Color(1, 0.7, 0.5))
 		if attack_t > 0.55: # first person: show the swing
 			ui.draw_arc(mid + Vector2(0, 120), 260, -PI * 0.75, -PI * 0.25, 24, Color(1, 1, 1, 0.35), 14.0)
-	# team status
-	var y := 252.0
-	for n in rules.s:
-		var p: Dictionary = rules.s[n]
-		var mark: String = {"ok": "●", "hurt": "◐", "down": "▼", "carried": "▲", "hooked": "⚓", "dead": "✕", "escaped": "➜"}.get(p.hp, "?")
-		var col: Color = {"ok": Color(0.7, 1, 0.7), "hurt": Color(1, 0.7, 0.3), "down": Color(1, 0.45, 0.3), "carried": Color(1, 0.45, 0.3),
-			"hooked": Color(1, 0.3, 0.3), "dead": Color(0.6, 0.6, 0.6), "escaped": Color(0.5, 0.8, 1)}.get(p.hp, Color.WHITE)
-		ui.draw_string(Net.font, Vector2(18 + _safe().x, y), "%s %s%s" % [mark, n, "  " + "I".repeat(p.hooks) if p.hooks > 0 else ""], HORIZONTAL_ALIGNMENT_LEFT, 240, 18, col)
-		y += 24.0
 	# hold progress + skill check
 	if not hold.is_empty():
 		var p := 0.0
@@ -1033,7 +729,79 @@ func _draw_ui() -> void:
 		var ang: float = skill.t / 1.2 * TAU - PI / 2.0
 		ui.draw_line(mid, mid + Vector2(cos(ang), sin(ang)) * 72, Color(1, 0.3, 0.3), 4.0)
 		_text(mid + Vector2(0, 118), "اضغط الشاشة لما المؤشر بالأخضر", 20)
-	if flash_t > 0.0: _text(Vector2(mid.x, s.y * 0.3), flash, 30, Color(1, 0.85, 0.5))
+	if flash_t > 0.0: _text(Vector2(mid.x, s.y * 0.37), flash, 30, Color(1, 0.85, 0.5))
+	_draw_sigs(mid)
+	for sb in _sig_buttons(): # the three quick messages
+		var r2: Rect2 = sb[0]
+		var i: int = sb[1]
+		ui.draw_rect(r2, Color(0.05, 0.04, 0.05, 0.92))
+		ui.draw_rect(r2, Color(0.75, 0.16, 0.16, 0.9), false, 2.0)
+		NFIcons.draw(ui, SIG_ICON[i], r2.position + Vector2(r2.size.x - 26.0, r2.size.y / 2.0), 24.0, Color(1, 0.35, 0.3))
+		ui.draw_string(Net.font, r2.position + Vector2(-8.0, r2.size.y * 0.68), SIG_TEXT[i], HORIZONTAL_ALIGNMENT_CENTER, r2.size.x - 40.0, 21, Color(1, 0.92, 0.88))
+
+## Small portrait per survivor along the top: state, hook timer, how many times they were hooked.
+## The killer sees it too — it never says where anybody is.
+func _draw_team(s: Vector2) -> void:
+	var names: Array = rules.s.keys()
+	names.sort()
+	var n := names.size()
+	if n == 0: return
+	var step: float = minf(56.0, (s.x - 420.0) / maxf(float(n), 1.0))
+	var x0: float = s.x / 2.0 - (n - 1) * step / 2.0
+	for i in n:
+		var nm: String = names[i]
+		var p: Dictionary = rules.s[nm]
+		var st: String = str(p.hp)
+		var c := Vector2(x0 + i * step, 30.0)
+		var col: Color = STATE_COL.get(st, Color.WHITE)
+		var ccol := NFUI.char_col(str(chars.get(nm, "survivor1")))
+		if st == "dead": ccol = ccol.darkened(0.55)
+		ui.draw_circle(c, 21.0, Color(0.04, 0.035, 0.045, 0.86))
+		NFIcons.portrait(ui, c + Vector2(0, 2.0), 26.0, ccol)
+		ui.draw_arc(c, 21.0, 0, TAU, 32, col, 2.5)
+		if nm == my_name: ui.draw_arc(c, 25.0, 0, TAU, 34, Color(1, 0.85, 0.35, 0.9), 2.0)
+		if STATE_ICON.has(st):
+			ui.draw_circle(c + Vector2(14.0, 14.0), 9.5, Color(0.04, 0.035, 0.045, 0.95))
+			NFIcons.draw(ui, str(STATE_ICON[st]), c + Vector2(14.0, 14.0), 14.0, col)
+		if st == "hooked": # how long they have left on the hook, drawn inside the badge
+			var full: float = Rules.HOOK_TIME[clampi(int(p.hooks) - 1, 0, Rules.HOOK_TIME.size() - 1)]
+			ui.draw_arc(c, 17.5, -PI / 2.0, -PI / 2.0 + TAU * clampf(float(p.t) / full, 0.0, 1.0), 30, Color(1, 0.25, 0.22), 3.5)
+			_text(c + Vector2(0.0, 2.0), "%d" % int(p.t), 17, Color(1, 0.75, 0.6), 44.0)
+		for k in int(p.hooks): # a red pip for every hook survived
+			ui.draw_circle(c + Vector2(-15.0 + k * 7.0, 15.5), 2.6, Color(1, 0.3, 0.25))
+		var short := nm.substr(0, 7) if nm.length() > 7 else nm
+		ui.draw_string(Net.font, c + Vector2(-step / 2.0, 36.0), short, HORIZONTAL_ALIGNMENT_CENTER, step, 14, Color(col, 0.9))
+
+## The falling moon: a red ring that fills over the two minutes and beats in the last thirty seconds.
+func _draw_moon(c: Vector2) -> void:
+	var left: float = maxf(rules.doom, 0.0)
+	var f: float = clampf(1.0 - left / Rules.DOOM_TIME, 0.0, 1.0)
+	var pulse := 1.0
+	if left < 30.0: pulse = 0.72 + 0.28 * sin(Time.get_ticks_msec() / 1000.0 * 9.0)
+	var r: float = 30.0 + (3.0 * pulse if left < 30.0 else 0.0)
+	ui.draw_circle(c, 27.0, Color(0.03, 0.025, 0.035, 0.92))
+	NFIcons.draw(ui, "moon", c, 38.0, Color(0.96, 0.93, 0.88).lerp(Color(1.0, 0.55, 0.4), f * 0.8))
+	ui.draw_arc(c, r, 0, TAU, 44, Color(1, 1, 1, 0.12), 6.0)
+	ui.draw_arc(c, r, -PI / 2.0, -PI / 2.0 + TAU * f, 48, Color(1.0, 0.13, 0.1, pulse), 6.0)
+	_text(c + Vector2(0, r + 22.0), "%d:%02d" % [int(ceil(left)) / 60, int(ceil(left)) % 60], 22,
+		Color(1, 0.45, 0.35) if left < 30.0 else Color(1, 0.85, 0.7))
+
+## A team-mate's quick message: an arrow on a ring around the middle of the screen, pointing at them.
+func _draw_sigs(mid: Vector2) -> void:
+	for sg in sigs:
+		var to: Vector3 = sg.pos - body.position
+		var flat := Vector2(to.x, to.z)
+		var a := -PI / 2.0 + wrapf(atan2(to.x, -to.z) + yaw, -PI, PI)
+		var dir := Vector2(cos(a), sin(a))
+		var at: Vector2 = mid + dir * minf(mid.y * 0.62, 210.0)
+		var fade: float = clampf(float(sg.t) / 1.5, 0.0, 1.0)
+		var col := Color(1.0, 0.85, 0.4, fade) if int(sg.k) != 1 else Color(1.0, 0.35, 0.3, fade)
+		ui.draw_circle(at, 21.0, Color(0.04, 0.035, 0.045, 0.75 * fade))
+		NFIcons.draw(ui, SIG_ICON[int(sg.k)], at, 26.0, col)
+		var tip := at + dir * 30.0
+		var sd := Vector2(-dir.y, dir.x)
+		ui.draw_colored_polygon(PackedVector2Array([tip + dir * 12.0, tip - sd * 8.0, tip + sd * 8.0]), col)
+		_text(at + Vector2(0, 26.0), "%s — %s (%d م)" % [str(sg.n), SIG_TEXT[int(sg.k)], roundi(flat.length())], 17, col, 300.0)
 
 func _draw_minimap() -> void:
 	var vs := get_viewport().get_visible_rect().size
@@ -1207,6 +975,9 @@ func _press(id: String, touch: int) -> void:
 				hit_sent = false
 				rig.play("attack", 2.0)
 		"power": _ev({"k": "power"})
+		"sig": # open / close the three quick messages
+			sig_open = not sig_open
+			sig_close = 6.0
 		"vault":
 			if ctx.has("vault"): _start_vault(ctx.vault)
 		_:
@@ -1277,8 +1048,14 @@ func _start_vault(c: Dictionary) -> void:
 
 func _input(e: InputEvent) -> void:
 	if not started or rules.over: return
+	if loading != null: return # the loading screen eats everything
 	if (e is InputEventScreenTouch or e is InputEventMouseButton) and e.pressed and Gfx.in_ui(e.position): return
 	if Gfx.menu_open: return
+	if (e is InputEventScreenTouch or e is InputEventMouseButton) and e.pressed:
+		for sb in _sig_buttons():
+			if (sb[0] as Rect2).has_point(e.position):
+				_send_sig(int(sb[1]))
+				return
 	var half := get_viewport().get_visible_rect().size.x / 2.0
 	if e is InputEventScreenTouch:
 		if e.pressed:
@@ -1332,15 +1109,19 @@ func _carry_spot() -> Vector3:
 
 # ---------------- per-frame ----------------
 func _process(dt: float) -> void:
-	if lobby_scene:
-		var tt := Time.get_ticks_msec() / 1000.0
-		var fl := lobby_scene.get_node("Fire") as OmniLight3D
-		var flick := 0.78 + 0.14 * sin(tt * 13.0) * sin(tt * 4.3) + 0.08 * sin(tt * 27.0)
-		fl.light_energy = 3.4 * flick
-		fl.position = Vector3(0.05 * sin(tt * 9.0), 0.75 + 0.05 * sin(tt * 7.0), 0.05 * cos(tt * 11.0)) # shadows dance
-		(lobby_scene.get_node("Pivot") as Node3D).rotation.y = 0.1 * sin(tt * 0.13)
 	if not started: return
+	if loading != null: # the map is still being built: keep the tip screen up
+		if not is_instance_valid(loading): loading = null
+		else:
+			loading.progress(float(world.build_step) / float(NightWorld.BUILD_STEPS))
+			if world.ready_done and loading.shown > 0.9: loading.finish()
 	flash_t = maxf(flash_t - dt, 0.0)
+	if sig_open:
+		sig_close -= dt
+		if sig_close <= 0.0: sig_open = false
+	for i in range(sigs.size() - 1, -1, -1):
+		sigs[i].t -= dt
+		if sigs[i].t <= 0.0: sigs.remove_at(i)
 	for i in boom_t.keys(): boom_t[i] = maxf(boom_t[i] - dt, 0.0)
 	ui.queue_redraw()
 	minimap.queue_redraw()
@@ -1471,7 +1252,7 @@ func _process(dt: float) -> void:
 			_flash("القمر ضرب الأرض")
 	if impact_t >= 0.0: impact_t += dt
 	amb.volume_db = minf(amb.volume_db, -40.0) if doom_music.playing else amb.volume_db
-	if rules.over and not results.visible and (impact_t < 0.0 or impact_t > 3.5): _show_results()
+	if rules.over and results == null and (impact_t < 0.0 or impact_t > 3.5): _show_results()
 
 func _physics_process(delta: float) -> void:
 	if not started: return

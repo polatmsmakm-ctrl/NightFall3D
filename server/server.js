@@ -146,6 +146,14 @@ const handlers = {
     if (r.rules) r.rules.setPos(c.name, p);
     broadcast(r, { t: 'st', n: c.name, p, a: String(m.a || 'idle').slice(0, 12), f: m.f ? 1 : 0 }, c);
   },
+  sig(c, m) { // quick signal ("come here" / "killer here" / "repairing"): relayed to the sender's own side only
+    const r = c.room;
+    if (!r || r.state !== 'game') return;
+    const p = m.p;
+    if (!Array.isArray(p) || p.length !== 2 || !p.every(Number.isFinite)) return;
+    const k = Math.min(2, Math.max(0, Math.floor(Number(m.k) || 0)));
+    for (const x of r.members) if (x !== c && x.role === c.role) send(x, { t: 'sig', n: c.name, k, p });
+  },
   ev(c, m) { // a player's input; the server referees and tells everyone what happened
     const r = c.room;
     if (!r || r.state !== 'game' || !r.rules || typeof m.d !== 'object' || m.d === null) return;

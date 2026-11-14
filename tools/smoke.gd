@@ -106,5 +106,5 @@ func _ready():
 	print("K locker ctx=", m.ctx.get("interact", {}).get("kind", ""))
 	m.rules.s["D"].t = 0.2; await frames(30)
 	for i in 5: await tree.process_frame
-	print("K hook timer out: ", m.rules.hp("D"), " over=", m.rules.over, " results=", m.results.visible)
+	print("K hook timer out: ", m.rules.hp("D"), " over=", m.rules.over, " results=", m.results_shown())
 	tree.quit()
