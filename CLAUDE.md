@@ -19,12 +19,12 @@ Owner: Rashid (Arabic UI, plays with friends, installs the IPA with Sideloadly).
 - `scripts/look_mod.gd` (`NFLookMod`) — a `SkeletonModifier3D` that turns a character's head/neck toward a world point *after* the animation has posed the skeleton. `CharacterRig.look(at, weight)` / `look_clear()`.
 - `scripts/dev.gd` (autoload `Dev`) — hidden developer tools, off and invisible unless this phone has unlocked them; the unlock lives only in `user://dev.cfg` and is never sent anywhere.
 - `scripts/menu.gd` (`GameMenu`) — menus: name, main, friends, lobby, character select, trial mode; the player card and the swipe area.
-- `scripts/lobby.gd` (`NFLobby`) — the start-screen camp (fire, props, cast). `preview(char, label, dir)` stands a character in front of the fire, `focus(on)` moves the camera in on them, `set_cast(players, me)` seats the real room around the fire with name tags (empty list brings back the shipped cast).
+- `scripts/lobby.gd` (`NFLobby`) — the start-screen camp (fire, props, cast). `preview(char, label, dir)` stands a character in front of the fire, `focus(on)` moves the camera in on them, `set_cast(players, me)` seats the real room around the fire with name tags (empty list brings back the shipped cast). `_time_of_day()` reads the clock on the phone and lights the camp for dawn / day / dusk / night (sky `day`+`warm`, moonlight, ambient, fog, `fire_mul`), with a 30% chance of mist; `NFLobby.force_hour` / `force_mist` override it for tests and screenshots.
 - `scripts/ui_theme.gd` (`NFUI`) — the horror look: one shared `Theme` (dark, dry-blood borders), `dress(button, icon)` (styles + scratches + icon + click sound), `bar()`, `safe_insets()`, `CHAR_COL` (each character's signature colour).
 - `scripts/icons.gd` (`NFIcons`) — every icon is drawn with `draw_*` calls, no image assets: `NFIcons.draw(ci, "hand", center, size, col)` and `portrait()` for the team bar.
 - `scripts/controls.gd` (`NFControls`) — where the touch buttons are and how big, per role, in `user://controls.cfg`. Positions are a fraction of the safe area, radii are px of the 1280x720 design viewport; `DEF` is the shipped layout. `scripts/controls_edit.gd` (`NFControlsEdit`) is the drag-and-resize editor (menu → الاسم والسيرفر, or the in-game settings panel).
 - `scripts/loading.gd` (`NFLoading`) — the map-building screen: map name, a painted preview of that map, a random Arabic tip, progress from `world.build_step / NightWorld.BUILD_STEPS`.
-- `scripts/results.gd` (`NFResults`) — end of round: everyone on a dark stage (escaped standing on `idle`, dead lying on `dying`), names and points under each one (`unproject_position`), the XP bar filling itself. The camera carries its own `environment`, and the stage sits 600 m above the map.
+- `scripts/results.gd` (`NFResults`) — end of round: first the victory shot if anyone got out (`_build_victory`: the escaped survivors at a lit gate, the camera circling them for 5 s, «نجوا!» and their names; dead players are not in it), then everyone on a dark stage (escaped standing on `idle`, dead lying on `dying`), names and points under each one (`unproject_position`), the XP bar filling itself. `setup()` takes `victory` — the rows whose state is `escaped`, built in `main._show_results`. The camera carries its own `environment`, and the stage sits 600 m above the map.
 - `scripts/character_rig.gd` — loads a character GLB and retargets the Mixamo animation GLBs (`assets/anims`) onto it in place. The three emotes (`wave`, `dance`, `clap`) have no GLB: `_emote_anim()` poses them on the same skeleton in code, and a real clip dropped into `assets/anims` takes over automatically. These characters' rest pose is a **T-pose in a Z-down skeleton space** (up is `-Z`, they face `+Y`, the right arm lies along `-X`), so `_emote_world()` writes rotations in that frame and `_emote_anim()` turns each one into a local bone rotation with `rest * (G⁻¹ · R · G)`. `tools/bones.tscn` prints the axes and where the hands end up — run it before touching the poses.
 - `assets/chars` — the owner's 5 characters (SF3D meshes rigged to the Mixamo skeleton). `assets/sfx` — the owner's sounds (mp3) plus synthesized ones (wav).
 - `tools/*.gd|tscn` — headless tests (not exported).
@@ -47,12 +47,15 @@ godot --headless --path . res://tools/map.tscn     # the desert map, both themes
 godot --headless --path . res://tools/bones.tscn   # where the emote poses put the hands
 godot --headless --path . res://tools/dev.tscn     # audio buses, volumes, the hidden tools
 godot --headless --path . res://tools/event.tscn   # the round's event, adhan, doors, blackout, fog, lights
-godot --headless --path . res://tools/feel.tscn    # haptics switch, camera moves, limp / tired / startle
+godot --headless --path . res://tools/feel.tscn    # haptics switch, camera moves
+godot --headless --path . res://tools/win.tscn      # group rescue, camp by time of day, victory screen
 node server/test.js                                # room code, join by code, theme, emote and signal relay
 NF_URL=ws://127.0.0.1:8099 godot --headless --path . res://tools/online.tscn   # needs server + a bot
 ```
 Screenshots — `tools/shot.tscn` for the interface, `tools/shot2.tscn` for the desert, the themes, the emotes
-and the jumpscare, `tools/shot4.tscn` for the sound settings and the hidden tools:
+and the jumpscare, `tools/shot4.tscn` for the sound settings and the hidden tools, `tools/shot6.tscn` for the
+doors, the blackout, the fog and the alarm, `tools/shot7.tscn` for the camp by time of day, the shared
+unhook and the victory screen:
 ```
 NF_SHOTS=/tmp/shots LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a godot --rendering-driver opengl3 \
   --resolution 1564x720 --path . res://tools/shot.tscn      # software GL: ~15 min
@@ -61,6 +64,7 @@ NF_SHOTS=/tmp/shots LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a godot --rendering-driver
 
 ## Recent behaviour worth knowing
 - Hook escape is a mash: each `struggle` adds `MASH_STEP` to `esc`, which decays by `MASH_DECAY`/s; only on the first hook. Hooked survivors hang still and bleed.
+- Unhooking is a **hold shared between survivors**: `rescue` is `{k:"rescue", n, on}`, `resc` fills at `hands / RESCUE_TIME` per second (2.0 s alone, 1.1 s with two, 0.7 s with three) and drains at half speed when everyone lets go. The snapshot row carries `resc` (8) and the number of hands (9), so each phone shows «%d يشيلونه سوا — أسرع!» on the bar, and the `rescued` event carries `hands`. **`tick()` returns an Array of events in both rules files** and `server.js` broadcasts them, because a rescue can finish inside a tick.
 - All sounds are the owner's mp3s (`assets/sfx`); the synthesized wavs were removed at his request, so skill checks, pallets, hatch and flashlight are silent until he supplies files. `MALE` in `main.gd` picks male pain vs female scream/oof voices.
 - `world.set_blood_moon(true)` (sky shader `blood` uniform + moonlight/ambient/fog tween) fires when the gates get power.
 - Fareej house at `NightWorld.DIWAN` is «ديوان راشد الشمري» (`_build_diwan`): fake wall-wash quads (`_sconce`/`_beam`, additive) plus a handful of shadowless real lights — keep it under the Mobile renderer's 8 omni + 8 spot per mesh. Palms use `shaders/palm.gdshader` (alpha-cut feather fronds).
@@ -86,6 +90,7 @@ NF_SHOTS=/tmp/shots LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a godot --rendering-driver
   panel — reachable from the main menu, the lobby and the in-game gear. 0-100%, live while dragging, saved.
 - **Play again**: the results screen has a second button. Online the host sends `lobby`, which puts the whole room back
   in the same lobby; in trial mode `Net.replay` carries the settings across the scene reload.
+- **Victory screen**: survivors who got out stand in the lit gate while the camera circles them for 5 s (`NFResults._build_victory`), with «نجوا!» and their names; the statistics stage and its buttons are hidden until it ends. Nobody escaped → it is skipped and the numbers come up at once. The pose uses the `dance` / `wave` emotes, because there is no victory clip in `assets/anims`.
 - **Results**: `NFResults`. Only the animations already in `assets/anims` are used — escaped players stand in `idle` (there is no cheer clip; drop one in and it can be used), dead players lie on the last frame of `dying`.
 
 ## Maps
@@ -111,7 +116,7 @@ and foliage shader tints, and `_snow_cap()` slabs on every roof. Snow turns the 
 every door and along the paths, and `_cobweb()` under the eaves and on the hooks. Counters `snow_caps`, `pumpkins`,
 `webs`, `wrecks` exist so the headless test can see the dressing.
 
-## Feel: camera, haptics, reactions
+## Feel: camera and haptics
 - **Camera** (`main._camera_feel`, run every physics step): `_shake(power)` adds a spring-damped tip/roll used
   for hits, the grab and the moon landing. Carried adds a slow sway and 0.8 m of pull-back. Hooked pulls the
   camera 3.4 m further out and, for the first 2.6 s (`hook_cam`), swings the look round to the front of the hook
@@ -120,14 +125,9 @@ every door and along the paths, and `_cobweb()` under the eaves and on the hooks
 - **Haptics**: heartbeat ticks that follow `danger`, a strong hit when you are struck, a heavier one when he
   lifts you, a rising rumble as the moon comes down and a long one on impact, plus small ticks on hooks and
   escapes. All through `NFHaptics`, all behind the "الاهتزاز" switch.
-- **Reactions** (`main._reactions`): heads turn toward a scream, a generator that just finished, and the killer
-  when he is within 13 m — on your own character and on everyone else's. The first time the killer comes into
-  view you get a jolt: a camera kick, a tick, and `startle` for 0.85 s (speed halved, the `startle` pose if you
-  are standing still).
-- **Motion**: a hurt survivor walks 12% slower with an uneven roll (`main._limp`, applied to remote players too),
-  and after about six seconds of sprinting, stopping drops you into the `tired` pose for a couple of seconds.
-  Both of those poses (`tired`, `startle`) are hand-posed in `character_rig.gd` like the emotes; the equivalent
-  Mixamo clips would be `tired.glb` and `startle.glb` in `assets/anims`.
+- **No character movements**: the limp, the out-of-breath and startle poses and the head turns were removed at
+  the owner's request (phase 1 built them, he asked for them out). The camera moves, the haptics and the sounds
+  stay. `scripts/look_mod.gd` is gone with them — do not bring any of it back without being asked.
 
 ## The round's event, the call to prayer, doors and lights
 - **One event per round**, decided from the room seed so the server and every phone agree

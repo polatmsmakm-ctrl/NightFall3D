@@ -130,6 +130,34 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     gs ? JSON.stringify(gs.d.dr) : '-');
   ok(watcher.count('ev') > evBefore, 'the room keeps getting snapshots');
 
+  // --- two survivors get someone off the hook faster than one (same numbers as rules.gd) ---
+  const timeRescue = (hands) => {
+    const pl = [{ name: 'K', role: 'killer' }, { name: 'A', role: 'survivor' }, { name: 'B', role: 'survivor' },
+      { name: 'C', role: 'survivor' }, { name: 'D', role: 'survivor' }];
+    const r = new Rules(pl, 777);
+    r.setLayout({ g: [[0, 0]], p: [[1, 1]], h: [[0, 0]], x: [[3, 3]], d: [[4, 4]] });
+    for (const n of ['A', 'B', 'C', 'D']) r.setPos(n, [0, 0, 0, 0]);
+    Object.assign(r.s.C, { hp: 'hooked', hooks: 1, hook_i: 0, t: 60 });
+    for (const n of ['A', 'B', 'D'].slice(0, hands)) r.handle({ k: 'rescue', n: 'C', on: true }, n);
+    for (let took = 0; took < 6; took += 0.1) {
+      const ev = r.tick(0.1).find((e) => e.k === 'rescued');
+      if (ev) return { took: Math.round((took + 0.1) * 10) / 10, hands: ev.hands };
+    }
+    return { took: -1, hands: 0 };
+  };
+  const one = timeRescue(1);
+  const two = timeRescue(2);
+  ok(one.took === 2.0 && one.hands === 1, 'one survivor takes two seconds to unhook', `${one.took}s`);
+  ok(two.took < one.took && two.hands === 2, 'two survivors do it faster, and the event says how many',
+    `${two.took}s with ${two.hands} hands`);
+  const rs = new Rules([{ name: 'K', role: 'killer' }, { name: 'A', role: 'survivor' }, { name: 'C', role: 'survivor' }], 5);
+  rs.setLayout({ g: [[0, 0]], p: [[1, 1]], h: [[0, 0]], x: [[3, 3]], d: [[4, 4]] });
+  Object.assign(rs.s.C, { hp: 'hooked', hooks: 1, hook_i: 0, t: 60 });
+  rs.handle({ k: 'rescue', n: 'C', on: true }, 'A');
+  rs.tick(0.4);
+  const row = rs.snapshot().s.C;
+  ok(row[8] > 0 && row[9] === 1, 'the snapshot carries the unhook progress and the hands on it', JSON.stringify([row[8], row[9]]));
+
   // --- play again puts everyone back in the same room ---
   host.send({ t: 'lobby' });
   await wait(200);

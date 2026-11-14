@@ -94,6 +94,10 @@ func _ready() -> void:
 	m.rules.over = true
 	await frames(20)
 	print("results up=", m.results_shown(), " rows=", m.results.rows.size(), " xp ", xp0, "->", Net.xp, " escapes ", esc0, "->", Net.escapes)
+	print("victory shot first: escaped on stage=", m.results.vic.size(), " seconds=", snappedf(m.results.intro, 0.1))
+	for i in 600: # let the camera finish circling them before the numbers come up
+		await tree.process_frame
+		if m.results.intro <= 0.0: break
 	var line := []
 	for r in m.results.rows: line.append("%s:%s:%d" % [str(r.name), str(r.state), roundi(float(r.score))])
 	print("row order (points first): ", line)

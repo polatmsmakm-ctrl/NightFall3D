@@ -15,6 +15,7 @@ const STUN_TIME := 2.5
 const DOOM_TIME := 120.0 # once the gates have power the moon falls: this long to get out
 const MASH_STEP := 0.03 # each tap on "free yourself"
 const MASH_DECAY := 0.1 # lost per second, so you have to keep hammering the button
+const RESCUE_TIME := 2.0 # seconds to lift someone off a hook; two of you halve it
 const LIVE := ["ok", "hurt", "down", "carried", "hooked"]
 # one random event per round, picked from the seed so every client agrees
 const EVENT_LEN := [20.0, 40.0, 5.0] # 0 blackout, 1 heavy fog, 2 alarm
@@ -30,6 +31,7 @@ var carrying := ""
 var stun := 0.0
 var power_cd := 0.0
 var healers := {} # healer -> target
+var rescuers := {} # rescuer -> the hooked survivor they are lifting
 var last_hit := {}
 var powered := false
 var doom := -1.0 # seconds until the moon hits (-1: not falling yet)
@@ -61,7 +63,7 @@ func setup(n_gens: int, n_gates: int, n_pallets: int, hatches: int, players: Arr
 		roles[str(pl.name)] = str(pl.role)
 		score[str(pl.name)] = 0.0
 		if str(pl.role) == "killer": killer = str(pl.name)
-		else: s[str(pl.name)] = {"hp": "ok", "hooks": 0, "hook_i": -1, "t": 0.0, "heal": 0.0, "locker": -1, "item": true, "esc": 0.0}
+		else: s[str(pl.name)] = {"hp": "ok", "hooks": 0, "hook_i": -1, "t": 0.0, "heal": 0.0, "locker": -1, "item": true, "esc": 0.0, "resc": 0.0}
 
 func add(name: String, pts: float) -> void:
 	if score.has(name): score[name] += pts
@@ -92,10 +94,12 @@ func hook_user(i: int) -> String:
 func _drop(name: String) -> void:
 	for g in gens: g.reps.erase(name)
 	healers.erase(name)
+	rescuers.erase(name)
 
 func _drop_all() -> void:
 	for g in gens: g.reps.clear()
 	healers.clear()
+	rescuers.clear()
 	carrying = ""
 
 func _down(name: String) -> void:
@@ -150,11 +154,9 @@ func handle(d: Dictionary, from: String) -> Array:
 				add(from, 80.0 if p.hp == "hooked" else 180.0)
 				out.append({"k": "hooked", "n": carrying, "s": p.hp})
 				carrying = ""
-		"rescue":
-			if free_now(from) and hp(n) == "hooked":
-				s[n].hp = "hurt"; s[n].hook_i = -1; s[n].heal = 0.0
-				add(from, 60.0)
-				out.append({"k": "rescued", "n": n, "by": from})
+		"rescue": # hold it: two survivors on the same hook get them down twice as fast
+			if d.get("on", false) and free_now(from) and hp(n) == "hooked": rescuers[from] = n
+			else: rescuers.erase(from)
 		"struggle": # one tap on "free yourself": only on the first hook, and the bar drains unless you keep tapping
 			if hp(from) == "hooked" and s[from].hooks == 1:
 				s[from].esc += MASH_STEP
@@ -204,8 +206,9 @@ func handle(d: Dictionary, from: String) -> Array:
 					out.append({"k": "door", "i": i, "on": shut, "by": from})
 	return out
 
-func tick(dt: float) -> void:
-	if over: return
+func tick(dt: float) -> Array:
+	var out := []
+	if over: return out
 	clock += dt
 	stun = maxf(stun - dt, 0.0)
 	power_cd = maxf(power_cd - dt, 0.0)
@@ -237,6 +240,34 @@ func tick(dt: float) -> void:
 			if p.t <= 0.0:
 				p.hp = "dead"
 				add(killer, 100.0)
+	# lifting someone off a hook: everybody pulling on the same person adds up
+	var pulling := {}
+	for r in rescuers.keys():
+		var tgt: String = rescuers[r]
+		if not free_now(r) or hp(tgt) != "hooked":
+			rescuers.erase(r)
+			continue
+		pulling[tgt] = int(pulling.get(tgt, 0)) + 1
+	for n in s:
+		var p: Dictionary = s[n]
+		var hands: int = int(pulling.get(n, 0))
+		if p.hp != "hooked":
+			p.resc = 0.0
+			continue
+		if hands <= 0:
+			p.resc = maxf(p.resc - dt * 0.5, 0.0)
+			continue
+		p.resc += dt * hands / RESCUE_TIME
+		if p.resc >= 1.0:
+			p.resc = 0.0
+			p.hp = "hurt"; p.hook_i = -1; p.heal = 0.0
+			var by := ""
+			for r in rescuers.keys():
+				if rescuers[r] == n:
+					add(r, 60.0 if hands == 1 else 40.0)
+					by = r if by == "" else by
+					rescuers.erase(r)
+			out.append({"k": "rescued", "n": n, "by": by, "hands": hands})
 	for h in healers.keys():
 		var tgt: String = healers[h]
 		var p: Dictionary = s.get(tgt, {})
@@ -274,6 +305,14 @@ func tick(dt: float) -> void:
 		if live == 0: over = true
 		elif live == 1 and s.size() > 1 and hatch < 0 and n_hatch > 0 and not powered:
 			hatch = randi() % n_hatch # last one standing: a way out opens somewhere
+	return out
+
+## How many survivors are pulling on the same hooked player right now.
+func hands_on(name: String) -> int:
+	var n := 0
+	for r in rescuers:
+		if rescuers[r] == name: n += 1
+	return n
 
 func snapshot() -> Dictionary:
 	var gp := []; var gd := []; var to := []; var ss := {}; var sc := {}
@@ -282,7 +321,8 @@ func snapshot() -> Dictionary:
 	for g in gates: to.append(g.open)
 	for n in s:
 		var p: Dictionary = s[n]
-		ss[n] = [p.hp, p.hooks, p.hook_i, ceili(p.t), snappedf(p.heal, 0.001), p.locker, p.item, snappedf(p.esc, 0.001)]
+		var hands := hands_on(n)
+		ss[n] = [p.hp, p.hooks, p.hook_i, ceili(p.t), snappedf(p.heal, 0.001), p.locker, p.item, snappedf(p.esc, 0.001), snappedf(p.resc, 0.001), hands]
 	return {"k": "gs", "g": gp, "d": gd, "to": to, "pw": powered, "s": ss, "pl": pallets, "kc": carrying, "ks": snappedf(stun, 0.01), "kp": snappedf(power_cd, 0.1), "ov": over, "hx": hatch, "sc": sc, "dm": snappedf(doom, 0.1),
 		"dr": doors, "ek": ev_kind if ev_fired else -1, "et": snappedf(ev_t, 0.1), "en": ev_n, "ad": adhan}
 
@@ -294,7 +334,8 @@ func apply(v: Dictionary) -> void:
 	powered = bool(v.pw)
 	for n in v.s:
 		var a: Array = v.s[n]
-		s[n] = {"hp": str(a[0]), "hooks": int(a[1]), "hook_i": int(a[2]), "t": float(a[3]), "heal": float(a[4]), "locker": int(a[5]), "item": bool(a[6]), "esc": float(a[7]) if a.size() > 7 else 0.0}
+		s[n] = {"hp": str(a[0]), "hooks": int(a[1]), "hook_i": int(a[2]), "t": float(a[3]), "heal": float(a[4]), "locker": int(a[5]), "item": bool(a[6]),
+			"esc": float(a[7]) if a.size() > 7 else 0.0, "resc": float(a[8]) if a.size() > 8 else 0.0, "hands": int(a[9]) if a.size() > 9 else 0}
 	carrying = str(v.kc)
 	stun = float(v.ks)
 	power_cd = float(v.kp)

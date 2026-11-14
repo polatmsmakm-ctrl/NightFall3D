@@ -199,7 +199,7 @@ setInterval(() => {
   tickN++;
   for (const r of rooms.values()) {
     if (r.state !== 'game' || !r.rules || !r.rules.ready) continue;
-    r.rules.tick(0.1);
+    for (const e of r.rules.tick(0.1)) broadcast(r, { t: 'ev', n: '', d: e }); // rescues finish inside the tick
     if (r.dirty || tickN % 2 === 0) {
       r.dirty = false;
       broadcast(r, { t: 'ev', n: '', d: r.rules.snapshot() });

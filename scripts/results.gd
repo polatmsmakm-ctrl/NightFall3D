@@ -19,6 +19,12 @@ var again_text := ""
 
 var cam: Camera3D
 var pad: Control
+var vic_stage: Node3D   # the escaped survivors in front of the gate
+var row_stage: Node3D   # everyone, for the statistics
+var vic: Array = []     # rows of whoever got out
+var intro := 0.0        # seconds of the victory shot left
+var home := Vector3.ZERO # where the statistics camera sits
+var btns: Array = []     # the two buttons, hidden while the shot runs
 var t := 0.0
 var xp_show := 0.0
 
@@ -45,12 +51,15 @@ func setup(d: Dictionary) -> void:
 	xp_from = int(d.get("xp_from", 0))
 	xp_to = int(d.get("xp_to", 0))
 	escapes = int(d.get("escapes", 0))
+	vic = d.get("victory", [])
 	kills = int(d.get("kills", 0))
 	on_back = d.get("on_back", Callable())
 	on_again = d.get("on_again", Callable())
 	again_text = str(d.get("again_text", ""))
 	xp_show = float(xp_from)
 	position = Vector3(0, STAGE_Y, 0)
+	row_stage = Node3D.new()
+	add_child(row_stage)
 	# floor: a dull slab so the ones on the ground have something to lie on
 	var floor_mi := MeshInstance3D.new()
 	var pm := PlaneMesh.new()
@@ -60,7 +69,7 @@ func setup(d: Dictionary) -> void:
 	fmat.roughness = 0.95
 	pm.material = fmat
 	floor_mi.mesh = pm
-	add_child(floor_mi)
+	row_stage.add_child(floor_mi)
 	var n: int = maxi(rows.size(), 1)
 	var dist: float = 3.2 + n * 1.05
 	var gap := 1.5
@@ -68,7 +77,7 @@ func setup(d: Dictionary) -> void:
 		var r: Dictionary = rows[i]
 		var dead: bool = str(r.get("state", "")) in ["dead", "down"]
 		var rig := CharacterRig.new()
-		add_child(rig)
+		row_stage.add_child(rig)
 		rig.setup(str(r.get("char", "survivor1")), ["dying"] if dead else ["idle"])
 		rig.position = Vector3((i - (n - 1) / 2.0) * gap, 0.0, 0.0)
 		rig.rotation.y = 0.0 # the models face +z, which is where the camera is
@@ -80,15 +89,16 @@ func setup(d: Dictionary) -> void:
 		key.omni_range = 4.2
 		key.light_color = Color(1.0, 0.85, 0.7) if not dead else Color(0.9, 0.3, 0.25)
 		key.shadow_enabled = false
-		add_child(key)
+		row_stage.add_child(key)
 	var rim := DirectionalLight3D.new()
 	rim.basis = Basis.looking_at(Vector3(-0.3, -0.5, -1.0).normalized())
 	rim.light_color = Color(0.55, 0.62, 0.95)
 	rim.light_energy = 0.7
 	rim.shadow_enabled = false
-	add_child(rim)
+	row_stage.add_child(rim)
 	cam = Camera3D.new()
 	cam.position = Vector3(0.0, 1.62, dist)
+	home = cam.position
 	cam.rotation = Vector3(-0.1, 0.0, 0.0)
 	cam.fov = 58.0
 	cam.near = 0.1
@@ -96,6 +106,10 @@ func setup(d: Dictionary) -> void:
 	cam.environment = _env()
 	add_child(cam)
 	cam.current = true
+	if not vic.is_empty(): # the ones who made it, at the gate, before the numbers
+		_build_victory()
+		intro = 5.0
+		row_stage.visible = false
 	var layer := CanvasLayer.new()
 	layer.layer = 15
 	add_child(layer)
@@ -115,6 +129,7 @@ func setup(d: Dictionary) -> void:
 		if on_back.is_valid(): on_back.call())
 	NFUI.dress(back, "exit")
 	layer.add_child(back)
+	btns.append(back)
 	if on_again.is_valid() and again_text != "":
 		var again := Button.new()
 		again.text = again_text
@@ -126,9 +141,121 @@ func setup(d: Dictionary) -> void:
 			if on_again.is_valid(): on_again.call())
 		NFUI.dress(again, "star")
 		layer.add_child(again)
+		btns.append(again)
+	if intro > 0.0: # nothing to press while the camera circles them
+		for b in btns: (b as Control).visible = false
+
+## The escaped survivors standing in the open gate, celebrating.
+func _build_victory() -> void:
+	vic_stage = Node3D.new()
+	vic_stage.position = Vector3(0, 0, -40.0) # its own corner of the stage
+	add_child(vic_stage)
+	var floor_mi := MeshInstance3D.new()
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(44, 44)
+	var fmat := StandardMaterial3D.new()
+	fmat.albedo_color = Color(0.09, 0.085, 0.08)
+	fmat.roughness = 0.95
+	pm.material = fmat
+	floor_mi.mesh = pm
+	vic_stage.add_child(floor_mi)
+	# the gate: two towers, a lintel and the lit arch they ran through
+	var wall := StandardMaterial3D.new()
+	wall.albedo_color = Color(0.22, 0.21, 0.2)
+	wall.roughness = 0.9
+	var lit := StandardMaterial3D.new()
+	lit.albedo_color = Color(0.45, 0.8, 0.6)
+	lit.emission_enabled = true
+	lit.emission = Color(0.45, 0.95, 0.65)
+	lit.emission_energy_multiplier = 1.6
+	for sx in [-1.0, 1.0]:
+		var tower := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(1.8, 8.0, 2.0)
+		bm.material = wall
+		tower.mesh = bm
+		tower.position = Vector3(sx * 4.4, 4.0, -3.0)
+		vic_stage.add_child(tower)
+		var post := MeshInstance3D.new()
+		var pb := BoxMesh.new()
+		pb.size = Vector3(0.4, 5.0, 0.3)
+		pb.material = lit
+		post.mesh = pb
+		post.position = Vector3(sx * 3.3, 2.5, -3.0)
+		vic_stage.add_child(post)
+	var lintel := MeshInstance3D.new()
+	var lb := BoxMesh.new()
+	lb.size = Vector3(10.6, 1.6, 2.0)
+	lb.material = wall
+	lintel.mesh = lb
+	lintel.position = Vector3(0, 8.8, -3.0)
+	vic_stage.add_child(lintel)
+	var bar := MeshInstance3D.new()
+	var bb := BoxMesh.new()
+	bb.size = Vector3(7.2, 0.5, 0.3)
+	bb.material = lit
+	bar.mesh = bb
+	bar.position = Vector3(0, 5.2, -3.0)
+	vic_stage.add_child(bar)
+	var gl := OmniLight3D.new()
+	gl.position = Vector3(0, 4.2, -1.2)
+	gl.light_color = Color(0.65, 1.0, 0.8)
+	gl.light_energy = 4.0
+	gl.omni_range = 22.0
+	vic_stage.add_child(gl)
+	var fill := OmniLight3D.new() # so the gate towers are not flat black
+	fill.position = Vector3(0.0, 3.6, 6.5)
+	fill.light_color = Color(0.8, 0.86, 1.0)
+	fill.light_energy = 1.3
+	fill.omni_range = 20.0
+	fill.shadow_enabled = false
+	vic_stage.add_child(fill)
+	var n: int = maxi(vic.size(), 1)
+	for i in vic.size():
+		var r: Dictionary = vic[i]
+		var rig := CharacterRig.new()
+		vic_stage.add_child(rig)
+		rig.setup(str(r.get("char", "survivor1")), ["idle", "wave", "dance"])
+		rig.position = Vector3((i - (n - 1) / 2.0) * 1.7, 0.0, 0.6)
+		rig.play("dance" if i == 0 else "wave")   # the only celebrating clips we have
+		rig.player.seek(float(i) * 0.4, true)
+		var key := OmniLight3D.new()
+		key.position = rig.position + Vector3(0.0, 2.2, 2.2)
+		key.light_energy = 1.8
+		key.omni_range = 5.0
+		key.light_color = Color(1.0, 0.92, 0.82)
+		key.shadow_enabled = false
+		vic_stage.add_child(key)
+		var tag := Label3D.new()
+		tag.text = str(r.get("name", ""))
+		tag.font = Net.font
+		tag.font_size = 52
+		tag.pixel_size = 0.0035
+		tag.position = rig.position + Vector3(0, 2.6, 0) # clear of the raised arms in the dance
+		tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		tag.modulate = Color(0.75, 1.0, 0.85)
+		tag.outline_size = 14
+		tag.outline_modulate = Color(0, 0, 0, 0.85)
+		vic_stage.add_child(tag)
 
 func _process(dt: float) -> void:
+	if cam == null: return # setup() has not run yet
 	t += dt
+	if intro > 0.0: # circle them slowly, then hand over to the statistics
+		intro = maxf(intro - dt, 0.0)
+		var a := -0.5 + (5.0 - intro) * 0.19
+		var centre: Vector3 = vic_stage.global_position + Vector3(0, 0, 0.6) # the stage sits 600 m up: work in world space
+		cam.global_position = centre + Vector3(sin(a) * 7.5, 2.2 + 0.3 * sin(t * 0.5), cos(a) * 7.5)
+		cam.look_at(centre + Vector3(0, 1.25, 0), Vector3.UP)
+		pad.queue_redraw()
+		if intro <= 0.0: # over to the numbers
+			vic_stage.visible = false
+			row_stage.visible = true
+			cam.position = home
+			cam.rotation = Vector3(-0.1, 0.0, 0.0)
+			t = 0.0
+			for b in btns: (b as Control).visible = true
+		return
 	cam.position.x = sin(t * 0.22) * 0.5 # a slow drift so the row is not a still photo
 	xp_show = move_toward(xp_show, float(xp_to), maxf(float(xp_to - xp_from), 1.0) * dt / 1.6)
 	pad.queue_redraw()
@@ -143,6 +270,13 @@ func _say(at: Vector2, s: String, size: int, col: Color, width := 420.0) -> void
 
 func _draw_pad() -> void:
 	var s: Vector2 = pad.size
+	if intro > 0.0:
+		var names := PackedStringArray()
+		for r in vic: names.append(str(r.get("name", "")))
+		var fade: float = clampf(intro / 0.6, 0.0, 1.0) * clampf((5.0 - intro) / 0.4, 0.0, 1.0)
+		_say(Vector2(s.x / 2.0, s.y * 0.16), "نجوا!", 56, Color(0.6, 1.0, 0.75, fade), s.x - 40.0)
+		_say(Vector2(s.x / 2.0, s.y * 0.24), "، ".join(names), 26, Color(0.85, 1.0, 0.9, fade), s.x - 60.0)
+		return
 	var safe := NFUI.safe_insets(get_viewport())
 	pad.draw_rect(Rect2(Vector2.ZERO, Vector2(s.x, 100.0)), Color(0.02, 0.02, 0.03, 0.72))
 	pad.draw_rect(Rect2(Vector2(0.0, s.y - 122.0), Vector2(s.x, 122.0)), Color(0.02, 0.02, 0.03, 0.72))

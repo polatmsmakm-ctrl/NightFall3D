@@ -4,6 +4,8 @@ uniform vec3 moon_dir = vec3(0.3, 0.32, -0.9);
 uniform float blood : hint_range(0.0, 1.0) = 0.0; // 1 = blood moon (gates open)
 uniform float near : hint_range(0.0, 1.0) = 0.0; // 0..1: the moon falling toward the ground
 uniform sampler2D noise_tex : repeat_enable, filter_linear_mipmap;
+uniform float day : hint_range(0.0, 1.0) = 0.0;  // 0 night, 1 daylight (the start screen only)
+uniform float warm : hint_range(0.0, 1.0) = 0.0; // dawn / dusk colour
 
 float hash(vec3 p) {
 	p = fract(p * 0.3183099 + 0.1);
@@ -15,10 +17,14 @@ void sky() {
 	vec3 d = normalize(EYEDIR);
 	float h = clamp(d.y, 0.0, 1.0);
 	vec3 col = mix(vec3(0.035, 0.05, 0.09), vec3(0.004, 0.008, 0.02), pow(h, 0.5));
+	vec3 lit = mix(vec3(0.62, 0.76, 0.96), vec3(0.17, 0.37, 0.76), pow(h, 0.6));
+	vec3 glow = mix(vec3(0.98, 0.52, 0.26), vec3(0.22, 0.26, 0.5), pow(h, 0.5));
+	col = mix(col, lit, day);
+	col = mix(col, glow, warm * (1.0 - 0.4 * day));
 	vec3 cell = floor(d * 220.0);
 	float s = hash(cell);
 	float star = step(0.9975, s) * smoothstep(0.0, 0.15, d.y);
-	col += vec3(star * (0.6 + 0.4 * sin(TIME * 2.0 + s * 100.0)));
+	col += vec3(star * (0.6 + 0.4 * sin(TIME * 2.0 + s * 100.0)) * (1.0 - day) * (1.0 - 0.6 * warm));
 	vec3 md = normalize(moon_dir);
 	float ang = acos(clamp(dot(d, md), -1.0, 1.0));
 	float r = 0.055 * (1.0 + 2.0 * near + 9.0 * near * near * near);

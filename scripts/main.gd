@@ -578,7 +578,9 @@ func _on_event(e: Dictionary) -> void:
 			if str(e.n) == my_name: _sfx("rope", null, 0.0)
 			_flash("%s %s" % [str(e.n), "انعلّق على الخطاف" if str(e.s) == "hooked" else "مات"])
 		"rescued":
+			NFHaptics.pulse("tick")
 			if str(e.by) == str(e.n): _flash("%s فك نفسه من الخطاف!" % str(e.n))
+			elif int(e.get("hands", 1)) > 1: _flash("أنقذوا %s سوا!" % str(e.n))
 			else: _flash("%s أنقذ %s" % [str(e.by), str(e.n)])
 		"grabbed": _flash("القاتل طلّع %s من الخزانة" % str(e.n))
 		"empty":
@@ -770,6 +772,9 @@ func _show_results() -> void:
 			"role": str(rules.roles.get(n, "survivor")),
 			"state": rules.hp(n) if rules.s.has(n) else "killer",
 			"score": float(rules.score[n]), "mine": n == my_name})
+	var out_rows := [] # the ones who got out: the victory shot before the numbers
+	for r in rows:
+		if str(r.get("state", "")) == "escaped": out_rows.append(r)
 	var xp_from := Net.xp
 	var gain := roundi(rules.score.get(my_name, 0.0))
 	if not xp_saved: # points become experience; levels, escapes and kills are kept on the phone
@@ -781,7 +786,7 @@ func _show_results() -> void:
 	var host: bool = not offline and str(Net.room.get("host", "")) == my_name
 	results = NFResults.new()
 	add_child(results)
-	results.setup({"rows": rows, "title": title, "stats": stats, "xp_from": xp_from, "xp_to": xp_from + gain,
+	results.setup({"rows": rows, "victory": out_rows, "title": title, "stats": stats, "xp_from": xp_from, "xp_to": xp_from + gain,
 		"escapes": Net.escapes, "kills": Net.kills,
 		# "play again" puts everyone back in the SAME room with the same settings
 		"again_text": "العب مرة ثانية" if (offline or host) else "رجوع للغرفة",
@@ -1028,14 +1033,22 @@ func _draw_ui() -> void:
 	# hold progress + skill check
 	if not hold.is_empty():
 		var p := 0.0
+		var hands := 0
 		match hold.kind:
 			"rep": p = rules.gens[hold.i].p
 			"heal": p = rules.s[hold.n].heal if rules.s.has(hold.n) else 0.0
+			"rescue":
+				if rules.s.has(hold.n):
+					p = float(rules.s[hold.n].get("resc", 0.0))
+					# online the snapshot says how many hands; offline, count them here
+					hands = int(rules.s[hold.n].get("hands", 0))
+					if hands <= 0: hands = rules.hands_on(hold.n)
 			_: p = hold.t / hold.need
 		var bar := Rect2(mid.x - 180, s.y - 90, 360, 18)
 		ui.draw_rect(bar, Color(0, 0, 0, 0.6))
 		ui.draw_rect(Rect2(bar.position, Vector2(360 * clampf(p, 0.0, 1.0), 18)), Color(1, 0.85, 0.3))
 		ui.draw_rect(bar, Color(1, 1, 1, 0.6), false, 2.0)
+		if hands > 1: _text(Vector2(mid.x, s.y - 100), "%d يشيلونه سوا — أسرع!" % hands, 20, Color(0.6, 1, 0.7))
 	if not skill.is_empty():
 		var z: float = skill.zone
 		ui.draw_circle(mid, 78, Color(0, 0, 0, 0.55))
@@ -1235,7 +1248,7 @@ func _update_ctx() -> void:
 			var p: Dictionary = rules.s[n]
 			if n == my_name: continue
 			if p.hp == "hooked" and _near(pos, world.hook_points[p.hook_i], 2.9):
-				ctx.interact = {"kind": "rescue", "label": "أنقذ", "n": n, "need": 1.5}
+				ctx.interact = {"kind": "rescue", "label": "أنقذ", "n": n, "need": -1.0}
 			if p.hp in ["hurt", "down"] and p.locker < 0 and _near(pos, _pos_of(n), 2.6):
 				ctx.heal = {"kind": "heal", "n": n, "need": -1.0}
 		if not ctx.has("interact"):
@@ -1337,11 +1350,13 @@ func _press(id: String, touch: int) -> void:
 						next_skill = randf_range(3.0, 6.0)
 						_ev({"k": "rep", "i": c.i, "on": true})
 					elif c.kind == "heal": _ev({"k": "heal", "n": c.n, "on": true})
+					elif c.kind == "rescue": _ev({"k": "rescue", "n": c.n, "on": true})
 
 func _end_hold() -> void:
 	if hold.is_empty(): return
 	if hold.kind == "rep": _ev({"k": "rep", "i": hold.i, "on": false})
 	elif hold.kind == "heal": _ev({"k": "heal", "n": hold.n, "on": false})
+	elif hold.kind == "rescue": _ev({"k": "rescue", "n": hold.n, "on": false})
 	hold = {}
 	skill = {}
 
@@ -1354,8 +1369,7 @@ func _update_hold(delta: float) -> void:
 	if hold.need > 0.0: # timed action: fires when the bar fills
 		hold.t += delta
 		if hold.t >= hold.need:
-			if hold.kind == "rescue": _ev({"k": "rescue", "n": hold.n})
-			elif hold.kind == "break": _ev({"k": "break", "i": hold.i})
+			if hold.kind == "break": _ev({"k": "break", "i": hold.i})
 			hold = {}
 	elif hold.kind == "rep":
 		if skill.is_empty():
@@ -1613,7 +1627,7 @@ func _process(dt: float) -> void:
 func _physics_process(delta: float) -> void:
 	if not started: return
 	if offline:
-		rules.tick(delta)
+		for e in rules.tick(delta): _on_event(e)
 	match_time += delta
 	escape_banner = maxf(escape_banner - delta, 0.0)
 	my_state = rules.hp(my_name) if my_role == "survivor" else "ok"

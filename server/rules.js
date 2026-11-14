@@ -2,7 +2,8 @@
 const NEED = 5, GEN_TIME = 60, HEAL_TIME = 8, SELF_HEAL_TIME = 12, HOOK_TIME = [60, 30];
 const BLEED_TIME = 120, HIT_COOLDOWN = 1.5, POWER_CD = 20, STUN_TIME = 2.5;
 const DOOM_TIME = 120; // once the gates have power the moon falls: this long to get out
-const MASH_STEP = 0.03, MASH_DECAY = 0.1; // "free yourself": keep tapping or the bar drains
+const MASH_STEP = 0.03, MASH_DECAY = 0.1;
+const RESCUE_TIME = 2; // seconds to lift someone off a hook; two of you halve it // "free yourself": keep tapping or the bar drains
 const LIVE = ['ok', 'hurt', 'down', 'carried', 'hooked'];
 // one random event per round, picked from the seed so every client agrees (mirrors rules.gd)
 const EVENT_LEN = [20, 40, 5]; // 0 blackout, 1 heavy fog, 2 alarm
@@ -13,7 +14,7 @@ class Rules {
   constructor(players, seed = 0) {
     this.gens = []; this.gates = []; this.pallets = []; this.s = {}; this.roles = {};
     this.killer = ''; this.carrying = ''; this.stun = 0; this.powerCd = 0;
-    this.healers = {}; this.lastHit = {}; this.powered = false; this.doom = -1; this.over = false; this.clock = 0;
+    this.healers = {}; this.rescuers = {}; this.lastHit = {}; this.powered = false; this.doom = -1; this.over = false; this.clock = 0;
     this.pos = {}; this.layout = null; this.ready = false; this.hatch = -1; this.score = {};
     this.doors = [];                        // every doorway: true when the leaf is shut
     const sd = Math.abs(Math.floor(seed));
@@ -26,7 +27,7 @@ class Rules {
       this.roles[p.name] = p.role;
       this.score[p.name] = 0;
       if (p.role === 'killer') this.killer = p.name;
-      else this.s[p.name] = { hp: 'ok', hooks: 0, hook_i: -1, t: 0, heal: 0, locker: -1, item: true, esc: 0, tap: 0 };
+      else this.s[p.name] = { hp: 'ok', hooks: 0, hook_i: -1, t: 0, heal: 0, locker: -1, item: true, esc: 0, resc: 0, tap: 0 };
     }
   }
   setLayout(l) { // object positions, sent by the clients (they all generate the same map)
@@ -51,12 +52,17 @@ class Rules {
     const p = this.pos[b];
     return p ? this.near(a, [p[0], p[2]], r) : true;
   }
+  handsOn(name) { // how many survivors are pulling on the same hooked player
+    let n = 0;
+    for (const r of Object.keys(this.rescuers)) if (this.rescuers[r] === name) n++;
+    return n;
+  }
   doneCount() { return this.gens.filter((g) => g.done).length; }
   hp(n) { return this.s[n] ? this.s[n].hp : ''; }
   freeNow(n) { const p = this.s[n]; return !!p && (p.hp === 'ok' || p.hp === 'hurt') && p.locker < 0; }
   lockerUser(i) { return Object.keys(this.s).find((n) => this.s[n].locker === i) || ''; }
   hookUser(i) { return Object.keys(this.s).find((n) => this.s[n].hp === 'hooked' && this.s[n].hook_i === i) || ''; }
-  drop(n) { for (const g of this.gens) delete g.reps[n]; delete this.healers[n]; }
+  drop(n) { for (const g of this.gens) delete g.reps[n]; delete this.healers[n]; delete this.rescuers[n]; }
   down(n) { const p = this.s[n]; p.hp = 'down'; p.t = BLEED_TIME; p.heal = 0; this.drop(n); }
 
   handle(d, from) {
@@ -110,12 +116,9 @@ class Rules {
           this.carrying = '';
         }
         break;
-      case 'rescue':
-        if (this.freeNow(from) && this.hp(n) === 'hooked' && this.near(from, L.h[this.s[n].hook_i])) {
-          const p = this.s[n]; p.hp = 'hurt'; p.hook_i = -1; p.heal = 0;
-          this.add(from, 60);
-          out.push({ k: 'rescued', n, by: from });
-        }
+      case 'rescue': // hold it: two survivors on the same hook get them down twice as fast
+        if (d.on && this.freeNow(from) && this.hp(n) === 'hooked' && this.near(from, L.h[this.s[n].hook_i])) this.rescuers[from] = n;
+        else delete this.rescuers[from];
         break;
       case 'struggle': { // one tap; first hook only; ignores taps faster than a human thumb
         const p = this.s[from];
@@ -185,7 +188,8 @@ class Rules {
   }
 
   tick(dt) {
-    if (this.over || !this.ready) return;
+    const out = [];
+    if (this.over || !this.ready) return out;
     this.clock += dt;
     this.stun = Math.max(this.stun - dt, 0);
     this.powerCd = Math.max(this.powerCd - dt, 0);
@@ -214,6 +218,32 @@ class Rules {
       const p = this.s[n];
       if (p.hp === 'hooked') p.esc = Math.max(p.esc - MASH_DECAY * dt, 0);
       if (p.hp === 'hooked' || p.hp === 'down') { p.t -= dt; if (p.t <= 0) { p.hp = 'dead'; this.add(this.killer, 100); } }
+    }
+    // lifting someone off a hook: everybody pulling on the same person adds up
+    const pulling = {};
+    for (const r of Object.keys(this.rescuers)) {
+      const tgt = this.rescuers[r];
+      if (!this.freeNow(r) || this.hp(tgt) !== 'hooked') { delete this.rescuers[r]; continue; }
+      pulling[tgt] = (pulling[tgt] || 0) + 1;
+    }
+    for (const n in this.s) {
+      const p = this.s[n];
+      const hands = pulling[n] || 0;
+      if (p.hp !== 'hooked') { p.resc = 0; continue; }
+      if (hands <= 0) { p.resc = Math.max(p.resc - dt * 0.5, 0); continue; }
+      p.resc += dt * hands / RESCUE_TIME;
+      if (p.resc >= 1) {
+        p.resc = 0;
+        p.hp = 'hurt'; p.hook_i = -1; p.heal = 0;
+        let by = '';
+        for (const r of Object.keys(this.rescuers)) {
+          if (this.rescuers[r] !== n) continue;
+          this.add(r, hands === 1 ? 60 : 40);
+          if (by === '') by = r;
+          delete this.rescuers[r];
+        }
+        out.push({ k: 'rescued', n, by, hands });
+      }
     }
     for (const h of Object.keys(this.healers)) {
       const tgt = this.healers[h];
@@ -248,12 +278,18 @@ class Rules {
     else if (live === 1 && names.length > 1 && this.hatch < 0 && !this.powered && this.layout.x && this.layout.x.length > 0) {
       this.hatch = Math.floor(Math.random() * this.layout.x.length); // last one standing: a way out opens somewhere
     }
+    return out;
   }
 
   snapshot() {
     const r3 = (v) => Math.round(v * 1000) / 1000;
     const ss = {};
-    for (const n in this.s) { const p = this.s[n]; ss[n] = [p.hp, p.hooks, p.hook_i, Math.ceil(p.t), r3(p.heal), p.locker, p.item, r3(p.esc)]; }
+    const pulling = {};
+    for (const r of Object.keys(this.rescuers)) pulling[this.rescuers[r]] = (pulling[this.rescuers[r]] || 0) + 1;
+    for (const n in this.s) {
+      const p = this.s[n];
+      ss[n] = [p.hp, p.hooks, p.hook_i, Math.ceil(p.t), r3(p.heal), p.locker, p.item, r3(p.esc), r3(p.resc), pulling[n] || 0];
+    }
     return {
       k: 'gs', g: this.gens.map((g) => r3(g.p)), d: this.gens.map((g) => g.done), to: this.gates.map((g) => g.open),
       pw: this.powered, s: ss, pl: this.pallets, kc: this.carrying, ks: r3(this.stun), kp: Math.round(this.powerCd * 10) / 10, ov: this.over, hx: this.hatch, dm: Math.round(this.doom * 10) / 10,

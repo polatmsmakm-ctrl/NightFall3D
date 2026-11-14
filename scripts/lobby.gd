@@ -22,6 +22,12 @@ var me_name := ""
 var _emoting := {} # rig -> seconds left before going back to idle
 var me_label: Label3D
 var fire: OmniLight3D
+var sky_mat: ShaderMaterial
+var env: Environment
+var moon: DirectionalLight3D
+var fire_mul := 1.0
+var period := "night"
+var misty := false
 var pivot: Node3D
 var cam: Camera3D
 var key_light: OmniLight3D
@@ -78,7 +84,7 @@ func _fire_layer(parent: Node3D, amount: int, life: float, radius: float, rise: 
 func _ready() -> void:
 	var kit := NightWorld.new() # borrow the world's materials and meshes (never added to the tree)
 	kit._make_materials()
-	var env := Environment.new()
+	env = Environment.new()
 	var sm := ShaderMaterial.new()
 	sm.shader = load("res://shaders/sky.gdshader")
 	sm.set_shader_parameter("moon_dir", Vector3(0.35, 0.33, -0.88).normalized())
@@ -105,7 +111,8 @@ func _ready() -> void:
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
-	var moon := DirectionalLight3D.new()
+	sky_mat = sm
+	moon = DirectionalLight3D.new()
 	moon.basis = Basis.looking_at(-Vector3(0.35, 0.33, -0.88).normalized())
 	moon.light_color = Color(0.5, 0.6, 0.95)
 	moon.light_energy = 1.0
@@ -361,7 +368,60 @@ func _ready() -> void:
 		a.volume_db = snd[1]
 		add_child(a)
 		a.play()
+	_time_of_day()
 	kit.free()
+
+## Tests and screenshots pretend it is this hour (and force the mist on or off); -1 = the real clock.
+static var force_hour := -1
+static var force_mist := -1
+
+## Dawn, day, dusk or night, from the clock on the phone, with mist now and then.
+## The camp, the fire and the cast stay exactly as they are; only the light changes.
+func _time_of_day() -> void:
+	var h: int = force_hour if force_hour >= 0 else int(Time.get_datetime_dict_from_system().get("hour", 21))
+	if h >= 5 and h < 8: period = "dawn"
+	elif h >= 8 and h < 17: period = "day"
+	elif h >= 17 and h < 20: period = "dusk"
+	else: period = "night"
+	misty = (force_mist == 1) if force_mist >= 0 else (randf() < 0.3)
+	var sky_day := 0.0
+	var sky_warm := 0.0
+	var moon_col := Color(0.5, 0.6, 0.95)
+	var moon_e := 1.0
+	var amb := Color(0.14, 0.19, 0.34)
+	var amb_e := 1.3
+	var fog := Color(0.07, 0.1, 0.17)
+	var fog_d := 0.022
+	match period:
+		"dawn":
+			sky_day = 0.4; sky_warm = 0.95
+			moon_col = Color(1.0, 0.72, 0.5); moon_e = 1.5
+			amb = Color(0.3, 0.26, 0.3); amb_e = 1.5
+			fog = Color(0.4, 0.3, 0.28); fog_d = 0.03
+			fire_mul = 0.75
+		"day":
+			sky_day = 1.0; sky_warm = 0.12
+			moon_col = Color(1.0, 0.95, 0.86); moon_e = 2.4
+			amb = Color(0.5, 0.56, 0.66); amb_e = 1.7
+			fog = Color(0.6, 0.66, 0.74); fog_d = 0.012
+			fire_mul = 0.45
+		"dusk":
+			sky_day = 0.3; sky_warm = 1.0
+			moon_col = Color(1.0, 0.6, 0.36); moon_e = 1.2
+			amb = Color(0.3, 0.22, 0.26); amb_e = 1.4
+			fog = Color(0.35, 0.22, 0.2); fog_d = 0.032
+			fire_mul = 0.9
+	if misty: # a low fog bank over the clearing
+		fog_d *= 2.4
+		fog = fog.lerp(Color(0.62, 0.64, 0.68), 0.45)
+	sky_mat.set_shader_parameter("day", sky_day)
+	sky_mat.set_shader_parameter("warm", sky_warm)
+	moon.light_color = moon_col
+	moon.light_energy = moon_e
+	env.ambient_light_color = amb
+	env.ambient_light_energy = amb_e
+	env.fog_light_color = fog
+	env.fog_density = fog_d
 
 # ---------------- the chosen character in front of the fire ----------------
 func _tag(text: String, col: Color, y: float) -> Label3D:
@@ -476,7 +536,7 @@ func _process(dt: float) -> void:
 	_tick_emotes(dt)
 	var tt := Time.get_ticks_msec() / 1000.0
 	var flick := 0.78 + 0.14 * sin(tt * 13.0) * sin(tt * 4.3) + 0.08 * sin(tt * 27.0)
-	fire.light_energy = 3.4 * flick
+	fire.light_energy = 3.4 * flick * fire_mul
 	fire.position = Vector3(0.05 * sin(tt * 9.0), 0.75 + 0.05 * sin(tt * 7.0), 0.05 * cos(tt * 11.0)) # shadows dance
 	pivot.rotation.y = 0.1 * sin(tt * 0.13) * (1.0 - _focus)
 	var want := 1.0 if focused else 0.0
