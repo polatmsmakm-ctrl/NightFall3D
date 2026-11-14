@@ -34,6 +34,17 @@ var breaths := {}             # name -> breath-vapour particles (snow theme)
 var dev_dot: Button           # hidden developer tools (only built when this phone has them)
 var dev_panel: PanelContainer
 var esp_nodes := {}           # name -> {meshes, mat, mark, label}
+var cam_kick := Vector2.ZERO  # pitch / roll impulse left to play out
+var cam_kick_v := Vector2.ZERO
+var cam_extra := 0.0          # how far the camera has pulled back (hooked)
+var hook_cam := 0.0           # seconds left of the camera swinging round to the hook
+var slowmo := 0.0             # seconds of the escape slow-motion left
+var run_time := 0.0           # how long I have been sprinting
+var tired := 0.0              # seconds of the out-of-breath pose left
+var startle := 0.0            # seconds of the "he just appeared" reaction left
+var saw_killer := false       # first sight of him this round
+var heart_beat := 0.0         # drives the heartbeat buzz
+var look_at := {}             # name -> [world position, seconds left]: what each character looks at
 var sig_open := false         # the three-message panel is showing
 var sig_close := 0.0          # closes itself if untouched
 var body: CharacterBody3D
@@ -179,7 +190,7 @@ func _build_player(char_name: String, at: Vector3) -> void:
 	body.add_child(cshape)
 	rig = CharacterRig.new()
 	body.add_child(rig)
-	rig.setup(char_name)
+	rig.setup(char_name, CharacterRig.ANIMS + ["tired", "startle"])
 	body.position = at
 	body.floor_snap_length = 0.5
 	body.floor_max_angle = deg_to_rad(50.0)
@@ -236,7 +247,7 @@ func _add_remote(p: Dictionary) -> void:
 	var node := Node3D.new()
 	var r := CharacterRig.new()
 	node.add_child(r)
-	r.setup(str(p.char))
+	r.setup(str(p.char), CharacterRig.ANIMS + ["tired", "startle"])
 	node.position = world.spawn_point(str(p.role), int(p.slot))
 	if p.get("dummy", false): # trial-mode practice target
 		var gp: Vector3 = world.gen_points[0]
@@ -552,12 +563,16 @@ func _on_event(e: Dictionary) -> void:
 			if my_role == "killer": _flash("أحد غلط في تصليح مولد!")
 		"hurt":
 			_voice_hit(str(e.n))
+			_heads_up(_pos_of(str(e.n)), 2.0) # everyone looks at the scream
 			if str(e.n) == my_name:
 				boost_t = 2.0
+				_shake(0.5 if str(e.s) == "hurt" else 0.85)
+				NFHaptics.pulse("hit")
 				_flash("انضربت! اهرب" if str(e.s) == "hurt" else "طحت")
 			elif my_role == "killer": _flash("أصبت %s" % str(e.n))
 		"hooked":
 			_sfx("rope", _pos_of(str(e.n)) + Vector3(0, 2, 0), 8.0)
+			NFHaptics.pulse("hook")
 			if str(e.n) == my_name: _sfx("rope", null, 0.0)
 			_flash("%s %s" % [str(e.n), "انعلّق على الخطاف" if str(e.s) == "hooked" else "مات"])
 		"rescued":
@@ -770,6 +785,85 @@ func _show_results() -> void:
 		"on_back": func() -> void:
 			if host: Net.send({"t": "lobby"})
 			_to_menu()})
+
+## A hurt survivor rolls with every other step, so the walk reads as a limp.
+func _limp(r: CharacterRig, state: String, v: float) -> void:
+	if r == null: return
+	if state != "hurt" or v < 0.3:
+		if absf(r.rotation.z) > 0.001: r.rotation.z = lerpf(r.rotation.z, 0.0, 0.2)
+		return
+	var t := Time.get_ticks_msec() / 1000.0
+	r.rotation.z = sin(t * 4.6) * 0.055 + 0.03
+	r.position.y = maxf(r.position.y, 0.0) - absf(sin(t * 2.3)) * 0.035
+
+## Heads turn toward whatever just happened, and everyone jumps the first time the killer shows up.
+func _reactions(dt: float) -> void:
+	var kpos := _pos_of(rules.killer) if rules.killer != "" else Vector3.ZERO
+	# survivors standing near the killer watch him
+	if rules.killer != "" and remotes.has(rules.killer):
+		for n in remotes:
+			var r = remotes[n]
+			if r.role != "survivor" or not r.node.visible: continue
+			if r.node.position.distance_to(kpos) < 13.0: look_at[n] = [kpos + Vector3(0, 1.6, 0), 0.8]
+	for n in look_at.keys():
+		var e: Array = look_at[n]
+		e[1] = float(e[1]) - dt
+		if e[1] <= 0.0:
+			look_at.erase(n)
+			if n == my_name: rig.look_clear()
+			elif remotes.has(n): remotes[n].rig.look_clear()
+			continue
+		var at: Vector3 = e[0]
+		if n == my_name:
+			if my_role == "survivor": rig.look(at, 1.0)
+		elif remotes.has(n): remotes[n].rig.look(at, 1.0)
+
+## A short kick: the camera tips and rolls, then springs back. `power` is roughly 0..1.
+func _shake(power: float) -> void:
+	cam_kick_v += Vector2(-power * 2.6, power * 2.2 * (1.0 if randf() < 0.5 else -1.0))
+
+## Everyone near `at` turns their head toward it for `secs`.
+func _heads_up(at: Vector3, secs := 1.6) -> void:
+	if at == Vector3.ZERO: return
+	look_at[my_name] = [at, secs]
+	for n in remotes:
+		if remotes[n].role == "survivor": look_at[n] = [at, secs]
+
+## The camera moves that are not simple kicks: carried sway, the hook pull-back, the escape zoom.
+func _camera_feel(delta: float) -> void:
+	# spring the kick back to rest
+	cam_kick_v -= (cam_kick * 42.0 + cam_kick_v * 9.0) * delta
+	cam_kick += cam_kick_v * delta
+	var extra := 0.0
+	var roll := cam_kick.y
+	var tip := cam_kick.x
+	match my_state:
+		"carried": # hanging over his shoulder: a slow heavy sway
+			var t := Time.get_ticks_msec() / 1000.0
+			roll += sin(t * 1.9) * 0.1
+			tip += sin(t * 1.3) * 0.05
+			extra = 0.8
+		"hooked": # swing round to the front of the hook, tip up, pull back
+			extra = 3.4
+			if hook_cam > 0.0:
+				hook_cam = maxf(hook_cam - delta, 0.0)
+				var k := 1.0 - exp(-1.8 * delta)
+				yaw = lerp_angle(yaw, 0.0, k)   # a hooked character always faces +z
+				pitch = lerpf(pitch, 0.1, k)
+	if my_role != "killer":
+		cam_extra = lerpf(cam_extra, extra, 1.0 - exp(-2.2 * delta))
+		arm.spring_length = 3.4 + cam_extra
+	if startle > 0.0: # he walked into view
+		startle = maxf(startle - delta, 0.0)
+		tip += 0.04 * startle
+	if slowmo > 0.0: # getting out: a brief slow pull back
+		slowmo = maxf(slowmo - delta, 0.0)
+		Engine.time_scale = lerpf(1.0, 0.45, clampf(slowmo / 0.25, 0.0, 1.0))
+		if main_cam: main_cam.fov = lerpf(70.0, 84.0, clampf(slowmo / 1.1, 0.0, 1.0))
+		if slowmo <= 0.0:
+			Engine.time_scale = 1.0
+			if main_cam: main_cam.fov = 70.0 if my_role != "killer" else 80.0
+	cam_pivot.rotation = Vector3(pitch + tip, yaw, roll)
 
 ## Screen margins (left, right) in UI units to stay clear of the notch / Dynamic Island.
 func _safe() -> Vector2:
@@ -1368,6 +1462,7 @@ func _process(dt: float) -> void:
 			r.rig.position.y = lerpf(r.rig.position.y, lift, w)
 			r.rig.rotation = Vector3(0, lerp_angle(r.rig.rotation.y, face, w), 0)
 			r.rig.play(anim)
+			_limp(r.rig, st, 3.0 if anim in ["walk", "injured", "run"] else 0.0)
 		_update_bleed(r.bleed, st == "hooked", dt)
 		# women gasp "oof" now and then while limping around injured
 		if st == "hurt" and r.node.visible and anim in ["walk", "injured", "run"] and not (chars.get(n, "") in MALE):
@@ -1390,6 +1485,7 @@ func _process(dt: float) -> void:
 			if lvl > noise:
 				noise = lvl
 				noise_dir = wrapf(atan2(to.x, -to.z) + yaw, -PI, PI)
+	_reactions(dt)
 	if Dev.unlocked: _update_esp()
 	for m in marks:
 		if m.t > 0.0:
@@ -1399,6 +1495,8 @@ func _process(dt: float) -> void:
 	# world visuals + sounds follow the rules state
 	for i in rules.gens.size():
 		var g: Dictionary = rules.gens[i]
+		if g.done and i < world.gen_nodes.size() and not world.gen_nodes[i].done:
+			_heads_up(world.gen_points[i] + Vector3(0, 1.0, 0), 2.2) # it just kicked in
 		if g.done: world.set_gen_done(i)
 		var run: AudioStreamPlayer3D = gen_audio[i]
 		var ending: bool = g.p >= 0.85 and not g.done # about to start: loud engine + flickering lamps
@@ -1430,6 +1528,11 @@ func _process(dt: float) -> void:
 	if my_role == "survivor" and rules.killer != "" and remotes.has(rules.killer) and my_state in ["ok", "hurt", "down", "hooked"]:
 		kdist = body.position.distance_to(kpos)
 		danger = clampf(1.0 - kdist / TERROR_RADIUS, 0.0, 1.0)
+	if danger > 0.05 and my_state in ["ok", "hurt", "down"]: # one small buzz per heartbeat
+		heart_beat -= dt * lerpf(1.1, 2.2, danger)
+		if heart_beat <= 0.0:
+			heart_beat = 1.0
+			NFHaptics.pulse_scaled("beat", danger)
 	var fade := 1.0 - exp(-4.0 * dt)
 	if danger > 0.0 and not heart.playing: heart.play()
 	heart.volume_db = lerpf(heart.volume_db, lerpf(-16.0, 4.0, danger) if danger > 0.0 else -60.0, fade)
@@ -1452,6 +1555,12 @@ func _process(dt: float) -> void:
 				if to.length() < 24.0 and look.dot(to.normalized()) > 0.35 and _line_of_sight(r.node.position): chase_hold = 6.0
 		elif my_state in ["ok", "hurt"] and me_locker() < 0 and kdist < 18.0 and _line_of_sight(kpos):
 			chase_hold = 6.0
+			if not saw_killer: # the first time he appears this round
+				saw_killer = true
+				startle = 0.85
+				_shake(0.3)
+				NFHaptics.pulse("tick")
+				_heads_up(kpos + Vector3(0, 1.6, 0), 1.8)
 	chase_hold = maxf(chase_hold - dt, 0.0)
 	var chasing := chase_hold > 0.0 and not rules.over
 	if chasing and not chase_music.playing: chase_music.play()
@@ -1467,8 +1576,11 @@ func _process(dt: float) -> void:
 		if main_cam:
 			main_cam.h_offset = randf_range(-1.0, 1.0) * 0.07 * rumble
 			main_cam.v_offset = randf_range(-1.0, 1.0) * 0.07 * rumble
+		if near > 0.45: NFHaptics.pulse_scaled("rumble", (near - 0.45) / 0.55) # it keeps getting closer
 		if rules.doom <= 0.0 and impact_t < 0.0:
 			impact_t = 0.0
+			NFHaptics.pulse("impact")
+			_shake(1.0)
 			_flash("القمر ضرب الأرض")
 	if impact_t >= 0.0: impact_t += dt
 	amb.volume_db = minf(amb.volume_db, -40.0) if doom_music.playing else amb.volume_db
@@ -1481,8 +1593,14 @@ func _physics_process(delta: float) -> void:
 	match_time += delta
 	escape_banner = maxf(escape_banner - delta, 0.0)
 	my_state = rules.hp(my_name) if my_role == "survivor" else "ok"
-	if my_state == "escaped" and last_state != "escaped": escape_banner = 4.0
-	if my_state == "carried" and last_state != "carried": _start_scare() # he just picked me up
+	if my_state == "escaped" and last_state != "escaped":
+		escape_banner = 4.0
+		slowmo = 1.1
+		NFHaptics.pulse("escape")
+	if my_state == "carried" and last_state != "carried": # he just picked me up
+		_start_scare()
+		NFHaptics.pulse("grab")
+		_shake(0.6)
 	if offline and my_role == "survivor" and my_state in ["escaped", "dead"] and escape_banner <= 0.0 and last_state == my_state:
 		rules.over = true # trial mode: the round is just me (after the banner has shown)
 	# out of the round (escaped or dead): watch a teammate who is still inside
@@ -1497,7 +1615,7 @@ func _physics_process(delta: float) -> void:
 	attack_t = maxf(attack_t - delta, 0.0)
 	attack_cd = maxf(attack_cd - delta, 0.0)
 	boost_t = maxf(boost_t - delta, 0.0)
-	cam_pivot.rotation = Vector3(pitch, yaw, 0)
+	_camera_feel(delta)
 	# states where I don't control my body
 	var pinned := true
 	if spectating != "":
@@ -1509,6 +1627,7 @@ func _physics_process(delta: float) -> void:
 		rig.rotation.y = _yaw_of(rules.killer) + PI / 2.0
 		rig.play("carried")
 	elif my_state == "hooked":
+		if last_state != "hooked": hook_cam = 2.6
 		body.position = world.hook_points[me.hook_i] + Vector3(0, 0, 0.9)
 		_hook_pose(rig, delta)
 	elif locker >= 0:
@@ -1572,6 +1691,8 @@ func _move(delta: float) -> void:
 	if crouch: speed = CROUCH_SPEED
 	if my_state == "down": speed = 0.45 # crawling
 	if my_role == "killer" and rules.carrying != "": speed = CARRY_SPEED
+	if my_role == "survivor" and my_state == "hurt": speed *= 0.88 # limping
+	if startle > 0.0: speed *= 0.5                                  # caught off guard
 	if boost_t > 0.0: speed *= 1.5
 	if Dev.unlocked and Dev.speed > 1.0: speed *= Dev.speed
 	var dir := Basis(Vector3.UP, yaw) * Vector3(move.x, 0, move.y)
@@ -1590,6 +1711,13 @@ func _move(delta: float) -> void:
 	body.move_and_slide()
 	var flat := Vector2(body.velocity.x, body.velocity.z)
 	var v := flat.length()
+	if my_role == "survivor":
+		if v > 2.6 and sprint:
+			run_time += delta
+		else:
+			if run_time > 6.0 and v < 0.4 and tired <= 0.0: tired = 2.4 # that was a long sprint
+			run_time = maxf(run_time - delta * 0.6, 0.0)
+		tired = maxf(tired - delta, 0.0)
 	if my_role != "killer" and v > 0.25:
 		rig.rotation.y = lerp_angle(rig.rotation.y, atan2(flat.x, flat.y), 12.0 * delta)
 	# killer hit check during the swing
@@ -1624,6 +1752,8 @@ func _move(delta: float) -> void:
 		if tp != body.position and my_role != "killer":
 			rig.rotation.y = lerp_angle(rig.rotation.y, atan2(tp.x - body.position.x, tp.z - body.position.z), 10.0 * delta)
 		rig.play("repair" if hold.kind in ["rep", "heal"] else "hide")
+	elif startle > 0.0 and v < 0.8:
+		rig.play("startle", 1.2)
 	elif crouch:
 		if v > 0.25: rig.play("crouchwalk", clampf(v / NATURAL.crouchwalk, 0.5, 1.6))
 		else: rig.play("hide")
@@ -1634,5 +1764,8 @@ func _move(delta: float) -> void:
 			rig.play("run", clampf(v / NATURAL.run, 0.7, 1.7))
 		elif my_state == "hurt": rig.play("injured", clampf(v / NATURAL.injured, 0.6, 1.6))
 		else: rig.play("walk", clampf(v / NATURAL.walk, 0.6, 1.7))
+	elif tired > 0.0:
+		rig.play("tired")
 	else:
 		rig.play("idle")
+	_limp(rig, my_state, v)

@@ -14,6 +14,7 @@ const SFX := "SFX"
 var master := 1.0
 var music := 0.9
 var sfx := 1.0
+var haptics := true   # the phone's vibration motor
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -52,6 +53,11 @@ func set_vol(which: String, v: float) -> void:
 	apply()
 	save()
 
+func set_haptics(on: bool) -> void:
+	haptics = on
+	save()
+	changed.emit()
+
 func get_vol(which: String) -> float:
 	match which:
 		"music": return music
@@ -64,10 +70,12 @@ func _load() -> void:
 	master = clampf(float(c.get_value("a", "master", master)), 0.0, 1.0)
 	music = clampf(float(c.get_value("a", "music", music)), 0.0, 1.0)
 	sfx = clampf(float(c.get_value("a", "sfx", sfx)), 0.0, 1.0)
+	haptics = bool(c.get_value("a", "haptics", haptics))
 
 func save() -> void:
 	var c := ConfigFile.new()
 	c.set_value("a", "master", snappedf(master, 0.01))
 	c.set_value("a", "music", snappedf(music, 0.01))
 	c.set_value("a", "sfx", snappedf(sfx, 0.01))
+	c.set_value("a", "haptics", haptics)
 	c.save(PATH)

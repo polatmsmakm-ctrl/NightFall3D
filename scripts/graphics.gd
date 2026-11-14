@@ -170,6 +170,15 @@ func _build_ui() -> void:
 		det.text = "إخفاء التفصيل" if _vol_split else "تفصيل"
 		for r in _vol_rows: r.visible = _vol_split)
 	NFUI.dress(det, "gear"); v.add_child(det)
+	var hap := Button.new()
+	hap.custom_minimum_size.y = 46
+	hap.text = "الاهتزاز: %s" % ("شغّال" if Aud.haptics else "مطفي")
+	hap.pressed.connect(func() -> void:
+		Aud.set_haptics(not Aud.haptics)
+		hap.text = "الاهتزاز: %s" % ("شغّال" if Aud.haptics else "مطفي")
+		if Aud.haptics: NFHaptics.pulse("tick"))
+	NFUI.dress(hap, "heart")
+	v.add_child(hap)
 	_vol_rows.append(_vol_row(v, "music", "صوت الموسيقى"))
 	_vol_rows.append(_vol_row(v, "sfx", "صوت اللعب"))
 	for r in _vol_rows: r.visible = false

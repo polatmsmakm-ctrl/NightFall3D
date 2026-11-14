@@ -387,7 +387,7 @@ func preview(char_id: String, label := "", dir := 0.0) -> void:
 	if char_id == "": return
 	me_rig = CharacterRig.new()
 	add_child(me_rig)
-	me_rig.setup(char_id, ["idle", "campfire"] + EMOTES)
+	me_rig.setup(char_id, ["idle", "campfire", "tired", "startle"] + EMOTES)
 	me_rig.play("idle")
 	_slide_from = STAND + Vector3(dir * 1.9, 0.0, 0.35)
 	_slide = 1.0 if dir != 0.0 else 0.0

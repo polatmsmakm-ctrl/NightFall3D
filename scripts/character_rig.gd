@@ -3,10 +3,11 @@ extends Node3D
 ## Loads a rigged character GLB and attaches Mixamo animations (separate GLBs) to it.
 
 const ANIMS := ["idle", "walk", "run", "crouchwalk", "hide", "attack", "injured", "dying", "vault", "carry", "carried", "hang", "crawl", "repair"]
-const LOOPING := ["idle", "walk", "run", "sprint", "crouchwalk", "hide", "injured", "carry", "carried", "hang", "crawl", "repair", "campfire", "wave", "clap", "dance"]
+const LOOPING := ["idle", "walk", "run", "sprint", "crouchwalk", "hide", "injured", "carry", "carried", "hang", "crawl", "repair", "campfire", "wave", "clap", "dance", "tired"]
 ## Campfire emotes. There is no Mixamo clip for these in assets/anims, so they are posed here on the
 ## same skeleton: drop wave.glb / clap.glb / dance.glb in and the real clip is used instead.
-const EMOTES := {"wave": 2.0, "clap": 1.1, "dance": 1.8}
+const EMOTES := {"wave": 2.0, "clap": 1.1, "dance": 1.8, "tired": 2.6, "startle": 0.8}
+const ONCE := ["startle"] # posed clips that play through once instead of looping
 const EMOTE_BONES := ["mixamorig_Hips", "mixamorig_Spine", "mixamorig_Spine1", "mixamorig_Spine2",
 	"mixamorig_Neck", "mixamorig_Head",
 	"mixamorig_LeftShoulder", "mixamorig_LeftArm", "mixamorig_LeftForeArm", "mixamorig_LeftHand",
@@ -104,6 +105,32 @@ func _emote_world(a: String, bone: String, ph: float) -> Quaternion:
 				"mixamorig_LeftForeArm": return _w(UP, -1.5 + open)
 				"mixamorig_Spine1": return _w(Vector3(1, 0, 0), 0.06 * beat)
 				"mixamorig_Head": return _w(Vector3(1, 0, 0), 0.05 * beat)
+		"tired": # hands on the knees, back heaving
+			var puff := sin(ph * TAU)
+			match bone:
+				"mixamorig_Spine": return _w(Vector3(1, 0, 0), 0.72 + 0.06 * puff)
+				"mixamorig_Spine1": return _w(Vector3(1, 0, 0), 0.32 + 0.05 * puff)
+				"mixamorig_Spine2": return _w(Vector3(1, 0, 0), 0.14 + 0.03 * puff)
+				"mixamorig_Neck": return _w(Vector3(-1, 0, 0), 0.35)
+				"mixamorig_Head": return _w(Vector3(-1, 0, 0), 0.4 + 0.05 * puff)
+				"mixamorig_RightArm": return _w(UP, 0.55) * _w(R_LIFT, -1.3)
+				"mixamorig_LeftArm": return _w(UP, -0.55) * _w(L_LIFT, -1.3)
+				"mixamorig_RightForeArm": return _w(UP, 0.45) * _w(R_LIFT, -0.2)
+				"mixamorig_LeftForeArm": return _w(UP, -0.45) * _w(L_LIFT, -0.2)
+				"mixamorig_RightUpLeg": return _w(R_AXIS, 0.12)
+				"mixamorig_LeftUpLeg": return _w(R_AXIS, 0.12)
+				"mixamorig_RightLeg": return _w(KNEE, 0.22)
+				"mixamorig_LeftLeg": return _w(KNEE, 0.22)
+		"startle": # a jolt back, arms up, then settling
+			var jolt := sin(clampf(ph, 0.0, 1.0) * PI) # 0 -> 1 -> 0 across the clip
+			match bone:
+				"mixamorig_Spine1": return _w(Vector3(-1, 0, 0), 0.22 * jolt)
+				"mixamorig_Spine2": return _w(Vector3(-1, 0, 0), 0.12 * jolt)
+				"mixamorig_Head": return _w(Vector3(-1, 0, 0), 0.2 * jolt)
+				"mixamorig_RightArm": return _w(UP, 0.5 * jolt) * _w(R_LIFT, -0.9 + 0.75 * jolt)
+				"mixamorig_LeftArm": return _w(UP, -0.5 * jolt) * _w(L_LIFT, -0.9 + 0.75 * jolt)
+				"mixamorig_RightForeArm": return _w(R_LIFT, 0.5 * jolt)
+				"mixamorig_LeftForeArm": return _w(L_LIFT, 0.5 * jolt)
 		"dance":
 			var sway := sin(ph * TAU)
 			var sway2 := sin(ph * TAU * 2.0)
@@ -126,7 +153,7 @@ func _emote_world(a: String, bone: String, ph: float) -> Quaternion:
 func _emote_anim(a: String, skel_path: String, char_rest: Vector3) -> Animation:
 	var out := Animation.new()
 	out.length = EMOTES[a]
-	out.loop_mode = Animation.LOOP_LINEAR
+	out.loop_mode = Animation.LOOP_NONE if a in ONCE else Animation.LOOP_LINEAR
 	var steps := 24
 	for bone in EMOTE_BONES:
 		var bi := skeleton.find_bone(bone)
@@ -154,6 +181,20 @@ func _emote_anim(a: String, skel_path: String, char_rest: Vector3) -> Animation:
 			var ph := float(k) / steps
 			out.position_track_insert_key(tr, out.length * ph, char_rest + Vector3(0, 0, -2.5 * absf(sin(ph * TAU))))
 	return out
+
+# ---------------- looking at things ----------------
+var _look: NFLookMod
+
+## Turn the head (and a little of the neck) toward a world position. `w` 0..1 blends it in.
+func look(at: Vector3, w := 1.0) -> void:
+	if _look == null:
+		_look = NFLookMod.new()
+		skeleton.add_child(_look)
+	_look.target = at
+	_look.want = clampf(w, 0.0, 1.0)
+
+func look_clear() -> void:
+	if _look: _look.want = 0.0
 
 func play(anim: String, speed := 1.0) -> void:
 	if current == anim and player.speed_scale == speed: return

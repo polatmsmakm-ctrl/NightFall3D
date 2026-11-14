@@ -15,6 +15,8 @@ Owner: Rashid (Arabic UI, plays with friends, installs the IPA with Sideloadly).
 - `scripts/net.gd` (autoload `Net`) — WebSocket client, username, friends list, XP, total escapes and kills (all in `user://profile.cfg`), plus `level_progress()` for the XP bar.
 - `scripts/graphics.gd` (autoload `Gfx`) — the settings panel (sound + graphics), FPS modes, adaptive quality governor. `open_settings()` opens it from a menu button; the gear itself is always on screen.
 - `scripts/audio.gd` (autoload `Aud`) — the audio buses and the three volumes. Two buses sit under Master: **Music** (ambient bed, chase track, campfire, doomsday) and **SFX** (footsteps, generators, gates, screams, heartbeat, breathing, rope, one-shots, other players' sounds, UI clicks). Every player sets `.bus` when it is created. `set_vol("master"|"music"|"sfx", 0..1)` applies live and saves `user://audio.cfg`.
+- `scripts/haptics.gd` (`NFHaptics`) — every buzz of the phone. `pulse(kind)` / `pulse_scaled(kind, 0..1)` with a per-kind cooldown; `KINDS` holds the duration, strength and cooldown of each. One switch (`Aud.haptics`, "الاهتزاز" in settings) turns all of it off. It reaches the iPhone through `Input.vibrate_handheld`, so **none of it can be checked without the device** — on desktop the calls do nothing.
+- `scripts/look_mod.gd` (`NFLookMod`) — a `SkeletonModifier3D` that turns a character's head/neck toward a world point *after* the animation has posed the skeleton. `CharacterRig.look(at, weight)` / `look_clear()`.
 - `scripts/dev.gd` (autoload `Dev`) — hidden developer tools, off and invisible unless this phone has unlocked them; the unlock lives only in `user://dev.cfg` and is never sent anywhere.
 - `scripts/menu.gd` (`GameMenu`) — menus: name, main, friends, lobby, character select, trial mode; the player card and the swipe area.
 - `scripts/lobby.gd` (`NFLobby`) — the start-screen camp (fire, props, cast). `preview(char, label, dir)` stands a character in front of the fire, `focus(on)` moves the camera in on them, `set_cast(players, me)` seats the real room around the fire with name tags (empty list brings back the shipped cast).
@@ -42,6 +44,7 @@ godot --headless --path . res://tools/ui.tscn      # buttons, signals, loading, 
 godot --headless --path . res://tools/map.tscn     # the desert map, both themes, emotes, the jumpscare
 godot --headless --path . res://tools/bones.tscn   # where the emote poses put the hands
 godot --headless --path . res://tools/dev.tscn     # audio buses, volumes, the hidden tools
+godot --headless --path . res://tools/feel.tscn    # haptics switch, camera moves, limp / tired / startle
 node server/test.js                                # room code, join by code, theme, emote and signal relay
 NF_URL=ws://127.0.0.1:8099 godot --headless --path . res://tools/online.tscn   # needs server + a bot
 ```
@@ -105,6 +108,24 @@ and foliage shader tints, and `_snow_cap()` slabs on every roof. Snow turns the 
 every door and along the paths, and `_cobweb()` under the eaves and on the hooks. Counters `snow_caps`, `pumpkins`,
 `webs`, `wrecks` exist so the headless test can see the dressing.
 
+## Feel: camera, haptics, reactions
+- **Camera** (`main._camera_feel`, run every physics step): `_shake(power)` adds a spring-damped tip/roll used
+  for hits, the grab and the moon landing. Carried adds a slow sway and 0.8 m of pull-back. Hooked pulls the
+  camera 3.4 m further out and, for the first 2.6 s (`hook_cam`), swings the look round to the front of the hook
+  (a hooked character always faces +z) and tips up. Escaping runs `slowmo` for 1.1 s: `Engine.time_scale` dips to
+  0.45 and the FOV opens to 84, then both snap back.
+- **Haptics**: heartbeat ticks that follow `danger`, a strong hit when you are struck, a heavier one when he
+  lifts you, a rising rumble as the moon comes down and a long one on impact, plus small ticks on hooks and
+  escapes. All through `NFHaptics`, all behind the "الاهتزاز" switch.
+- **Reactions** (`main._reactions`): heads turn toward a scream, a generator that just finished, and the killer
+  when he is within 13 m — on your own character and on everyone else's. The first time the killer comes into
+  view you get a jolt: a camera kick, a tick, and `startle` for 0.85 s (speed halved, the `startle` pose if you
+  are standing still).
+- **Motion**: a hurt survivor walks 12% slower with an uneven roll (`main._limp`, applied to remote players too),
+  and after about six seconds of sprinting, stopping drops you into the `tired` pose for a couple of seconds.
+  Both of those poses (`tired`, `startle`) are hand-posed in `character_rig.gd` like the emotes; the equivalent
+  Mixamo clips would be `tired.glb` and `startle.glb` in `assets/anims`.
+
 ## Hidden developer tools
 Locked by default. On a phone that has them, a small panel appears during a round with two switches:
 see-through outlines of the other players (their own model drawn again with a `no_depth_test` overlay
@@ -118,6 +139,7 @@ nothing is relayed, the server never hears about it, and nothing is drawn on any
 - Player positions are client-reported (server only checks distances for interactions).
 - Friends list, XP, escapes and kills live on the phone; usernames are not reserved.
 - No UI click sound until the owner supplies `assets/sfx/ui_click.mp3`.
+- Haptics cannot be verified off-device: `Input.vibrate_handheld` does nothing on desktop or in headless runs.
 - The emotes are posed by hand in code, not Mixamo clips. Mixamo needs an Adobe login, so nothing could be downloaded
   here: **wave.glb, dance.glb and clap.glb are the missing files** — export them from Mixamo as glTF with the same
   skeleton as the others, drop them in `assets/anims`, and they replace the hand-made ones with no code change.
