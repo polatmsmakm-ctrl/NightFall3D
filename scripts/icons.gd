@@ -129,6 +129,20 @@ static func draw(ci: CanvasItem, name: String, c: Vector2, size: float, col: Col
 			ci.draw_circle(c, size * 0.14, col)
 			_fill(ci, c, size, [[-0.95, 0.0], [-0.42, -0.3], [-0.42, 0.3]], col)
 			_fill(ci, c, size, [[0.95, 0.0], [0.42, -0.3], [0.42, 0.3]], col)
+		"note": # dance
+			ci.draw_circle(_u(c, size, -0.34, 0.55), size * 0.17, col)
+			ci.draw_circle(_u(c, size, 0.42, 0.34), size * 0.17, col)
+			_bar(ci, c, size, -0.2, 0.55, -0.2, -0.72, col, w)
+			_bar(ci, c, size, 0.56, 0.34, 0.56, -0.9, col, w)
+			_fill(ci, c, size, [[-0.2, -0.72], [0.56, -0.9], [0.56, -0.56], [-0.2, -0.38]], col)
+		"clap":
+			for sgn in [-1.0, 1.0]:
+				var x: float = 0.12 * sgn
+				_fill(ci, c, size, [[x + 0.42 * sgn, -0.3], [x + 0.42 * sgn, 0.52], [x, 0.72], [x, -0.1]], col)
+				_bar(ci, c, size, x + 0.42 * sgn, -0.28, x + 0.1 * sgn, -0.66, col, w * 0.9)
+			for k in 3: # little impact sparks
+				var a2: float = -PI / 2.0 + (k - 1) * 0.5
+				ci.draw_line(c + Vector2(cos(a2), sin(a2)) * size * 0.42, c + Vector2(cos(a2), sin(a2)) * size * 0.56, Color(col, col.a * 0.8), w * 0.8, true)
 		"moon": _moon(ci, c, size, col)
 		"skull":
 			ci.draw_circle(_u(c, size, 0.0, -0.22), size * 0.42, col)

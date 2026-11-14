@@ -10,7 +10,7 @@ Owner: Rashid (Arabic UI, plays with friends, installs the IPA with Sideloadly).
 
 ## Files
 - `scripts/main.gd` — the game scene: local player (survivor third person / killer first person), touch HUD, remote players, audio, minimap, quick signals.
-- `scripts/world.gd` (`NightWorld`) — procedural maps (`forest`, `village`, `fareej`): terrain, wall + gates, buildings/houses, the market, props, generators, hooks, lockers, pallets, hatches. `configure(map, seed)` decides the layout; `build()` creates nodes over several frames.
+- `scripts/world.gd` (`NightWorld`) — procedural maps (`forest`, `village`, `fareej`, `rubkhali`): terrain, wall + gates, buildings/houses, the market, props, generators, hooks, lockers, pallets, hatches. `configure(map, seed, theme)` decides the layout; `build()` creates nodes over several frames.
 - `scripts/rules.gd` (`Rules`) — match rules used in trial (offline) mode. **`server/rules.js` is the same logic for online play — change both together.**
 - `scripts/net.gd` (autoload `Net`) — WebSocket client, username, friends list, XP, total escapes and kills (all in `user://profile.cfg`), plus `level_progress()` for the XP bar.
 - `scripts/graphics.gd` (autoload `Gfx`) — graphics settings menu, FPS modes, adaptive quality governor.
@@ -21,12 +21,13 @@ Owner: Rashid (Arabic UI, plays with friends, installs the IPA with Sideloadly).
 - `scripts/controls.gd` (`NFControls`) — where the touch buttons are and how big, per role, in `user://controls.cfg`. Positions are a fraction of the safe area, radii are px of the 1280x720 design viewport; `DEF` is the shipped layout. `scripts/controls_edit.gd` (`NFControlsEdit`) is the drag-and-resize editor (menu → الاسم والسيرفر, or the in-game settings panel).
 - `scripts/loading.gd` (`NFLoading`) — the map-building screen: map name, a painted preview of that map, a random Arabic tip, progress from `world.build_step / NightWorld.BUILD_STEPS`.
 - `scripts/results.gd` (`NFResults`) — end of round: everyone on a dark stage (escaped standing on `idle`, dead lying on `dying`), names and points under each one (`unproject_position`), the XP bar filling itself. The camera carries its own `environment`, and the stage sits 600 m above the map.
-- `scripts/character_rig.gd` — loads a character GLB and retargets the Mixamo animation GLBs (`assets/anims`) onto it in place.
+- `scripts/character_rig.gd` — loads a character GLB and retargets the Mixamo animation GLBs (`assets/anims`) onto it in place. The three emotes (`wave`, `dance`, `clap`) have no GLB: `_emote_anim()` poses them on the same skeleton in code, and a real clip dropped into `assets/anims` takes over automatically. These characters' rest pose is a **T-pose in a Z-down skeleton space** (up is `-Z`, they face `+Y`, the right arm lies along `-X`), so `_emote_world()` writes rotations in that frame and `_emote_anim()` turns each one into a local bone rotation with `rest * (G⁻¹ · R · G)`. `tools/bones.tscn` prints the axes and where the hands end up — run it before touching the poses.
 - `assets/chars` — the owner's 5 characters (SF3D meshes rigged to the Mixamo skeleton). `assets/sfx` — the owner's sounds (mp3) plus synthesized ones (wav).
 - `tools/*.gd|tscn` — headless tests (not exported).
 
 ## Protocol (JSON over WebSocket)
 `hello`, `friends`, `create`, `join`, `leave`, `set`, `invite`, `start`, `lobby`, `layout` (object positions from clients), `st` (position/anim/flashlight, relayed), `ev` (player input → server; server → everyone as `{t:"ev", n:"", d:event|snapshot}`).
+`emote` (`{t:"emote", k:0..2}` → the server sends `{t:"emote", n, k}` to the rest of the room; campfire only).
 `sig` (quick signal: `{t:"sig", k:0..2, p:[x,z]}` → the server relays `{t:"sig", n, k, p}` **to the sender's own side only**, so a survivor signal never reaches the killer).
 Inputs (`d.k`): rep, skill, escape, hit, pickup, hook, rescue, struggle, heal, locker, search, pallet, break, power. Snapshot key `gs`.
 
@@ -35,9 +36,13 @@ Inputs (`d.k`): rep, skill, escape, hit, pickup, hook, rescue, struggle, heal, l
 godot --headless --path . --import            # after adding class_name scripts or assets
 godot --headless --path . res://tools/smoke.tscn   # offline survivor + killer flow
 godot --headless --path . res://tools/new.tscn     # fareej, hatch, flashlight, market blackout
+godot --headless --path . res://tools/ui.tscn      # buttons, signals, loading, results, character select
+godot --headless --path . res://tools/map.tscn     # the desert map, both themes, emotes, the jumpscare
+godot --headless --path . res://tools/bones.tscn   # where the emote poses put the hands
+node server/test.js                                # room code, join by code, theme, emote and signal relay
 NF_URL=ws://127.0.0.1:8099 godot --headless --path . res://tools/online.tscn   # needs server + a bot
 ```
-Screenshots of every screen (menu, character select, lobby, controls editor, loading, both HUDs, results):
+Screenshots — `tools/shot.tscn` for the interface, `tools/shot2.tscn` for the desert, the themes, the emotes and the jumpscare:
 ```
 NF_SHOTS=/tmp/shots LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a godot --rendering-driver opengl3 \
   --resolution 1564x720 --path . res://tools/shot.tscn      # software GL: ~15 min
@@ -63,7 +68,36 @@ NF_SHOTS=/tmp/shots LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a godot --rendering-driver
 - **Quick signals**: the `sig` button opens three messages (تعال هني / القاتل هني / قاعد أصلّح). They draw as an arrow on a ring around the middle of the screen pointing at the sender, with their name and the distance, for `SIG_LIFE` seconds. Online they go through the new `sig` message, relayed to the sender's own side only; in trial mode they only show locally.
 - **Control layout**: `NFControls` + `NFControlsEdit`. Drag any button, resize the selected one with the slider, "إرجاع الأصلي" restores the shipped layout. Saved per role in `user://controls.cfg`; the editor is in the menu settings page and in the in-game settings panel (`Gfx.menu_open` stays true while it is open, so the round ignores touches).
 - **Loading screen**: `NFLoading` while `world.build()` runs, with a drawn preview per map and a random tip from `NFLoading.TIPS`.
+- **Campfire emotes**: `NFLobby.emote(name, k)` plays wave / dance / clap on the right character at the fire and goes
+  back to idle after 3.4 s; the menu row sends `{t:"emote", k}` so everyone in the room sees it.
+- **Jumpscare**: when the killer lifts you (`my_state` turns `carried`), `main._start_scare()` points a second camera
+  at his face for 0.62 s with a red wash, then hands control back. It never freezes input the round needs.
+- **Play again**: the results screen has a second button. Online the host sends `lobby`, which puts the whole room back
+  in the same lobby; in trial mode `Net.replay` carries the settings across the scene reload.
 - **Results**: `NFResults`. Only the animations already in `assets/anims` are used — escaped players stand in `idle` (there is no cheer clip; drop one in and it can be used), dead players lie on the last frame of `dying`.
+
+## Maps
+Every map keeps the same skeleton: perimeter wall, two gates with a long escape road, the market, 7 generators,
+9 hooks, 10 lockers, 9 pallets, 5 hatches, all seeded from the host's seed so every client builds the same layout.
+- `forest` — hills, pine forest, shacks.
+- `village` — a grid of abandoned houses.
+- `fareej` — a Kuwaiti neighbourhood: walled houses, streets, mosque, flag, the lit «ديوان راشد الشمري».
+- `rubkhali` «الربع الخالي» — the Empty Quarter (`_build_rubkhali`): long dunes (`relief = 3.0`, low-frequency noise),
+  6 bedouin tents (`_build_tent`, dark woven cloth, open front, rug, cold fire pit, a locker inside) and 5 mud houses
+  (`_build_mud_house`, palm beams through the walls). A dust storm: thick sand-coloured fog plus the `dust` particles
+  turned into blowing grains, so you cannot see far. Cover is the point out here — `_build_desert_scatter` lays down
+  7 Land Cruiser wrecks (`_wreck`, half buried, missing wheels), 11 ruined mud walls, 16 boulders, fences, camel thorn
+  and palm clusters. `_build_animals` walks 9 horses and camels (`_animal_mesh`: one merged mesh each, one draw call,
+  **no collision and no sound**) along seeded waypoint loops; `_step_animals` moves them. The wall is 12 m tall here
+  so a dune crest never sees over it.
+
+## Themes (normal / snow / halloween)
+Chosen by the host in the room (or in trial mode) and sent with `start`, so everyone builds the same weather.
+`NightWorld.configure(map, seed, theme)` applies it: terrain vertex colours, fog, ambient and moonlight, the grass
+and foliage shader tints, and `_snow_cap()` slabs on every roof. Snow turns the falling-leaf particles into flakes and
+`main._make_breath()` gives every character visible breath. Halloween adds `_pumpkin()` (carved, lit, flickering) at
+every door and along the paths, and `_cobweb()` under the eaves and on the hooks. Counters `snow_caps`, `pumpkins`,
+`webs`, `wrecks` exist so the headless test can see the dressing.
 
 ## Known gaps
 - Models other than the characters are boxes/cylinders built in code; textures are procedural noise.
@@ -71,4 +105,8 @@ NF_SHOTS=/tmp/shots LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a godot --rendering-driver
 - Player positions are client-reported (server only checks distances for interactions).
 - Friends list, XP, escapes and kills live on the phone; usernames are not reserved.
 - No UI click sound until the owner supplies `assets/sfx/ui_click.mp3`.
+- The emotes are posed by hand in code, not Mixamo clips. Mixamo needs an Adobe login, so nothing could be downloaded
+  here: **wave.glb, dance.glb and clap.glb are the missing files** — export them from Mixamo as glTF with the same
+  skeleton as the others, drop them in `assets/anims`, and they replace the hand-made ones with no code change.
+- Desert animals have no leg animation (single merged mesh, so they bob and sway instead).
 - Team-bar portraits are drawn avatars in each character's colour, not renders of the models.

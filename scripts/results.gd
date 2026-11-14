@@ -14,6 +14,8 @@ var xp_to := 0
 var escapes := 0
 var kills := 0
 var on_back: Callable
+var on_again: Callable
+var again_text := ""
 
 var cam: Camera3D
 var pad: Control
@@ -45,6 +47,8 @@ func setup(d: Dictionary) -> void:
 	escapes = int(d.get("escapes", 0))
 	kills = int(d.get("kills", 0))
 	on_back = d.get("on_back", Callable())
+	on_again = d.get("on_again", Callable())
+	again_text = str(d.get("again_text", ""))
 	xp_show = float(xp_from)
 	position = Vector3(0, STAGE_Y, 0)
 	# floor: a dull slab so the ones on the ground have something to lie on
@@ -100,17 +104,28 @@ func setup(d: Dictionary) -> void:
 	pad.mouse_filter = Control.MOUSE_FILTER_STOP
 	pad.draw.connect(_draw_pad)
 	layer.add_child(pad)
+	var safe := NFUI.safe_insets(get_viewport())
 	var back := Button.new()
 	back.text = "رجوع"
-	back.custom_minimum_size = Vector2(190, 56)
+	back.custom_minimum_size = Vector2(170, 56)
 	back.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	var safe := NFUI.safe_insets(get_viewport())
-	back.offset_left = -210.0 - safe.y; back.offset_right = -20.0 - safe.y
+	back.offset_left = -190.0 - safe.y; back.offset_right = -20.0 - safe.y
 	back.offset_top = -76.0; back.offset_bottom = -20.0
 	back.pressed.connect(func() -> void:
 		if on_back.is_valid(): on_back.call())
 	NFUI.dress(back, "exit")
 	layer.add_child(back)
+	if on_again.is_valid() and again_text != "":
+		var again := Button.new()
+		again.text = again_text
+		again.custom_minimum_size = Vector2(230, 56)
+		again.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+		again.offset_left = -440.0 - safe.y; again.offset_right = -200.0 - safe.y
+		again.offset_top = -76.0; again.offset_bottom = -20.0
+		again.pressed.connect(func() -> void:
+			if on_again.is_valid(): on_again.call())
+		NFUI.dress(again, "star")
+		layer.add_child(again)
 
 func _process(dt: float) -> void:
 	t += dt

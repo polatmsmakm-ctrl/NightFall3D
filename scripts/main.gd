@@ -2,8 +2,8 @@ extends Node3D
 ## NightFall game scene: menu -> world -> local player + other players, objectives, HUD, audio.
 ## Rules run on the server online (server/rules.js) and locally in trial mode (scripts/rules.gd).
 
-const WALK := {"killer": 4.6, "survivor": 1.6}
-const RUN := {"killer": 4.6, "survivor": 4.0}
+const WALK := {"killer": 4.6, "survivor": 1.73}   # survivors +8%
+const RUN := {"killer": 4.6, "survivor": 4.32}    # still under the killer's 4.6
 const CROUCH_SPEED := 1.1
 const CARRY_SPEED := 3.6
 # ground speed each animation was authored for; playback is scaled to it so feet don't slide
@@ -27,6 +27,10 @@ var world: NightWorld
 var rules: Rules
 var loading: NFLoading        # the map-building screen, freed once the world is up
 var sigs: Array = []          # live quick signals: {n, k, pos, t}
+var theme := "normal"         # normal / snow / halloween
+var scare_t := 0.0            # seconds left of the killer close-up
+var scare_cam: Camera3D
+var breaths := {}             # name -> breath-vapour particles (snow theme)
 var sig_open := false         # the three-message panel is showing
 var sig_close := 0.0          # closes itself if untouched
 var body: CharacterBody3D
@@ -112,6 +116,10 @@ func _ready() -> void:
 	add_child(menu)
 	menu.start_game.connect(_start)
 	Net.message.connect(_on_net)
+	if not Net.replay.is_empty(): # "play again" in trial mode: same settings, fresh layout
+		var again: Dictionary = Net.replay
+		Net.replay = {}
+		_start.call_deferred(again)
 
 func results_shown() -> bool:
 	return results != null and is_instance_valid(results) and results.visible
@@ -126,11 +134,12 @@ func _start(c: Dictionary) -> void:
 	if lobby_scene:
 		lobby_scene.queue_free()
 		lobby_scene = null
+	theme = str(c.get("theme", "normal"))
 	loading = NFLoading.new() # covers the screen while the map builds itself over the next frames
-	loading.setup(str(c.map))
+	loading.setup(str(c.map), theme)
 	add_child(loading)
 	world = NightWorld.new()
-	world.configure(str(c.map), int(c.get("seed", randi() % 1000000) if not offline else randi() % 1000000))
+	world.configure(str(c.map), int(c.get("seed", randi() % 1000000) if not offline else randi() % 1000000), theme)
 	add_child(world)
 	world.build() # staged: terrain + buildings + objectives first, the rest over the next frames
 	rules = Rules.new()
@@ -145,6 +154,9 @@ func _start(c: Dictionary) -> void:
 		if str(p.name) != my_name: _add_remote(p)
 	_build_marks()
 	_build_ui()
+	if theme == "snow": # cold enough to see everyone's breath
+		if my_role == "survivor": breaths[my_name] = _make_breath(rig)
+		for n in remotes: breaths[n] = _make_breath(remotes[n].rig)
 	if not offline:
 		var xz := func(v: Vector3) -> Array: return [snappedf(v.x, 0.1), snappedf(v.z, 0.1)]
 		var lay := {"g": [], "h": [], "p": [], "x": []}
@@ -294,6 +306,67 @@ func _build_audio() -> void:
 func _voice_hit(n: String) -> void:
 	var clip := "male_pain" if chars.get(n, "survivor1") in MALE else ("scream1" if randf() < 0.5 else "scream2")
 	_sfx(clip, null if n == my_name else _pos_of(n) + Vector3(0, 1.5, 0), 0.0 if n == my_name else 5.0)
+
+## Snow theme: a small puff of vapour in front of a character's mouth.
+func _make_breath(parent: Node3D) -> GPUParticles3D:
+	var p := GPUParticles3D.new()
+	var m := ParticleProcessMaterial.new()
+	m.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+	m.emission_sphere_radius = 0.05
+	m.direction = Vector3(0, 0.25, 1)
+	m.spread = 22.0
+	m.gravity = Vector3(0, 0.25, 0)
+	m.initial_velocity_min = 0.25; m.initial_velocity_max = 0.6
+	m.scale_min = 0.5; m.scale_max = 1.2
+	var g := Gradient.new()
+	g.offsets = PackedFloat32Array([0.0, 0.25, 1.0])
+	g.colors = PackedColorArray([Color(0.85, 0.92, 1.0, 0.0), Color(0.88, 0.94, 1.0, 0.33), Color(0.9, 0.95, 1.0, 0.0)])
+	var gt := GradientTexture1D.new()
+	gt.gradient = g
+	m.color_ramp = gt
+	p.process_material = m
+	var q := QuadMesh.new()
+	q.size = Vector2(0.26, 0.26)
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_texture = NFUI.soft_dot()
+	mat.vertex_color_use_as_albedo = true
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	q.material = mat
+	p.draw_pass_1 = q
+	p.amount = 6
+	p.lifetime = 1.7
+	p.explosiveness = 0.55
+	p.position = Vector3(0, 1.62, 0.12)
+	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(p)
+	return p
+
+## The killer lifts you: his face fills the screen for a moment (scripts/main.gd `scare_t`).
+func _start_scare() -> void:
+	if rules.killer == "" or not remotes.has(rules.killer): return
+	scare_t = 0.62
+	if scare_cam == null:
+		scare_cam = Camera3D.new()
+		scare_cam.fov = 48.0
+		scare_cam.near = 0.05
+		add_child(scare_cam)
+	_aim_scare()
+	scare_cam.current = true
+
+func _aim_scare() -> void:
+	if scare_cam == null: return
+	var head := _pos_of(rules.killer) + Vector3(0, 1.62, 0)
+	var fwd := Basis(Vector3.UP, _yaw_of(rules.killer)) * Vector3(0, 0, 1)
+	var shake := Vector3(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0), 0.0) * 0.012
+	scare_cam.global_position = head + fwd * 0.52 + Vector3(0, 0.05, 0) + shake
+	scare_cam.look_at(head + Vector3(0, 0.02, 0), Vector3.UP)
+	scare_cam.rotation.z = sin(scare_t * 28.0) * 0.05
+
+func _end_scare() -> void:
+	scare_t = 0.0
+	if main_cam and results == null: main_cam.current = true # the results stage owns the camera once it is up
 
 ## Blood for a hooked survivor: drops falling from the body and a pool that spreads under it.
 func _make_bleed() -> Node3D:
@@ -557,12 +630,21 @@ func _show_results() -> void:
 		Net.record_match(1 if (my_role == "survivor" and rules.hp(my_name) == "escaped") else 0,
 			dead if my_role == "killer" else 0)
 	if hud_layer: hud_layer.visible = false # the stage replaces the HUD
+	var host: bool = not offline and str(Net.room.get("host", "")) == my_name
 	results = NFResults.new()
 	add_child(results)
 	results.setup({"rows": rows, "title": title, "stats": stats, "xp_from": xp_from, "xp_to": xp_from + gain,
 		"escapes": Net.escapes, "kills": Net.kills,
+		# "play again" puts everyone back in the SAME room with the same settings
+		"again_text": "العب مرة ثانية" if (offline or host) else "رجوع للغرفة",
+		"on_again": func() -> void:
+			if offline:
+				Net.replay = cfg.duplicate(true) # same map, theme and players, new layout seed
+			elif host:
+				Net.send({"t": "lobby"})
+			_to_menu(),
 		"on_back": func() -> void:
-			if not offline and str(Net.room.get("host", "")) == my_name: Net.send({"t": "lobby"})
+			if host: Net.send({"t": "lobby"})
 			_to_menu()})
 
 ## Screen margins (left, right) in UI units to stay clear of the notch / Dynamic Island.
@@ -633,11 +715,18 @@ func _draw_ui() -> void:
 		if impact_t >= 0.0:
 			var wht := clampf(1.0 - impact_t / 1.2, 0.0, 1.0)
 			ui.draw_rect(Rect2(Vector2.ZERO, s), Color(1.0, 0.25 + 0.75 * wht, 0.1 + 0.9 * wht, clampf(2.0 - impact_t * 0.45, 0.0, 1.0)))
+	if scare_t > 0.0:
+		var k := clampf(scare_t / 0.62, 0.0, 1.0)
+		ui.draw_rect(Rect2(Vector2.ZERO, s), Color(0.75, 0.0, 0.0, 0.3 * k))
+		for e in 5: ui.draw_rect(Rect2(Vector2.ZERO, s), Color(0.5, 0.0, 0.0, 0.22 * k), false, 26.0 + e * 30.0)
 	if my_role == "survivor" and danger > 0.0:
 		var pulse := 0.6 + 0.4 * sin(Time.get_ticks_msec() / 1000.0 * lerpf(5.0, 12.0, danger))
 		ui.draw_rect(Rect2(Vector2.ZERO, s), Color(0.8, 0.0, 0.0, danger * 0.16 * pulse)) # whole screen goes a little red
 		for k in 4: # darker red toward the edges
 			ui.draw_rect(Rect2(Vector2.ZERO, s), Color(0.9, 0.03, 0.03, danger * 0.13 * pulse), false, 30.0 + k * 34.0)
+	if scare_t > 0.0: # his face fills the screen: no buttons, no map, nothing else
+		_text(Vector2(mid.x, s.y * 0.86), "القاتل شايلك!", 34, Color(1, 0.35, 0.3))
+		return
 	if stick_id >= 0:
 		ui.draw_circle(stick_origin, 70, Color(1, 1, 1, 0.12))
 		ui.draw_circle(stick_origin + stick_vec * 70, 32, Color(1, 1, 1, 0.35))
@@ -804,6 +893,7 @@ func _draw_sigs(mid: Vector2) -> void:
 		_text(at + Vector2(0, 26.0), "%s — %s (%d م)" % [str(sg.n), SIG_TEXT[int(sg.k)], roundi(flat.length())], 17, col, 300.0)
 
 func _draw_minimap() -> void:
+	if scare_t > 0.0: return
 	var vs := get_viewport().get_visible_rect().size
 	if big_map: # tapped: a large map in the middle of the screen with a legend
 		var side := minf(vs.y - 120.0, 560.0)
@@ -822,7 +912,7 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 	minimap.draw_rect(Rect2(o, Vector2(side, side)), Color(0.02, 0.03, 0.05, 0.9 if big else 0.6))
 	minimap.draw_rect(Rect2(o, Vector2(side, side)), Color(1, 1, 1, 0.5), false, 2.0)
 	var wl := NightWorld.WALL * k
-	minimap.draw_rect(Rect2(c - Vector2(wl, wl), Vector2(wl, wl) * 2.0), Color(0.1, 0.13, 0.1, 0.55) if world.map_id != "fareej" else Color(0.2, 0.17, 0.11, 0.55))
+	minimap.draw_rect(Rect2(c - Vector2(wl, wl), Vector2(wl, wl) * 2.0), Color(0.2, 0.17, 0.11, 0.55) if world.map_id in ["fareej", "rubkhali"] else Color(0.1, 0.13, 0.1, 0.55))
 	if world.map_id == "fareej": # streets
 		for st in [[-30.0, -47.0, 150.0, 7.0], [-30.0, 47.0, 150.0, 7.0], [-28.0, 0.0, 142.0, 8.0], [-13.0, 0.0, 7.0, 94.0]]:
 			minimap.draw_rect(Rect2(c + Vector2(st[0] - st[2] / 2.0, st[1] - st[3] / 2.0) * k, Vector2(st[2], st[3]) * k), Color(0.32, 0.32, 0.34))
@@ -1116,6 +1206,10 @@ func _process(dt: float) -> void:
 			loading.progress(float(world.build_step) / float(NightWorld.BUILD_STEPS))
 			if world.ready_done and loading.shown > 0.9: loading.finish()
 	flash_t = maxf(flash_t - dt, 0.0)
+	if scare_t > 0.0: # short close-up of the killer's face, then back to my own camera
+		scare_t -= dt
+		if scare_t <= 0.0: _end_scare()
+		else: _aim_scare()
 	if sig_open:
 		sig_close -= dt
 		if sig_close <= 0.0: sig_open = false
@@ -1262,6 +1356,7 @@ func _physics_process(delta: float) -> void:
 	escape_banner = maxf(escape_banner - delta, 0.0)
 	my_state = rules.hp(my_name) if my_role == "survivor" else "ok"
 	if my_state == "escaped" and last_state != "escaped": escape_banner = 4.0
+	if my_state == "carried" and last_state != "carried": _start_scare() # he just picked me up
 	if offline and my_role == "survivor" and my_state in ["escaped", "dead"] and escape_banner <= 0.0 and last_state == my_state:
 		rules.over = true # trial mode: the round is just me (after the banner has shown)
 	# out of the round (escaped or dead): watch a teammate who is still inside

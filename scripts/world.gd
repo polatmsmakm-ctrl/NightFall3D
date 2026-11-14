@@ -28,6 +28,13 @@ const FOREST_BUILDINGS := [
 ]
 
 var map_id := "forest"
+var theme := "normal" # normal / snow / halloween
+var tents := 0        # how many of the first `buildings` entries are bedouin tents (rubkhali)
+var animals: Array = [] # desert horses and camels: {node, path, i, speed, bob, stand}
+var wrecks := 0     # Land Cruiser wrecks placed (rubkhali)
+var pumpkins := 0   # halloween dressing
+var webs := 0
+var snow_caps := 0
 var buildings: Array = []
 var tree_count := 450
 var tree_plan: Array = [] # [x, y, z, variant, scale, yaw]
@@ -97,8 +104,9 @@ func _random_site(rng: RandomNumberGenerator, pad: float, lo: float, hi: float) 
 
 ## `seed` shuffles where the generators, hooks, pallets, hatches are, so every round plays differently.
 ## Everyone in a room gets the same seed from the server, so they all build the same layout.
-func configure(id: String, seed := 1) -> void:
+func configure(id: String, seed := 1, th := "normal") -> void:
 	map_id = id
+	theme = th
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed
 	noise.frequency = 0.012
@@ -115,6 +123,20 @@ func configure(id: String, seed := 1) -> void:
 				if (i == 0 and j == 0) or (i == 2 and j == 0): continue # centre spawn, and the market's plot
 				buildings.append([i * 28.0 + lay.randf_range(-4, 4), j * 31.0 + lay.randf_range(-4, 4),
 					lay.randf() * TAU, lay.randf_range(6.0, 9.0), lay.randf_range(5.0, 7.0), lay.randf_range(2.8, 3.4)])
+	elif id == "rubkhali": # the Empty Quarter: dunes, bedouin tents, mud houses, a dust storm
+		noise.seed = 909
+		noise.frequency = 0.0062 # long dune waves instead of small bumps
+		noise.fractal_octaves = 3
+		relief = 3.0
+		tree_count = 85     # palm clusters around the camps
+		grass_per_chunk = 45 # dry tufts
+		fog_density = 0.021  # the storm: you cannot see far
+		moon_dir = Vector3(0.25, 0.42, -0.86).normalized()
+		var camps := [[-62.0, -38.0, 0.4], [-20.0, -72.0, 1.9], [44.0, -58.0, -0.8], [70.0, 22.0, 2.6], [-74.0, 44.0, 0.9], [18.0, 74.0, -2.2]]
+		for t in camps: buildings.append([t[0], t[1], t[2], 9.0, 7.0, 2.6]) # بيت شعر
+		tents = camps.size()
+		for h in [[-40.0, 8.0, 0.2], [26.0, -20.0, 1.2], [-8.0, 52.0, -0.5], [62.0, -86.0, 0.8], [-86.0, -8.0, 1.6]]:
+			buildings.append([h[0], h[1], h[2], 8.0, 6.5, 3.2]) # mud house
 	elif id == "fareej": # a Kuwaiti neighbourhood: walled houses on streets around the market, flat sandy ground
 		noise.seed = 77
 		relief = 0.0
@@ -133,6 +155,7 @@ func configure(id: String, seed := 1) -> void:
 	else:
 		noise.seed = 1337
 		buildings = FOREST_BUILDINGS.duplicate(true)
+	if theme == "snow": grass_per_chunk = int(grass_per_chunk * 0.5) # snow buries most of it
 	sites.append([0.0, 0.0, _raw_h(0.0, 0.0), 6.0])
 	for b in buildings:
 		sites.append([b[0], b[1], _raw_h(b[0], b[1]), maxf(b[3], b[4]) * (1.05 if id == "fareej" else 0.75) + 1.0])
@@ -201,10 +224,10 @@ func surface_at(pos: Vector3) -> String:
 		var bl: Vector3 = Basis(Vector3.UP, b[2]).inverse() * (pos - Vector3(b[0], pos.y, b[1]))
 		if absf(bl.x) < b[3] / 2.0 + 0.3 and absf(bl.z) < b[4] / 2.0 + 0.3: return "indoor"
 	if on_street(pos.x, pos.z): return "indoor" # asphalt
-	return "sand" if (map_id == "fareej" or in_site(pos.x, pos.z, 0.0)) else "grass"
+	return "sand" if (map_id in ["fareej", "rubkhali"] or in_site(pos.x, pos.z, 0.0)) else "grass"
 
 func _sandiness(x: float, z: float) -> float:
-	if map_id == "fareej": return 1.0
+	if map_id in ["fareej", "rubkhali"]: return 1.0
 	var v := 0.0
 	for st in sites:
 		var d := Vector2(x - st[0], z - st[1]).length()
@@ -251,6 +274,7 @@ func build() -> void:
 	build_step = 1
 	await get_tree().process_frame
 	if map_id == "fareej": _build_fareej()
+	elif map_id == "rubkhali": _build_rubkhali()
 	else: _build_buildings()
 	_build_objectives()
 	_build_extras()
@@ -258,6 +282,8 @@ func build() -> void:
 	build_step = 2
 	await get_tree().process_frame
 	_build_scatter()
+	_build_theme_props()
+	if map_id == "rubkhali": _build_animals()
 	_build_trees()
 	build_step = 3
 	await get_tree().process_frame
@@ -322,7 +348,22 @@ func _make_materials() -> void:
 	_mat.palm = pm
 	var gr := ShaderMaterial.new()
 	gr.shader = load("res://shaders/grass.gdshader")
+	if map_id == "rubkhali": # dry straw tufts
+		gr.set_shader_parameter("base_col", Color(0.14, 0.12, 0.06))
+		gr.set_shader_parameter("tip_col", Color(0.45, 0.37, 0.18))
+	if theme == "snow":
+		gr.set_shader_parameter("base_col", Color(0.26, 0.29, 0.34))
+		gr.set_shader_parameter("tip_col", Color(0.55, 0.61, 0.71))
+		fol.set_shader_parameter("tint", Color(1.6, 1.8, 2.1))
+	elif theme == "halloween":
+		gr.set_shader_parameter("base_col", Color(0.07, 0.05, 0.02))
+		gr.set_shader_parameter("tip_col", Color(0.22, 0.13, 0.04))
+		fol.set_shader_parameter("tint", Color(1.3, 0.85, 0.5))
 	_mat.grass = gr
+	# desert surfaces
+	_mat.mud = _pbr(Color(0.26, 0.2, 0.14), Color(0.58, 0.47, 0.34), 0.03, Vector3(0.35, 0.35, 0.35), 0.95)
+	_mat.cloth = _pbr(Color(0.035, 0.03, 0.028), Color(0.13, 0.115, 0.1), 0.05, Vector3(0.6, 0.6, 0.6), 1.0)
+	_mat.sand_rock = _pbr(Color(0.16, 0.13, 0.09), Color(0.42, 0.35, 0.25), 0.02, Vector3(0.5, 0.5, 0.5), 0.95)
 
 # ---------------- environment ----------------
 func _build_environment() -> void:
@@ -346,6 +387,7 @@ func _build_environment() -> void:
 	env.tonemap_white = 6.0
 	env.fog_enabled = true
 	env.fog_light_color = Color(0.07, 0.09, 0.14)
+	if map_id == "rubkhali": env.fog_light_color = Color(0.3, 0.22, 0.13) # sand in the air
 	env.fog_density = fog_density
 	env.fog_sky_affect = 0.25
 	env.fog_sun_scatter = 0.15
@@ -358,6 +400,19 @@ func _build_environment() -> void:
 	env.adjustment_enabled = true
 	env.adjustment_contrast = 1.12
 	env.adjustment_saturation = 0.95
+	match theme:
+		"snow":
+			env.ambient_light_color = Color(0.23, 0.27, 0.38)
+			env.ambient_light_energy = 1.0
+			env.fog_light_color = Color(0.2, 0.24, 0.32)
+			env.fog_density = fog_density * 1.5
+			env.adjustment_saturation = 0.72
+		"halloween":
+			env.ambient_light_color = Color(0.2, 0.11, 0.06)
+			env.ambient_light_energy = 0.55
+			env.fog_light_color = Color(0.15, 0.06, 0.02)
+			env.fog_density = fog_density * 1.5
+			env.adjustment_saturation = 1.05
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
@@ -365,6 +420,14 @@ func _build_environment() -> void:
 	moon.basis = Basis.looking_at(-moon_dir)
 	moon.light_color = Color(0.55, 0.65, 0.95)
 	moon.light_energy = 1.1
+	if map_id == "rubkhali": moon.light_color = Color(0.78, 0.72, 0.6) # dusty moonlight
+	match theme:
+		"snow":
+			moon.light_color = Color(0.72, 0.82, 1.0)
+			moon.light_energy = 1.35
+		"halloween":
+			moon.light_color = Color(1.0, 0.6, 0.3)
+			moon.light_energy = 0.45 # the pumpkins should be the light, not the sky
 	moon.shadow_enabled = true
 	moon.directional_shadow_blend_splits = true
 	add_child(moon)
@@ -393,7 +456,11 @@ func _build_terrain() -> void:
 					var gi := ci + i
 					var gj := cj + j
 					verts.append(Vector3(-HALF + gi * CELL, hgt.call(gi, gj), -HALF + gj * CELL))
-					cols.append(Color(0.42, 0.56, 0.34).lerp(Color(1.0, 0.86, 0.6), _sandiness(-HALF + gi * CELL, -HALF + gj * CELL)))
+					var gcol := Color(0.42, 0.56, 0.34).lerp(Color(1.0, 0.86, 0.6), _sandiness(-HALF + gi * CELL, -HALF + gj * CELL))
+					if map_id == "rubkhali": gcol = Color(0.86, 0.71, 0.46)
+					if theme == "snow": gcol = gcol.lerp(Color(0.92, 0.95, 1.0), 0.88)
+					elif theme == "halloween": gcol = gcol.lerp(Color(0.5, 0.33, 0.14), 0.45)
+					cols.append(gcol)
 					norms.append(Vector3(hgt.call(gi - 1, gj) - hgt.call(gi + 1, gj), 2.0 * CELL, hgt.call(gi, gj - 1) - hgt.call(gi, gj + 1)).normalized())
 			for j in per:
 				for i in per:
@@ -481,6 +548,7 @@ func _build_buildings() -> void:
 		_box(body, Vector3(1.3, hgt - 2.2, t), Vector3(0, y0 + 2.2 + (hgt - 2.2) / 2.0, d / 2.0), _mat.wood)
 		# leaning sheet-metal roof
 		_box(body, Vector3(w + 1.0, 0.1, d + 1.0), Vector3(0, y0 + hgt + 0.3, 0), _mat.metal, false, Vector3(0, 0, 0.1))
+		_snow_cap(body, Vector3(w + 1.0, 0.1, d + 1.0), Vector3(0, y0 + hgt + 0.3, 0), Vector3(0, 0, 0.1))
 		if idx % 3 == 0: # a weak flickering lamp inside some buildings (no shadows)
 			var l := OmniLight3D.new()
 			l.position = Vector3(0, y0 + hgt - 0.5, 0)
@@ -620,8 +688,8 @@ func _build_objectives() -> void:
 		add_child(body)
 		gen_nodes.append({"light": light, "mat": lamp_mat, "done": false, "blink": false})
 	# perimeter wall: tall, runs the whole edge of the map, so the only way out is through a gate
-	var top := 9.0
-	var bottom := -7.0
+	var top := 12.0 if map_id == "rubkhali" else 9.0 # dunes are high; keep the wall above them
+	var bottom := -9.0 if map_id == "rubkhali" else -7.0
 	var wall_h := top - bottom
 	var wall_y := (top + bottom) / 2.0
 	var sides := StaticBody3D.new()
@@ -936,6 +1004,9 @@ func _lamp_post(at: Vector3, yaw: float) -> void:
 func _build_scatter() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 404 if map_id == "forest" else 505
+	if map_id == "rubkhali":
+		_build_desert_scatter(rng)
+		return
 	var car_cols := [Color(0.3, 0.1, 0.08), Color(0.12, 0.16, 0.22), Color(0.35, 0.33, 0.28), Color(0.1, 0.2, 0.14), Color(0.4, 0.4, 0.42)]
 	# parked cars and lamps at the market
 	var mrot := Basis(Vector3.UP, market.yaw)
@@ -1014,6 +1085,82 @@ func _build_scatter() -> void:
 			_mesh_box(body, Vector3(0.18, 1.5, 0.2), Vector3(ox - 1.5, 0.75, 0), _mat.wood)
 		add_child(body)
 
+## Cover out in the dunes: wrecks, ruined walls, boulders, thorn bushes, old fences.
+func _build_desert_scatter(rng: RandomNumberGenerator) -> void:
+	for i in 7: # dead Land Cruisers
+		var p := _free_spot(rng, 4.0)
+		if p != Vector3.INF: _wreck(p, rng.randf() * TAU, rng)
+	var mud: Material = _mat.mud
+	for i in 11: # ruined compound walls: the best line-of-sight breakers out here
+		var p := _free_spot(rng, 5.0)
+		if p == Vector3.INF: continue
+		var body := StaticBody3D.new()
+		body.position = p
+		body.rotation.y = rng.randf() * TAU
+		var segs := rng.randi_range(2, 5)
+		var ox := 0.0
+		for k in segs:
+			var length := rng.randf_range(2.4, 4.2)
+			var h := rng.randf_range(1.3, 2.6)
+			if rng.randf() < 0.25: # a gap you can run through
+				ox += length
+				continue
+			_box(body, Vector3(length, h, 0.45), Vector3(ox + length / 2.0, h / 2.0, 0), mud, h > 2.0)
+			_snow_cap(body, Vector3(length, h, 0.45), Vector3(ox + length / 2.0, h / 2.0, 0))
+			ox += length
+		add_child(body)
+	for i in 16: # boulders big enough to hide behind
+		var p := _free_spot(rng, 2.5)
+		if p == Vector3.INF: continue
+		var body := StaticBody3D.new()
+		body.position = p
+		body.rotation.y = rng.randf() * TAU
+		var r := rng.randf_range(0.9, 1.8)
+		var mi := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = r; sm.height = r * rng.randf_range(1.2, 1.8); sm.radial_segments = 9; sm.rings = 5
+		sm.material = _mat.sand_rock
+		mi.mesh = sm
+		mi.position.y = r * 0.35
+		body.add_child(mi)
+		var cs := CollisionShape3D.new()
+		var sh := SphereShape3D.new()
+		sh.radius = r * 0.9
+		cs.shape = sh
+		cs.position.y = r * 0.35
+		body.add_child(cs)
+		add_child(body)
+	for i in 22: # camel thorn
+		var p := _free_spot(rng, 1.0)
+		if p == Vector3.INF: continue
+		var mi := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = rng.randf_range(0.35, 0.7); sm.height = sm.radius * 1.1; sm.radial_segments = 7; sm.rings = 3
+		sm.material = _flat(Color(0.18, 0.16, 0.08), 0.95)
+		mi.mesh = sm
+		mi.position = p + Vector3(0, sm.radius * 0.35, 0)
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(mi)
+	for i in 7: # fence runs left from old corrals
+		var p := _free_spot(rng, 5.0)
+		if p == Vector3.INF: continue
+		var body := StaticBody3D.new()
+		body.position = p
+		body.rotation.y = rng.randf() * TAU
+		for sgm in rng.randi_range(2, 4):
+			var ox2 := sgm * 3.0
+			_box(body, Vector3(3.0, 1.25, 0.14), Vector3(ox2, 0.6, 0), _mat.wood)
+			_mesh_box(body, Vector3(0.18, 1.5, 0.2), Vector3(ox2 - 1.5, 0.75, 0), _mat.wood)
+		add_child(body)
+	for i in 4: # a couple of crates near the camps
+		var p := _free_spot(rng, 1.5)
+		if p == Vector3.INF: continue
+		var body := StaticBody3D.new()
+		body.position = p
+		body.rotation.y = rng.randf() * TAU
+		_box(body, Vector3(0.95, 0.95, 0.95), Vector3(0, 0.47, 0), _mat.wood)
+		add_child(body)
+
 # ---------------- hatch, market blackout ----------------
 func _build_extras() -> void:
 	for hp in hatch_points: # all hidden until the rules open one
@@ -1086,6 +1233,7 @@ func _build_fareej() -> void:
 		_wall_with_gap(body, false, 1.6, -d / 2.0, d / 2.0, 0.4, 1.7, y0, H, 0.0, 2.2, mat, 0.2) # inner wall with a doorway
 		_mesh_box(body, Vector3(1.5, 0.12, 0.3), Vector3(0, y0 + 2.26, d / 2.0), door_wood)
 		_box(body, Vector3(w + 0.5, 0.25, d + 0.5), Vector3(0, y0 + H + 0.12, 0), mat)
+		_snow_cap(body, Vector3(w + 0.5, 0.25, d + 0.5), Vector3(0, y0 + H + 0.12, 0))
 		for side in [[0.0, d / 2.0 + 0.15, w + 0.5, 0.2], [0.0, -d / 2.0 - 0.15, w + 0.5, 0.2], [w / 2.0 + 0.15, 0.0, 0.2, d + 0.5], [-w / 2.0 - 0.15, 0.0, 0.2, d + 0.5]]:
 			_mesh_box(body, Vector3(side[2], 0.6, side[3]), Vector3(side[0], y0 + H + 0.5, side[1]), mat) # roof parapet
 		# upper floor block (not enterable), windows, water tank, AC unit
@@ -1513,7 +1661,7 @@ func _palm_mesh(variant: int, hi: bool) -> ArrayMesh:
 func _build_trees() -> void:
 	var meshes := []
 	for v in 2:
-		if map_id == "fareej": meshes.append([_palm_mesh(v, true), _palm_mesh(v, false)])
+		if map_id in ["fareej", "rubkhali"]: meshes.append([_palm_mesh(v, true), _palm_mesh(v, false)])
 		else: meshes.append([_tree_mesh(v, true), _tree_mesh(v, false)])
 	var buckets := {} # "cx_cz_variant" -> Array[Transform3D]
 	var body := StaticBody3D.new()
@@ -1647,6 +1795,12 @@ func _build_particles() -> void:
 	dm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
 	q.material = dm
 	dust.draw_pass_1 = q
+	if map_id == "rubkhali": # the storm: coarse sand blowing past, not quiet dust motes
+		pm.emission_box_extents = Vector3(16, 6, 16)
+		pm.gravity = Vector3(2.6, -0.35, 1.1)
+		pm.initial_velocity_min = 1.4; pm.initial_velocity_max = 3.4
+		q.size = Vector2(0.16, 0.035) # streaks, not dots: they read as blowing sand
+		dm.albedo_color = Color(0.88, 0.76, 0.52, 0.34)
 	dust.lifetime = 8.0; dust.preprocess = 8.0
 	dust.visibility_aabb = AABB(Vector3(-20, -8, -20), Vector3(40, 16, 40))
 	dust.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -1671,8 +1825,21 @@ func _build_particles() -> void:
 	lm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
 	lq.material = lm
 	leaves.draw_pass_1 = lq
-	leaves.lifetime = 7.0; leaves.preprocess = 7.0
-	leaves.visibility_aabb = AABB(Vector3(-22, -12, -22), Vector3(44, 20, 44))
+	if theme == "snow": # the falling-leaves system becomes snow
+		lp.gravity = Vector3(0.35, -0.75, 0.15)
+		lp.initial_velocity_min = 0.05; lp.initial_velocity_max = 0.3
+		lp.angular_velocity_min = -40.0; lp.angular_velocity_max = 40.0
+		lp.scale_min = 0.6; lp.scale_max = 1.6
+		lq.size = Vector2(0.07, 0.07)
+		lm.albedo_color = Color(0.97, 0.98, 1.0)
+		lm.albedo_texture = NFUI.soft_dot()
+		lm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		lm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	elif theme == "halloween":
+		lm.albedo_color = Color(0.45, 0.17, 0.03)
+	leaves.lifetime = 9.0 if theme == "snow" else 7.0
+	leaves.preprocess = leaves.lifetime
+	leaves.visibility_aabb = AABB(Vector3(-22, -14, -22), Vector3(44, 26, 44))
 	leaves.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(leaves)
 
@@ -1692,8 +1859,9 @@ func _apply_quality() -> void:
 	env.glow_enabled = fx >= 1
 	if dust:
 		var da: int = [40, 90, 160][fx]
+		if map_id == "rubkhali": da = [90, 170, 280][fx] # the storm needs grains, not motes
 		if dust.amount != da: dust.amount = da
-		var la: int = [12, 25, 45][fx]
+		var la: int = ([40, 90, 170][fx]) if theme == "snow" else [12, 25, 45][fx]
 		if leaves.amount != la: leaves.amount = la
 	var factor: float = [0.4, 0.7, 1.0][fx]
 	var rng: float = [22.0, 30.0, 38.0][fx]
@@ -1705,6 +1873,7 @@ func _apply_quality() -> void:
 
 func _process(_dt: float) -> void:
 	var t := Time.get_ticks_msec() / 1000.0
+	if not animals.is_empty(): _step_animals(_dt)
 	for i in flicker.size():
 		flicker[i].light_energy = 1.6 * (0.75 + 0.25 * noise.get_noise_1d(t * 220.0 + i * 50.0) + 0.1 * sin(t * 13.0 + i))
 	market_t = maxf(market_t - _dt, 0.0)
@@ -1725,3 +1894,261 @@ func _process(_dt: float) -> void:
 	if follow and dust:
 		dust.global_position = follow.global_position + Vector3(0, 2.0, 0)
 		leaves.global_position = follow.global_position + Vector3(0, 7.0, 0)
+
+# ---------------- the Empty Quarter: bedouin tents, mud houses, wrecks, animals ----------------
+## A thin white slab on top of a roof while the snow theme is on.
+func _snow_cap(parent: Node3D, size: Vector3, pos: Vector3, rot := Vector3.ZERO) -> void:
+	if theme != "snow": return
+	snow_caps += 1
+	_mesh_box(parent, Vector3(size.x, 0.1, size.z), pos + Vector3(0, size.y / 2.0 + 0.05, 0), _flat(Color(0.93, 0.96, 1.0), 0.75), rot)
+
+## بيت شعر: a long dark woven tent, open at the front, with a locker and a rug inside.
+func _build_tent(body: StaticBody3D, w: float, d: float, H: float, y0: float) -> void:
+	var cloth: Material = _mat.cloth
+	var ridge := H + 1.1
+	_box(body, Vector3(w + 0.6, 0.18, d + 0.6), Vector3(0, y0 - 0.09, 0), _flat(Color(0.75, 0.62, 0.42), 0.95)) # sand floor pad
+	_box(body, Vector3(w, H, 0.14), Vector3(0, y0 + H / 2.0, -d / 2.0), cloth, true)                 # back
+	_box(body, Vector3(0.14, H, d), Vector3(w / 2.0, y0 + H / 2.0, 0), cloth, true)                  # right
+	_wall_with_gap(body, false, -w / 2.0, -d / 2.0, d / 2.0, -0.7, 0.7, y0, H, 0.9, 2.0, cloth, 0.14) # left, with a gap to vault
+	for sx in [-1.0, 1.0]: # the front stays open, just two poles and a short valance
+		_mesh_box(body, Vector3(0.14, ridge, 0.14), Vector3(sx * (w / 2.0 - 0.2), y0 + ridge / 2.0, d / 2.0), _mat.wood)
+	_mesh_box(body, Vector3(w, 0.5, 0.1), Vector3(0, y0 + H + 0.75, d / 2.0), cloth)
+	_mesh_box(body, Vector3(0.16, ridge + 0.3, 0.16), Vector3(0, y0 + (ridge + 0.3) / 2.0, 0), _mat.wood) # centre pole
+	for sz in [-1.0, 1.0]: # two sloping roof panels meeting at the ridge
+		_box(body, Vector3(w + 0.5, 0.1, d / 2.0 + 0.6), Vector3(0, y0 + (ridge + H) / 2.0 - 0.1, sz * (d / 4.0 + 0.1)),
+			cloth, true, Vector3(sz * -0.42, 0, 0))
+	_snow_cap(body, Vector3(w + 0.5, 0.1, d / 2.0), Vector3(0, y0 + ridge - 0.35, 0))
+	# rug, cushions and a cold fire pit
+	_mesh_box(body, Vector3(w - 1.6, 0.04, d - 2.2), Vector3(0, y0 + 0.03, 0.3), _flat(Color(0.33, 0.1, 0.08), 0.95))
+	for cx in [-1.6, -0.5, 0.6, 1.7]:
+		_mesh_box(body, Vector3(0.75, 0.3, 0.5), Vector3(cx, y0 + 0.15, -d / 2.0 + 0.9), _flat(Color(0.42, 0.15, 0.1), 0.9))
+	var pit := MeshInstance3D.new()
+	var pc := CylinderMesh.new()
+	pc.top_radius = 0.55; pc.bottom_radius = 0.6; pc.height = 0.18; pc.radial_segments = 10
+	pc.material = _mat.rock
+	pit.mesh = pc
+	pit.position = Vector3(0, y0 + 0.09, d / 2.0 - 1.3)
+	body.add_child(pit)
+	var ember := OmniLight3D.new() # a few embers left: just enough to read the inside
+	ember.position = Vector3(0, y0 + 0.5, d / 2.0 - 1.3)
+	ember.light_color = Color(1.0, 0.5, 0.2)
+	ember.light_energy = 1.1
+	ember.omni_range = 6.0
+	body.add_child(ember)
+	flicker.append(ember)
+
+## A small mud-brick house: thick walls, one door, one window to vault, a flat roof.
+func _build_mud_house(body: StaticBody3D, w: float, d: float, H: float, y0: float) -> void:
+	var mud: Material = _mat.mud
+	_box(body, Vector3(w + 0.5, 0.3, d + 0.5), Vector3(0, y0 - 0.15, 0), mud)
+	_box(body, Vector3(w, H, 0.4), Vector3(0, y0 + H / 2.0, -d / 2.0), mud, true)
+	_box(body, Vector3(0.4, H, d), Vector3(w / 2.0, y0 + H / 2.0, 0), mud, true)
+	_wall_with_gap(body, false, -w / 2.0, -d / 2.0, d / 2.0, -0.7, 0.7, y0, H, 1.0, 2.1, mud, 0.4)
+	_wall_with_gap(body, true, d / 2.0, -w / 2.0, w / 2.0, -0.65, 0.65, y0, H, 0.0, 2.2, mud, 0.4)
+	_box(body, Vector3(w + 0.6, 0.3, d + 0.6), Vector3(0, y0 + H + 0.15, 0), mud)
+	for side in [[0.0, d / 2.0 + 0.2, w + 0.6, 0.25], [0.0, -d / 2.0 - 0.2, w + 0.6, 0.25], [w / 2.0 + 0.2, 0.0, 0.25, d + 0.6], [-w / 2.0 - 0.2, 0.0, 0.25, d + 0.6]]:
+		_mesh_box(body, Vector3(side[2], 0.5, side[3]), Vector3(side[0], y0 + H + 0.55, side[1]), mud)
+	_snow_cap(body, Vector3(w + 0.6, 0.3, d + 0.6), Vector3(0, y0 + H + 0.15, 0))
+	for k in 5: # palm-trunk beams poking out under the roof, like a real mud house
+		_mesh_box(body, Vector3(0.16, 0.16, d + 1.4), Vector3(-w / 2.0 + 0.9 + k * (w - 1.8) / 4.0, y0 + H - 0.1, 0), _mat.bark)
+	_mesh_box(body, Vector3(1.5, 0.16, 0.5), Vector3(0, y0 + 2.3, d / 2.0), _mat.bark) # door lintel
+	var l := OmniLight3D.new()
+	l.position = Vector3(0, y0 + H - 0.6, 0)
+	l.light_color = Color(1.0, 0.72, 0.4)
+	l.light_energy = 1.4
+	l.omni_range = 7.0
+	body.add_child(l)
+	flicker.append(l)
+
+func _build_rubkhali() -> void:
+	var idx := 0
+	for b in buildings:
+		var w: float = b[3]; var d: float = b[4]; var H: float = b[5]
+		var body := StaticBody3D.new()
+		body.name = ("Tent%d" % idx) if idx < tents else ("MudHouse%d" % idx)
+		body.position = Vector3(b[0], _raw_h(b[0], b[1]), b[1])
+		body.rotation.y = b[2]
+		if idx < tents: _build_tent(body, w, d, H, 0.1)
+		else: _build_mud_house(body, w, d, H, 0.1)
+		add_child(body)
+		idx += 1
+
+## A dead Land Cruiser, half swallowed by the dune it stopped on.
+func _wreck(at: Vector3, yaw: float, rng: RandomNumberGenerator) -> void:
+	wrecks += 1
+	var body := StaticBody3D.new()
+	body.position = at - Vector3(0, 0.42, 0) # sunk into the sand
+	body.rotation = Vector3(rng.randf_range(-0.07, 0.07), yaw, rng.randf_range(-0.1, 0.1))
+	var paint := _flat(Color(0.52, 0.47, 0.38).darkened(rng.randf_range(0.0, 0.25)), 0.85, 0.2)
+	var dark := _flat(Color(0.02, 0.02, 0.025), 0.4)
+	_box(body, Vector3(2.0, 1.0, 4.8), Vector3(0, 0.85, 0), paint)       # chassis
+	_box(body, Vector3(1.9, 1.0, 2.9), Vector3(0, 1.8, -0.2), paint)     # cabin
+	_mesh_box(body, Vector3(1.75, 0.75, 0.06), Vector3(0, 1.8, 1.24), dark)  # broken glass
+	_mesh_box(body, Vector3(0.06, 0.7, 2.6), Vector3(0.96, 1.8, -0.2), dark)
+	_mesh_box(body, Vector3(0.06, 0.7, 2.6), Vector3(-0.96, 1.8, -0.2), dark)
+	_mesh_box(body, Vector3(1.8, 0.1, 2.4), Vector3(0, 2.35, -0.2), _mat.metal) # roof rack
+	for rx in [-0.8, 0.8]:
+		_mesh_box(body, Vector3(0.08, 0.22, 2.4), Vector3(rx, 2.45, -0.2), _mat.metal)
+	_mesh_box(body, Vector3(2.0, 0.22, 0.3), Vector3(0, 1.05, 2.45), _mat.metal) # bumper
+	var tire := _flat(Color(0.04, 0.04, 0.04), 0.9)
+	var k := 0
+	for wx in [-0.95, 0.95]:
+		for wz in [-1.5, 1.5]:
+			k += 1
+			if k == 2 or (k == 3 and rng.randf() < 0.5): continue # missing wheels, lying in the sand
+			var wh := MeshInstance3D.new()
+			var cyl := CylinderMesh.new()
+			cyl.top_radius = 0.42; cyl.bottom_radius = 0.42; cyl.height = 0.3; cyl.radial_segments = 10
+			cyl.material = tire
+			wh.mesh = cyl
+			wh.rotation.z = PI / 2.0
+			wh.position = Vector3(wx, 0.42, wz)
+			body.add_child(wh)
+	_snow_cap(body, Vector3(1.9, 1.0, 2.9), Vector3(0, 1.8, -0.2))
+	add_child(body)
+
+## Low-poly animal built as a single merged mesh: one draw call, no bones, no collision.
+func _animal_mesh(kind: String) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var camel := kind == "camel"
+	var hide := _flat(Color(0.52, 0.38, 0.22) if camel else Color(0.3, 0.19, 0.11), 0.95)
+	var add := func(size: Vector3, pos: Vector3, rot := Vector3.ZERO) -> void:
+		var bm := BoxMesh.new()
+		bm.size = size
+		st.append_from(bm, 0, Transform3D(Basis.from_euler(rot), pos))
+	var leg_y: float = 1.15 if camel else 0.78
+	var body_y: float = leg_y + (0.55 if camel else 0.42)
+	add.call(Vector3(0.78, 1.0, 2.3) if camel else Vector3(0.68, 0.84, 2.0), Vector3(0, body_y, 0))
+	if camel: # hump
+		var hm := SphereMesh.new()
+		hm.radius = 0.52; hm.height = 0.85; hm.radial_segments = 10; hm.rings = 5
+		st.append_from(hm, 0, Transform3D(Basis(), Vector3(0, body_y + 0.6, -0.1)))
+	add.call(Vector3(0.42, 1.25, 0.42) if camel else Vector3(0.4, 0.8, 0.5),
+		Vector3(0, body_y + (0.75 if camel else 0.5), 1.0), Vector3(-0.5 if camel else -0.75, 0, 0))
+	add.call(Vector3(0.34, 0.34, 0.75) if camel else Vector3(0.32, 0.4, 0.8),
+		Vector3(0, body_y + (1.35 if camel else 0.85), 1.5 if camel else 1.35), Vector3(0.35, 0, 0))
+	for lx in [-0.3, 0.3]:
+		for lz in [-0.8, 0.85]:
+			add.call(Vector3(0.2, leg_y, 0.22), Vector3(lx, leg_y / 2.0, lz))
+	add.call(Vector3(0.12, 0.7, 0.12), Vector3(0, body_y + 0.1, -1.15), Vector3(0.6, 0, 0)) # tail
+	var mesh := st.commit()
+	mesh.surface_set_material(0, hide)
+	return mesh
+
+func _build_animals() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 616
+	var meshes := {"horse": _animal_mesh("horse"), "camel": _animal_mesh("camel")}
+	for i in 9:
+		var kind := "camel" if i % 3 == 0 else "horse"
+		var start := _free_spot(rng, 4.0)
+		if start == Vector3.INF: continue
+		var mi := MeshInstance3D.new()
+		mi.mesh = meshes[kind]
+		mi.position = start
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		mi.visibility_range_end = 95.0 # the storm hides them long before this
+		add_child(mi)
+		var path: Array[Vector3] = [start]
+		var p := Vector2(start.x, start.z)
+		for k in 3: # a small loop of waypoints around where it started
+			p += Vector2.from_angle(rng.randf() * TAU) * rng.randf_range(9.0, 20.0)
+			p.x = clampf(p.x, -WALL + 10.0, WALL - 10.0)
+			p.y = clampf(p.y, -WALL + 10.0, WALL - 10.0)
+			path.append(Vector3(p.x, height(p.x, p.y), p.y))
+		var stand: bool = kind == "camel" and rng.randf() < 0.5
+		animals.append({"node": mi, "path": path, "i": 1, "speed": rng.randf_range(0.7, 1.15),
+			"bob": rng.randf() * TAU, "stand": stand, "yaw": rng.randf() * TAU})
+		mi.rotation.y = animals[-1].yaw
+
+## Horses and camels plod between their waypoints. No sound, no collision: they are scenery.
+func _step_animals(dt: float) -> void:
+	var t := Time.get_ticks_msec() / 1000.0
+	for a in animals:
+		var mi: MeshInstance3D = a.node
+		var base: float = height(mi.position.x, mi.position.z)
+		if a.stand:
+			mi.position.y = base + 0.02 * sin(t * 0.7 + a.bob)
+			mi.rotation.y = a.yaw + 0.05 * sin(t * 0.3 + a.bob)
+			continue
+		var target: Vector3 = a.path[a.i]
+		var to := Vector3(target.x - mi.position.x, 0, target.z - mi.position.z)
+		if to.length() < 1.2:
+			a.i = (a.i + 1) % a.path.size()
+			continue
+		var want := atan2(to.x, to.z)
+		a.yaw = lerp_angle(a.yaw, want, 1.6 * dt)
+		mi.rotation.y = a.yaw
+		var step: Vector3 = Vector3(sin(a.yaw), 0, cos(a.yaw)) * float(a.speed) * dt
+		mi.position += step
+		mi.position.y = base + 0.06 * absf(sin(t * 3.4 + a.bob)) # plodding bob
+		mi.rotation.x = 0.03 * sin(t * 3.4 + a.bob)
+
+# ---------------- snow and halloween dressing ----------------
+## A carved pumpkin with a candle inside.
+func _pumpkin(at: Vector3, yaw: float) -> void:
+	pumpkins += 1
+	var root := Node3D.new()
+	root.position = at
+	root.rotation.y = yaw
+	var body := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = 0.34; sm.height = 0.5; sm.radial_segments = 12; sm.rings = 6
+	sm.material = _flat(Color(0.75, 0.28, 0.04), 0.75)
+	body.mesh = sm
+	body.position.y = 0.25
+	root.add_child(body)
+	_mesh_box(root, Vector3(0.07, 0.18, 0.07), Vector3(0, 0.54, 0), _flat(Color(0.18, 0.22, 0.08), 0.9))
+	var face := _flat(Color(1.0, 0.55, 0.12), 0.4, 0.0, 6.0) # the carving glows
+	_mesh_box(root, Vector3(0.1, 0.1, 0.06), Vector3(-0.12, 0.3, 0.3), face, Vector3(0, 0, 0.6))
+	_mesh_box(root, Vector3(0.1, 0.1, 0.06), Vector3(0.12, 0.3, 0.3), face, Vector3(0, 0, -0.6))
+	_mesh_box(root, Vector3(0.26, 0.07, 0.06), Vector3(0, 0.16, 0.31), face)
+	var l := OmniLight3D.new()
+	l.position = Vector3(0, 0.3, 0.15)
+	l.light_color = Color(1.0, 0.5, 0.12)
+	l.light_energy = 1.0
+	l.omni_range = 4.5
+	root.add_child(l)
+	flicker.append(l)
+	add_child(root)
+
+## A cobweb: two translucent triangles tucked into a corner.
+func _cobweb(at: Vector3, yaw: float, size: float) -> void:
+	webs += 1
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.85, 0.86, 0.9, 0.3)
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.set_normal(Vector3.UP)
+	for tri in [[Vector3.ZERO, Vector3(size, 0, 0), Vector3(0, -size, 0)], [Vector3.ZERO, Vector3(0, -size, 0), Vector3(0, 0, size)]]:
+		for v in tri:
+			st.set_uv(Vector2(0.5, 0.5))
+			st.add_vertex(v)
+	var mesh := st.commit()
+	mesh.surface_set_material(0, mat)
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.position = at
+	mi.rotation.y = yaw
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+
+func _build_theme_props() -> void:
+	if theme != "halloween": return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 31337
+	for b in buildings: # a lit pumpkin beside every front door, and webs under the eaves
+		var front := _local(b, Vector3(b[3] / 2.0 - 1.0, 0, b[4] / 2.0 + 0.9))
+		_pumpkin(front, b[2] + rng.randf_range(-0.4, 0.4))
+		_cobweb(_local(b, Vector3(-b[3] / 2.0 + 0.3, b[5] - 0.3, b[4] / 2.0 - 0.3)), b[2], 1.1)
+		_cobweb(_local(b, Vector3(b[3] / 2.0 - 0.3, b[5] - 0.3, b[4] / 2.0 - 0.3)), b[2] + PI / 2.0, 0.9)
+	for i in 10: # pumpkins out in the open, marking paths
+		var p := _free_spot(rng, 1.5)
+		if p == Vector3.INF: continue
+		_pumpkin(p, rng.randf() * TAU)
+	for hp in hook_points: # webs on the hooks
+		_cobweb(hp + Vector3(0, 3.0, 0), rng.randf() * TAU, 1.0)

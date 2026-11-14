@@ -5,7 +5,9 @@ extends CanvasLayer
 
 signal start_game(cfg: Dictionary)
 
-const MAPS := {"forest": "الغابة", "village": "القرية المهجورة", "fareej": "الفريج"}
+const MAPS := {"forest": "الغابة", "village": "القرية المهجورة", "fareej": "الفريج", "rubkhali": "الربع الخالي"}
+const THEMES := {"normal": "عادي", "snow": "ثلج", "halloween": "هالوين"}
+const THEME_ICON := {"normal": "moon", "snow": "star", "halloween": "skull"}
 const CHARS := {"killer": "القاتل", "survivor1": "ناجي 1", "survivor2": "الحمراء", "survivor3": "ناجي 3", "survivor4": "ناجي 4", "survivor5": "المقاتلة", "survivor6": "الممرضة", "survivor7": "الطالبة"}
 const ERRORS := {"no_room": "ما في غرفة بهالكود", "room_full": "الغرفة ممتلئة", "in_game": "اللعبة بدأت بالغرفة",
 	"killer_taken": "في قاتل بالغرفة", "offline": "صديقك مو متصل", "bad_name": "الاسم لازم 2 إلى 16 حرف بدون مسافات",
@@ -18,6 +20,7 @@ var invite := {}
 var typed := {} # LineEdit texts kept across rebuilds
 var off_map := "forest"
 var off_char := "killer"
+var off_theme := "normal"
 var lobby: NFLobby       # the campfire scene, set by main.gd
 var card: Control        # player card in the top corner
 var char_pad: Control    # swipe area for the character carousel
@@ -77,9 +80,13 @@ func _on_msg(m: Dictionary) -> void:
 				if not (page in ["friends", "chars", "controls"]): page = "lobby"
 			elif page in ["lobby", "friends", "chars"]: page = "main"
 		"started":
-			start_game.emit({"map": m.map, "players": m.players, "me": Net.username, "offline": false, "seed": int(m.get("seed", 1))})
+			start_game.emit({"map": m.map, "players": m.players, "me": Net.username, "offline": false,
+				"seed": int(m.get("seed", 1)), "theme": str(m.get("theme", "normal"))})
 			return
 		"invite": invite = m
+		"emote": # someone at the fire waved / danced / clapped
+			if lobby and is_instance_valid(lobby): lobby.emote(str(m.get("n", "")), int(m.get("k", 0)))
+			return
 		"error": toast = ERRORS.get(str(m.code), str(m.code))
 	_refresh()
 
@@ -269,6 +276,7 @@ func _page_main() -> void:
 	_button("النمط التجريبي (بدون نت)", func(): chars_from = "offline"; open("offline"), null, true, "star")
 	_button("الاسم والسيرفر", func():
 		typed["name"] = Net.username; typed["url"] = Net.url; open("settings"), null, true, "gear")
+	_emote_row()
 
 func _page_settings() -> void:
 	_label("الاسم")
@@ -310,6 +318,14 @@ func _page_friends() -> void:
 		d.size_flags_horizontal = Control.SIZE_SHRINK_END
 	_button("رجوع", func(): open("lobby" if Net.in_room() else "main"), null, true, "exit")
 
+## The three campfire emotes: played here at once, and relayed to the room if I am in one.
+func _emote_row() -> void:
+	var h := _row()
+	for i in NFLobby.EMOTES.size():
+		_button(NFLobby.EMOTE_TEXT[i], func():
+			if lobby and is_instance_valid(lobby): lobby.emote(Net.username, i)
+			if Net.in_room(): Net.send({"t": "emote", "k": i}), h, true, NFLobby.EMOTE_ICON[i])
+
 func _me() -> Dictionary:
 	for p in Net.room.get("players", []):
 		if str(p.name) == Net.username: return p
@@ -321,14 +337,29 @@ func _page_lobby() -> void:
 		open("main")
 		return
 	var host := str(r.host) == Net.username
-	_label("كود الغرفة: %s" % str(r.code), 30, Color(1, 0.85, 0.4))
+	var code := str(r.code)
+	_label("كود الغرفة", 20, Color(0.75, 0.75, 0.78))
+	_label(code, 46, Color(1, 0.85, 0.4))
+	_button("انسخ الكود وأرسله لربعك", func():
+		DisplayServer.clipboard_set(code)
+		toast = "انتسخ الكود %s" % code
+		_refresh(), null, true, "chat")
 	if host:
 		var h := _row()
+		var hk := 0
 		for id in MAPS:
+			if hk == 2: h = _row() # four maps: two rows
+			hk += 1
 			var b := _button(MAPS[id], func(): Net.send({"t": "set", "map": id}), h)
+			b.add_theme_font_size_override("font_size", 20)
 			if str(r.map) == id: b.modulate = Color(1, 0.75, 0.3)
+		var ht := _row()
+		for id in THEMES:
+			var b2 := _button(THEMES[id], func(): Net.send({"t": "set", "theme": id}), ht, true, THEME_ICON[id])
+			b2.add_theme_font_size_override("font_size", 20)
+			if str(r.get("theme", "normal")) == id: b2.modulate = Color(1, 0.75, 0.3)
 	else:
-		_label("الخريطة: %s" % MAPS.get(str(r.map), str(r.map)), 22)
+		_label("الخريطة: %s  •  الجو: %s" % [MAPS.get(str(r.map), str(r.map)), THEMES.get(str(r.get("theme", "normal")), "عادي")], 22)
 	for p in r.players:
 		var txt := "%s%s — %s" % ["★ " if str(p.name) == str(r.host) else "", str(p.name), CHARS.get(str(p.char), str(p.char))]
 		_label(txt, 20, Color(1, 0.4, 0.4) if str(p.role) == "killer" else Color(0.7, 0.85, 1))
@@ -341,6 +372,7 @@ func _page_lobby() -> void:
 	if str(me.get("role", "")) == "survivor":
 		_button("اختر الشخصية — %s" % CHARS.get(str(me.get("char", "")), ""), func():
 			chars_from = "lobby"; open("chars"), null, true, "star")
+	_emote_row()
 	_button("دعوة الأصدقاء", func(): open("friends"), null, true, "chat")
 	if host: _button("ابدأ اللعب", func(): Net.send({"t": "start"}), null, true, "out")
 	else: _label("بانتظار صاحب الغرفة يبدأ...", 20, Color(0.7, 0.7, 0.7))
@@ -361,16 +393,25 @@ func _page_chars() -> void:
 
 func _page_offline() -> void:
 	chars_from = "offline"
-	_label("النمط التجريبي — اختر الخريطة والشخصية")
+	_label("النمط التجريبي — اختر الخريطة والجو والشخصية")
 	var h := _row()
+	var k := 0
 	for id in MAPS:
+		if k == 2: h = _row()
+		k += 1
 		var b := _button(MAPS[id], func(): off_map = id; _refresh(), h)
+		b.add_theme_font_size_override("font_size", 20)
 		if off_map == id: b.modulate = Color(1, 0.75, 0.3)
+	var ht := _row()
+	for id in THEMES:
+		var b2 := _button(THEMES[id], func(): off_theme = id; _refresh(), ht, true, THEME_ICON[id])
+		b2.add_theme_font_size_override("font_size", 20)
+		if off_theme == id: b2.modulate = Color(1, 0.75, 0.3)
 	_button("الشخصية — %s" % CHARS.get(off_char, off_char), func(): open("chars"), null, true, "star")
 	_button("ابدأ", func():
 		var n := Net.username if Net.username != "" else "Player"
 		var list := [{"name": n, "role": "killer" if off_char == "killer" else "survivor", "char": off_char, "slot": 0}]
 		# a practice dummy: a target for the killer, or a wounded teammate to heal
 		list.append({"name": "دمية", "role": "survivor", "char": "survivor4" if off_char != "survivor4" else "survivor1", "slot": 1, "dummy": true})
-		start_game.emit({"map": off_map, "me": n, "offline": true, "players": list}), null, true, "out")
+		start_game.emit({"map": off_map, "me": n, "offline": true, "theme": off_theme, "players": list}), null, true, "out")
 	_button("رجوع", func(): chars_from = "main"; open("main" if Net.username != "" else "name"), null, true, "exit")

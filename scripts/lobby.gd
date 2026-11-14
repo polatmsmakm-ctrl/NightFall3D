@@ -8,6 +8,9 @@ extends Node3D
 const STAND := Vector3(-0.17, 0.0, 3.0)      # where the selected character stands (right of centre on screen)
 const CAM_IDLE := [Vector3(-2.1, 1.55, 6.0), Vector3(-0.06, -0.06, 0.0)]
 const CAM_CHAR := [Vector3(-1.5, 1.45, 5.2), Vector3(-0.14, -0.2, 0.0)]
+const EMOTES := ["wave", "dance", "clap"]            # relayed as {t:"emote", k:0..2}
+const EMOTE_TEXT := ["تلويح", "رقص", "تصفيق"]
+const EMOTE_ICON := ["hand", "note", "clap"]
 const SEATS := [[-1.05, 2.1], [-0.38, 2.2], [0.42, 2.2], [1.1, 2.1], [-1.78, 2.3], [1.82, 2.3]]
 const KILLER_AT := Vector3(1.6, 0.0, -7.4)
 
@@ -15,6 +18,8 @@ var stock: Array[Node3D] = []     # the shipped cast, shown when we are not in a
 var cast := {}                  # other players in the room: name -> {rig, tag}
 var me_rig: CharacterRig
 var me_char := ""
+var me_name := ""
+var _emoting := {} # rig -> seconds left before going back to idle
 var me_label: Label3D
 var fire: OmniLight3D
 var pivot: Node3D
@@ -26,16 +31,8 @@ var _slide := 0.0
 var _slide_from := Vector3.ZERO
 var _dot_tex: ImageTexture
 
-func _soft_dot() -> ImageTexture: # round, soft-edged sprite for fire / smoke / sparks
-	if _dot_tex: return _dot_tex
-	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
-	for y in 64:
-		for x in 64:
-			var d := Vector2(x - 31.5, y - 31.5).length() / 31.5
-			var a := clampf(1.0 - d, 0.0, 1.0)
-			img.set_pixel(x, y, Color(1, 1, 1, a * a))
-	_dot_tex = ImageTexture.create_from_image(img)
-	return _dot_tex
+func _soft_dot() -> ImageTexture: # shared with the other particle systems
+	return NFUI.soft_dot()
 
 func _fire_layer(parent: Node3D, amount: int, life: float, radius: float, rise: float, size: float, colors: Array, additive: bool, speed := Vector2(0.2, 0.7), spread := 18.0) -> GPUParticles3D:
 	var p := GPUParticles3D.new()
@@ -389,7 +386,7 @@ func preview(char_id: String, label := "", dir := 0.0) -> void:
 	if char_id == "": return
 	me_rig = CharacterRig.new()
 	add_child(me_rig)
-	me_rig.setup(char_id, ["idle", "campfire"])
+	me_rig.setup(char_id, ["idle", "campfire"] + EMOTES)
 	me_rig.play("idle")
 	_slide_from = STAND + Vector3(dir * 1.9, 0.0, 0.35)
 	_slide = 1.0 if dir != 0.0 else 0.0
@@ -411,6 +408,7 @@ func focus(on: bool) -> void:
 # ---------------- the people around the fire ----------------
 ## `players` is the room list ([{name, role, char}]); empty shows the shipped cast again.
 func set_cast(players: Array, me: String) -> void:
+	me_name = me
 	var want := {}
 	var seat := 0
 	for p in players:
@@ -436,7 +434,7 @@ func set_cast(players: Array, me: String) -> void:
 		var r := CharacterRig.new()
 		add_child(r)
 		var killer: bool = d.role == "killer"
-		r.setup(str(d.char), ["idle"] if killer else ["campfire", "idle"])
+		r.setup(str(d.char), (["idle"] if killer else ["campfire", "idle"]) + EMOTES)
 		if killer:
 			r.position = KILLER_AT
 			r.rotation.y = atan2(-r.position.x, -r.position.z)
@@ -452,7 +450,29 @@ func set_cast(players: Array, me: String) -> void:
 	var in_room := not players.is_empty()
 	for s in stock: s.visible = not in_room
 
+## Play a campfire emote. `who` is the player's name; mine is the one standing at the fire.
+func emote(who: String, k: int) -> void:
+	k = clampi(k, 0, EMOTES.size() - 1)
+	var r: CharacterRig = null
+	if who == me_name or who == "": r = me_rig
+	elif cast.has(who): r = cast[who].rig
+	if r == null or not is_instance_valid(r): return
+	if not r.player.has_animation(EMOTES[k]): return
+	r.play(EMOTES[k])
+	_emoting[r] = 3.4 # then back to sitting / standing
+
+func _tick_emotes(dt: float) -> void:
+	for r in _emoting.keys():
+		if not is_instance_valid(r):
+			_emoting.erase(r)
+			continue
+		_emoting[r] -= dt
+		if _emoting[r] <= 0.0:
+			_emoting.erase(r)
+			r.play("idle" if r == me_rig else ("campfire" if r.player.has_animation("campfire") else "idle"))
+
 func _process(dt: float) -> void:
+	_tick_emotes(dt)
 	var tt := Time.get_ticks_msec() / 1000.0
 	var flick := 0.78 + 0.14 * sin(tt * 13.0) * sin(tt * 4.3) + 0.08 * sin(tt * 27.0)
 	fire.light_energy = 3.4 * flick

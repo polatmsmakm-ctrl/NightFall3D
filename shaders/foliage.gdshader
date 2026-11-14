@@ -1,6 +1,7 @@
 shader_type spatial;
 render_mode cull_disabled;
 uniform sampler2D noise_tex : repeat_enable, filter_linear_mipmap;
+uniform vec3 tint : source_color = vec3(1.0);  // snow / halloween themes recolour the leaves
 
 void vertex() {
 	vec3 wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
@@ -11,6 +12,6 @@ void vertex() {
 
 void fragment() {
 	float n = texture(noise_tex, UV * vec2(6.0, 2.0)).r;
-	ALBEDO = mix(vec3(0.025, 0.055, 0.035), vec3(0.09, 0.15, 0.07), n);
+	ALBEDO = mix(vec3(0.025, 0.055, 0.035), vec3(0.09, 0.15, 0.07), n) * tint;
 	ROUGHNESS = 0.85;
 }

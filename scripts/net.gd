@@ -15,6 +15,7 @@ var state := "off" # off / connecting / online / name_taken
 var room := {}
 var font: FontFile
 var xp := 0
+var replay := {}   # trial-mode round to start again right after a scene reload
 var escapes := 0   # how many rounds I got out of, all time
 var kills := 0     # survivors I killed as the killer, all time
 

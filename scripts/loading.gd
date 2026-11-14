@@ -20,18 +20,24 @@ const TIPS := [
 	"الانحناء يخفّي صوت خطواتك",
 	"بعد البوابة امشِ للطريق لين آخره، هناك تطلع برّا",
 	"تصليح المولد يبي ضغطات بالوقت الصح، وإلا ينفجر ويسمعه القاتل",
+	"بالربع الخالي العجاج يغطي الرؤية — استغله واختفِ",
+	"بيوت الشعر فيها خزانات تختبئ فيها",
+	"الخيل والبعارين ما يأذونك، بس يشتتون نظر القاتل",
 ]
-const NAMES := {"forest": "الغابة", "village": "القرية المهجورة", "fareej": "الفريج"}
+const NAMES := {"forest": "الغابة", "village": "القرية المهجورة", "fareej": "الفريج", "rubkhali": "الربع الخالي"}
+const THEME_NAMES := {"snow": "ثلج", "halloween": "هالوين"}
 
 var map_id := "forest"
+var theme := "normal"
 var tip := ""
 var f := 0.0        # build progress 0..1
 var shown := 0.0    # seconds on screen
 var fade := 1.0
 var _pad: Control
 
-func setup(id: String) -> void:
+func setup(id: String, th := "normal") -> void:
 	map_id = id
+	theme = th
 	tip = TIPS[randi() % TIPS.size()]
 
 func _ready() -> void:
@@ -106,6 +112,30 @@ func _draw_preview(r: Rect2) -> void:
 					_pad.draw_colored_polygon(PackedVector2Array([Vector2(x2 - 5.0, y2 - h2), Vector2(x2 + w2 / 2.0, y2 - h2 - r.size.y * 0.1), Vector2(x2 + w2 + 5.0, y2 - h2)]), col2)
 					if depth == 0 and rng.randf() < 0.6: # one lit window
 						_pad.draw_rect(Rect2(Vector2(x2 + w2 * 0.3, y2 - h2 * 0.6), Vector2(w2 * 0.18, h2 * 0.2)), Color(1.0, 0.72, 0.35, 0.5 * a))
+		"rubkhali": # dunes, a tent and a palm cluster in a dust haze
+			var sand := Color(0.3, 0.24, 0.17, a)
+			for depth in 3:
+				var dy := base + depth * r.size.y * 0.1 - r.size.y * 0.12
+				var pts := PackedVector2Array([Vector2(r.position.x, r.position.y + r.size.y)])
+				for i in 15:
+					var fx := i / 14.0
+					pts.append(Vector2(r.position.x + r.size.x * fx,
+						dy - sin(fx * PI * (1.4 + depth * 0.7) + depth * 2.1) * r.size.y * 0.1))
+				pts.append(Vector2(r.position.x + r.size.x, r.position.y + r.size.y))
+				_pad.draw_colored_polygon(pts, Color(sand.r + depth * 0.03, sand.g + depth * 0.02, sand.b + depth * 0.01, a))
+			var tx := r.position.x + r.size.x * 0.33
+			var th := r.size.y * 0.13
+			_pad.draw_colored_polygon(PackedVector2Array([Vector2(tx - th * 1.9, base), Vector2(tx, base - th),
+				Vector2(tx + th * 1.9, base), Vector2(tx + th * 1.5, base + 4.0), Vector2(tx - th * 1.5, base + 4.0)]), Color(0.1, 0.08, 0.07, a))
+			for i in 3:
+				var px2 := r.position.x + r.size.x * (0.62 + i * 0.09)
+				var ph2 := r.size.y * rng.randf_range(0.2, 0.3)
+				_pad.draw_line(Vector2(px2, base + 4.0), Vector2(px2 + ph2 * 0.08, base - ph2), Color(0.09, 0.08, 0.06, a), 3.0)
+				for k in 6:
+					var ang2: float = -PI * 0.9 + k * PI * 0.16
+					_pad.draw_line(Vector2(px2 + ph2 * 0.08, base - ph2), Vector2(px2 + ph2 * 0.08, base - ph2) + Vector2(cos(ang2), sin(ang2)) * ph2 * 0.28,
+						Color(0.09, 0.09, 0.07, a), 2.0)
+			_pad.draw_rect(r, Color(0.5, 0.36, 0.18, 0.1 * a)) # dust haze
 		_: # fareej: flat roofs, parapets, palms
 			for depth in 2:
 				var col3 := Color(0.055, 0.05, 0.045, a) if depth == 0 else Color(0.03, 0.027, 0.024, a)
@@ -127,6 +157,8 @@ func _draw_preview(r: Rect2) -> void:
 					var ang: float = -PI * 0.92 + k * PI * 0.14
 					_pad.draw_line(Vector2(px + ph * 0.1, base - ph), Vector2(px + ph * 0.1, base - ph) + Vector2(cos(ang), sin(ang)) * ph * 0.3,
 						Color(0.02, 0.025, 0.02, a), 2.0)
+	if theme == "snow": _pad.draw_rect(r, Color(0.7, 0.8, 0.95, 0.12 * a))
+	elif theme == "halloween": _pad.draw_rect(r, Color(0.9, 0.35, 0.05, 0.12 * a))
 	_pad.draw_rect(r, Color(0.5, 0.08, 0.09, 0.8 * a), false, 2.0)
 
 func _draw_pad() -> void:
@@ -138,7 +170,9 @@ func _draw_pad() -> void:
 	var ph: float = minf(s.y * 0.46, pw * 0.42)
 	var pr := Rect2(Vector2((s.x - pw) / 2.0, s.y * 0.2), Vector2(pw, ph))
 	_draw_preview(pr)
-	_say(Vector2(s.x / 2.0, s.y * 0.1), NAMES.get(map_id, map_id), 46, Color(0.88, 0.14, 0.15))
+	var title: String = str(NAMES.get(map_id, map_id))
+	if THEME_NAMES.has(theme): title += "  •  " + str(THEME_NAMES[theme])
+	_say(Vector2(s.x / 2.0, s.y * 0.1), title, 46, Color(0.88, 0.14, 0.15))
 	_say(Vector2(s.x / 2.0, pr.position.y + ph + 24.0), tip, 24, Color(1.0, 0.86, 0.5), minf(s.x - 80.0, 1000.0))
 	var bw: float = minf(pw, 560.0)
 	var br := Rect2(Vector2((s.x - bw) / 2.0, pr.position.y + ph + 76.0), Vector2(bw, 16.0))

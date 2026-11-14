@@ -26,8 +26,21 @@ const CHAR_COL := {
 }
 
 static var _theme: Theme
+static var _dot: ImageTexture
 static var _click: AudioStreamPlayer
 static var _click_tried := false
+
+## Round, soft-edged sprite shared by the particle systems (fire, breath, snow, dust).
+static func soft_dot() -> ImageTexture:
+	if _dot: return _dot
+	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
+	for y in 64:
+		for x in 64:
+			var d := Vector2(x - 31.5, y - 31.5).length() / 31.5
+			var a := clampf(1.0 - d, 0.0, 1.0)
+			img.set_pixel(x, y, Color(1, 1, 1, a * a))
+	_dot = ImageTexture.create_from_image(img)
+	return _dot
 
 static func char_col(id: String) -> Color:
 	return CHAR_COL.get(id, Color(0.75, 0.75, 0.78))

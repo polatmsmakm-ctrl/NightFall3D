@@ -6,7 +6,8 @@ const { Rules } = require('./rules');
 
 const PORT = process.env.PORT || 8080;
 const MAX_PLAYERS = 7;
-const MAPS = ['forest', 'village', 'fareej'];
+const MAPS = ['forest', 'village', 'fareej', 'rubkhali'];
+const THEMES = ['normal', 'snow', 'halloween'];
 const CHARS = ['killer', 'survivor1', 'survivor2', 'survivor3', 'survivor4', 'survivor5', 'survivor6', 'survivor7'];
 
 const users = new Map();   // lowercase name -> client
@@ -24,12 +25,12 @@ const validName = (n) => typeof n === 'string' && n.trim().length >= 2 && n.trim
 
 function roomView(r) {
   return {
-    t: 'room', code: r.code, host: r.host, map: r.map, state: r.state,
+    t: 'room', code: r.code, host: r.host, map: r.map, theme: r.theme, state: r.state,
     players: r.members.map((m) => ({ name: m.name, role: m.role, char: m.char })),
   };
 }
 function broadcast(r, obj, except) { for (const m of r.members) if (m !== except) send(m, obj); }
-function newCode() {
+function newCode() { // short room code friends can type in: 4 digits, never reused while the room lives
   let c;
   do { c = String(Math.floor(1000 + Math.random() * 9000)); } while (rooms.has(c));
   return c;
@@ -86,7 +87,7 @@ const handlers = {
   },
   create(c, m) {
     leaveRoom(c);
-    const r = { code: newCode(), host: c.name, map: MAPS.includes(m.map) ? m.map : MAPS[0], state: 'lobby', members: [] };
+    const r = { code: newCode(), host: c.name, map: MAPS.includes(m.map) ? m.map : MAPS[0], theme: 'normal', state: 'lobby', members: [] };
     rooms.set(r.code, r);
     joinRoom(c, r);
   },
@@ -103,6 +104,7 @@ const handlers = {
     const r = c.room;
     if (!r || r.state !== 'lobby') return;
     if (m.map !== undefined && r.host === c.name && MAPS.includes(m.map)) r.map = m.map;
+    if (m.theme !== undefined && r.host === c.name && THEMES.includes(m.theme)) r.theme = m.theme;
     if (m.role === 'killer' && c.role !== 'killer') {
       if (r.members.some((x) => x.role === 'killer')) return send(c, { t: 'error', code: 'killer_taken' });
       c.role = 'killer'; c.char = 'killer';
@@ -125,7 +127,7 @@ const handlers = {
     r.seed = Math.floor(Math.random() * 1e9);
     const players = r.members.map((m, i) => ({ name: m.name, role: m.role, char: m.char, slot: i }));
     r.rules = new Rules(players);
-    broadcast(r, { t: 'started', map: r.map, seed: r.seed, players });
+    broadcast(r, { t: 'started', map: r.map, theme: r.theme || 'normal', seed: r.seed, players });
   },
   lobby(c) { // host sends everyone back to the lobby
     const r = c.room;
@@ -145,6 +147,12 @@ const handlers = {
     if (!Array.isArray(p) || p.length !== 4 || !p.every(Number.isFinite)) return;
     if (r.rules) r.rules.setPos(c.name, p);
     broadcast(r, { t: 'st', n: c.name, p, a: String(m.a || 'idle').slice(0, 12), f: m.f ? 1 : 0 }, c);
+  },
+  emote(c, m) { // campfire emote in the lobby, shown to everyone else in the room
+    const r = c.room;
+    if (!r) return;
+    const k = Math.min(2, Math.max(0, Math.floor(Number(m.k) || 0)));
+    broadcast(r, { t: 'emote', n: c.name, k }, c);
   },
   sig(c, m) { // quick signal ("come here" / "killer here" / "repairing"): relayed to the sender's own side only
     const r = c.room;
