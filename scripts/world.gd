@@ -71,6 +71,12 @@ var follow: Node3D
 var dust: GPUParticles3D
 var leaves: GPUParticles3D
 var flicker: Array[OmniLight3D] = []
+var amb_lights: Array = [] # [light, base energy, is a house light, flickers, current dim 0..1]
+var blackout := false      # the blackout event has the lights out
+var _amb_base := 0.8       # ambient energy before a blackout dims it
+var fog_boost := 0.0       # 0..1: the heavy-fog event
+var killer_at := Vector3(9999, 0, 9999) # fed by main.gd so lights can shy away from him
+var door_nodes: Array = [] # one per door_point: {hinge, yaw, shut} (null where there is no leaf)
 var grass_nodes: Array[MultiMeshInstance3D] = []
 var grass_counts: Array[int] = []
 var ready_done := false
@@ -278,6 +284,7 @@ func build() -> void:
 	else: _build_buildings()
 	_build_objectives()
 	_build_extras()
+	_build_doors()
 	_build_market()
 	build_step = 2
 	await get_tree().process_frame
@@ -366,6 +373,12 @@ func _make_materials() -> void:
 	_mat.sand_rock = _pbr(Color(0.16, 0.13, 0.09), Color(0.42, 0.35, 0.25), 0.02, Vector3(0.5, 0.5, 0.5), 0.95)
 
 # ---------------- environment ----------------
+## Register a light that the blackout, the flicker and the killer can all touch.
+## `house` lights go out when he walks up to them.
+func _amb_light(l: OmniLight3D, house := false, flick := true) -> void:
+	amb_lights.append([l, l.light_energy, house, flick, 1.0])
+	if flick: flicker.append(l)
+
 func _build_environment() -> void:
 	env = Environment.new()
 	var sm := ShaderMaterial.new()
@@ -413,6 +426,7 @@ func _build_environment() -> void:
 			env.fog_light_color = Color(0.15, 0.06, 0.02)
 			env.fog_density = fog_density * 1.5
 			env.adjustment_saturation = 1.05
+	_amb_base = env.ambient_light_energy
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
@@ -556,7 +570,7 @@ func _build_buildings() -> void:
 			l.light_energy = 1.6
 			l.omni_range = 7.0
 			body.add_child(l)
-			flicker.append(l)
+			_amb_light(l, true)
 		add_child(body)
 		idx += 1
 
@@ -761,7 +775,7 @@ func _build_objectives() -> void:
 			ll.light_energy = 1.6
 			ll.omni_range = 9.0
 			body.add_child(ll)
-			flicker.append(ll)
+			_amb_light(ll)
 		for i in 9: # dashed centre line
 			_mesh_box(body, Vector3(0.16, 0.02, 2.4), Vector3(0, gy + 0.03, -5.0 - i * 6.5), _flat(Color(0.7, 0.65, 0.3)))
 		# the finish: a bright arch you run into
@@ -999,6 +1013,7 @@ func _lamp_post(at: Vector3, yaw: float) -> void:
 	l.light_energy = 2.6
 	l.omni_range = 13.0
 	body.add_child(l)
+	_amb_light(l)
 	add_child(body)
 
 func _build_scatter() -> void:
@@ -1051,7 +1066,7 @@ func _build_scatter() -> void:
 			l.light_energy = 1.6
 			l.omni_range = 8.0
 			body.add_child(l)
-			flicker.append(l)
+			_amb_light(l)
 		add_child(body)
 	for i in 10:
 		var p := _free_spot(rng, 1.8)
@@ -1179,6 +1194,65 @@ func _build_extras() -> void:
 		add_child(root)
 		hatch_nodes.append(root)
 
+## Every doorway gets a leaf that starts open, so the map plays as it always has until
+## somebody swings one shut. Tent fronts have no door.
+func _build_doors() -> void:
+	var leaf := _flat(Color(0.26, 0.15, 0.08), 0.75)
+	for i in door_points.size():
+		var dp: Array = door_points[i]
+		if map_id == "rubkhali" and i < tents: # the tents are open at the front
+			door_nodes.append(null)
+			continue
+		var taken := false # a doorway that already holds a pallet keeps the pallet
+		for pp in pallet_points:
+			if (pp[0] as Vector3).distance_to(dp[0]) < 0.5:
+				taken = true
+				break
+		if taken:
+			door_nodes.append(null)
+			continue
+		var yaw: float = dp[1]
+		var hinge := Node3D.new()
+		hinge.position = (dp[0] as Vector3) + Basis(Vector3.UP, yaw) * Vector3(-0.63, 0, 0)
+		var body := StaticBody3D.new()
+		_box(body, Vector3(1.24, 2.1, 0.07), Vector3(0.62, 1.07, 0), leaf)
+		_mesh_box(body, Vector3(0.09, 0.09, 0.2), Vector3(1.1, 1.05, 0.12), _mat.metal) # handle
+		hinge.add_child(body)
+		hinge.rotation.y = yaw - 1.75 # open
+		add_child(hinge)
+		door_nodes.append({"hinge": hinge, "yaw": yaw, "shut": false})
+
+func set_door(i: int, shut: bool) -> void:
+	if i < 0 or i >= door_nodes.size(): return
+	var d = door_nodes[i]
+	if d == null or bool(d.shut) == shut: return
+	d.shut = shut
+	var tw := create_tween()
+	tw.tween_property(d.hinge, "rotation:y", float(d.yaw) if shut else float(d.yaw) - 1.75, 0.45).set_trans(Tween.TRANS_SINE)
+
+## The blackout event: every street and house light goes dark, and the night closes in.
+func set_blackout(on: bool) -> void:
+	if on == blackout: return
+	blackout = on
+	if env == null: return
+	var tw := create_tween()
+	tw.tween_property(env, "ambient_light_energy", (0.45 if on else 1.0) * _amb_base, 1.2)
+
+## The heavy-fog event, 0..1.
+func set_fog(level: float) -> void:
+	if env == null: return
+	fog_boost = clampf(level, 0.0, 1.0)
+	env.fog_density = fog_density * lerpf(1.0, 3.4, fog_boost)
+
+func set_killer_at(p: Vector3) -> void:
+	killer_at = p
+
+## Where the call to prayer comes from: the minaret on the fareej, otherwise far out on the edge.
+func adhan_point() -> Vector3:
+	if map_id == "fareej": return Vector3(-4.3, 13.0, 30.3)
+	var p := Vector2(-HALF + 26.0, HALF - 26.0)
+	return Vector3(p.x, height(p.x, p.y) + 12.0, p.y)
+
 func set_hatch(i: int) -> void:
 	for k in hatch_nodes.size(): hatch_nodes[k].visible = k == i
 
@@ -1266,7 +1340,7 @@ func _build_fareej() -> void:
 			l.light_energy = 1.6
 			l.omni_range = 7.0
 			body.add_child(l)
-			flicker.append(l)
+			_amb_light(l, true)
 		add_child(body)
 		idx += 1
 	# streets
@@ -1874,8 +1948,16 @@ func _apply_quality() -> void:
 func _process(_dt: float) -> void:
 	var t := Time.get_ticks_msec() / 1000.0
 	if not animals.is_empty(): _step_animals(_dt)
-	for i in flicker.size():
-		flicker[i].light_energy = 1.6 * (0.75 + 0.25 * noise.get_noise_1d(t * 220.0 + i * 50.0) + 0.1 * sin(t * 13.0 + i))
+	for i in amb_lights.size():
+		var e: Array = amb_lights[i]
+		var l: OmniLight3D = e[0]
+		var want := 0.0 if blackout else 1.0
+		# a house light shies away when the killer is almost on top of it
+		if want > 0.0 and bool(e[2]) and killer_at.distance_to(l.global_position) < 25.0: want = 0.12
+		e[4] = move_toward(float(e[4]), want, _dt * 2.5)
+		var f := 1.0
+		if bool(e[3]): f = 0.75 + 0.25 * noise.get_noise_1d(t * 220.0 + i * 50.0) + 0.1 * sin(t * 13.0 + i)
+		l.light_energy = float(e[1]) * f * float(e[4])
 	market_t = maxf(market_t - _dt, 0.0)
 	for ml in market_lights: # blackout while the killer is inside; a rare stutter otherwise
 		var base: float = ml[1]
@@ -1935,7 +2017,7 @@ func _build_tent(body: StaticBody3D, w: float, d: float, H: float, y0: float) ->
 	ember.light_energy = 1.1
 	ember.omni_range = 6.0
 	body.add_child(ember)
-	flicker.append(ember)
+	_amb_light(ember, true)
 
 ## A small mud-brick house: thick walls, one door, one window to vault, a flat roof.
 func _build_mud_house(body: StaticBody3D, w: float, d: float, H: float, y0: float) -> void:
@@ -1958,7 +2040,7 @@ func _build_mud_house(body: StaticBody3D, w: float, d: float, H: float, y0: floa
 	l.light_energy = 1.4
 	l.omni_range = 7.0
 	body.add_child(l)
-	flicker.append(l)
+	_amb_light(l, true)
 
 func _build_rubkhali() -> void:
 	var idx := 0
@@ -2110,7 +2192,7 @@ func _pumpkin(at: Vector3, yaw: float) -> void:
 	l.light_energy = 1.0
 	l.omni_range = 4.5
 	root.add_child(l)
-	flicker.append(l)
+	_amb_light(l)
 	add_child(root)
 
 ## A cobweb: two translucent triangles tucked into a corner.

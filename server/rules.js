@@ -4,14 +4,24 @@ const BLEED_TIME = 120, HIT_COOLDOWN = 1.5, POWER_CD = 20, STUN_TIME = 2.5;
 const DOOM_TIME = 120; // once the gates have power the moon falls: this long to get out
 const MASH_STEP = 0.03, MASH_DECAY = 0.1; // "free yourself": keep tapping or the bar drains
 const LIVE = ['ok', 'hurt', 'down', 'carried', 'hooked'];
+// one random event per round, picked from the seed so every client agrees (mirrors rules.gd)
+const EVENT_LEN = [20, 40, 5]; // 0 blackout, 1 heavy fog, 2 alarm
+const ADHAN_LEN = 55;          // the length of assets/sfx/adhan.mp3
 const REACH = 4.5; // generous: positions arrive ~15 times a second
 
 class Rules {
-  constructor(players) {
+  constructor(players, seed = 0) {
     this.gens = []; this.gates = []; this.pallets = []; this.s = {}; this.roles = {};
     this.killer = ''; this.carrying = ''; this.stun = 0; this.powerCd = 0;
     this.healers = {}; this.lastHit = {}; this.powered = false; this.doom = -1; this.over = false; this.clock = 0;
     this.pos = {}; this.layout = null; this.ready = false; this.hatch = -1; this.score = {};
+    this.doors = [];                        // every doorway: true when the leaf is shut
+    const sd = Math.abs(Math.floor(seed));
+    this.evKind = sd % 3;                   // which event this round will bring
+    this.evAt = 60 + (Math.floor(sd / 3) % 121);
+    this.evT = 0; this.evN = ''; this.evFired = false;
+    this.adhanAt = 40 + (Math.floor(sd / 379) % 151);
+    this.adhan = 0;                         // 0 not yet, 1 playing, 2 done
     for (const p of players) {
       this.roles[p.name] = p.role;
       this.score[p.name] = 0;
@@ -26,6 +36,8 @@ class Rules {
     for (let i = 0; i < l.g.length; i++) this.gens.push({ p: 0, done: false, reps: {} });
     for (let i = 0; i < 2; i++) this.gates.push({ open: false });
     for (let i = 0; i < l.p.length; i++) this.pallets.push(0);
+    const doors = Array.isArray(l.d) ? l.d.length : 0;
+    for (let i = 0; i < Math.min(doors, 40); i++) this.doors.push(false);
     this.ready = true;
   }
   add(name, pts) { if (name in this.score) this.score[name] += pts; }
@@ -146,6 +158,13 @@ class Rules {
           this.pallets[i] = 2; this.add(from, 10); out.push({ k: 'broke', i });
         }
         break;
+      case 'door': { // anyone can swing a door shut or open again
+        const shut = !!d.on;
+        if (i >= 0 && i < this.doors.length && (isKiller || this.freeNow(from)) && this.near(from, L.d && L.d[i])) {
+          if (this.doors[i] !== shut) { this.doors[i] = shut; out.push({ k: 'door', i, on: shut, by: from }); }
+        }
+        break;
+      }
       case 'power':
         if (isKiller && this.powerCd <= 0 && this.stun <= 0 && this.carrying === '') { this.powerCd = POWER_CD; out.push({ k: 'power' }); }
         break;
@@ -211,6 +230,18 @@ class Rules {
         delete this.healers[h];
       }
     }
+    // the one random event of the round, and the call to prayer
+    if (!this.evFired && this.clock >= this.evAt) {
+      this.evFired = true;
+      this.evT = EVENT_LEN[this.evKind];
+      if (this.evKind === 2) {
+        const liveNames = Object.keys(this.s).filter((n) => LIVE.includes(this.s[n].hp)).sort();
+        if (liveNames.length === 0) this.evT = 0;
+        else this.evN = liveNames[Math.floor(Math.abs(Math.floor(this.evAt)) / 11) % liveNames.length];
+      }
+    } else if (this.evT > 0) this.evT = Math.max(this.evT - dt, 0);
+    if (this.adhan === 0 && this.clock >= this.adhanAt) this.adhan = 1;
+    else if (this.adhan === 1 && this.clock >= this.adhanAt + ADHAN_LEN) this.adhan = 2;
     const names = Object.keys(this.s);
     const live = names.filter((n) => LIVE.includes(this.s[n].hp)).length;
     if (names.length > 0 && live === 0) this.over = true;
@@ -227,6 +258,7 @@ class Rules {
       k: 'gs', g: this.gens.map((g) => r3(g.p)), d: this.gens.map((g) => g.done), to: this.gates.map((g) => g.open),
       pw: this.powered, s: ss, pl: this.pallets, kc: this.carrying, ks: r3(this.stun), kp: Math.round(this.powerCd * 10) / 10, ov: this.over, hx: this.hatch, dm: Math.round(this.doom * 10) / 10,
       sc: Object.fromEntries(Object.entries(this.score).map(([n, v]) => [n, Math.round(v)])),
+      dr: this.doors, ek: this.evFired ? this.evKind : -1, et: Math.round(this.evT * 10) / 10, en: this.evN, ad: this.adhan,
     };
   }
 }

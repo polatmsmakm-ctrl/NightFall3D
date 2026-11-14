@@ -16,6 +16,9 @@ const DOOM_TIME := 120.0 # once the gates have power the moon falls: this long t
 const MASH_STEP := 0.03 # each tap on "free yourself"
 const MASH_DECAY := 0.1 # lost per second, so you have to keep hammering the button
 const LIVE := ["ok", "hurt", "down", "carried", "hooked"]
+# one random event per round, picked from the seed so every client agrees
+const EVENT_LEN := [20.0, 40.0, 5.0] # 0 blackout, 1 heavy fog, 2 alarm
+const ADHAN_LEN := 55.0              # the length of assets/sfx/adhan.mp3
 
 var gens: Array = [] # {p, done, reps}
 var gates: Array = [] # {open}
@@ -35,9 +38,22 @@ var clock := 0.0
 var n_hatch := 0
 var hatch := -1 # which hatch is open (-1: none): opens when one survivor is left
 var score := {} # name -> points
+var doors: Array = []   # every doorway: true when the leaf is shut
+var ev_kind := -1       # which event this round will bring
+var ev_at := 1e9        # when it fires, seconds into the round
+var ev_t := 0.0         # seconds of it left
+var ev_n := ""          # the survivor the alarm gives away
+var ev_fired := false
+var adhan_at := 1e9     # when the call to prayer starts
+var adhan := 0          # 0 not yet, 1 playing, 2 done
 
-func setup(n_gens: int, n_gates: int, n_pallets: int, hatches: int, players: Array) -> void:
+func setup(n_gens: int, n_gates: int, n_pallets: int, hatches: int, players: Array, seed := 0, n_doors := 0) -> void:
 	n_hatch = hatches
+	for i in n_doors: doors.append(false)
+	# the same seed on the server and on every phone, so the round plays out the same
+	ev_kind = absi(seed) % 3
+	ev_at = 60.0 + float((absi(seed) / 3) % 121)
+	adhan_at = 40.0 + float((absi(seed) / 379) % 151)
 	for i in n_gens: gens.append({"p": 0.0, "done": false, "reps": {}})
 	for i in n_gates: gates.append({"open": false})
 	for i in n_pallets: pallets.append(0)
@@ -180,6 +196,12 @@ func handle(d: Dictionary, from: String) -> Array:
 			if is_killer and power_cd <= 0.0 and stun <= 0.0 and carrying == "":
 				power_cd = POWER_CD
 				out.append({"k": "power"})
+		"door": # anyone can swing a door shut or open again
+			if i >= 0 and i < doors.size() and (is_killer or free_now(from)):
+				var shut: bool = d.get("on", false)
+				if doors[i] != shut:
+					doors[i] = shut
+					out.append({"k": "door", "i": i, "on": shut, "by": from})
 	return out
 
 func tick(dt: float) -> void:
@@ -230,6 +252,21 @@ func tick(dt: float) -> void:
 			add(h, 20.0 if self_heal else 40.0)
 			if self_heal: p.item = false
 			healers.erase(h)
+	# the one random event of the round, and the call to prayer
+	if not ev_fired and clock >= ev_at:
+		ev_fired = true
+		ev_t = EVENT_LEN[ev_kind]
+		if ev_kind == 2:
+			var live_names := []
+			for n in s:
+				if s[n].hp in LIVE: live_names.append(n)
+			live_names.sort()
+			if live_names.is_empty(): ev_t = 0.0
+			else: ev_n = str(live_names[(absi(int(ev_at)) / 11) % live_names.size()])
+	elif ev_t > 0.0:
+		ev_t = maxf(ev_t - dt, 0.0)
+	if adhan == 0 and clock >= adhan_at: adhan = 1
+	elif adhan == 1 and clock >= adhan_at + ADHAN_LEN: adhan = 2
 	if s.size() > 0:
 		var live := 0
 		for n in s:
@@ -246,7 +283,8 @@ func snapshot() -> Dictionary:
 	for n in s:
 		var p: Dictionary = s[n]
 		ss[n] = [p.hp, p.hooks, p.hook_i, ceili(p.t), snappedf(p.heal, 0.001), p.locker, p.item, snappedf(p.esc, 0.001)]
-	return {"k": "gs", "g": gp, "d": gd, "to": to, "pw": powered, "s": ss, "pl": pallets, "kc": carrying, "ks": snappedf(stun, 0.01), "kp": snappedf(power_cd, 0.1), "ov": over, "hx": hatch, "sc": sc, "dm": snappedf(doom, 0.1)}
+	return {"k": "gs", "g": gp, "d": gd, "to": to, "pw": powered, "s": ss, "pl": pallets, "kc": carrying, "ks": snappedf(stun, 0.01), "kp": snappedf(power_cd, 0.1), "ov": over, "hx": hatch, "sc": sc, "dm": snappedf(doom, 0.1),
+		"dr": doors, "ek": ev_kind if ev_fired else -1, "et": snappedf(ev_t, 0.1), "en": ev_n, "ad": adhan}
 
 func apply(v: Dictionary) -> void:
 	for i in mini(gens.size(), v.g.size()):
@@ -263,4 +301,12 @@ func apply(v: Dictionary) -> void:
 	over = bool(v.ov)
 	hatch = int(v.get("hx", -1))
 	doom = float(v.get("dm", -1.0))
+	var dr = v.get("dr", [])
+	if dr is Array:
+		for i in mini(doors.size(), dr.size()): doors[i] = bool(dr[i])
+	ev_kind = int(v.get("ek", -1))
+	ev_fired = ev_kind >= 0
+	ev_t = float(v.get("et", 0.0))
+	ev_n = str(v.get("en", ""))
+	adhan = int(v.get("ad", 0))
 	for n in v.get("sc", {}): score[n] = float(v.sc[n])

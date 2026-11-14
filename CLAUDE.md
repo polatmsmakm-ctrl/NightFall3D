@@ -31,9 +31,11 @@ Owner: Rashid (Arabic UI, plays with friends, installs the IPA with Sideloadly).
 
 ## Protocol (JSON over WebSocket)
 `hello`, `friends`, `create`, `join`, `leave`, `set`, `invite`, `start`, `lobby`, `layout` (object positions from clients), `st` (position/anim/flashlight, relayed), `ev` (player input → server; server → everyone as `{t:"ev", n:"", d:event|snapshot}`).
+`ev` input `door` (`{k:"door", i, on}` → the server checks you are next to it and sends `{k:"door", i, on, by}` to the room).
 `emote` (`{t:"emote", k:0..2}` → the server sends `{t:"emote", n, k}` to the rest of the room; campfire only).
 `sig` (quick signal: `{t:"sig", k:0..2, p:[x,z]}` → the server relays `{t:"sig", n, k, p}` **to the sender's own side only**, so a survivor signal never reaches the killer).
-Inputs (`d.k`): rep, skill, escape, hit, pickup, hook, rescue, struggle, heal, locker, search, pallet, break, power. Snapshot key `gs`.
+Inputs (`d.k`): rep, skill, escape, hit, pickup, hook, rescue, struggle, heal, locker, search, pallet, break, power, door. Snapshot key `gs`.
+Snapshot also carries `dr` (door states), `ek`/`et`/`en` (the round's event, seconds left, the survivor the alarm gives away) and `ad` (the call to prayer: 0 not yet, 1 playing, 2 done). The clients send the doorway positions in `layout.d`.
 
 ## Testing without a device
 ```
@@ -44,6 +46,7 @@ godot --headless --path . res://tools/ui.tscn      # buttons, signals, loading, 
 godot --headless --path . res://tools/map.tscn     # the desert map, both themes, emotes, the jumpscare
 godot --headless --path . res://tools/bones.tscn   # where the emote poses put the hands
 godot --headless --path . res://tools/dev.tscn     # audio buses, volumes, the hidden tools
+godot --headless --path . res://tools/event.tscn   # the round's event, adhan, doors, blackout, fog, lights
 godot --headless --path . res://tools/feel.tscn    # haptics switch, camera moves, limp / tired / startle
 node server/test.js                                # room code, join by code, theme, emote and signal relay
 NF_URL=ws://127.0.0.1:8099 godot --headless --path . res://tools/online.tscn   # needs server + a bot
@@ -126,6 +129,27 @@ every door and along the paths, and `_cobweb()` under the eaves and on the hooks
   Both of those poses (`tired`, `startle`) are hand-posed in `character_rig.gd` like the emotes; the equivalent
   Mixamo clips would be `tired.glb` and `startle.glb` in `assets/anims`.
 
+## The round's event, the call to prayer, doors and lights
+- **One event per round**, decided from the room seed so the server and every phone agree
+  (`Rules.ev_kind / ev_at`, mirrored in `rules.js`): a **blackout** (20 s, every street and house light
+  out and the ambient dimmed), **heavy fog** (40 s, fog density ×3.4) or an **alarm** (5 s, one live
+  survivor given away to the killer as a pulsing arrow at the edge of his screen — his minimap still
+  shows nobody). It fires between 60 s and 180 s in, and everyone gets a short Arabic warning.
+- **Call to prayer**: also seeded (40-190 s). `world.adhan_point()` is the minaret on the fareej and a
+  far corner of the map elsewhere; it plays `assets/sfx/adhan.mp3` on the Music bus at -14 dB with a
+  low-pass, and fades out over 2.5 s when the snapshot says it is done. **The file is the owner's own
+  recitation, trimmed to 55 s** — replace `assets/sfx/adhan.mp3` to change it.
+- **Doors**: every doorway that does not already hold a pallet gets a leaf (`world._build_doors`,
+  `set_door(i, shut)`), open by default so the map plays as it always did. Survivors and the killer can
+  swing one shut or open from the interact button; it goes through the rules (`door` input, `dr` in the
+  snapshot) so everyone sees the same thing, and anyone within 60 m who did not touch it gets a marker
+  pointing at the sound. **There is no door sound file yet** — drop `assets/sfx/door.mp3` in and it can
+  be played; until then it is silent on purpose. Windows stayed as vault openings.
+- **Lights**: `world._amb_light()` registers every street lamp, house lamp, barrel fire, tent ember and
+  pumpkin with its base energy. One loop in `_process` flickers them, blacks them out during the event,
+  and drops a **house** light to 12% while the killer is within 25 m of it, easing back when he leaves.
+  The gate, hook and generator lights are deliberately left out of all that.
+
 ## Hidden developer tools
 Locked by default. On a phone that has them, a small panel appears during a round with two switches:
 see-through outlines of the other players (their own model drawn again with a `no_depth_test` overlay
@@ -138,7 +162,7 @@ nothing is relayed, the server never hears about it, and nothing is drawn on any
 - No baked lighting (needs the editor on a GPU machine).
 - Player positions are client-reported (server only checks distances for interactions).
 - Friends list, XP, escapes and kills live on the phone; usernames are not reserved.
-- No UI click sound until the owner supplies `assets/sfx/ui_click.mp3`.
+- No UI click sound until the owner supplies `assets/sfx/ui_click.mp3`, and no door sound until `assets/sfx/door.mp3`.
 - Haptics cannot be verified off-device: `Input.vibrate_handheld` does nothing on desktop or in headless runs.
 - The emotes are posed by hand in code, not Mixamo clips. Mixamo needs an Adobe login, so nothing could be downloaded
   here: **wave.glb, dance.glb and clap.glb are the missing files** — export them from Mixamo as glTF with the same

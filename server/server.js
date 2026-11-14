@@ -126,7 +126,7 @@ const handlers = {
     r.state = 'game';
     r.seed = Math.floor(Math.random() * 1e9);
     const players = r.members.map((m, i) => ({ name: m.name, role: m.role, char: m.char, slot: i }));
-    r.rules = new Rules(players);
+    r.rules = new Rules(players, r.seed);
     broadcast(r, { t: 'started', map: r.map, theme: r.theme || 'normal', seed: r.seed, players });
   },
   lobby(c) { // host sends everyone back to the lobby

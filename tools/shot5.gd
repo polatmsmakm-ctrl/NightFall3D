@@ -1,6 +1,5 @@
 extends Node
-## Phase 1 screenshots: the vibration switch, the camera moves (hit, carried, hooked, escape)
-## and the new character beats (limp, out of breath, startled, head turned).
+## Phase 1 screenshots: the vibration switch and the camera moves (hit, carried, hooked, escape).
 
 var tree: SceneTree
 var dir := ""
@@ -52,23 +51,13 @@ func _ready() -> void:
 		await tree.process_frame
 		if m.world.ready_done: break
 	await frames(10)
-	# limping while hurt
-	m.tired = 0.0
-	m.rules.s["راشد"].hp = "hurt"
-	m.stick_vec = Vector2(0, -1)
-	m.sprint = false
-	await phys(70)
-	await shot("72_limp")
-	m.stick_vec = Vector2.ZERO
-	# the killer steps into view: startle + head turn
-	m.rules.s["راشد"].hp = "ok"
+	# the killer steps into view
 	var k = m.remotes["فهد"]
 	k.pos = m.body.position + Vector3(2.0, 0, 5.5)
 	k.node.position = k.pos
 	k.yaw = PI
 	m.yaw = PI + 0.35
 	await phys(12)
-	await shot("73_startled")
 	# a hit: the camera kicks
 	m._on_event({"k": "hurt", "n": "راشد", "s": "hurt"})
 	await phys(3)
@@ -92,21 +81,4 @@ func _ready() -> void:
 	m.rules.s["راشد"].hp = "escaped"
 	await phys(20)
 	await shot("77_escape_slowmo")
-	m.queue_free()
-	await frames(10)
-	# ---------- the two new poses, seen properly at the campfire ----------
-	m = load("res://scenes/main.tscn").instantiate()
-	tree.root.add_child.call_deferred(m)
-	await frames(22)
-	var lob = m.lobby_scene
-	m.menu.off_char = "survivor5"
-	m.menu.chars_from = "offline"
-	m.menu.open("chars")
-	await frames(12)
-	for pose in [["tired", "71_out_of_breath"], ["startle", "73b_startled_pose"]]:
-		lob.me_rig.current = ""
-		lob.me_rig.play(str(pose[0]))
-		lob.me_rig.player.advance(0.45)
-		await frames(4)
-		await shot(str(pose[1]))
 	tree.quit()

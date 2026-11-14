@@ -1,6 +1,5 @@
 extends Node
-## Phase 1 checks: haptics switch, the camera moves, the limp / out-of-breath poses
-## and the head turns.
+## Phase 1 checks: the haptics switch and cooldowns, and every camera move.
 
 var tree: SceneTree
 
@@ -67,43 +66,4 @@ func _ready() -> void:
 		" fov=", snappedf(m.main_cam.fov, 0.1))
 	for i in 200: await tree.physics_frame
 	print("after it: time scale=", Engine.time_scale, " arm back=", snappedf(m.arm.spring_length, 0.01))
-	m.queue_free()
-	await frames(8)
-	# ---------- limp, tired, startle ----------
-	m = await boot()
-	print("posed clips: tired=", m.rig.player.has_animation("tired"), " startle=", m.rig.player.has_animation("startle"),
-		" tracks=", m.rig.player.get_animation("tired").get_track_count(), "/", m.rig.player.get_animation("startle").get_track_count(),
-		" startle loops=", m.rig.player.get_animation("startle").loop_mode != Animation.LOOP_NONE)
-	m.sprint = true
-	m.stick_vec = Vector2(0, -1)
-	for i in 80: await tree.physics_frame
-	var healthy: float = Vector2(m.body.velocity.x, m.body.velocity.z).length()
-	m.rules.s["P"].hp = "hurt"
-	for i in 80: await tree.physics_frame
-	var hurt: float = Vector2(m.body.velocity.x, m.body.velocity.z).length()
-	print("limp: healthy run=", snappedf(healthy, 0.01), " hurt run=", snappedf(hurt, 0.01),
-		" anim=", m.rig.current, " roll=", snappedf(m.rig.rotation.z, 0.001))
-	m.rules.s["P"].hp = "ok"
-	# a long sprint, then a stop
-	m.run_time = 0.0
-	for i in 420: await tree.physics_frame
-	print("sprinted for ", snappedf(m.run_time, 0.1), "s")
-	m.stick_vec = Vector2.ZERO
-	for i in 120: await tree.physics_frame
-	print("stopped: tired=", snappedf(m.tired, 0.1), " anim=", m.rig.current)
-	for i in 200: await tree.physics_frame
-	print("recovered: tired=", snappedf(m.tired, 0.1), " anim=", m.rig.current)
-	# the killer walks into view for the first time
-	var k = m.remotes["K"]
-	k.pos = m.body.position + Vector3(0, 0, 6.0)
-	k.node.position = k.pos
-	m.yaw = PI
-	for i in 60: await tree.physics_frame
-	print("first sight: saw killer=", m.saw_killer, " startle=", snappedf(m.startle, 0.01),
-		" looking at something=", m.look_at.has("P"), " head turned=", m.rig._look != null and m.rig._look.want > 0.0)
-	# a scream turns every survivor's head
-	m.look_at.clear()
-	m._on_event({"k": "hurt", "n": "D", "s": "hurt"})
-	await frames(4)
-	print("scream: heads turning=", m.look_at.size(), " (me and the other survivor)")
 	tree.quit()

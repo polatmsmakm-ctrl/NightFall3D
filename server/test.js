@@ -95,6 +95,41 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(mateSurv.count('sig') === 1, 'a survivor signal reaches the other survivor');
   ok(theKiller.count('sig') === kBefore, 'the killer never sees survivor signals');
 
+  // --- the round's event and the call to prayer come from the room seed ---
+  const { Rules } = require(`${__dirname}/rules.js`);
+  const r1 = new Rules(st.players, st.seed);
+  const r2 = new Rules(st.players, st.seed);
+  ok(r1.evKind === r2.evKind && r1.evAt === r2.evAt && r1.adhanAt === r2.adhanAt,
+    'the same seed plans the same event for everyone', `event ${r1.evKind} at ${r1.evAt}s, adhan at ${r1.adhanAt}s`);
+  ok(r1.evKind >= 0 && r1.evKind <= 2 && r1.evAt >= 60 && r1.evAt <= 180, 'the event lands between 1 and 3 minutes');
+  r1.setLayout({ g: [[0, 0]], p: [[1, 1]], h: [[2, 2]], x: [[3, 3]], d: [[4, 4], [5, 5]] });
+  ok(r1.doors.length === 2, 'the doors come from the layout the clients send');
+  r1.clock = r1.evAt + 0.01;
+  r1.tick(0.1);
+  const snap = r1.snapshot();
+  ok(snap.ek === r1.evKind && snap.et > 0, 'the snapshot carries the running event', JSON.stringify({ ek: snap.ek, et: snap.et }));
+  r1.clock = r1.adhanAt + 0.01;
+  r1.tick(0.1);
+  ok(r1.snapshot().ad === 1, 'and the call to prayer');
+
+  // --- a door swings for everyone (the clients send the map layout first, as the game does) ---
+  host.send({ t: 'layout', d: { g: [[0, 0], [8, 8]], p: [[1, 1]], h: [[2, 2]], x: [[3, 3]], d: [[4, 4], [5, 5]] } });
+  await wait(250);
+  // --- a door swings for everyone ---
+  const killerName = st.players.find((p) => p.role === 'killer').name;
+  const byName2 = { Rashid: host, Badr: mate, Yousef: third };
+  const doorMan = byName2[killerName];
+  const watcher = byName2[st.players.find((p) => p.role !== 'killer').name];
+  const evBefore = watcher.count('ev');
+  doorMan.send({ t: 'ev', d: { k: 'door', i: 0, on: true } });
+  await wait(250);
+  const doorEv = [...watcher.seen].reverse().find((m) => m.t === 'ev' && m.d && m.d.k === 'door');
+  ok(!!doorEv && doorEv.d.on === true, 'closing a door reaches the other players', JSON.stringify(doorEv && doorEv.d));
+  const gs = [...watcher.seen].reverse().find((m) => m.t === 'ev' && m.d && m.d.k === 'gs');
+  ok(!!gs && Array.isArray(gs.d.dr) && gs.d.dr[0] === true, 'the snapshot carries the door states',
+    gs ? JSON.stringify(gs.d.dr) : '-');
+  ok(watcher.count('ev') > evBefore, 'the room keeps getting snapshots');
+
   // --- play again puts everyone back in the same room ---
   host.send({ t: 'lobby' });
   await wait(200);
