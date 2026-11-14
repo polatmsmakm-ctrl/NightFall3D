@@ -35,6 +35,9 @@ var _good := 0
 var _hud: Label
 var _panel: PanelContainer
 var _opts := {}
+var _vol := {}        # slider + percentage label per bus
+var _vol_rows := []   # the two rows that "تفصيل" folds away
+var _vol_split := false
 var _editor: NFControlsEdit
 var last_avg_ms := 0.0
 
@@ -152,8 +155,24 @@ func _build_ui() -> void:
 	var m := MarginContainer.new()
 	for side in ["left", "right", "top", "bottom"]: m.add_theme_constant_override("margin_" + side, 20)
 	_panel.add_child(m)
-	var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 10); m.add_child(v)
+	var sc := ScrollContainer.new() # the panel now holds sound + graphics: let it scroll on a short screen
+	sc.custom_minimum_size = Vector2(480, 430)
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	m.add_child(sc)
+	var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 10)
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sc.add_child(v)
 	var title := Label.new(); title.text = "الإعدادات"; title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; v.add_child(title)
+	_vol_row(v, "master", "الصوت")
+	var det := Button.new(); det.text = "تفصيل"; det.custom_minimum_size.y = 44
+	det.pressed.connect(func() -> void:
+		_vol_split = not _vol_split
+		det.text = "إخفاء التفصيل" if _vol_split else "تفصيل"
+		for r in _vol_rows: r.visible = _vol_split)
+	NFUI.dress(det, "gear"); v.add_child(det)
+	_vol_rows.append(_vol_row(v, "music", "صوت الموسيقى"))
+	_vol_rows.append(_vol_row(v, "sfx", "صوت اللعب"))
+	for r in _vol_rows: r.visible = false
 	_row(v, "fps", "الإطارات", ["تلقائي", "30", "60", "120"])
 	_row(v, "preset", "الجرافيكس", ["متوسط", "عالي", "فائق"])
 	_row(v, "shadows", "الظلال", ["منخفض", "متوسط", "عالي"])
@@ -176,6 +195,30 @@ func _edit_controls() -> void:
 		_panel.visible = menu_open)
 	add_child(_editor)
 
+## A 0-100% volume row. The bus follows the slider while it is being dragged.
+func _vol_row(parent: Control, key: String, label: String) -> HBoxContainer:
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 10)
+	parent.add_child(h)
+	var l := Label.new(); l.text = label; l.custom_minimum_size.x = 150; h.add_child(l)
+	var s := HSlider.new()
+	s.min_value = 0.0; s.max_value = 100.0; s.step = 1.0
+	s.custom_minimum_size = Vector2(220, 44)
+	s.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	s.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	s.set_value_no_signal(roundf(Aud.get_vol(key) * 100.0))
+	h.add_child(s)
+	var pct := Label.new()
+	pct.text = "%d%%" % roundi(Aud.get_vol(key) * 100.0)
+	pct.custom_minimum_size.x = 64
+	pct.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	h.add_child(pct)
+	s.value_changed.connect(func(val: float) -> void:
+		Aud.set_vol(key, val / 100.0)
+		pct.text = "%d%%" % roundi(val))
+	_vol[key] = [s, pct]
+	return h
+
 func _row(parent: Control, key: String, label: String, items: Array) -> void:
 	var h := HBoxContainer.new(); parent.add_child(h)
 	var l := Label.new(); l.text = label; l.size_flags_horizontal = Control.SIZE_EXPAND_FILL; h.add_child(l)
@@ -186,6 +229,9 @@ func _row(parent: Control, key: String, label: String, items: Array) -> void:
 	_opts[key] = o
 
 func _refresh() -> void:
+	for key in _vol:
+		_vol[key][0].set_value_no_signal(roundf(Aud.get_vol(key) * 100.0))
+		_vol[key][1].text = "%d%%" % roundi(Aud.get_vol(key) * 100.0)
 	_opts["fps"].select(fps_idx); _opts["preset"].select(preset); _opts["shadows"].select(shadows)
 	_opts["aa"].select(aa); _opts["scale"].select(scale_idx); _opts["effects"].select(effects)
 
@@ -203,7 +249,12 @@ func _on_select(i: int, key: String) -> void:
 	_reset_runtime()
 	_refresh(); _save(); apply()
 
+## Open the settings panel from a menu button (the gear is always on screen too).
+func open_settings() -> void:
+	if not menu_open: _toggle()
+
 func _toggle() -> void:
 	menu_open = not menu_open
 	_panel.visible = menu_open
+	if menu_open: _refresh()
 	if not menu_open: _warm = 2.0

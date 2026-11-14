@@ -118,6 +118,7 @@ static func click() -> void:
 			var ml := Engine.get_main_loop()
 			if ml is SceneTree and (ml as SceneTree).root:
 				_click = AudioStreamPlayer.new()
+				_click.bus = Aud.SFX
 				_click.stream = load(f)
 				_click.volume_db = -8.0
 				_click.process_mode = Node.PROCESS_MODE_ALWAYS

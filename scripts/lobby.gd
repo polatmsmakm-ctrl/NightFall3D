@@ -354,6 +354,7 @@ func _ready() -> void:
 	# sound: the crackle the owner supplied, over the ambient track
 	for snd in [["campfire", -4.0], ["ambient", -14.0]]:
 		var a := AudioStreamPlayer.new()
+		a.bus = Aud.MUSIC
 		var stream: AudioStreamMP3 = load("res://assets/sfx/%s.mp3" % snd[0])
 		stream.loop = true
 		a.stream = stream

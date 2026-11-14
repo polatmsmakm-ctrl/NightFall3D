@@ -31,6 +31,9 @@ var theme := "normal"         # normal / snow / halloween
 var scare_t := 0.0            # seconds left of the killer close-up
 var scare_cam: Camera3D
 var breaths := {}             # name -> breath-vapour particles (snow theme)
+var dev_dot: Button           # hidden developer tools (only built when this phone has them)
+var dev_panel: PanelContainer
+var esp_nodes := {}           # name -> {meshes, mat, mark, label}
 var sig_open := false         # the three-message panel is showing
 var sig_close := 0.0          # closes itself if untouched
 var body: CharacterBody3D
@@ -263,6 +266,7 @@ func _add_remote(p: Dictionary) -> void:
 		torch.rotation.y = PI
 		r.add_child(torch)
 	var steps := AudioStreamPlayer3D.new()
+	steps.bus = Aud.SFX
 	steps.stream = sounds.steps_out
 	steps.unit_size = 4.0
 	steps.max_distance = 32.0
@@ -271,8 +275,9 @@ func _add_remote(p: Dictionary) -> void:
 	remotes[str(p.name)] = {"node": node, "rig": r, "pos": node.position, "yaw": 0.0, "anim": "idle", "role": str(p.role), "step": 0.0, "steps": steps, "torch": torch, "lit": false, "bleed": bleed}
 
 # ---------------- audio ----------------
-func _loop_player(stream_name: String, db: float, autoplay := false) -> AudioStreamPlayer:
+func _loop_player(stream_name: String, db: float, autoplay := false, bus := Aud.SFX) -> AudioStreamPlayer:
 	var a := AudioStreamPlayer.new()
+	a.bus = bus
 	a.stream = sounds[stream_name]
 	a.volume_db = db
 	add_child(a)
@@ -283,9 +288,10 @@ func _build_audio() -> void:
 	for n in SFX: sounds[n] = load("res://assets/sfx/%s.mp3" % n)
 	for n in ["heart", "breath", "steps_out", "steps_in", "gen_run", "chase", "ambient"]:
 		(sounds[n] as AudioStreamMP3).loop = true
-	amb = _loop_player("ambient", -13.0, true)
-	chase_music = _loop_player("chase", -60.0)
+	amb = _loop_player("ambient", -13.0, true, Aud.MUSIC)
+	chase_music = _loop_player("chase", -60.0, false, Aud.MUSIC)
 	doom_music = AudioStreamPlayer.new()
+	doom_music.bus = Aud.MUSIC
 	doom_music.stream = sounds.doom
 	doom_music.volume_db = -2.0
 	add_child(doom_music)
@@ -294,6 +300,7 @@ func _build_audio() -> void:
 	my_steps = _loop_player("steps_out", -60.0)
 	for gp in world.gen_points:
 		var a := AudioStreamPlayer3D.new()
+		a.bus = Aud.SFX
 		a.stream = sounds.gen_run
 		a.position = gp + Vector3(0, 1, 0)
 		a.unit_size = 5.0
@@ -446,6 +453,7 @@ func _sfx(n: String, at = null, db := 0.0, pitch_scale := 1.0) -> void:
 		a.position = at
 		a.unit_size = 6.0
 		a.max_distance = 60.0
+	a.bus = Aud.SFX
 	a.stream = sounds[n]
 	a.volume_db = db
 	a.pitch_scale = pitch_scale
@@ -602,6 +610,122 @@ func _build_ui() -> void:
 	leave.pressed.connect(_leave)
 	NFUI.dress(leave, "exit")
 	layer.add_child(leave)
+	_build_dev_ui(layer)
+
+# ---------------- hidden developer tools ----------------
+## A dim dot in the corner, and the little panel behind it. Built only when this phone unlocked them.
+func _build_dev_ui(layer: CanvasLayer) -> void:
+	if not Dev.unlocked: return
+	var safe := _safe()
+	dev_dot = Button.new()
+	dev_dot.text = "·"
+	dev_dot.flat = true
+	dev_dot.focus_mode = Control.FOCUS_NONE
+	dev_dot.modulate = Color(1, 1, 1, 0.22)
+	dev_dot.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	dev_dot.offset_left = 8.0 + safe.x; dev_dot.offset_right = 38.0 + safe.x
+	dev_dot.offset_top = -38.0; dev_dot.offset_bottom = -8.0
+	dev_dot.pressed.connect(func() -> void: dev_panel.visible = not dev_panel.visible)
+	layer.add_child(dev_dot)
+	dev_panel = PanelContainer.new()
+	dev_panel.theme = NFUI.theme()
+	dev_panel.visible = false
+	dev_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	dev_panel.offset_left = 8.0 + safe.x; dev_panel.offset_right = 348.0 + safe.x
+	dev_panel.offset_top = -214.0; dev_panel.offset_bottom = -46.0
+	layer.add_child(dev_panel)
+	var m := MarginContainer.new()
+	for side in ["left", "right", "top", "bottom"]: m.add_theme_constant_override("margin_" + side, 12)
+	dev_panel.add_child(m)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 8)
+	m.add_child(v)
+	var esp_btn := Button.new()
+	esp_btn.text = "رؤية اللاعبين: %s" % ("شغّال" if Dev.esp else "مطفي")
+	esp_btn.custom_minimum_size.y = 46
+	esp_btn.pressed.connect(func() -> void:
+		Dev.set_esp(not Dev.esp)
+		esp_btn.text = "رؤية اللاعبين: %s" % ("شغّال" if Dev.esp else "مطفي"))
+	NFUI.dress(esp_btn, "next")
+	v.add_child(esp_btn)
+	var lbl := Label.new()
+	lbl.text = "السرعة ×%.2f" % Dev.speed
+	v.add_child(lbl)
+	var sl := HSlider.new()
+	sl.min_value = 1.0; sl.max_value = 2.0; sl.step = 0.05
+	sl.custom_minimum_size.y = 40
+	sl.set_value_no_signal(Dev.speed)
+	sl.value_changed.connect(func(val: float) -> void:
+		Dev.set_speed(val)
+		lbl.text = "السرعة ×%.2f" % Dev.speed)
+	v.add_child(sl)
+
+## True while a touch belongs to the hidden panel, so the round ignores it.
+func _dev_ui(pos: Vector2) -> bool:
+	if dev_dot == null: return false
+	if dev_dot.get_global_rect().grow(6.0).has_point(pos): return true
+	return dev_panel.visible and dev_panel.get_global_rect().has_point(pos)
+
+## See-through outline of another player's own model, plus a mast and a name tag above them.
+func _build_esp() -> void:
+	for n in remotes:
+		if esp_nodes.has(n): continue
+		var r = remotes[n]
+		var col: Color = Color(1.0, 0.25, 0.2) if r.role == "killer" else Color(0.35, 0.95, 1.0)
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.albedo_color = Color(col, 0.55)
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.no_depth_test = true          # this is what makes it read through walls
+		mat.render_priority = 120
+		mat.grow = true
+		mat.grow_amount = 0.012
+		var meshes: Array = []
+		for mi in r.rig.find_children("*", "MeshInstance3D", true, false): meshes.append(mi)
+		var mark := Node3D.new()
+		var line := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.07, 44.0, 0.07)
+		var lmat := StandardMaterial3D.new()
+		lmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		lmat.albedo_color = Color(col, 0.5)
+		lmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		lmat.no_depth_test = true
+		lmat.render_priority = 120
+		bm.material = lmat
+		line.mesh = bm
+		line.position.y = 22.0
+		line.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mark.add_child(line)
+		var tag := Label3D.new()
+		tag.font = Net.font
+		tag.font_size = 64
+		tag.pixel_size = 0.0016 # fixed_size below keeps this constant on screen at any distance
+		tag.position.y = 25.0
+		tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		tag.no_depth_test = true
+		tag.fixed_size = true
+		tag.modulate = col
+		tag.outline_size = 18
+		tag.outline_modulate = Color(0, 0, 0, 0.9)
+		mark.add_child(tag)
+		mark.visible = false
+		add_child(mark)
+		esp_nodes[n] = {"meshes": meshes, "mat": mat, "mark": mark, "label": tag}
+
+func _update_esp() -> void:
+	if Dev.esp and esp_nodes.size() < remotes.size(): _build_esp()
+	if esp_nodes.is_empty(): return
+	for n in esp_nodes:
+		var e: Dictionary = esp_nodes[n]
+		var r = remotes.get(n)
+		var on: bool = Dev.esp and r != null and r.node.visible
+		for mi in e.meshes:
+			if is_instance_valid(mi): mi.material_overlay = e.mat if on else null
+		e.mark.visible = on
+		if on:
+			e.mark.position = r.node.position
+			e.label.text = "%s   %d م" % [n, roundi(body.position.distance_to(r.node.position))]
 
 ## End of the round: the cast lines up on a dark stage (scripts/results.gd).
 func _show_results() -> void:
@@ -1140,6 +1264,7 @@ func _input(e: InputEvent) -> void:
 	if not started or rules.over: return
 	if loading != null: return # the loading screen eats everything
 	if (e is InputEventScreenTouch or e is InputEventMouseButton) and e.pressed and Gfx.in_ui(e.position): return
+	if (e is InputEventScreenTouch or e is InputEventMouseButton) and e.pressed and _dev_ui(e.position): return
 	if Gfx.menu_open: return
 	if (e is InputEventScreenTouch or e is InputEventMouseButton) and e.pressed:
 		for sb in _sig_buttons():
@@ -1265,6 +1390,7 @@ func _process(dt: float) -> void:
 			if lvl > noise:
 				noise = lvl
 				noise_dir = wrapf(atan2(to.x, -to.z) + yaw, -PI, PI)
+	if Dev.unlocked: _update_esp()
 	for m in marks:
 		if m.t > 0.0:
 			m.t -= dt
@@ -1447,6 +1573,7 @@ func _move(delta: float) -> void:
 	if my_state == "down": speed = 0.45 # crawling
 	if my_role == "killer" and rules.carrying != "": speed = CARRY_SPEED
 	if boost_t > 0.0: speed *= 1.5
+	if Dev.unlocked and Dev.speed > 1.0: speed *= Dev.speed
 	var dir := Basis(Vector3.UP, yaw) * Vector3(move.x, 0, move.y)
 	var target := dir.normalized() * speed * clampf(move.length() * 1.3, 0.0, 1.0) if move.length() > 0.05 else Vector3.ZERO
 	if my_role == "killer": rig.rotation.y = yaw + PI # first person: the body faces where I look

@@ -8,6 +8,7 @@ signal start_game(cfg: Dictionary)
 const MAPS := {"forest": "الغابة", "village": "القرية المهجورة", "fareej": "الفريج", "rubkhali": "الربع الخالي"}
 const THEMES := {"normal": "عادي", "snow": "ثلج", "halloween": "هالوين"}
 const THEME_ICON := {"normal": "moon", "snow": "star", "halloween": "skull"}
+const VERSION := "v1.4"
 const CHARS := {"killer": "القاتل", "survivor1": "ناجي 1", "survivor2": "الحمراء", "survivor3": "ناجي 3", "survivor4": "ناجي 4", "survivor5": "المقاتلة", "survivor6": "الممرضة", "survivor7": "الطالبة"}
 const ERRORS := {"no_room": "ما في غرفة بهالكود", "room_full": "الغرفة ممتلئة", "in_game": "اللعبة بدأت بالغرفة",
 	"killer_taken": "في قاتل بالغرفة", "offline": "صديقك مو متصل", "bad_name": "الاسم لازم 2 إلى 16 حرف بدون مسافات",
@@ -29,6 +30,7 @@ var want_char := ""     # character I asked the server for, until the room list 
 var _swipe_x := 0.0
 var _swiping := false
 var _editor: NFControlsEdit
+var version: Label      # the small build number in the corner
 
 func _ready() -> void:
 	layer = 10
@@ -61,6 +63,13 @@ func _ready() -> void:
 	card.size = Vector2(304, 116)
 	card.draw.connect(_draw_card)
 	add_child(card)
+	version = Label.new()
+	version.text = VERSION
+	version.add_theme_font_size_override("font_size", 15)
+	version.add_theme_color_override("font_color", Color(0.55, 0.55, 0.58))
+	version.mouse_filter = Control.MOUSE_FILTER_STOP
+	version.gui_input.connect(_on_version_input)
+	add_child(version)
 	Net.changed.connect(_refresh)
 	Net.message.connect(_on_msg)
 	if Net.username == "": open("name")
@@ -160,6 +169,7 @@ func _refresh() -> void:
 		"offline": _page_offline()
 		"settings": _page_settings()
 		"chars": _page_chars()
+		"dev": _page_dev()
 	_sync_lobby()
 
 # ---------- the campfire scene follows the menu ----------
@@ -183,9 +193,15 @@ func _char_list() -> Array:
 		out.append(id)
 	return out
 
+func _on_version_input(e: InputEvent) -> void:
+	if not ((e is InputEventScreenTouch or e is InputEventMouseButton) and e.pressed): return
+	if Dev.tap(): open("dev")
+
 func _sync_lobby(dir := 0.0) -> void:
 	var vs := get_viewport().get_visible_rect().size
 	var safe := NFUI.safe_insets(get_viewport())
+	version.size = Vector2(130, 42)
+	version.position = Vector2(vs.x - 130.0 - 12.0 - safe.y, vs.y - 44.0)
 	card.visible = page != "name"
 	card.position = Vector2(vs.x - card.size.x - 16.0 - safe.y, 78.0)
 	card.queue_redraw()
@@ -274,6 +290,7 @@ func _page_main() -> void:
 	_button("دخول", func(): Net.send({"t": "join", "code": typed.get("code", "")}), h, on, "out")
 	_button("الأصدقاء (%d)" % Net.friends.size(), func(): open("friends"), null, true, "chat")
 	_button("النمط التجريبي (بدون نت)", func(): chars_from = "offline"; open("offline"), null, true, "star")
+	_button("الصوت والإعدادات", func(): Gfx.open_settings(), null, true, "gear")
 	_button("الاسم والسيرفر", func():
 		typed["name"] = Net.username; typed["url"] = Net.url; open("settings"), null, true, "gear")
 	_emote_row()
@@ -285,6 +302,7 @@ func _page_settings() -> void:
 	_edit("url", "wss://...")
 	_button("حفظ", func():
 		Net.configure(typed.get("name", Net.username), typed.get("url", Net.url)); open("main"), null, true, "star")
+	_button("الصوت والجرافيكس", func(): Gfx.open_settings(), null, true, "gear")
 	_button("أزرار التحكم (مكان وحجم)", _open_editor, null, true, "gear")
 	_button("رجوع", func(): open("main"), null, true, "exit")
 
@@ -390,6 +408,26 @@ func _page_chars() -> void:
 	_button("‹ السابق", func(): _step(-1), h, true, "next")
 	_button("التالي ›", func(): _step(1), h, true, "next")
 	_button("تم", func(): open(chars_from if chars_from != "main" else "main"), null, true, "star")
+
+## Hidden developer tools. Only reachable on a phone that has unlocked them.
+func _page_dev() -> void:
+	if not Dev.unlocked:
+		open("main")
+		return
+	_label("أدوات المطوّر", 30, Color(1, 0.85, 0.4))
+	_label("تظهر على جهازك فقط", 18, Color(0.7, 0.7, 0.72))
+	var esp := _button("رؤية اللاعبين: %s" % ("شغّال" if Dev.esp else "مطفي"), func():
+		Dev.set_esp(not Dev.esp); _refresh(), null, true, "next")
+	if Dev.esp: esp.modulate = Color(1, 0.75, 0.3)
+	_label("سرعة الحركة ×%.2f" % Dev.speed, 20, Color(0.85, 0.9, 1))
+	var sl := HSlider.new()
+	sl.min_value = 1.0; sl.max_value = 2.0; sl.step = 0.05
+	sl.custom_minimum_size = Vector2(0, 44)
+	sl.theme = NFUI.theme()
+	sl.set_value_no_signal(Dev.speed)
+	sl.value_changed.connect(func(v: float): Dev.set_speed(v); _refresh())
+	box.add_child(sl)
+	_button("رجوع", func(): open("main"), null, true, "exit")
 
 func _page_offline() -> void:
 	chars_from = "offline"

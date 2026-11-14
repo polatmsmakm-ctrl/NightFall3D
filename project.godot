@@ -6,8 +6,10 @@ run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.5", "Mobile")
 
 [autoload]
+Aud="*res://scripts/audio.gd"
 Gfx="*res://scripts/graphics.gd"
 Net="*res://scripts/net.gd"
+Dev="*res://scripts/dev.gd"
 
 [display]
 window/size/viewport_width=1280

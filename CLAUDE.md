@@ -13,7 +13,9 @@ Owner: Rashid (Arabic UI, plays with friends, installs the IPA with Sideloadly).
 - `scripts/world.gd` (`NightWorld`) — procedural maps (`forest`, `village`, `fareej`, `rubkhali`): terrain, wall + gates, buildings/houses, the market, props, generators, hooks, lockers, pallets, hatches. `configure(map, seed, theme)` decides the layout; `build()` creates nodes over several frames.
 - `scripts/rules.gd` (`Rules`) — match rules used in trial (offline) mode. **`server/rules.js` is the same logic for online play — change both together.**
 - `scripts/net.gd` (autoload `Net`) — WebSocket client, username, friends list, XP, total escapes and kills (all in `user://profile.cfg`), plus `level_progress()` for the XP bar.
-- `scripts/graphics.gd` (autoload `Gfx`) — graphics settings menu, FPS modes, adaptive quality governor.
+- `scripts/graphics.gd` (autoload `Gfx`) — the settings panel (sound + graphics), FPS modes, adaptive quality governor. `open_settings()` opens it from a menu button; the gear itself is always on screen.
+- `scripts/audio.gd` (autoload `Aud`) — the audio buses and the three volumes. Two buses sit under Master: **Music** (ambient bed, chase track, campfire, doomsday) and **SFX** (footsteps, generators, gates, screams, heartbeat, breathing, rope, one-shots, other players' sounds, UI clicks). Every player sets `.bus` when it is created. `set_vol("master"|"music"|"sfx", 0..1)` applies live and saves `user://audio.cfg`.
+- `scripts/dev.gd` (autoload `Dev`) — hidden developer tools, off and invisible unless this phone has unlocked them; the unlock lives only in `user://dev.cfg` and is never sent anywhere.
 - `scripts/menu.gd` (`GameMenu`) — menus: name, main, friends, lobby, character select, trial mode; the player card and the swipe area.
 - `scripts/lobby.gd` (`NFLobby`) — the start-screen camp (fire, props, cast). `preview(char, label, dir)` stands a character in front of the fire, `focus(on)` moves the camera in on them, `set_cast(players, me)` seats the real room around the fire with name tags (empty list brings back the shipped cast).
 - `scripts/ui_theme.gd` (`NFUI`) — the horror look: one shared `Theme` (dark, dry-blood borders), `dress(button, icon)` (styles + scratches + icon + click sound), `bar()`, `safe_insets()`, `CHAR_COL` (each character's signature colour).
@@ -39,10 +41,12 @@ godot --headless --path . res://tools/new.tscn     # fareej, hatch, flashlight, 
 godot --headless --path . res://tools/ui.tscn      # buttons, signals, loading, results, character select
 godot --headless --path . res://tools/map.tscn     # the desert map, both themes, emotes, the jumpscare
 godot --headless --path . res://tools/bones.tscn   # where the emote poses put the hands
+godot --headless --path . res://tools/dev.tscn     # audio buses, volumes, the hidden tools
 node server/test.js                                # room code, join by code, theme, emote and signal relay
 NF_URL=ws://127.0.0.1:8099 godot --headless --path . res://tools/online.tscn   # needs server + a bot
 ```
-Screenshots — `tools/shot.tscn` for the interface, `tools/shot2.tscn` for the desert, the themes, the emotes and the jumpscare:
+Screenshots — `tools/shot.tscn` for the interface, `tools/shot2.tscn` for the desert, the themes, the emotes
+and the jumpscare, `tools/shot4.tscn` for the sound settings and the hidden tools:
 ```
 NF_SHOTS=/tmp/shots LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a godot --rendering-driver opengl3 \
   --resolution 1564x720 --path . res://tools/shot.tscn      # software GL: ~15 min
@@ -72,6 +76,8 @@ NF_SHOTS=/tmp/shots LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a godot --rendering-driver
   back to idle after 3.4 s; the menu row sends `{t:"emote", k}` so everyone in the room sees it.
 - **Jumpscare**: when the killer lifts you (`my_state` turns `carried`), `main._start_scare()` points a second camera
   at his face for 0.62 s with a red wash, then hands control back. It never freezes input the round needs.
+- **Sound**: `الصوت` (master) with a `تفصيل` button that folds out `صوت الموسيقى` and `صوت اللعب`, in the settings
+  panel — reachable from the main menu, the lobby and the in-game gear. 0-100%, live while dragging, saved.
 - **Play again**: the results screen has a second button. Online the host sends `lobby`, which puts the whole room back
   in the same lobby; in trial mode `Net.replay` carries the settings across the scene reload.
 - **Results**: `NFResults`. Only the animations already in `assets/anims` are used — escaped players stand in `idle` (there is no cheer clip; drop one in and it can be used), dead players lie on the last frame of `dying`.
@@ -98,6 +104,13 @@ and foliage shader tints, and `_snow_cap()` slabs on every roof. Snow turns the 
 `main._make_breath()` gives every character visible breath. Halloween adds `_pumpkin()` (carved, lit, flickering) at
 every door and along the paths, and `_cobweb()` under the eaves and on the hooks. Counters `snow_caps`, `pumpkins`,
 `webs`, `wrecks` exist so the headless test can see the dressing.
+
+## Hidden developer tools
+Locked by default. On a phone that has them, a small panel appears during a round with two switches:
+see-through outlines of the other players (their own model drawn again with a `no_depth_test` overlay
+material, plus a mast and a name/distance tag), and a movement-speed multiplier. All of it is local:
+nothing is relayed, the server never hears about it, and nothing is drawn on anyone else's phone.
+`tools/dev.tscn` covers the buses, the lock and both tools.
 
 ## Known gaps
 - Models other than the characters are boxes/cylinders built in code; textures are procedural noise.
