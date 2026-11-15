@@ -7,7 +7,7 @@ const RUN := {"killer": 4.6, "survivor": 4.32}    # still under the killer's 4.6
 const CROUCH_SPEED := 1.1
 const CARRY_SPEED := 3.6
 # ground speed each animation was authored for; playback is scaled to it so feet don't slide
-const NATURAL := {"walk": 1.3, "run": 3.7, "crouchwalk": 1.0, "injured": 1.6}
+const NATURAL := {"walk": 1.3, "run": 3.7, "sprint": 5.2, "crouchwalk": 1.0, "injured": 1.6}
 const ACCEL := 20.0
 const DECEL := 28.0
 const SFX := ["gate", "heart", "breath", "steps_out", "steps_in", "gen_run", "chase", "ambient", "doom", "rope", "male_pain", "scream1", "scream2", "oof1", "oof2", "oof3"]
@@ -42,6 +42,7 @@ var cam_extra := 0.0          # how far the camera has pulled back (hooked)
 var hook_cam := 0.0           # seconds left of the camera swinging round to the hook
 var slowmo := 0.0             # seconds of the escape slow-motion left
 var heart_beat := 0.0         # drives the heartbeat buzz
+var hit_anim := {}            # name -> seconds left of the one-shot flinch
 var ev_shown := -1            # which event warning has been shown
 var ev_on := false            # the event is running right now
 var adhan_player: AudioStreamPlayer3D
@@ -56,6 +57,7 @@ var arm: SpringArm3D
 var ui: Control
 var minimap: Control
 var hud_layer: CanvasLayer
+var grade: ColorRect          # the full-screen grade (vignette + grain)
 var results: NFResults # the end-of-round stage, built when the round is over
 var started := false
 var cfg := {}
@@ -559,6 +561,14 @@ func _pos_of(n: String) -> Vector3:
 	var r = remotes.get(n)
 	return r.node.position if r else Vector3.ZERO
 
+## A one-shot flinch on whoever was struck. Does nothing at all until assets/anims/hit.glb
+## exists, and it never touches movement or input: it is a pose, not a state.
+func _hit_anim(who: String) -> void:
+	var r: CharacterRig = rig if who == my_name else (remotes[who].rig if remotes.has(who) else null)
+	if r == null or not r.has("hit"): return
+	r.play("hit", 1.0)
+	hit_anim[who] = 0.75
+
 func _on_event(e: Dictionary) -> void:
 	match str(e.get("k", "")):
 		"boom":
@@ -566,6 +576,7 @@ func _on_event(e: Dictionary) -> void:
 			if my_role == "killer": _flash("أحد غلط في تصليح مولد!")
 		"hurt":
 			_voice_hit(str(e.n))
+			_hit_anim(str(e.n)) # a real flinch, if hit.glb has been dropped in
 			if str(e.n) == my_name:
 				boost_t = 2.0
 				_shake(0.5 if str(e.s) == "hurt" else 0.85)
@@ -613,7 +624,26 @@ func _leave() -> void:
 	else: Net.send({"t": "leave"})
 
 # ---------------- UI ----------------
+## The grade pass: vignette, grain and a red squeeze at the edges when he is near. It sits
+## under the HUD on its own layer, ignores touches, and turns itself off on the lowest
+## graphics preset (shaders/grade.gdshader).
+func _build_grade() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = -1 # behind every piece of interface, over the 3D frame
+	add_child(layer)
+	grade = ColorRect.new()
+	grade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	grade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://shaders/grade.gdshader")
+	grade.material = mat
+	layer.add_child(grade)
+	grade.visible = Gfx.eff_effects() >= 1 # the governor can drop it mid-round
+	Gfx.changed.connect(func() -> void:
+		if grade: grade.visible = Gfx.eff_effects() >= 1)
+
 func _build_ui() -> void:
+	_build_grade()
 	var layer := CanvasLayer.new()
 	add_child(layer)
 	hud_layer = layer
@@ -1529,7 +1559,7 @@ func _process(dt: float) -> void:
 		else:
 			r.rig.position.y = lerpf(r.rig.position.y, lift, w)
 			r.rig.rotation = Vector3(0, lerp_angle(r.rig.rotation.y, face, w), 0)
-			r.rig.play(anim)
+			if hit_anim.get(n, 0.0) <= 0.0: r.rig.play(anim)
 		_update_bleed(r.bleed, st == "hooked", dt)
 		# women gasp "oof" now and then while limping around injured
 		if st == "hurt" and r.node.visible and anim in ["walk", "injured", "run"] and not (chars.get(n, "") in MALE):
@@ -1596,6 +1626,10 @@ func _process(dt: float) -> void:
 	if my_role == "survivor" and rules.killer != "" and remotes.has(rules.killer) and my_state in ["ok", "hurt", "down", "hooked"]:
 		kdist = body.position.distance_to(kpos)
 		danger = clampf(1.0 - kdist / TERROR_RADIUS, 0.0, 1.0)
+	if grade: # the screen tightens and reddens as he closes in
+		var pulse: float = danger * (0.55 + 0.45 * sin(Time.get_ticks_msec() / 1000.0 * 4.0))
+		if my_state in ["down", "hooked"]: pulse = maxf(pulse, 0.5)
+		(grade.material as ShaderMaterial).set_shader_parameter("pulse", clampf(pulse, 0.0, 1.0))
 	if danger > 0.05 and my_state in ["ok", "hurt", "down"]: # one small buzz per heartbeat
 		heart_beat -= dt * lerpf(1.1, 2.2, danger)
 		if heart_beat <= 0.0:
@@ -1650,6 +1684,9 @@ func _process(dt: float) -> void:
 
 func _physics_process(delta: float) -> void:
 	if not started: return
+	for n in hit_anim.keys(): # the one-shot flinch, if the clip exists
+		hit_anim[n] = hit_anim[n] - delta
+		if hit_anim[n] <= 0.0: hit_anim.erase(n)
 	if offline:
 		for e in rules.tick(delta): _on_event(e)
 	match_time += delta
@@ -1785,7 +1822,8 @@ func _move(delta: float) -> void:
 				hit_sent = true
 				_ev({"k": "hit", "n": n})
 				break
-	# animation
+	# animation (a running flinch keeps the rig until it is done)
+	if hit_anim.get(my_name, 0.0) > 0.0: return
 	if my_state == "dead":
 		rig.play("dying")
 	elif my_state == "down":
@@ -1811,6 +1849,8 @@ func _move(delta: float) -> void:
 	elif v > 0.25:
 		if my_role == "killer" and rules.carrying != "":
 			rig.play("carry", clampf(v / 1.4, 0.8, 2.6))
+		elif v > 4.3 and rig.has("sprint"): # the real sprint clip, when there is one
+			rig.play("sprint", clampf(v / NATURAL.sprint, 0.75, 1.5))
 		elif v > 2.6:
 			rig.play("run", clampf(v / NATURAL.run, 0.7, 1.7))
 		elif my_state == "hurt": rig.play("injured", clampf(v / NATURAL.injured, 0.6, 1.6))

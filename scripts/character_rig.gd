@@ -2,8 +2,13 @@ class_name CharacterRig
 extends Node3D
 ## Loads a rigged character GLB and attaches Mixamo animations (separate GLBs) to it.
 
-const ANIMS := ["idle", "walk", "run", "crouchwalk", "hide", "attack", "injured", "dying", "vault", "carry", "carried", "hang", "crawl", "repair"]
-const LOOPING := ["idle", "walk", "run", "sprint", "crouchwalk", "hide", "injured", "carry", "carried", "hang", "crawl", "repair", "campfire", "wave", "clap", "dance"]
+## The clips a player's rig asks for. Anything missing from assets/anims is simply skipped, so
+## the list can name clips the owner has not supplied yet: drop sprint.glb / hit.glb / fall.glb /
+## standup.glb / cheer.glb in and the game starts using them with no code change.
+const ANIMS := ["idle", "walk", "run", "sprint", "crouchwalk", "hide", "attack", "injured", "dying",
+	"vault", "carry", "carried", "hang", "crawl", "repair", "hit", "fall", "standup"]
+const ONCE := ["hit", "fall", "attack", "vault"] # played through once, then back to the state pose
+const LOOPING := ["idle", "walk", "run", "sprint", "crouchwalk", "hide", "injured", "carry", "carried", "hang", "crawl", "repair", "campfire", "wave", "clap", "dance", "cheer"]
 ## Campfire emotes. There is no Mixamo clip for these in assets/anims, so they are posed here on the
 ## same skeleton: drop wave.glb / clap.glb / dance.glb in and the real clip is used instead.
 const EMOTES := {"wave": 2.0, "clap": 1.1, "dance": 1.8}
@@ -154,6 +159,10 @@ func _emote_anim(a: String, skel_path: String, char_rest: Vector3) -> Animation:
 			var ph := float(k) / steps
 			out.position_track_insert_key(tr, out.length * ph, char_rest + Vector3(0, 0, -2.5 * absf(sin(ph * TAU))))
 	return out
+
+## Is this clip actually available on this character? (false until the GLB is dropped in)
+func has(anim: String) -> bool:
+	return player.has_animation(anim)
 
 func play(anim: String, speed := 1.0) -> void:
 	if current == anim and player.speed_scale == speed: return

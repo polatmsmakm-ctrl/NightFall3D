@@ -215,9 +215,10 @@ func _build_victory() -> void:
 		var r: Dictionary = vic[i]
 		var rig := CharacterRig.new()
 		vic_stage.add_child(rig)
-		rig.setup(str(r.get("char", "survivor1")), ["idle", "wave", "dance"])
+		rig.setup(str(r.get("char", "survivor1")), ["idle", "wave", "dance", "cheer"])
 		rig.position = Vector3((i - (n - 1) / 2.0) * 1.7, 0.0, 0.6)
-		rig.play("dance" if i == 0 else "wave")   # the only celebrating clips we have
+		# a real cheer clip if the owner has dropped one in; otherwise the emotes we have
+		rig.play("cheer" if rig.has("cheer") else ("dance" if i == 0 else "wave"))
 		rig.player.seek(float(i) * 0.4, true)
 		var key := OmniLight3D.new()
 		key.position = rig.position + Vector3(0.0, 2.2, 2.2)

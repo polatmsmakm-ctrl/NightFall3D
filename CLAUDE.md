@@ -54,6 +54,7 @@ godot --headless --path . res://tools/event.tscn   # the round's event, adhan, d
 godot --headless --path . res://tools/feel.tscn    # haptics switch, camera moves
 godot --headless --path . res://tools/win.tscn      # group rescue, camp by time of day, victory screen
 godot --headless --path . res://tools/garage.tscn   # the car park: modules, objectives, walking, blackout
+godot --headless --path . res://tools/look.tscn     # ground shading, contact shadows, grade pass, drop-in clips/models
 node server/test.js                                # room code, join by code, theme, emote and signal relay
 NF_URL=ws://127.0.0.1:8099 godot --headless --path . res://tools/online.tscn   # needs server + a bot
 ```
@@ -61,7 +62,7 @@ Screenshots — `tools/shot.tscn` for the interface, `tools/shot2.tscn` for the 
 and the jumpscare, `tools/shot4.tscn` for the sound settings and the hidden tools, `tools/shot6.tscn` for the
 doors, the blackout, the fog and the alarm, `tools/shot7.tscn` for the camp by time of day, the shared
 unhook and the victory screen, `tools/shot8.tscn` for the car park, `tools/shot9.tscn` for the
-daylight Empty Quarter:
+daylight Empty Quarter, `tools/shot10.tscn` for the look pass before/after:
 ```
 NF_SHOTS=/tmp/shots LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a godot --rendering-driver opengl3 \
   --resolution 1564x720 --path . res://tools/shot.tscn      # software GL: ~15 min
@@ -185,6 +186,39 @@ see-through outlines of the other players (their own model drawn again with a `n
 material, plus a mast and a name/distance tag), and a movement-speed multiplier. All of it is local:
 nothing is relayed, the server never hears about it, and nothing is drawn on anyone else's phone.
 `tools/dev.tscn` covers the buses, the lock and both tools.
+
+## Dropping new content in (no code changes needed)
+The game looks for these files and uses them the moment they exist. Until then it falls back to
+what is there now, so a missing file never breaks a round.
+- **`assets/anims/<name>.glb`** — Mixamo clips, exported as **glTF Binary, "Without Skin", 30 fps,
+  no keyframe reduction**, on the same skeleton as the others. Already used: `idle walk run sprint
+  crouchwalk hide attack injured dying vault carry carried hang crawl repair`. **Waiting for:
+  `hit`** (a flinch played on whoever is struck, one shot, never touches movement), **`fall`**,
+  **`standup`**, **`cheer`** (the victory shot uses it instead of the dance), and
+  **`wave` / `dance` / `clap`** (the campfire emotes, hand-posed in code until then).
+- **`assets/props/<name>.glb`** — a real model to replace the boxes built in code: `car`, `lamp`,
+  `generator`, `hook`, `locker`. `world._swap_model()` hides the code-built meshes and parents the
+  model to the same body, so **collision never changes** and the round plays identically. The
+  garage's own parked cars are a MultiMesh and are not swapped. A generator's "done" bulb stops
+  changing colour when a model replaces it (its light still does).
+- **`assets/sfx/<name>.mp3`** — `ui_click` (menu buttons) and `door` (door leaves). Still silent.
+- Whole map models go through `tools/split_glb.py` (see `assets/maps/carpark.glb`).
+
+## The look pass (mobile-friendly, no baked lighting)
+A real lightmap bake is **not possible** with this project: the maps have no saved scene to bake —
+every round is generated from the host's seed when it starts. These three do the same job at
+runtime instead:
+- **Ground shading** (`world._ground_ao`): the terrain's vertex colours are darkened under walls,
+  houses, tents and the market while the mesh is built. Free to draw, survives a new seed.
+- **Contact shadows** (`world._blob` / `_build_blobs`): a soft dark patch under every generator,
+  hook, locker, pallet, car, lamp, wreck and garage column — all of them in **one MultiMesh, two
+  triangles each** (≈50 on the forest, ≈400 in the garage).
+- **Finer materials** (`world._pbr`): every procedural surface now carries a second detail layer
+  (albedo + normal at 7× the frequency) so concrete and wood keep their grain up close, plus a
+  stronger normal and more roughness contrast.
+- **Grade pass** (`shaders/grade.gdshader`, `main._build_grade`): one fullscreen shader under the
+  HUD — vignette, film grain, corner desaturation, and the edges tighten and go red as `danger`
+  rises (or while you are down / hooked). Off on the lowest graphics preset.
 
 ## Known gaps
 - Models other than the characters and the car-park module are boxes/cylinders built in code;

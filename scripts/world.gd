@@ -38,6 +38,10 @@ var garage_panels: Array = [] # the ceiling strip materials, so the blackout can
 var garage_detail: Array = [] # the small yellow kerb/wheel-stop geometry, dropped on low quality
 var garage_barriers: Array = [] # [pos, yaw] of the concrete barriers you vault over
 var garage_cars := 0          # parked cars, counted for the headless test
+var ao_blobs: Array = []      # [pos, radius] soft ground shadows, drawn as one MultiMesh
+var ao_mm: MultiMeshInstance3D
+var models_used := 0          # how many props were drawn from a real model this round
+var _models := {}             # name -> PackedScene or null
 var pumpkins := 0   # halloween dressing
 var webs := 0
 var snow_caps := 0
@@ -317,6 +321,7 @@ func build() -> void:
 		_build_rocks()
 		await _build_grass()
 	build_step = 4
+	_build_blobs()
 	_build_particles()
 	_build_probe()
 	for l in find_children("*", "OmniLight3D", true, false): # far lights cost nothing
@@ -344,16 +349,25 @@ func _grad(a: Color, b: Color) -> Gradient:
 	g.set_color(0, a); g.set_color(1, b)
 	return g
 
+## A procedural PBR surface: large-scale colour and shape from one noise, plus a fine detail
+## normal on a second UV so a wall still has grain when your face is against it. The detail
+## layer is the cheapest way to get close-up quality without real texture files.
 func _pbr(c1: Color, c2: Color, freq: float, uv: Vector3, rough: float, metal := 0.0) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_texture = _noise_tex(freq, 512, false, _grad(c1, c2))
 	m.normal_enabled = true
 	m.normal_texture = _noise_tex(freq, 512, true)
+	m.normal_scale = 1.35
 	m.roughness = rough
-	m.roughness_texture = _noise_tex(freq * 2.0, 256, false, _grad(Color(0.7, 0.7, 0.7), Color.WHITE))
+	m.roughness_texture = _noise_tex(freq * 2.0, 256, false, _grad(Color(0.55, 0.55, 0.55), Color.WHITE))
 	m.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
 	m.metallic = metal
 	m.uv1_triplanar = true; m.uv1_world_triplanar = true; m.uv1_scale = uv
+	m.detail_enabled = true # fine grain, five times tighter than the base noise
+	m.detail_blend_mode = BaseMaterial3D.BLEND_MODE_MIX
+	m.detail_uv_layer = BaseMaterial3D.DETAIL_UV_1
+	m.detail_albedo = _noise_tex(freq * 7.0, 256, false, _grad(Color(c1.r, c1.g, c1.b, 0.0), Color(c2.r, c2.g, c2.b, 0.22)))
+	m.detail_normal = _noise_tex(freq * 7.0, 256, true)
 	return m
 
 func _make_materials() -> void:
@@ -488,6 +502,57 @@ func _build_environment() -> void:
 	add_child(moon)
 
 # ---------------- terrain ----------------
+## How shaded a patch of ground is by whatever stands on it: walls, houses, tents, the market.
+## Baked into the terrain's vertex colours while the mesh is built, so it costs nothing to draw
+## and it survives the seed changing every round (a real lightmap bake cannot: the maps have no
+## saved scene to bake, they are generated from the host's seed when the round starts).
+func _ground_ao(x: float, z: float) -> float:
+	var dark := 0.0
+	for st in sites:
+		var d := Vector2(x - st[0], z - st[1]).length()
+		var r: float = st[3]
+		if d < r + 4.0: dark = maxf(dark, (1.0 - smoothstep(r * 0.55, r + 4.0, d)) * 0.55)
+	for b in ao_blobs:
+		var p: Vector3 = b[0]
+		var br: float = b[1] * 2.2
+		var d2 := Vector2(x - p.x, z - p.z).length()
+		if d2 < br: dark = maxf(dark, (1.0 - smoothstep(br * 0.25, br, d2)) * 0.4)
+	return clampf(dark, 0.0, 0.7)
+
+## A soft dark patch on the ground under something solid. They are collected while the map is
+## built and drawn at the end as one MultiMesh: contact shadows for the price of one draw call.
+func _blob(at: Vector3, radius: float) -> void:
+	ao_blobs.append([at, radius])
+
+func _build_blobs() -> void:
+	if ao_blobs.is_empty(): return
+	var q := QuadMesh.new()
+	q.size = Vector2(2.0, 2.0)
+	q.orientation = PlaneMesh.FACE_Y
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.albedo_texture = NFUI.soft_dot()
+	m.albedo_color = Color(0.02, 0.02, 0.03, 0.5)
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.no_depth_test = false
+	m.render_priority = -1
+	q.material = m
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = q
+	mm.instance_count = ao_blobs.size()
+	for i in ao_blobs.size():
+		var at: Vector3 = ao_blobs[i][0]
+		var r: float = ao_blobs[i][1]
+		mm.set_instance_transform(i, Transform3D(Basis.IDENTITY.scaled(Vector3(r, 1.0, r)),
+			Vector3(at.x, height(at.x, at.z) + 0.035, at.z)))
+	ao_mm = MultiMeshInstance3D.new()
+	ao_mm.multimesh = mm
+	ao_mm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	ao_mm.name = "GroundShadows"
+	add_child(ao_mm)
+
 func _build_terrain() -> void:
 	var n := int(SIZE / CELL)
 	var grid := PackedFloat32Array()
@@ -511,12 +576,15 @@ func _build_terrain() -> void:
 					var gi := ci + i
 					var gj := cj + j
 					verts.append(Vector3(-HALF + gi * CELL, hgt.call(gi, gj), -HALF + gj * CELL))
-					var gcol := Color(0.42, 0.56, 0.34).lerp(Color(1.0, 0.86, 0.6), _sandiness(-HALF + gi * CELL, -HALF + gj * CELL))
+					var wx := -HALF + gi * CELL
+					var wz := -HALF + gj * CELL
+					var gcol := Color(0.42, 0.56, 0.34).lerp(Color(1.0, 0.86, 0.6), _sandiness(wx, wz))
 					if map_id == "rubkhali": gcol = Color(0.86, 0.71, 0.46)
 					elif map_id == "garage": gcol = Color(0.17, 0.17, 0.18) # bare concrete under the slab
 					if theme == "snow": gcol = gcol.lerp(Color(0.92, 0.95, 1.0), 0.88)
 					elif theme == "halloween": gcol = gcol.lerp(Color(0.5, 0.33, 0.14), 0.45)
-					cols.append(gcol)
+					cols.append(gcol.darkened(_ground_ao(wx, wz))) # shade under walls and buildings
+					
 					norms.append(Vector3(hgt.call(gi - 1, gj) - hgt.call(gi + 1, gj), 2.0 * CELL, hgt.call(gi, gj - 1) - hgt.call(gi, gj + 1)).normalized())
 			for j in per:
 				for i in per:
@@ -554,6 +622,30 @@ func _build_terrain() -> void:
 			w.position = Vector3(part * (5.0 + length / 2.0), 5.0, HALF - 1.0).rotated(Vector3.UP, k * PI / 2.0)
 			body.add_child(w)
 	add_child(body)
+
+# ---------------- real models instead of the boxes ----------------
+## Drop a GLB into assets/props and the map draws it instead of the boxes built in code:
+## car.glb, lamp.glb, generator.glb, hook.glb, locker.glb. **The collision never changes** —
+## the code-built shapes stay exactly where they are and only the visible meshes are hidden —
+## so a new model can make the map look better but can never break a round. Nothing happens
+## until the file exists.
+func _model(name: String) -> PackedScene:
+	if not _models.has(name):
+		var path := "res://assets/props/%s.glb" % name
+		_models[name] = load(path) if ResourceLoader.exists(path) else null
+	return _models[name]
+
+func _swap_model(body: Node3D, name: String, yaw := 0.0, scale := 1.0) -> bool:
+	var ps: PackedScene = _model(name)
+	if ps == null: return false
+	for ch in body.get_children():
+		if ch is MeshInstance3D: (ch as MeshInstance3D).visible = false
+	var n: Node3D = (ps.instantiate() as Node3D)
+	n.rotation.y = yaw
+	n.scale = Vector3(scale, scale, scale)
+	body.add_child(n)
+	models_used += 1
+	return true
 
 # ---------------- buildings ----------------
 func _box(parent: Node3D, size: Vector3, pos: Vector3, mat: Material, occlude := false, rot := Vector3.ZERO) -> void:
@@ -640,6 +732,7 @@ func _build_props() -> void:
 	red.albedo_color = Color(0.32, 0.07, 0.06)
 	red.roughness = 0.6; red.metallic = 0.5
 	for hp in hook_points:
+		_blob(hp, 1.3)
 		var body := StaticBody3D.new()
 		body.position = hp
 		_box(body, Vector3(0.28, 3.4, 0.28), Vector3(0, 1.7, 0), _mat.wood)
@@ -651,9 +744,11 @@ func _build_props() -> void:
 		l.light_color = Color(1.0, 0.2, 0.15)
 		l.light_energy = 0.8; l.omni_range = 5.0
 		body.add_child(l)
+		_swap_model(body, "hook")
 		add_child(body)
 	var dark := _flat(Color(0.05, 0.05, 0.05), 0.6, 0.4)
 	for lp in locker_points:
+		_blob(lp[0], 1.2)
 		var body := StaticBody3D.new()
 		body.position = lp[0]
 		body.rotation.y = lp[1]
@@ -664,8 +759,10 @@ func _build_props() -> void:
 				_mesh_box(body, Vector3(0.3, 0.035, 0.02), Vector3(dx, vy, 0.41), dark)
 			_mesh_box(body, Vector3(0.04, 0.22, 0.05), Vector3(dx * 0.26, 1.1, 0.42), _mat.metal)
 		_mesh_box(body, Vector3(1.3, 0.06, 0.95), Vector3(0, 2.2, 0.0), _mat.metal, Vector3(0.12, 0, 0)) # tin roof
+		_swap_model(body, "locker")
 		add_child(body)
 	for pp in pallet_points:
+		_blob(pp[0], 1.3)
 		var root := Node3D.new()
 		root.position = pp[0]
 		root.rotation.y = pp[1]
@@ -698,6 +795,7 @@ func set_pallet_state(i: int, state: int) -> void: # 0 standing, 1 dropped, 2 br
 func _build_objectives() -> void:
 	_build_props()
 	for gp in gen_points:
+		_blob(gp, 1.9)
 		var body := StaticBody3D.new()
 		body.position = gp
 		_box(body, Vector3(1.7, 0.2, 1.0), Vector3(0, 0.12, 0), _mat.concrete) # base
@@ -726,6 +824,7 @@ func _build_objectives() -> void:
 		_mesh_box(body, Vector3(0.05, 1.3, 0.05), Vector3(-0.5, 1.75, -0.1), _flat(Color(0.5, 0.4, 0.1)), Vector3(0.2, 0, -0.35))
 		_box(body, Vector3(0.08, 1.6, 0.08), Vector3(0.6, 1.8, 0.3), _mat.metal)
 		_box(body, Vector3(0.08, 1.6, 0.08), Vector3(0.6, 1.8, -0.3), _mat.metal)
+		_swap_model(body, "generator")
 		var lamp_mat := _emissive(Color(1.0, 0.85, 0.5))
 		for z in [0.3, -0.3]:
 			var bulb := MeshInstance3D.new()
@@ -1023,6 +1122,7 @@ func _free_spot(rng: RandomNumberGenerator, pad: float) -> Vector3:
 	return Vector3.INF
 
 func _car(at: Vector3, yaw: float, col: Color, parent: Node3D = null) -> void:
+	_blob(at, 2.5)
 	var body := StaticBody3D.new()
 	body.position = at
 	body.rotation.y = yaw
@@ -1040,15 +1140,18 @@ func _car(at: Vector3, yaw: float, col: Color, parent: Node3D = null) -> void:
 			wh.rotation.z = PI / 2.0
 			wh.position = Vector3(wx, 0.36, wz)
 			body.add_child(wh)
+	_swap_model(body, "car")
 	(parent if parent else self).add_child(body)
 
 func _lamp_post(at: Vector3, yaw: float) -> void:
+	_blob(at, 0.9)
 	var body := StaticBody3D.new()
 	body.position = at
 	body.rotation.y = yaw
 	_box(body, Vector3(0.16, 4.6, 0.16), Vector3(0, 2.3, 0), _mat.metal)
 	_mesh_box(body, Vector3(0.1, 0.1, 1.2), Vector3(0, 4.5, 0.55), _mat.metal)
 	_mesh_box(body, Vector3(0.3, 0.1, 0.5), Vector3(0, 4.42, 1.0), _flat(Color(1.0, 0.85, 0.55), 0.5, 0.0, 3.0))
+	_swap_model(body, "lamp")
 	var l := OmniLight3D.new()
 	l.position = Vector3(0, 4.1, 1.0)
 	l.light_color = Color(1.0, 0.82, 0.55)
@@ -2111,6 +2214,7 @@ func _build_rubkhali() -> void:
 
 ## A dead Land Cruiser, half swallowed by the dune it stopped on.
 func _wreck(at: Vector3, yaw: float, rng: RandomNumberGenerator) -> void:
+	_blob(at, 2.8)
 	wrecks += 1
 	var body := StaticBody3D.new()
 	body.position = at - Vector3(0, 0.42, 0) # sunk into the sand
@@ -2557,6 +2661,10 @@ func _build_garage_props() -> void:
 				if busy: continue
 				spots.append([p, (0.0 if bi == 0 else PI) + ((n % 5) - 2) * 0.02, cols[n % cols.size()]])
 	garage_cars = spots.size()
+	for sp in spots: _blob(sp[0], 2.5)
+	for t in garage_tiles: # every column gets its contact shadow
+		for x in GAR_COL_X:
+			for z in GAR_COL_Z: _blob(_gar(int(t.c), int(t.r), x, z), 0.9)
 	var paint := _flat(Color(1, 1, 1), 0.45, 0.5)
 	paint.vertex_color_use_as_albedo = true
 	var glass := _flat(Color(1, 1, 1), 0.3, 0.6)
