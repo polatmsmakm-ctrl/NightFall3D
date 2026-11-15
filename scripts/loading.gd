@@ -24,7 +24,8 @@ const TIPS := [
 	"بيوت الشعر فيها خزانات تختبئ فيها",
 	"الخيل والبعارين ما يأذونك، بس يشتتون نظر القاتل",
 ]
-const NAMES := {"forest": "الغابة", "village": "القرية المهجورة", "fareej": "الفريج", "rubkhali": "الربع الخالي"}
+const NAMES := {"forest": "الغابة", "village": "القرية المهجورة", "fareej": "الفريج", "rubkhali": "الربع الخالي",
+	"garage": "المواقف"}
 const THEME_NAMES := {"snow": "ثلج", "halloween": "هالوين"}
 
 var map_id := "forest"
@@ -112,6 +113,26 @@ func _draw_preview(r: Rect2) -> void:
 					_pad.draw_colored_polygon(PackedVector2Array([Vector2(x2 - 5.0, y2 - h2), Vector2(x2 + w2 / 2.0, y2 - h2 - r.size.y * 0.1), Vector2(x2 + w2 + 5.0, y2 - h2)]), col2)
 					if depth == 0 and rng.randf() < 0.6: # one lit window
 						_pad.draw_rect(Rect2(Vector2(x2 + w2 * 0.3, y2 - h2 * 0.6), Vector2(w2 * 0.18, h2 * 0.2)), Color(1.0, 0.72, 0.35, 0.5 * a))
+		"garage": # a row of concrete columns under a low slab, with a car and two strip lights
+			var slab := Color(0.05, 0.05, 0.055, a)
+			var cy := r.position.y + r.size.y * 0.18
+			_pad.draw_rect(Rect2(Vector2(r.position.x, cy), Vector2(r.size.x, r.size.y * 0.07)), slab)
+			_pad.draw_rect(Rect2(Vector2(r.position.x, base), Vector2(r.size.x, r.size.y * 0.3)), Color(0.07, 0.07, 0.075, a))
+			for i in 5:
+				var cx := r.position.x + r.size.x * (0.1 + i * 0.2)
+				var cw := r.size.x * 0.035 * (1.0 + i * 0.05)
+				_pad.draw_rect(Rect2(Vector2(cx, cy), Vector2(cw, base - cy)), Color(0.11, 0.11, 0.115, a))
+				_pad.draw_rect(Rect2(Vector2(cx, base - r.size.y * 0.12), Vector2(cw, r.size.y * 0.03)), Color(0.5, 0.42, 0.08, a))
+			for i in 2: # the strip lights and the pools of light under them
+				var lx := r.position.x + r.size.x * (0.3 + i * 0.4)
+				_pad.draw_rect(Rect2(Vector2(lx, cy + r.size.y * 0.07), Vector2(r.size.x * 0.1, r.size.y * 0.016)), Color(0.8, 0.9, 1.0, 0.75 * a))
+				_pad.draw_colored_polygon(PackedVector2Array([Vector2(lx, cy + r.size.y * 0.09),
+					Vector2(lx + r.size.x * 0.1, cy + r.size.y * 0.09), Vector2(lx + r.size.x * 0.22, base),
+					Vector2(lx - r.size.x * 0.12, base)]), Color(0.55, 0.65, 0.8, 0.07 * a))
+			var carx := r.position.x + r.size.x * 0.52
+			var carw := r.size.x * 0.17
+			_pad.draw_rect(Rect2(Vector2(carx, base - r.size.y * 0.1), Vector2(carw, r.size.y * 0.07)), Color(0.14, 0.1, 0.1, a))
+			_pad.draw_rect(Rect2(Vector2(carx + carw * 0.2, base - r.size.y * 0.15), Vector2(carw * 0.6, r.size.y * 0.05)), Color(0.1, 0.08, 0.08, a))
 		"rubkhali": # dunes, a tent and a palm cluster in a dust haze
 			var sand := Color(0.3, 0.24, 0.17, a)
 			for depth in 3:

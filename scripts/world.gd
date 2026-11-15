@@ -32,6 +32,12 @@ var theme := "normal" # normal / snow / halloween
 var tents := 0        # how many of the first `buildings` entries are bedouin tents (rubkhali)
 var animals: Array = [] # desert horses and camels: {node, path, i, speed, bob, stand}
 var wrecks := 0     # Land Cruiser wrecks placed (rubkhali)
+var garage_tiles: Array = []  # the car-park modules: {c, r, origin, pieces}
+var garage_solids: Array = [] # world rectangles [x0, x1, z0, z1] you cannot walk through
+var garage_panels: Array = [] # the ceiling strip materials, so the blackout can kill them
+var garage_detail: Array = [] # the small yellow kerb/wheel-stop geometry, dropped on low quality
+var garage_barriers: Array = [] # [pos, yaw] of the concrete barriers you vault over
+var garage_cars := 0          # parked cars, counted for the headless test
 var pumpkins := 0   # halloween dressing
 var webs := 0
 var snow_caps := 0
@@ -143,6 +149,13 @@ func configure(id: String, seed := 1, th := "normal") -> void:
 		tents = camps.size()
 		for h in [[-40.0, 8.0, 0.2], [26.0, -20.0, 1.2], [-8.0, 52.0, -0.5], [62.0, -86.0, 0.8], [-86.0, -8.0, 1.6]]:
 			buildings.append([h[0], h[1], h[2], 8.0, 6.5, 3.2]) # mud house
+	elif id == "garage": # «المواقف»: the car park under an apartment block, all concrete and columns
+		noise.seed = 2026
+		relief = 0.0
+		tree_count = 0
+		grass_per_chunk = 0
+		fog_density = 0.02   # damp basement air
+		moon_dir = Vector3(0.3, 0.5, -0.81).normalized()
 	elif id == "fareej": # a Kuwaiti neighbourhood: walled houses on streets around the market, flat sandy ground
 		noise.seed = 77
 		relief = 0.0
@@ -162,6 +175,9 @@ func configure(id: String, seed := 1, th := "normal") -> void:
 		noise.seed = 1337
 		buildings = FOREST_BUILDINGS.duplicate(true)
 	if theme == "snow": grass_per_chunk = int(grass_per_chunk * 0.5) # snow buries most of it
+	if id == "garage": # the car park lays out its own floor, so none of the outdoor plan applies
+		_plan_garage(rng)
+		return
 	sites.append([0.0, 0.0, _raw_h(0.0, 0.0), 6.0])
 	for b in buildings:
 		sites.append([b[0], b[1], _raw_h(b[0], b[1]), maxf(b[3], b[4]) * (1.05 if id == "fareej" else 0.75) + 1.0])
@@ -224,6 +240,7 @@ func _plan_trees() -> void:
 
 ## What the ground is at a position: "indoor" (floors, pavement), "sand" (the bare yards around buildings) or "grass".
 func surface_at(pos: Vector3) -> String:
+	if map_id == "garage": return "indoor" # bare concrete everywhere
 	var ml: Vector3 = Basis(Vector3.UP, market.yaw).inverse() * (pos - market.pos)
 	if absf(ml.x) < MARKET_W / 2.0 + 2.0 and ml.z > -MARKET_D / 2.0 - 0.3 and ml.z < MARKET_D / 2.0 + 16.0: return "indoor"
 	for b in buildings:
@@ -281,21 +298,23 @@ func build() -> void:
 	await get_tree().process_frame
 	if map_id == "fareej": _build_fareej()
 	elif map_id == "rubkhali": _build_rubkhali()
+	elif map_id == "garage": _build_garage()
 	else: _build_buildings()
 	_build_objectives()
 	_build_extras()
 	_build_doors()
-	_build_market()
+	if map_id != "garage": _build_market()
 	build_step = 2
 	await get_tree().process_frame
-	_build_scatter()
+	if map_id != "garage": _build_scatter() # the garage parks its own cars
 	_build_theme_props()
 	if map_id == "rubkhali": _build_animals()
 	_build_trees()
 	build_step = 3
 	await get_tree().process_frame
-	_build_rocks()
-	await _build_grass()
+	if map_id != "garage":
+		_build_rocks()
+		await _build_grass()
 	build_step = 4
 	_build_particles()
 	_build_probe()
@@ -395,6 +414,10 @@ func _build_environment() -> void:
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color(0.16, 0.2, 0.32)
 	env.ambient_light_energy = 0.8 # dark: survivors carry flashlights
+	if map_id == "garage": # concrete under strip lights, not moonlit grass
+		env.ambient_light_color = Color(0.21, 0.22, 0.24)
+		env.ambient_light_energy = 0.75
+		env.fog_light_color = Color(0.09, 0.095, 0.1)
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	env.tonemap_white = 6.0
@@ -472,6 +495,7 @@ func _build_terrain() -> void:
 					verts.append(Vector3(-HALF + gi * CELL, hgt.call(gi, gj), -HALF + gj * CELL))
 					var gcol := Color(0.42, 0.56, 0.34).lerp(Color(1.0, 0.86, 0.6), _sandiness(-HALF + gi * CELL, -HALF + gj * CELL))
 					if map_id == "rubkhali": gcol = Color(0.86, 0.71, 0.46)
+					elif map_id == "garage": gcol = Color(0.17, 0.17, 0.18) # bare concrete under the slab
 					if theme == "snow": gcol = gcol.lerp(Color(0.92, 0.95, 1.0), 0.88)
 					elif theme == "halloween": gcol = gcol.lerp(Color(0.5, 0.33, 0.14), 0.45)
 					cols.append(gcol)
@@ -1237,6 +1261,8 @@ func set_blackout(on: bool) -> void:
 	if env == null: return
 	var tw := create_tween()
 	tw.tween_property(env, "ambient_light_energy", (0.45 if on else 1.0) * _amb_base, 1.2)
+	for m in garage_panels: # the strip lights go dead with everything else
+		tw.parallel().tween_property(m, "emission_energy_multiplier", 0.05 if on else 3.2, 1.0)
 
 ## The heavy-fog event, 0..1.
 func set_fog(level: float) -> void:
@@ -1257,6 +1283,7 @@ func set_hatch(i: int) -> void:
 	for k in hatch_nodes.size(): hatch_nodes[k].visible = k == i
 
 func in_market(pos: Vector3) -> bool:
+	if market.is_empty(): return false
 	var ml: Vector3 = Basis(Vector3.UP, market.yaw).inverse() * (pos - market.pos)
 	return absf(ml.x) < MARKET_W / 2.0 and absf(ml.z) < MARKET_D / 2.0
 
@@ -1915,6 +1942,7 @@ func _build_particles() -> void:
 	leaves.preprocess = leaves.lifetime
 	leaves.visibility_aabb = AABB(Vector3(-22, -14, -22), Vector3(44, 26, 44))
 	leaves.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	leaves.emitting = map_id != "garage" # nothing falls from the sky under a concrete slab
 	add_child(leaves)
 
 func _build_probe() -> void:
@@ -1942,6 +1970,8 @@ func _apply_quality() -> void:
 	for i in grass_nodes.size():
 		grass_nodes[i].multimesh.visible_instance_count = int(grass_counts[i] * factor)
 		grass_nodes[i].visibility_range_end = rng + GRASS_CHUNK * 0.7
+	for mi in garage_detail: # the yellow kerbs and wheel stops are the only heavy geometry down there
+		(mi as MultiMeshInstance3D).visible = fx >= 1
 	moon.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL if sh == 0 else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	moon.directional_shadow_max_distance = [30.0, 50.0, 70.0][sh]
 
@@ -2234,3 +2264,325 @@ func _build_theme_props() -> void:
 		_pumpkin(p, rng.randf() * TAU)
 	for hp in hook_points: # webs on the hooks
 		_cobweb(hp + Vector3(0, 3.0, 0), rng.randf() * TAU, 1.0)
+
+# ---------------- «المواقف»: the car park under the apartment block ----------------
+## assets/maps/carpark.glb is one 30 x 20 m module with a 3 m ceiling, split into named
+## pieces by tools/split_glb.py (CC0 model by Innerscene Corp). The map repeats the module
+## in a grid and leaves a wall or a stair core out here and there, so the bays join into one
+## floor you can run around. Everything is scaled up 1.4 so a hook, a car and a running
+## survivor all fit under the slab.
+const GAR_W := 30.0   # module size in the model's own units
+const GAR_D := 20.0
+const GAR_H := 3.0
+const GAR_S := 1.4    # scale applied to the whole thing
+const GAR_COLS := 5
+const GAR_ROWS := 7
+const GAR_COL_X := [7.5, 15.0, 22.5, 30.0] # the columns inside a module
+const GAR_COL_Z := [-9.0, -15.0]
+const GAR_BAY_Z := [-17.6, -6.5]           # the two rows of parking bays
+const GAR_AISLE_Z := -12.0                 # the driving aisle between them
+
+## The world position of a module's own origin (its north-west corner, floor level).
+func _gar_origin(c: int, r: int) -> Vector3:
+	return Vector3(-GAR_W * GAR_S * GAR_COLS / 2.0 + c * GAR_W * GAR_S, 0.0,
+		-GAR_D * GAR_S * GAR_ROWS / 2.0 + (r + 1) * GAR_D * GAR_S)
+
+## A point given in module coordinates -> the world.
+func _gar(c: int, r: int, mx: float, mz: float, my := 0.0) -> Vector3:
+	return _gar_origin(c, r) + Vector3(mx, my, mz) * GAR_S
+
+func _gar_solid(c: int, r: int, x0: float, x1: float, z0: float, z1: float) -> void:
+	var a := _gar(c, r, x0, z0)
+	var b := _gar(c, r, x1, z1)
+	garage_solids.append([minf(a.x, b.x), maxf(a.x, b.x), minf(a.z, b.z), maxf(a.z, b.z)])
+
+## Nothing solid within `pad` of this spot (and inside the floor, not out by the wall).
+func _gar_free(x: float, z: float, pad: float) -> bool:
+	var ex: float = GAR_W * GAR_S * GAR_COLS / 2.0
+	var ez: float = GAR_D * GAR_S * GAR_ROWS / 2.0
+	if absf(x) > ex - pad or absf(z) > ez - pad: return false
+	for s in garage_solids:
+		if x > s[0] - pad and x < s[1] + pad and z > s[2] - pad and z < s[3] + pad: return false
+	return true
+
+## Take `n` spots out of `src` ([pos, yaw] rows): `gap` is how far they must stay from
+## everything placed so far, `spread` how far they must stay from each other.
+func _gar_pick(src: Array, n: int, spread: float, taken: Array, rng: RandomNumberGenerator, gap := 5.0) -> Array:
+	var out := []
+	for i in _shuffled(src.size(), rng):
+		if out.size() >= n: break
+		var e: Array = src[i]
+		var ok := true
+		for q in taken:
+			if (q as Vector3).distance_to(e[0]) < gap:
+				ok = false
+				break
+		if ok:
+			for q in out:
+				if (q[0] as Vector3).distance_to(e[0]) < spread:
+					ok = false
+					break
+		if ok:
+			taken.append(e[0])
+			out.append(e)
+	return out
+
+## Which module has which pieces, and where the generators, hooks, lockers, pallets,
+## hatches and vault barriers go. All of it comes from the room seed, like every other map.
+func _plan_garage(rng: RandomNumberGenerator) -> void:
+	garage_tiles.clear()
+	garage_solids.clear()
+	for r in GAR_ROWS:
+		for c in GAR_COLS:
+			var pieces := ["aisle", "paint", "cols", "detail"]
+			var core: bool = c == 0 or (c * 3 + r * 2) % 7 == 3 # the west side plus a few inside
+			if core: pieces.append_array(["core", "doors", "lift"])
+			if r > 0 and (c + r) % 3 == 0: pieces.append("wall_s")
+			if not core and (c * 2 + r) % 5 == 2: pieces.append("north_block")
+			garage_tiles.append({"c": c, "r": r, "pieces": pieces})
+			for x in GAR_COL_X:
+				for z in GAR_COL_Z: _gar_solid(c, r, x - 0.25, x + 0.25, z - 0.25, z + 0.25)
+			if core: _gar_solid(c, r, -0.3, 5.1, -20.0, 0.0)
+			if "wall_s" in pieces: _gar_solid(c, r, -0.3, 30.3, -20.35, -19.9)
+			if "north_block" in pieces: _gar_solid(c, r, 5.7, 30.2, -3.85, -0.2)
+	# candidate spots: down the aisles, in the bays, and flat against a core or a plant room
+	var aisle := []
+	var bays := []
+	var walls := []
+	for t in garage_tiles:
+		var c: int = t.c
+		var r: int = t.r
+		for k in 5:
+			var p := _gar(c, r, 4.0 + k * 5.5, GAR_AISLE_Z)
+			if _gar_free(p.x, p.z, 1.6): aisle.append([p, PI / 2.0])
+		for b in GAR_BAY_Z:
+			for k in 6:
+				var p := _gar(c, r, 2.5 + k * 5.0, b)
+				if _gar_free(p.x, p.z, 1.8): bays.append([p, 0.0])
+		if "core" in t.pieces:
+			for k in 3:
+				var p := _gar(c, r, 6.2, -3.5 - k * 6.5)
+				if _gar_free(p.x, p.z, 1.0): walls.append([p, -PI / 2.0])
+		if "north_block" in t.pieces:
+			for k in 3:
+				var p := _gar(c, r, 9.0 + k * 7.0, -4.9)
+				if _gar_free(p.x, p.z, 1.0): walls.append([p, PI])
+	var taken: Array = []
+	for e in _gar_pick(bays + aisle, 7, 34.0, taken, rng, 6.0): gen_points.append(e[0])
+	for e in _gar_pick(aisle, 9, 24.0, taken, rng, 6.0): hook_points.append(e[0])
+	for e in _gar_pick(walls + bays, 10, 14.0, taken, rng, 5.0): locker_points.append(e)
+	for e in _gar_pick(aisle, 9, 18.0, taken, rng, 5.0): pallet_points.append(e)
+	for e in _gar_pick(bays, 5, 44.0, taken, rng, 5.0): hatch_points.append(e[0])
+	# concrete crash barriers you can vault: the only vault spots down here
+	for e in _gar_pick(aisle, 8, 22.0, taken, rng, 5.0):
+		garage_barriers.append(e)
+		window_points.append([e[0] + Vector3(0, 0.55, 0), Vector3(0, 0, 1).rotated(Vector3.UP, e[1])])
+	# the two exit gates, same place as every other map: the ramps out of the basement
+	for g in [[0.0, -WALL, 0.0], [0.0, WALL, PI]]:
+		gate_points.append([Vector3(g[0], 0.0, g[1]), g[2]])
+
+func _build_garage() -> void:
+	var src := (load("res://assets/maps/carpark.glb") as PackedScene).instantiate()
+	var piece := {}
+	for ch in src.get_children():
+		if ch is MeshInstance3D: piece[str(ch.name)] = (ch as MeshInstance3D).mesh
+	src.free()
+	var lift := {"aisle": 0.012, "paint": 0.02, "detail": 0.004} # keep the paint off the slab
+	var shadowed := ["core", "cols", "north_block", "wall_s"]
+	# one MultiMesh per piece per row of modules: a handful of draw calls, and a row is small
+	# enough that the mobile renderer's eight lights per object still land where they should
+	for r in GAR_ROWS:
+		var rows := {}
+		for t in garage_tiles:
+			if int(t.r) != r: continue
+			for name in t.pieces:
+				if not rows.has(name): rows[name] = []
+				rows[name].append(t)
+		for name in rows:
+			if not piece.has(name): continue
+			var list: Array = rows[name]
+			var mm := MultiMesh.new()
+			mm.transform_format = MultiMesh.TRANSFORM_3D
+			mm.mesh = piece[name]
+			mm.instance_count = list.size()
+			for i in list.size():
+				var t: Dictionary = list[i]
+				mm.set_instance_transform(i, Transform3D(Basis.IDENTITY.scaled(Vector3(GAR_S, GAR_S, GAR_S)),
+					_gar_origin(int(t.c), int(t.r)) + Vector3(0, float(lift.get(name, 0.0)), 0)))
+			var mi := MultiMeshInstance3D.new()
+			mi.multimesh = mm
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if name in shadowed else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			add_child(mi)
+			if name == "detail": garage_detail.append(mi)
+	_build_garage_shell()
+	_build_garage_lights()
+	_build_garage_props()
+
+## Collision for the columns, cores and walls, the slab overhead, and the outside wall.
+func _build_garage_shell() -> void:
+	var ceil_y := GAR_H * GAR_S
+	for r in GAR_ROWS:
+		var body := StaticBody3D.new()
+		body.name = "GarageRow%d" % r
+		for t in garage_tiles:
+			if int(t.r) != r: continue
+			var c: int = int(t.c)
+			for x in GAR_COL_X:
+				for z in GAR_COL_Z: _gar_block(body, c, r, x - 0.2, x + 0.2, z - 0.2, z + 0.2)
+			if "core" in t.pieces: _gar_block(body, c, r, -0.25, 5.0, -20.0, 0.0)
+			if "wall_s" in t.pieces: _gar_block(body, c, r, -0.2, 30.2, -20.25, -20.0)
+			if "north_block" in t.pieces: _gar_block(body, c, r, 5.8, 30.1, -3.75, -0.25)
+		add_child(body)
+	# the slab overhead, one strip per row so it is lit by that row's lamps
+	var slab := StaticBody3D.new()
+	slab.name = "GarageCeiling"
+	var w: float = GAR_W * GAR_S * GAR_COLS
+	var d: float = GAR_D * GAR_S
+	for r in GAR_ROWS:
+		var zc: float = -GAR_D * GAR_S * GAR_ROWS / 2.0 + (r + 0.5) * d
+		_box(slab, Vector3(w, 0.5, d), Vector3(0, ceil_y + 0.25, zc), _mat.concrete, true)
+	add_child(slab)
+	# the outside wall of the level, with the two openings that lead to the gates
+	var sides := StaticBody3D.new()
+	sides.name = "GarageWall"
+	var ex: float = w / 2.0
+	var ez: float = GAR_D * GAR_S * GAR_ROWS / 2.0
+	for sx in [-1.0, 1.0]:
+		_box(sides, Vector3(0.5, ceil_y, ez * 2.0), Vector3(sx * ex, ceil_y / 2.0, 0), _mat.concrete, true)
+	for sz in [-1.0, 1.0]:
+		_wall_with_gap(sides, true, sz * ez, -ex, ex, -5.5, 5.5, 0.0, ceil_y, 0.0, ceil_y, _mat.concrete, 0.5)
+	add_child(sides)
+
+## An empty coloured MultiMesh of one box, for the parked cars.
+func _gar_cars(size: Vector3, mat: Material) -> MultiMesh:
+	var bm := BoxMesh.new()
+	bm.size = size
+	bm.material = mat
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	mm.mesh = bm
+	return mm
+
+func _gar_block(body: StaticBody3D, c: int, r: int, x0: float, x1: float, z0: float, z1: float) -> void:
+	var a := _gar(c, r, x0, z0)
+	var b := _gar(c, r, x1, z1)
+	var cs := CollisionShape3D.new()
+	var bs := BoxShape3D.new()
+	bs.size = Vector3(absf(b.x - a.x), GAR_H * GAR_S, absf(b.z - a.z))
+	cs.shape = bs
+	cs.position = Vector3((a.x + b.x) / 2.0, GAR_H * GAR_S / 2.0, (a.z + b.z) / 2.0)
+	body.add_child(cs)
+
+## Fluorescent strips under the slab: a glowing tube over most modules, a dead one here and
+## there, and all of them go out with the blackout.
+func _build_garage_lights() -> void:
+	var tube := _flat(Color(0.86, 0.95, 1.0), 0.4, 0.0, 3.2)
+	var dead := _flat(Color(0.3, 0.32, 0.33), 0.6)
+	var y: float = GAR_H * GAR_S - 0.18
+	for t in garage_tiles:
+		var c: int = int(t.c)
+		var r: int = int(t.r)
+		var lit: bool = (c * 5 + r * 3) % 6 != 4 # one module in six is dark
+		for k in 2:
+			var at := _gar(c, r, 8.0 + k * 13.0, GAR_AISLE_Z, 0.0)
+			at.y = y
+			var strip := MeshInstance3D.new()
+			var bm := BoxMesh.new()
+			bm.size = Vector3(3.6, 0.12, 0.34)
+			bm.material = tube if lit else dead
+			strip.mesh = bm
+			strip.position = at
+			strip.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			add_child(strip)
+		if not lit: continue
+		garage_panels.append(tube)
+		var l := OmniLight3D.new()
+		l.position = _gar(c, r, 14.0, GAR_AISLE_Z) + Vector3(0, y - 0.2, 0)
+		l.light_color = Color(0.82, 0.92, 1.0)
+		l.light_energy = 2.3
+		l.omni_range = 19.0
+		l.shadow_enabled = false
+		add_child(l)
+		_amb_light(l)
+
+## Parked cars in the bays, and the crash barriers survivors vault over. The cars are three
+## MultiMeshes (body, cabin, wheels) with a colour per instance, so a hundred of them cost
+## three draw calls; their collision is one box each.
+func _build_garage_props() -> void:
+	var cols := [Color(0.3, 0.1, 0.08), Color(0.12, 0.16, 0.22), Color(0.35, 0.33, 0.28),
+		Color(0.1, 0.2, 0.14), Color(0.4, 0.4, 0.42), Color(0.22, 0.22, 0.24)]
+	var spots := []
+	var n := 0
+	for t in garage_tiles:
+		var c: int = int(t.c)
+		var r: int = int(t.r)
+		for bi in GAR_BAY_Z.size():
+			for k in 12:
+				n += 1
+				if (c * 7 + r * 5 + k * 3 + bi) % 9 != 0: continue # most bays are empty at night
+				var p := _gar(c, r, 1.25 + k * 2.5, GAR_BAY_Z[bi])
+				if not _gar_free(p.x, p.z, 1.5): continue
+				var busy := false
+				for g in gen_points:
+					if g.distance_to(p) < 4.0: busy = true
+				for h in hook_points:
+					if h.distance_to(p) < 4.0: busy = true
+				for e in pallet_points:
+					if (e[0] as Vector3).distance_to(p) < 3.0: busy = true
+				if busy: continue
+				spots.append([p, (0.0 if bi == 0 else PI) + ((n % 5) - 2) * 0.02, cols[n % cols.size()]])
+	garage_cars = spots.size()
+	var paint := _flat(Color(1, 1, 1), 0.45, 0.5)
+	paint.vertex_color_use_as_albedo = true
+	var glass := _flat(Color(1, 1, 1), 0.3, 0.6)
+	glass.vertex_color_use_as_albedo = true
+	var tire := _flat(Color(0.03, 0.03, 0.03))
+	var body_mm := _gar_cars(Vector3(1.8, 0.7, 4.2), paint)
+	var cabin_mm := _gar_cars(Vector3(1.6, 0.62, 2.1), glass)
+	var wheel := CylinderMesh.new()
+	wheel.top_radius = 0.36; wheel.bottom_radius = 0.36; wheel.height = 0.24
+	wheel.radial_segments = 8; wheel.rings = 0 # eighty cars: keep the wheels cheap
+	wheel.material = tire
+	var wheel_mm := MultiMesh.new()
+	wheel_mm.transform_format = MultiMesh.TRANSFORM_3D
+	wheel_mm.mesh = wheel
+	wheel_mm.instance_count = spots.size() * 4
+	body_mm.instance_count = spots.size()
+	cabin_mm.instance_count = spots.size()
+	var hulls := StaticBody3D.new()
+	hulls.name = "ParkedCars"
+	for i in spots.size():
+		var at: Vector3 = spots[i][0]
+		var yaw: float = spots[i][1]
+		var col: Color = spots[i][2]
+		var b3 := Basis(Vector3.UP, yaw)
+		body_mm.set_instance_transform(i, Transform3D(b3, at + Vector3(0, 0.7, 0)))
+		body_mm.set_instance_color(i, col)
+		cabin_mm.set_instance_transform(i, Transform3D(b3, at + b3 * Vector3(0, 1.35, -0.2)))
+		cabin_mm.set_instance_color(i, col.darkened(0.35))
+		var w := 0
+		for wx in [-0.9, 0.9]:
+			for wz in [-1.35, 1.35]:
+				wheel_mm.set_instance_transform(i * 4 + w, Transform3D(b3 * Basis(Vector3.BACK, PI / 2.0), at + b3 * Vector3(wx, 0.36, wz)))
+				w += 1
+		var cs := CollisionShape3D.new()
+		var bs := BoxShape3D.new()
+		bs.size = Vector3(1.9, 1.6, 4.3)
+		cs.shape = bs
+		cs.transform = Transform3D(b3, at + Vector3(0, 0.8, 0))
+		hulls.add_child(cs)
+	add_child(hulls)
+	for mm in [body_mm, cabin_mm, wheel_mm]:
+		var mi := MultiMeshInstance3D.new()
+		mi.multimesh = mm
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(mi)
+	var barrier := _flat(Color(0.38, 0.37, 0.35), 0.9)
+	for b in garage_barriers:
+		var body := StaticBody3D.new()
+		body.position = b[0]
+		body.rotation.y = b[1]
+		_box(body, Vector3(3.2, 0.95, 0.45), Vector3(0, 0.47, 0), barrier)
+		_mesh_box(body, Vector3(3.3, 0.12, 0.6), Vector3(0, 0.98, 0), _flat(Color(0.75, 0.62, 0.1), 0.6))
+		add_child(body)

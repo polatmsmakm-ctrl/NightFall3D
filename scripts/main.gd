@@ -1162,7 +1162,7 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 	minimap.draw_rect(Rect2(o, Vector2(side, side)), Color(0.02, 0.03, 0.05, 0.9 if big else 0.6))
 	minimap.draw_rect(Rect2(o, Vector2(side, side)), Color(1, 1, 1, 0.5), false, 2.0)
 	var wl := NightWorld.WALL * k
-	minimap.draw_rect(Rect2(c - Vector2(wl, wl), Vector2(wl, wl) * 2.0), Color(0.2, 0.17, 0.11, 0.55) if world.map_id in ["fareej", "rubkhali"] else Color(0.1, 0.13, 0.1, 0.55))
+	minimap.draw_rect(Rect2(c - Vector2(wl, wl), Vector2(wl, wl) * 2.0), Color(0.2, 0.17, 0.11, 0.55) if world.map_id in ["fareej", "rubkhali"] else (Color(0.12, 0.12, 0.13, 0.6) if world.map_id == "garage" else Color(0.1, 0.13, 0.1, 0.55)))
 	if world.map_id == "fareej": # streets
 		for st in [[-30.0, -47.0, 150.0, 7.0], [-30.0, 47.0, 150.0, 7.0], [-28.0, 0.0, 142.0, 8.0], [-13.0, 0.0, 7.0, 94.0]]:
 			minimap.draw_rect(Rect2(c + Vector2(st[0] - st[2] / 2.0, st[1] - st[3] / 2.0) * k, Vector2(st[2], st[3]) * k), Color(0.32, 0.32, 0.34))
@@ -1179,12 +1179,29 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 		minimap.draw_rect(r, Color(0.5, 0.46, 0.38))
 		minimap.draw_rect(r, Color(0.8, 0.76, 0.66), false, 1.0)
 		minimap.draw_line(Vector2(-1.0 * k, b[4] * k / 2.0), Vector2(1.0 * k, b[4] * k / 2.0), Color(0.1, 0.1, 0.1), 2.0) # door
-	var mk: Dictionary = world.market
-	minimap.draw_set_transform(c + Vector2(mk.pos.x, mk.pos.z) * k, -mk.yaw, Vector2.ONE)
-	minimap.draw_rect(Rect2(-Vector2(mk.w, mk.d) * k / 2.0, Vector2(mk.w, mk.d) * k), Color(0.8, 0.25, 0.25))
-	minimap.draw_rect(Rect2(Vector2(-mk.w / 2.0, mk.d / 2.0) * k, Vector2(mk.w, 13.0) * k), Color(0.25, 0.25, 0.27)) # parking
-	minimap.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	if big: _map_text(c + Vector2(mk.pos.x + 8.0, mk.pos.z + 3.0) * k, "السوق", 16, Color(1, 0.7, 0.7))
+	if world.map_id == "garage": # the car park: the stair cores and the cross walls, no market
+		for t in world.garage_tiles:
+			var tc: int = int(t.c)
+			var tr: int = int(t.r)
+			if "core" in t.pieces:
+				var a0: Vector3 = world._gar(tc, tr, -0.25, -20.0)
+				var a1: Vector3 = world._gar(tc, tr, 5.0, 0.0)
+				minimap.draw_rect(Rect2(c + Vector2(a0.x, a0.z) * k, Vector2(a1.x - a0.x, a1.z - a0.z) * k), Color(0.45, 0.45, 0.48))
+			if "wall_s" in t.pieces:
+				var w0: Vector3 = world._gar(tc, tr, -0.2, -20.1)
+				var w1: Vector3 = world._gar(tc, tr, 30.2, -20.1)
+				minimap.draw_line(c + Vector2(w0.x, w0.z) * k, c + Vector2(w1.x, w1.z) * k, Color(0.5, 0.5, 0.52), 2.0)
+			if "north_block" in t.pieces:
+				var b0: Vector3 = world._gar(tc, tr, 5.8, -3.75)
+				var b1: Vector3 = world._gar(tc, tr, 30.1, -0.25)
+				minimap.draw_rect(Rect2(c + Vector2(b0.x, b0.z) * k, Vector2(b1.x - b0.x, b1.z - b0.z) * k), Color(0.38, 0.38, 0.4))
+	else:
+		var mk: Dictionary = world.market
+		minimap.draw_set_transform(c + Vector2(mk.pos.x, mk.pos.z) * k, -mk.yaw, Vector2.ONE)
+		minimap.draw_rect(Rect2(-Vector2(mk.w, mk.d) * k / 2.0, Vector2(mk.w, mk.d) * k), Color(0.8, 0.25, 0.25))
+		minimap.draw_rect(Rect2(Vector2(-mk.w / 2.0, mk.d / 2.0) * k, Vector2(mk.w, 13.0) * k), Color(0.25, 0.25, 0.27)) # parking
+		minimap.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		if big: _map_text(c + Vector2(mk.pos.x + 8.0, mk.pos.z + 3.0) * k, "السوق", 16, Color(1, 0.7, 0.7))
 	for i in world.hook_points.size():
 		var hp: Vector3 = world.hook_points[i]
 		var used := rules.hook_user(i) != ""
@@ -1218,7 +1235,9 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 		Color(1, 0.3, 0.3) if my_role == "killer" else Color(1, 1, 1))
 	if big:
 		var ly := o.y + side + 22.0
-		var items := [["■", Color(1, 0.85, 0.2), "مولد"], ["■", Color(0.4, 1, 0.5), "مولد شغال"], ["✕", Color(0.75, 0.3, 0.3), "خطاف"], ["▬", Color(1, 0.3, 0.25), "بوابة"], ["■", Color(0.8, 0.25, 0.25), "السوق"]]
+		var items := [["■", Color(1, 0.85, 0.2), "مولد"], ["■", Color(0.4, 1, 0.5), "مولد شغال"], ["✕", Color(0.75, 0.3, 0.3), "خطاف"], ["▬", Color(1, 0.3, 0.25), "بوابة"]]
+		if world.map_id == "garage": items.append(["■", Color(0.45, 0.45, 0.48), "درج"]) # the stair cores
+		else: items.append(["■", Color(0.8, 0.25, 0.25), "السوق"])
 		var lx := o.x
 		for it in items:
 			_map_text(Vector2(lx, ly), it[0], 18, it[1])

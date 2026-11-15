@@ -10,7 +10,7 @@ Owner: Rashid (Arabic UI, plays with friends, installs the IPA with Sideloadly).
 
 ## Files
 - `scripts/main.gd` — the game scene: local player (survivor third person / killer first person), touch HUD, remote players, audio, minimap, quick signals.
-- `scripts/world.gd` (`NightWorld`) — procedural maps (`forest`, `village`, `fareej`, `rubkhali`): terrain, wall + gates, buildings/houses, the market, props, generators, hooks, lockers, pallets, hatches. `configure(map, seed, theme)` decides the layout; `build()` creates nodes over several frames.
+- `scripts/world.gd` (`NightWorld`) — procedural maps (`forest`, `village`, `fareej`, `rubkhali`, `garage`): terrain, wall + gates, buildings/houses, the market, props, generators, hooks, lockers, pallets, hatches. `configure(map, seed, theme)` decides the layout; `build()` creates nodes over several frames.
 - `scripts/rules.gd` (`Rules`) — match rules used in trial (offline) mode. **`server/rules.js` is the same logic for online play — change both together.**
 - `scripts/net.gd` (autoload `Net`) — WebSocket client, username, friends list, XP, total escapes and kills (all in `user://profile.cfg`), plus `level_progress()` for the XP bar.
 - `scripts/graphics.gd` (autoload `Gfx`) — the settings panel (sound + graphics), FPS modes, adaptive quality governor. `open_settings()` opens it from a menu button; the gear itself is always on screen.
@@ -26,6 +26,10 @@ Owner: Rashid (Arabic UI, plays with friends, installs the IPA with Sideloadly).
 - `scripts/loading.gd` (`NFLoading`) — the map-building screen: map name, a painted preview of that map, a random Arabic tip, progress from `world.build_step / NightWorld.BUILD_STEPS`.
 - `scripts/results.gd` (`NFResults`) — end of round: first the victory shot if anyone got out (`_build_victory`: the escaped survivors at a lit gate, the camera circling them for 5 s, «نجوا!» and their names; dead players are not in it), then everyone on a dark stage (escaped standing on `idle`, dead lying on `dying`), names and points under each one (`unproject_position`), the XP bar filling itself. `setup()` takes `victory` — the rows whose state is `escaped`, built in `main._show_results`. The camera carries its own `environment`, and the stage sits 600 m above the map.
 - `scripts/character_rig.gd` — loads a character GLB and retargets the Mixamo animation GLBs (`assets/anims`) onto it in place. The three emotes (`wave`, `dance`, `clap`) have no GLB: `_emote_anim()` poses them on the same skeleton in code, and a real clip dropped into `assets/anims` takes over automatically. These characters' rest pose is a **T-pose in a Z-down skeleton space** (up is `-Z`, they face `+Y`, the right arm lies along `-X`), so `_emote_world()` writes rotations in that frame and `_emote_anim()` turns each one into a local bone rotation with `rest * (G⁻¹ · R · G)`. `tools/bones.tscn` prints the axes and where the hands end up — run it before touching the poses.
+- `assets/maps/carpark.glb` — the only modelled map piece in the game: one 30 x 20 m car-park
+  module (CC0, Innerscene Corp) split into named pieces (`slab aisle paint detail doors lift core
+  wall_s north_block cols`) by `tools/split_glb.py`, which also shrinks the textures. Re-run that
+  script if the model is ever replaced; the garage map picks the pieces per module.
 - `assets/chars` — the owner's 5 characters (SF3D meshes rigged to the Mixamo skeleton). `assets/sfx` — the owner's sounds (mp3) plus synthesized ones (wav).
 - `tools/*.gd|tscn` — headless tests (not exported).
 
@@ -49,13 +53,14 @@ godot --headless --path . res://tools/dev.tscn     # audio buses, volumes, the h
 godot --headless --path . res://tools/event.tscn   # the round's event, adhan, doors, blackout, fog, lights
 godot --headless --path . res://tools/feel.tscn    # haptics switch, camera moves
 godot --headless --path . res://tools/win.tscn      # group rescue, camp by time of day, victory screen
+godot --headless --path . res://tools/garage.tscn   # the car park: modules, objectives, walking, blackout
 node server/test.js                                # room code, join by code, theme, emote and signal relay
 NF_URL=ws://127.0.0.1:8099 godot --headless --path . res://tools/online.tscn   # needs server + a bot
 ```
 Screenshots — `tools/shot.tscn` for the interface, `tools/shot2.tscn` for the desert, the themes, the emotes
 and the jumpscare, `tools/shot4.tscn` for the sound settings and the hidden tools, `tools/shot6.tscn` for the
 doors, the blackout, the fog and the alarm, `tools/shot7.tscn` for the camp by time of day, the shared
-unhook and the victory screen:
+unhook and the victory screen, `tools/shot8.tscn` for the car park:
 ```
 NF_SHOTS=/tmp/shots LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a godot --rendering-driver opengl3 \
   --resolution 1564x720 --path . res://tools/shot.tscn      # software GL: ~15 min
@@ -99,6 +104,20 @@ Every map keeps the same skeleton: perimeter wall, two gates with a long escape 
 - `forest` — hills, pine forest, shacks.
 - `village` — a grid of abandoned houses.
 - `fareej` — a Kuwaiti neighbourhood: walled houses, streets, mosque, flag, the lit «ديوان راشد الشمري».
+- `garage` «المواقف» — the car park under an apartment block, and the only map built from a
+  model instead of code (`assets/maps/carpark.glb`, CC0). `_plan_garage` repeats the 30 x 20 m
+  module in a 5 x 7 grid, scaled 1.4 (so the floor is 210 x 196 m with a 4.2 m slab overhead),
+  and decides per module which pieces it gets: the stair core on the west edge and a few inside,
+  a cross wall every third module, a plant room here and there — that is what makes the bays
+  join into one floor you can run around instead of 35 sealed boxes. `_build_garage` draws each
+  piece as one MultiMesh per row of modules (≈60 draw calls, and a row is small enough that the
+  mobile renderer's 8 lights per object still land where they should), `_build_garage_shell`
+  adds the box collision, the slab and the outside wall with its two openings toward the gates,
+  `_build_garage_lights` hangs a fluorescent strip over every module (one in six is dead, all of
+  them die in the blackout) and `_build_garage_props` parks ~87 cars as three coloured MultiMeshes
+  with one box collider each, plus the concrete crash barriers that are the only vault spots down
+  there. No trees, grass, market, scatter or doors on this map; footsteps are always `indoor`, and
+  the minimap draws the cores and cross walls instead of the market.
 - `rubkhali` «الربع الخالي» — the Empty Quarter (`_build_rubkhali`): long dunes (`relief = 3.0`, low-frequency noise),
   6 bedouin tents (`_build_tent`, dark woven cloth, open front, rug, cold fire pit, a locker inside) and 5 mud houses
   (`_build_mud_house`, palm beams through the walls). A dust storm: thick sand-coloured fog plus the `dust` particles
@@ -158,7 +177,10 @@ nothing is relayed, the server never hears about it, and nothing is drawn on any
 `tools/dev.tscn` covers the buses, the lock and both tools.
 
 ## Known gaps
-- Models other than the characters are boxes/cylinders built in code; textures are procedural noise.
+- Models other than the characters and the car-park module are boxes/cylinders built in code;
+  textures are procedural noise.
+- The garage has no doors to swing (the model's cores are solid, a leaf would float against a wall)
+  and no windows: vaulting there is over the concrete crash barriers.
 - No baked lighting (needs the editor on a GPU machine).
 - Player positions are client-reported (server only checks distances for interactions).
 - Friends list, XP, escapes and kills live on the phone; usernames are not reserved.

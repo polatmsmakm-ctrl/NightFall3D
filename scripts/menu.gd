@@ -5,7 +5,8 @@ extends CanvasLayer
 
 signal start_game(cfg: Dictionary)
 
-const MAPS := {"forest": "الغابة", "village": "القرية المهجورة", "fareej": "الفريج", "rubkhali": "الربع الخالي"}
+const MAPS := {"forest": "الغابة", "village": "القرية المهجورة", "fareej": "الفريج", "rubkhali": "الربع الخالي",
+	"garage": "المواقف"}
 const THEMES := {"normal": "عادي", "snow": "ثلج", "halloween": "هالوين"}
 const THEME_ICON := {"normal": "moon", "snow": "star", "halloween": "skull"}
 const VERSION := "v1.4"

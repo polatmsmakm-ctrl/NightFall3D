@@ -63,6 +63,11 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   await wait(200);
   ok(mate.room.map === 'rubkhali', 'the new desert map is allowed', mate.room.map);
   ok(mate.room.theme === 'snow', 'the theme reaches the other players', mate.room.theme);
+  host.send({ t: 'set', map: 'garage' });
+  await wait(200);
+  ok(mate.room.map === 'garage', 'the car park map is allowed', mate.room.map);
+  host.send({ t: 'set', map: 'rubkhali' });
+  await wait(150);
   mate.send({ t: 'set', theme: 'halloween' }); // not the host
   await wait(200);
   ok(host.room.theme === 'snow', 'only the host changes the theme');
