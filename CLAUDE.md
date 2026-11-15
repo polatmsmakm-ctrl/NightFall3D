@@ -42,16 +42,22 @@ Owner: Rashid (Arabic UI, plays with friends, installs the IPA with Sideloadly).
   `tools/mapshot.tscn` (one scenic camera per map, HUD off, lit a stop and a half brighter so it
   reads on a small card). Re-run it after a map changes; a map with no picture still gets a button.
 - `tools/rig_character.py` — **the way a new character gets into the game**. Meshy sculpts come out
-  textured but with half a million triangles and no skeleton, so this script puts the mesh in the
-  cast's own space (feet on the floor, same height, same facing), decimates it with pymeshlab's
-  texture-aware collapse so the sculpt's own colour/normal/roughness maps still line up, fits the
-  donor's arm bones onto the sculpt's actual arms (`fit_arms` — a sculpt is never in exactly the
-  donor's T-pose, and binding to bones that do not lie inside the body is what pinches shoulders
-  and stretches forearms), weights every vertex to the bones nearest it, and writes a GLB carrying
-  the donor's joints and hierarchy with inverse bind matrices recomputed for *this* body:
-  `python3 tools/rig_character.py sculpt.glb assets/chars/survivor2.glb assets/chars/survivorN.glb --faces 26000`
-  (`--faces 120000` for the `_hi` close-up copy, `--flip` if the sculpt faces the other way).
-  It needs `pip install pymeshlab` and the system's `libopengl0`.
+  textured but with half a million triangles and no skeleton. The script (v2) puts the T-pose mesh
+  in the cast's space (auto-turned by the toes; `--facing keep|turn` when high heels fool it),
+  **fits the skeleton to the body** (armpit, arm centre line, fingertip, leg centres, torso depth —
+  measured the same way on the donor and the sculpt) and rewrites the joints' *rest translations*
+  so the bones are as long as this body's limbs (v1 only changed the bind matrices, which is what
+  stretched «وردة الليل»'s forearms), welds the UV-seam doubles and decimates **by region** (head,
+  hands and feet keep their own triangle budgets), weights **by body part** (arm chain, leg chain
+  with a soft left/right seam, torso by height; everything past the wrist is the hand, everything
+  under the ankle the foot and toes), smooths the weights on the welded surface so seams do not
+  open, and pads the texture islands so seams do not show dark specks.
+  `python3 tools/rig_character.py sculpt.glb assets/chars/survivorN.glb --faces 30000` and
+  `... survivorN_hi.glb --faces 70000 --tex 2048`. Donor rig: `tools/rig/donor_mixamo22.glb`.
+  Needs `pip install pymeshlab` + the system's `libopengl0`. `tools/shot14.tscn` renders a pose
+  sheet (idle / run / crouch / repair / attack + hand and feet close-ups) to judge a rig.
+  `survivor1` «الناجية», `survivor2` «الرحّال», `survivor3` «الشريف» and `survivor8` «وردة الليل» are
+  all made this way, from the owner's textured sculpts; `MALE` in `main.gd` lists the men.
 - `assets/chars` — the owner's 5 characters (SF3D meshes rigged to the Mixamo skeleton). `assets/sfx` — the owner's sounds (mp3) plus synthesized ones (wav).
 - `tools/*.gd|tscn` — headless tests (not exported).
 

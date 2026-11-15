@@ -11,7 +11,7 @@ const NATURAL := {"walk": 1.3, "run": 3.7, "sprint": 5.2, "crouchwalk": 1.0, "in
 const ACCEL := 20.0
 const DECEL := 28.0
 const SFX := ["gate", "heart", "breath", "steps_out", "steps_in", "gen_run", "chase", "ambient", "doom", "rope", "male_pain", "scream1", "scream2", "oof1", "oof2", "oof3"]
-const MALE := ["survivor1", "killer"] # the other characters use the female voice clips
+const MALE := ["survivor2", "survivor3", "killer"] # the other characters use the female voice clips
 const TERROR_RADIUS := 24.0 # survivors start to feel the killer inside this distance
 ## quick signals: what the three buttons say, their icon, and how they look on a team-mate's screen
 const SIG_TEXT := ["تعال هني", "القاتل هني", "قاعد أصلّح", "باب"]  # the fourth is local only: a door somebody heard
