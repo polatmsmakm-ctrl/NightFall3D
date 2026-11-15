@@ -147,9 +147,8 @@ static func draw(ci: CanvasItem, name: String, c: Vector2, size: float, col: Col
 		"fog": # three drifting bands
 			for k in 3:
 				var fy: float = -0.34 + k * 0.34
-				var off: float = 0.12 * (1.0 if k == 1 else -1.0)
-				_bar(ci, c, size, -0.62 + off, fy, 0.5 + off, fy, col, w * 1.1)
-				ci.draw_circle(_u(c, size, 0.56 + off, fy), size * w * 0.55 / 2.0, col)
+				var off: float = 0.14 * (1.0 if k == 1 else -1.0)
+				_bar(ci, c, size, -0.6 + off, fy, 0.46 + off, fy, col, w)
 		"sun": # the Empty Quarter plays in daylight, so its countdown is a sun
 			ci.draw_circle(c, size * 0.32, col)
 			for k in 8:

@@ -1019,7 +1019,9 @@ func _flat(c: Color, rough := 0.8, metal := 0.0, glow := 0.0) -> StandardMateria
 		m.emission_energy_multiplier = glow
 	return m
 
-func _sign_text(parent: Node3D, text: String, pos: Vector3, size: int, col: Color) -> void:
+## A lit sign. `yaw` turns it to face the way people come from — a Label3D faces -z, so a sign
+## read from the +z side is mirrored unless it is turned round.
+func _sign_text(parent: Node3D, text: String, pos: Vector3, size: int, col: Color, yaw := 0.0) -> void:
 	var l := Label3D.new()
 	l.text = text
 	l.font = Net.font
@@ -1028,6 +1030,7 @@ func _sign_text(parent: Node3D, text: String, pos: Vector3, size: int, col: Colo
 	l.modulate = col
 	l.outline_size = 0
 	l.position = pos
+	l.rotation.y = yaw
 	parent.add_child(l)
 
 func _wall_with_gap(parent: Node3D, along_x: bool, fixed: float, from: float, to: float, gap_a: float, gap_b: float, y0: float, h: float, gap_low: float, gap_high: float, mat: Material, thick := 0.3) -> void:
@@ -2798,8 +2801,25 @@ func _build_garage_roof(w: float) -> void:
 		body.add_child(l2)
 		_amb_light(l2)
 		_mesh_box(body, Vector3(0.14, 3.4, 0.14), at + Vector3(0, 1.7, 0), _mat.metal)
+	# lamps spread over the deck, so the roof is somewhere you can see and be seen
+	var deck := [Vector3(-70, 0, -62), Vector3(-24, 0, 34), Vector3(28, 0, -30), Vector3(64, 0, 58),
+		Vector3(-78, 0, 44), Vector3(10, 0, 72)]
+	for at in deck:
+		var p := Vector3(at.x, GAR_ROOF, at.z)
+		_mesh_box(body, Vector3(0.16, 4.0, 0.16), p + Vector3(0, 2.0, 0), _mat.metal)
+		_mesh_box(body, Vector3(0.5, 0.14, 0.6), p + Vector3(0, 3.95, 0.3), _flat(Color(1.0, 0.85, 0.55), 0.5, 0.0, 3.0))
+		var dl := OmniLight3D.new()
+		dl.position = p + Vector3(0, 3.7, 0.4)
+		dl.light_color = Color(1.0, 0.84, 0.6)
+		dl.light_energy = 2.6
+		dl.omni_range = 22.0
+		dl.shadow_enabled = false
+		body.add_child(dl)
+		_amb_light(dl)
+		_blob(p, 1.0)
 	add_child(body)
-	_sign_text(body, "السطح", Vector3((x0 + x1) / 2.0, 3.2, z_foot - 2.0), 90, Color(1.0, 0.85, 0.4))
+	# the sign faces the driver coming up the ramp (they are looking toward +z)
+	_sign_text(body, "السطح", Vector3((x0 + x1) / 2.0, 3.2, z_foot - 2.0), 90, Color(1.0, 0.85, 0.4), PI)
 
 ## An empty coloured MultiMesh of one box, for the parked cars.
 func _gar_cars(size: Vector3, mat: Material) -> MultiMesh:
