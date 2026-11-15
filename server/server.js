@@ -8,7 +8,7 @@ const PORT = process.env.PORT || 8080;
 const MAX_PLAYERS = 7;
 const MAPS = ['forest', 'village', 'fareej', 'rubkhali', 'garage', 'beach'];
 const THEMES = ['normal', 'fog', 'snow', 'halloween'];
-const CHARS = ['killer', 'survivor1', 'survivor2', 'survivor3', 'survivor4', 'survivor5', 'survivor6', 'survivor7'];
+const CHARS = ['killer', 'survivor1', 'survivor2', 'survivor3', 'survivor4', 'survivor5', 'survivor6', 'survivor7', 'survivor8'];
 
 const users = new Map();   // lowercase name -> client
 const rooms = new Map();   // code -> room

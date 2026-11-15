@@ -31,6 +31,8 @@ var misty := false
 var pivot: Node3D
 var cam: Camera3D
 var key_light: OmniLight3D
+var fill_light: OmniLight3D   # the cool side that opens the shadows
+var back_light: OmniLight3D   # the rim behind the character
 var focused := false
 var _focus := 0.0
 var _slide := 0.0
@@ -348,13 +350,30 @@ func _ready() -> void:
 	rim.light_energy = 1.4
 	rim.omni_range = 5.0
 	add_child(rim)
-	# a soft key light in front of the stand, so the chosen character is not a silhouette
+	# the stand is lit the way a photographer would do it: a warm key in front and to one side,
+	# a cool fill on the other to open the shadows, and a hard rim behind to cut the character
+	# out of the dark. It is three small lights and it is what makes the model read.
 	key_light = OmniLight3D.new()
-	key_light.position = STAND + Vector3(0.5, 1.9, 1.7)
-	key_light.light_color = Color(1.0, 0.86, 0.72)
-	key_light.light_energy = 1.9
-	key_light.omni_range = 6.0
+	key_light.position = STAND + Vector3(0.95, 2.05, 1.75)
+	key_light.light_color = Color(1.0, 0.88, 0.74)
+	key_light.light_energy = 2.4
+	key_light.omni_range = 6.5
+	key_light.light_specular = 1.1
 	add_child(key_light)
+	fill_light = OmniLight3D.new()
+	fill_light.position = STAND + Vector3(-1.5, 1.5, 1.3)
+	fill_light.light_color = Color(0.55, 0.68, 1.0)
+	fill_light.light_energy = 0.9
+	fill_light.omni_range = 6.0
+	fill_light.shadow_enabled = false
+	add_child(fill_light)
+	back_light = OmniLight3D.new()
+	back_light.position = STAND + Vector3(-0.6, 2.3, -1.5)
+	back_light.light_color = Color(0.9, 0.95, 1.0)
+	back_light.light_energy = 2.6
+	back_light.omni_range = 5.0
+	back_light.shadow_enabled = false
+	add_child(back_light)
 	pivot = Node3D.new()
 	pivot.name = "Pivot"
 	add_child(pivot)
@@ -455,7 +474,7 @@ func preview(char_id: String, label := "", dir := 0.0) -> void:
 	if char_id == "": return
 	me_rig = CharacterRig.new()
 	add_child(me_rig)
-	me_rig.setup(char_id, ["idle", "campfire"] + EMOTES)
+	me_rig.setup(char_id, ["idle", "campfire"] + EMOTES, true) # the one you are looking at, in detail
 	me_rig.play("idle")
 	_slide_from = STAND + Vector3(dir * 1.9, 0.0, 0.35)
 	_slide = 1.0 if dir != 0.0 else 0.0
@@ -553,7 +572,9 @@ func _process(dt: float) -> void:
 		var e: float = _focus * _focus * (3.0 - 2.0 * _focus) # smoothstep
 		cam.position = (CAM_IDLE[0] as Vector3).lerp(CAM_CHAR[0], e)
 		cam.rotation = (CAM_IDLE[1] as Vector3).lerp(CAM_CHAR[1], e)
-	key_light.light_energy = lerpf(0.9, 2.1, _focus)
+	key_light.light_energy = lerpf(0.9, 2.6, _focus) # all three come up as the camera moves in
+	fill_light.light_energy = lerpf(0.25, 1.0, _focus)
+	back_light.light_energy = lerpf(0.4, 2.8, _focus)
 	if _slide > 0.0 and me_rig:
 		_slide = maxf(_slide - dt * 3.4, 0.0)
 		var k: float = 1.0 - _slide

@@ -23,8 +23,13 @@ var skeleton: Skeleton3D
 var player := AnimationPlayer.new()
 var current := ""
 
-func setup(char_name: String, anims: Array = ANIMS) -> void:
-	model = (load("res://assets/chars/%s.glb" % char_name) as PackedScene).instantiate()
+## `close_up` loads <char>_hi.glb when the owner has made one: the same sculpt at four or five
+## times the detail, for the character select and the results stage where the camera is right in
+## front of the character. The round itself always uses the small one.
+func setup(char_name: String, anims: Array = ANIMS, close_up := false) -> void:
+	var body_path := "res://assets/chars/%s%s.glb" % [char_name, "_hi" if close_up else ""]
+	if not ResourceLoader.exists(body_path): body_path = "res://assets/chars/%s.glb" % char_name
+	model = (load(body_path) as PackedScene).instantiate()
 	add_child(model)
 	skeleton = model.find_children("*", "Skeleton3D", true, false)[0]
 	player.name = "Anim"

@@ -25,6 +25,10 @@ Owner: Rashid (Arabic UI, plays with friends, installs the IPA with Sideloadly).
 - `scripts/controls.gd` (`NFControls`) — where the touch buttons are and how big, per role, in `user://controls.cfg`. Positions are a fraction of the safe area, radii are px of the 1280x720 design viewport; `DEF` is the shipped layout. `scripts/controls_edit.gd` (`NFControlsEdit`) is the drag-and-resize editor (menu → الاسم والسيرفر, or the in-game settings panel).
 - `scripts/loading.gd` (`NFLoading`) — the map-building screen: map name, a painted preview of that map, a random Arabic tip, progress from `world.build_step / NightWorld.BUILD_STEPS`.
 - `scripts/results.gd` (`NFResults`) — end of round: first the victory shot if anyone got out (`_build_victory`: the escaped survivors at a lit gate, the camera circling them for 5 s, «نجوا!» and their names; dead players are not in it), then everyone on a dark stage (escaped standing on `idle`, dead lying on `dying`), names and points under each one (`unproject_position`), the XP bar filling itself. `setup()` takes `victory` — the rows whose state is `escaped`, built in `main._show_results`. The camera carries its own `environment`, and the stage sits 600 m above the map.
+- `assets/chars/<char>_hi.glb` — an optional close-up copy of a character at four or five times
+  the triangles. `CharacterRig.setup(char, anims, close_up := true)` loads it, and only the two
+  places where the camera is right in front of a character use it: the character select stand and
+  the victory shot. The round itself always loads the small one.
 - `scripts/character_rig.gd` — loads a character GLB and retargets the Mixamo animation GLBs (`assets/anims`) onto it in place. The three emotes (`wave`, `dance`, `clap`) have no GLB: `_emote_anim()` poses them on the same skeleton in code, and a real clip dropped into `assets/anims` takes over automatically. These characters' rest pose is a **T-pose in a Z-down skeleton space** (up is `-Z`, they face `+Y`, the right arm lies along `-X`), so `_emote_world()` writes rotations in that frame and `_emote_anim()` turns each one into a local bone rotation with `rest * (G⁻¹ · R · G)`. `tools/bones.tscn` prints the axes and where the hands end up — run it before touching the poses.
 - `assets/maps/carpark.glb` — the only modelled map piece in the game: one 30 x 20 m car-park
   module (CC0, Innerscene Corp) split into named pieces (`slab aisle paint detail doors lift core
@@ -37,6 +41,17 @@ Owner: Rashid (Arabic UI, plays with friends, installs the IPA with Sideloadly).
 - `assets/mapshots/<map>.png` — the 512x288 preview of each map shown on the picker, rendered by
   `tools/mapshot.tscn` (one scenic camera per map, HUD off, lit a stop and a half brighter so it
   reads on a small card). Re-run it after a map changes; a map with no picture still gets a button.
+- `tools/rig_character.py` — **the way a new character gets into the game**. Meshy sculpts come out
+  textured but with half a million triangles and no skeleton, so this script puts the mesh in the
+  cast's own space (feet on the floor, same height, same facing), decimates it with pymeshlab's
+  texture-aware collapse so the sculpt's own colour/normal/roughness maps still line up, fits the
+  donor's arm bones onto the sculpt's actual arms (`fit_arms` — a sculpt is never in exactly the
+  donor's T-pose, and binding to bones that do not lie inside the body is what pinches shoulders
+  and stretches forearms), weights every vertex to the bones nearest it, and writes a GLB carrying
+  the donor's joints and hierarchy with inverse bind matrices recomputed for *this* body:
+  `python3 tools/rig_character.py sculpt.glb assets/chars/survivor2.glb assets/chars/survivorN.glb --faces 26000`
+  (`--faces 120000` for the `_hi` close-up copy, `--flip` if the sculpt faces the other way).
+  It needs `pip install pymeshlab` and the system's `libopengl0`.
 - `assets/chars` — the owner's 5 characters (SF3D meshes rigged to the Mixamo skeleton). `assets/sfx` — the owner's sounds (mp3) plus synthesized ones (wav).
 - `tools/*.gd|tscn` — headless tests (not exported).
 
@@ -91,7 +106,9 @@ NF_SHOTS=/tmp/shots LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a godot --rendering-driver
 
 ## The interface (rebuilt)
 - **Buttons**: everything goes through `NFUI.dress()` — dark scratched plate, dry-blood edge, a drawn icon, and `NFUI.click()`, which plays `assets/sfx/ui_click.mp3` or `click.mp3` **only if the owner drops one in**; there is no file yet, so menu clicks are silent on purpose (nothing is ever synthesized).
-- **Character select**: menu page `chars`. The chosen character stands at `NFLobby.STAND` in front of the fire, the camera eases from `CAM_IDLE` to `CAM_CHAR`, and a swipe over the right side of the screen (or ‹ ›) steps the carousel; the new one slides in from the side it came from. Online it still goes through `{t:"set", char:…}` — `want_char` holds the preview until the room list agrees; in trial mode it sets `off_char` and the killer is in the list too.
+- **Character select**: the stand is lit like a photographer would: a warm key in front and to one
+  side, a cool fill opposite it, and a hard rim behind, all three coming up as the camera moves in
+  (`NFLobby`: `key_light` / `fill_light` / `back_light`). Menu page `chars`. The chosen character stands at `NFLobby.STAND` in front of the fire, the camera eases from `CAM_IDLE` to `CAM_CHAR`, and a swipe over the right side of the screen (or ‹ ›) steps the carousel; the new one slides in from the side it came from. Online it still goes through `{t:"set", char:…}` — `want_char` holds the preview until the room list agrees; in trial mode it sets `off_char` and the killer is in the list too.
 - **Player card** (top corner, `GameMenu._draw_card`): name, level, XP bar, total escapes and kills.
 - **HUD buttons**: icon + small Arabic label, context icons from `NFControls.CTX_ICON`; the rings for battery / power cooldown / swing cooldown are unchanged.
 - **Team bar** (`main._draw_team`): one portrait per survivor along the top — character colour, state ring, state glyph, hook countdown ring and seconds, a pip per hook survived, a gold ring around me. The killer sees it as well; **it never shows positions**, and the killer's minimap still has no player dots.
@@ -251,6 +268,8 @@ runtime instead:
   rises (or while you are down / hooked). Off on the lowest graphics preset.
 
 ## Known gaps
+- `survivor8` «وردة الليل» is the first character with the owner's own textures (colour + normal +
+  metallic-roughness from the sculpt). The others are still painted by body zones.
 - Models other than the characters and the car-park module are boxes/cylinders built in code;
   textures are procedural noise.
 - The garage has no doors to swing (the model's cores are solid, a leaf would float against a wall)
