@@ -144,6 +144,12 @@ static func draw(ci: CanvasItem, name: String, c: Vector2, size: float, col: Col
 				var a2: float = -PI / 2.0 + (k - 1) * 0.5
 				ci.draw_line(c + Vector2(cos(a2), sin(a2)) * size * 0.42, c + Vector2(cos(a2), sin(a2)) * size * 0.56, Color(col, col.a * 0.8), w * 0.8, true)
 		"moon": _moon(ci, c, size, col)
+		"fog": # three drifting bands
+			for k in 3:
+				var fy: float = -0.34 + k * 0.34
+				var off: float = 0.12 * (1.0 if k == 1 else -1.0)
+				_bar(ci, c, size, -0.62 + off, fy, 0.5 + off, fy, col, w * 1.1)
+				ci.draw_circle(_u(c, size, 0.56 + off, fy), size * w * 0.55 / 2.0, col)
 		"sun": # the Empty Quarter plays in daylight, so its countdown is a sun
 			ci.draw_circle(c, size * 0.32, col)
 			for k in 8:

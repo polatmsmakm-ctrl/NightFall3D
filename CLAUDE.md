@@ -10,7 +10,7 @@ Owner: Rashid (Arabic UI, plays with friends, installs the IPA with Sideloadly).
 
 ## Files
 - `scripts/main.gd` — the game scene: local player (survivor third person / killer first person), touch HUD, remote players, audio, minimap, quick signals.
-- `scripts/world.gd` (`NightWorld`) — procedural maps (`forest`, `village`, `fareej`, `rubkhali`, `garage`): terrain, wall + gates, buildings/houses, the market, props, generators, hooks, lockers, pallets, hatches. `configure(map, seed, theme)` decides the layout; `build()` creates nodes over several frames.
+- `scripts/world.gd` (`NightWorld`) — procedural maps (`forest`, `village`, `fareej`, `rubkhali`, `garage`, `beach`): terrain, wall + gates, buildings/houses, the market, props, generators, hooks, lockers, pallets, hatches. `configure(map, seed, theme)` decides the layout; `build()` creates nodes over several frames.
 - `scripts/rules.gd` (`Rules`) — match rules used in trial (offline) mode. **`server/rules.js` is the same logic for online play — change both together.**
 - `scripts/net.gd` (autoload `Net`) — WebSocket client, username, friends list, XP, total escapes and kills (all in `user://profile.cfg`), plus `level_progress()` for the XP bar.
 - `scripts/graphics.gd` (autoload `Gfx`) — the settings panel (sound + graphics), FPS modes, adaptive quality governor. `open_settings()` opens it from a menu button; the gear itself is always on screen.
@@ -30,6 +30,13 @@ Owner: Rashid (Arabic UI, plays with friends, installs the IPA with Sideloadly).
   module (CC0, Innerscene Corp) split into named pieces (`slab aisle paint detail doors lift core
   wall_s north_block cols`) by `tools/split_glb.py`, which also shrinks the textures. Re-run that
   script if the model is ever replaced; the garage map picks the pieces per module.
+- `assets/maps/beach.glb` — the lagoon diorama the beach map scatters (palm, wet-sand tile, shells,
+  a creeper; 5 m across, 14k tris). It arrived with **KHR_mesh_quantization required**, which this
+  Godot build refuses to load, so `tools/dequant_glb.py` expanded every packed attribute to float —
+  run that on any model that fails to import with no error message.
+- `assets/mapshots/<map>.png` — the 512x288 preview of each map shown on the picker, rendered by
+  `tools/mapshot.tscn` (one scenic camera per map, HUD off, lit a stop and a half brighter so it
+  reads on a small card). Re-run it after a map changes; a map with no picture still gets a button.
 - `assets/chars` — the owner's 5 characters (SF3D meshes rigged to the Mixamo skeleton). `assets/sfx` — the owner's sounds (mp3) plus synthesized ones (wav).
 - `tools/*.gd|tscn` — headless tests (not exported).
 
@@ -55,6 +62,8 @@ godot --headless --path . res://tools/feel.tscn    # haptics switch, camera move
 godot --headless --path . res://tools/win.tscn      # group rescue, camp by time of day, victory screen
 godot --headless --path . res://tools/garage.tscn   # the car park: modules, objectives, walking, blackout
 godot --headless --path . res://tools/look.tscn     # ground shading, contact shadows, grade pass, drop-in clips/models
+godot --headless --path . res://tools/beach.tscn    # the beach: sand, lagoon, palms, wading
+NF_SHOTS=/tmp/shots godot --headless --path . res://tools/mapshot.tscn  # the six map previews (needs a display)
 node server/test.js                                # room code, join by code, theme, emote and signal relay
 NF_URL=ws://127.0.0.1:8099 godot --headless --path . res://tools/online.tscn   # needs server + a bot
 ```
@@ -89,6 +98,8 @@ NF_SHOTS=/tmp/shots LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a godot --rendering-driver
 - **Moon countdown** (`main._draw_moon`): a red ring filling around a crescent (a sun on `rubkhali`) over `DOOM_TIME`, beating in the last 30 s, with the clock under it.
 - **Quick signals**: the `sig` button opens three messages (تعال هني / القاتل هني / قاعد أصلّح). They draw as an arrow on a ring around the middle of the screen pointing at the sender, with their name and the distance, for `SIG_LIFE` seconds. Online they go through the new `sig` message, relayed to the sender's own side only; in trial mode they only show locally.
 - **Control layout**: `NFControls` + `NFControlsEdit`. Drag any button, resize the selected one with the slider, "إرجاع الأصلي" restores the shipped layout. Saved per role in `user://controls.cfg`; the editor is in the menu settings page and in the in-game settings panel (`Gfx.menu_open` stays true while it is open, so the round ignores touches).
+- **Map picker**: `GameMenu._map_card()` — each map is a card with its rendered preview from
+  `assets/mapshots/` and its Arabic name, three to a row, in both the online lobby and trial mode.
 - **Loading screen**: `NFLoading` while `world.build()` runs, with a drawn preview per map and a random tip from `NFLoading.TIPS`.
 - **Campfire emotes**: `NFLobby.emote(name, k)` plays wave / dance / clap on the right character at the fire and goes
   back to idle after 3.4 s; the menu row sends `{t:"emote", k}` so everyone in the room sees it.
@@ -121,6 +132,21 @@ Every map keeps the same skeleton: perimeter wall, two gates with a long escape 
   with one box collider each, plus the concrete crash barriers that are the only vault spots down
   there. No trees, grass, market, scatter or doors on this map; footsteps are always `indoor`, and
   the minimap draws the cores and cross walls instead of the market.
+  **The roof**: the slab is walkable. A car ramp (`GAR_RAMP_X/Z`, about nine degrees, flush with
+  the floor at the bottom and with the roof at the top) comes up through a hole left in one row of
+  the slab, a parapet runs round the edge, and a bridge carries the **second gate — which is up on
+  the roof at `GAR_ROOF` (4.7 m)** out to the perimeter. The **seventh generator** is up there too,
+  in the open, with one hook beside it. A gate whose `y` is above the ground now gets a taller
+  frame and a wall under its opening (`_build_objectives`), and `main._near` requires the two
+  points to be within 3 m vertically, so you cannot work the roof generator from the floor below.
+- `beach` «الشاطئ» — a lagoon beach: sand (`relief 1.1`), eight beach huts, the market set back
+  from the water, and the sea along the **north** side. `_raw_h` drops the ground by up to 3.4 m
+  north of `BEACH_SHORE` (42 m), the lagoon surface sits at `BEACH_WATER` (-0.55) as one
+  transparent plane with a scrolling normal map, and a collision wall at `BEACH_SHORE + 9` lets
+  you wade in knee-deep but not swim out. `_build_beach` scatters the model's pieces as one
+  MultiMesh per sub-mesh (46 palms, 70 wet-sand patches, 24 shells = **25 draw calls**), plus a
+  foam line along the shore. Objectives never land in the water (`_random_site` and `_free_spot`
+  refuse anything past the shore).
 - `rubkhali` «الربع الخالي» — **the only map that plays in daylight**: a sandstorm at noon with the
   sun in the sky instead of the moon. `shaders/sky.gdshader` has a `sun` uniform (0 everywhere else)
   that replaces the night gradient with ochre dust, kills the stars, turns the disc into a flat white
@@ -138,8 +164,12 @@ Every map keeps the same skeleton: perimeter wall, two gates with a long escape 
   **no collision and no sound**) along seeded waypoint loops; `_step_animals` moves them. The wall is 12 m tall here
   so a dune crest never sees over it.
 
-## Themes (normal / snow / halloween)
+## Themes (normal / fog / snow / halloween)
 Chosen by the host in the room (or in trial mode) and sent with `start`, so everyone builds the same weather.
+**`fog`** «ضباب» is the host's second mood: fog density ×3.1, a low heavy layer, moonlight down to
+0.75 and the colour drained — a night you can hide a killer in. The start-screen camp is **always
+night** now (`NFLobby._time_of_day` no longer follows the phone clock) and it turns misty while the
+room's weather is `fog`, so the menu already shows what the round will look like.
 `NightWorld.configure(map, seed, theme)` applies it: terrain vertex colours, fog, ambient and moonlight, the grass
 and foliage shader tints, and `_snow_cap()` slabs on every roof. Snow turns the falling-leaf particles into flakes and
 `main._make_breath()` gives every character visible breath. Halloween adds `_pumpkin()` (carved, lit, flickering) at

@@ -25,7 +25,7 @@ const TIPS := [
 	"الخيل والبعارين ما يأذونك، بس يشتتون نظر القاتل",
 ]
 const NAMES := {"forest": "الغابة", "village": "القرية المهجورة", "fareej": "الفريج", "rubkhali": "الربع الخالي",
-	"garage": "المواقف"}
+	"garage": "المواقف", "beach": "الشاطئ"}
 const THEME_NAMES := {"snow": "ثلج", "halloween": "هالوين"}
 
 var map_id := "forest"

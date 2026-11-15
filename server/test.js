@@ -66,6 +66,14 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   host.send({ t: 'set', map: 'garage' });
   await wait(200);
   ok(mate.room.map === 'garage', 'the car park map is allowed', mate.room.map);
+  host.send({ t: 'set', map: 'beach' });
+  await wait(200);
+  ok(mate.room.map === 'beach', 'the beach map is allowed', mate.room.map);
+  host.send({ t: 'set', theme: 'fog' });
+  await wait(200);
+  ok(mate.room.theme === 'fog', 'the host can pick the foggy weather', mate.room.theme);
+  host.send({ t: 'set', theme: 'snow' }); // back to what the rest of the checks expect
+  await wait(150);
   host.send({ t: 'set', map: 'rubkhali' });
   await wait(150);
   mate.send({ t: 'set', theme: 'halloween' }); // not the host

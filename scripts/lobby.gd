@@ -81,6 +81,13 @@ func _fire_layer(parent: Node3D, amount: int, life: float, radius: float, rise: 
 	parent.add_child(p)
 	return p
 
+## The weather the room (or the trial-mode menu) has picked.
+static func weather() -> String:
+	if Net.in_room(): return str(Net.room.get("theme", "normal"))
+	return last_theme
+
+static var last_theme := "normal" # the trial-mode pick, so the camp can follow it too
+
 func _ready() -> void:
 	var kit := NightWorld.new() # borrow the world's materials and meshes (never added to the tree)
 	kit._make_materials()
@@ -371,19 +378,20 @@ func _ready() -> void:
 	_time_of_day()
 	kit.free()
 
-## Tests and screenshots pretend it is this hour (and force the mist on or off); -1 = the real clock.
+## Tests and screenshots pretend it is this hour (and force the mist on or off); -1 = normal.
 static var force_hour := -1
 static var force_mist := -1
 
-## Dawn, day, dusk or night, from the clock on the phone, with mist now and then.
-## The camp, the fire and the cast stay exactly as they are; only the light changes.
+## The camp is **always night** — it is a horror game and the owner asked for it. The mist comes
+## from the weather the host picked for the round (ضباب), so the start screen already shows you
+## what you are about to play. force_hour is only for the tests and the screenshots.
 func _time_of_day() -> void:
-	var h: int = force_hour if force_hour >= 0 else int(Time.get_datetime_dict_from_system().get("hour", 21))
+	var h: int = force_hour if force_hour >= 0 else 21
 	if h >= 5 and h < 8: period = "dawn"
 	elif h >= 8 and h < 17: period = "day"
 	elif h >= 17 and h < 20: period = "dusk"
 	else: period = "night"
-	misty = (force_mist == 1) if force_mist >= 0 else (randf() < 0.3)
+	misty = (force_mist == 1) if force_mist >= 0 else (weather() == "fog")
 	var sky_day := 0.0
 	var sky_warm := 0.0
 	var moon_col := Color(0.5, 0.6, 0.95)

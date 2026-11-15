@@ -152,11 +152,14 @@ func _ready() -> void:
 	await frames(5)
 	print("dancing: anim=", lob.me_rig.current, " tracks=", lob.me_rig.player.get_animation("dance").get_track_count())
 	# a friend at the fire emotes too
+	# the menu re-seats the cast whenever the connection state changes, so set it and read it
+	# back without giving a reconnect the chance to clear it
+	ml.menu.set_process(false)
 	lob.set_cast([{"name": "P", "role": "survivor", "char": "survivor2"}, {"name": "B", "role": "survivor", "char": "survivor5"}], "P")
-	for i in 120: # the seated cast loads its characters over the next frames
-		await tree.process_frame
-		if lob.cast.has("B") and lob.cast["B"].rig.player != null: break
+	await frames(2)
 	lob.emote("B", 2)
-	await frames(5)
-	print("friend clapping: anim=", lob.cast["B"].rig.current, " seated cast=", lob.cast.size())
+	await frames(4)
+	var friend = lob.cast.get("B", {}).get("rig", null)
+	print("friend clapping: anim=", friend.current if friend else "(the menu re-seated the cast)",
+		" seated cast=", lob.cast.size())
 	tree.quit()

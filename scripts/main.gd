@@ -1281,8 +1281,10 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 		_map_text(o + Vector2(4, side + 16), "اضغط للتكبير", 13, Color(1, 1, 1, 0.45))
 
 # ---------------- context: what each button would do right now ----------------
+## Close enough to touch: flat distance, and no more than a storey apart — the car park has a
+## generator up on the roof, and you should not be able to work on it from the floor below.
 func _near(a: Vector3, b: Vector3, r: float) -> bool:
-	return Vector2(a.x - b.x, a.z - b.z).length() < r
+	return absf(a.y - b.y) < 3.0 and Vector2(a.x - b.x, a.z - b.z).length() < r
 
 func _update_ctx() -> void:
 	ctx = {}

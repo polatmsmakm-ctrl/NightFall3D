@@ -6,9 +6,9 @@ extends CanvasLayer
 signal start_game(cfg: Dictionary)
 
 const MAPS := {"forest": "الغابة", "village": "القرية المهجورة", "fareej": "الفريج", "rubkhali": "الربع الخالي",
-	"garage": "المواقف"}
-const THEMES := {"normal": "عادي", "snow": "ثلج", "halloween": "هالوين"}
-const THEME_ICON := {"normal": "moon", "snow": "star", "halloween": "skull"}
+	"garage": "المواقف", "beach": "الشاطئ"}
+const THEMES := {"normal": "ليل", "fog": "ضباب", "snow": "ثلج", "halloween": "هالوين"}
+const THEME_ICON := {"normal": "moon", "fog": "fog", "snow": "star", "halloween": "skull"}
 const VERSION := "v1.4"
 const CHARS := {"killer": "القاتل", "survivor1": "ناجي 1", "survivor2": "الحمراء", "survivor3": "ناجي 3", "survivor4": "ناجي 4", "survivor5": "المقاتلة", "survivor6": "الممرضة", "survivor7": "الطالبة"}
 const ERRORS := {"no_room": "ما في غرفة بهالكود", "room_full": "الغرفة ممتلئة", "in_game": "اللعبة بدأت بالغرفة",
@@ -122,6 +122,40 @@ func _button(text: String, cb: Callable, parent: Control = null, enabled := true
 	(parent if parent else box).add_child(b)
 	return b
 
+## One map on the picker: a rendered preview of the map with its name under it. The images are
+## real screenshots in assets/mapshots/<id>.png; a map without one still gets a working button.
+func _map_card(id: String, chosen: bool, cb: Callable, parent: Control) -> Button:
+	var b := Button.new()
+	b.custom_minimum_size = Vector2(150, 118)
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.pressed.connect(cb)
+	NFUI.dress(b, "")
+	parent.add_child(b)
+	var v := VBoxContainer.new()
+	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	v.add_theme_constant_override("separation", 2)
+	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.add_child(v)
+	var path := "res://assets/mapshots/%s.png" % id
+	var shot := TextureRect.new()
+	shot.custom_minimum_size.y = 74
+	shot.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	shot.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	shot.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	shot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if ResourceLoader.exists(path): shot.texture = load(path)
+	shot.modulate = Color(1, 1, 1) if chosen else Color(0.72, 0.72, 0.75)
+	v.add_child(shot)
+	var nm := Label.new()
+	nm.text = MAPS.get(id, id)
+	nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	nm.add_theme_font_size_override("font_size", 19)
+	nm.add_theme_color_override("font_color", Color(1, 0.8, 0.35) if chosen else Color(0.85, 0.85, 0.88))
+	nm.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	v.add_child(nm)
+	if chosen: b.modulate = Color(1, 0.88, 0.7)
+	return b
+
 func _edit(key: String, hint: String, parent: Control = null) -> LineEdit:
 	var e := LineEdit.new()
 	e.placeholder_text = hint
@@ -146,6 +180,10 @@ func _status() -> String:
 		"connecting": return "جاري الاتصال بالسيرفر... (أول مرة ممكن تاخذ دقيقة)"
 		"name_taken": return "الاسم مستخدم الحين، غيّره من الإعدادات"
 	return "غير متصل"
+
+## The camp follows the weather the host picked, so the start screen shows the round's mood.
+func _weather_changed() -> void:
+	if lobby and is_instance_valid(lobby): lobby._time_of_day()
 
 func _refresh() -> void:
 	if not visible or box == null: return
@@ -219,6 +257,7 @@ func _sync_lobby(dir := 0.0) -> void:
 	lobby.preview(_my_char(), str(CHARS.get(_my_char(), "")), dir)
 	lobby.focus(page == "chars")
 	lobby.set_cast(Net.room.get("players", []) if Net.in_room() else [], Net.username)
+	_weather_changed()
 
 ## One step along the carousel: the new character slides in, then the labels follow.
 func _step(d: int) -> void:
@@ -367,11 +406,9 @@ func _page_lobby() -> void:
 		var h := _row()
 		var hk := 0
 		for id in MAPS:
-			if hk == 2: h = _row() # four maps: two rows
+			if hk % 3 == 0 and hk > 0: h = _row() # six maps: three to a row
 			hk += 1
-			var b := _button(MAPS[id], func(): Net.send({"t": "set", "map": id}), h)
-			b.add_theme_font_size_override("font_size", 20)
-			if str(r.map) == id: b.modulate = Color(1, 0.75, 0.3)
+			_map_card(id, str(r.map) == id, func(): Net.send({"t": "set", "map": id}), h)
 		var ht := _row()
 		for id in THEMES:
 			var b2 := _button(THEMES[id], func(): Net.send({"t": "set", "theme": id}), ht, true, THEME_ICON[id])
@@ -436,14 +473,12 @@ func _page_offline() -> void:
 	var h := _row()
 	var k := 0
 	for id in MAPS:
-		if k == 2: h = _row()
+		if k % 3 == 0 and k > 0: h = _row()
 		k += 1
-		var b := _button(MAPS[id], func(): off_map = id; _refresh(), h)
-		b.add_theme_font_size_override("font_size", 20)
-		if off_map == id: b.modulate = Color(1, 0.75, 0.3)
+		_map_card(id, off_map == id, func(): off_map = id; _refresh(), h)
 	var ht := _row()
 	for id in THEMES:
-		var b2 := _button(THEMES[id], func(): off_theme = id; _refresh(), ht, true, THEME_ICON[id])
+		var b2 := _button(THEMES[id], func(): off_theme = id; NFLobby.last_theme = id; _weather_changed(); _refresh(), ht, true, THEME_ICON[id])
 		b2.add_theme_font_size_override("font_size", 20)
 		if off_theme == id: b2.modulate = Color(1, 0.75, 0.3)
 	_button("الشخصية — %s" % CHARS.get(off_char, off_char), func(): open("chars"), null, true, "star")

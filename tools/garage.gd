@@ -47,15 +47,16 @@ func _ready() -> void:
 		" doors=", w.door_points.size(), " gates=", w.gate_points.size())
 	# nothing may sit inside a column, a core or a wall
 	var bad := 0
-	var all := []
-	for p in w.gen_points: all.append(p)
-	for p in w.hook_points: all.append(p)
+	var all := []     # everything on the floor
+	var roof := []    # and everything up on the roof
+	for p in w.gen_points: (roof if p.y > 1.0 else all).append(p)
+	for p in w.hook_points: (roof if p.y > 1.0 else all).append(p)
 	for p in w.hatch_points: all.append(p)
 	for e in w.pallet_points: all.append(e[0])
 	for e in w.locker_points: all.append(e[0])
 	for p in all:
 		if not w._gar_free(p.x, p.z, 0.6): bad += 1
-	print("objectives standing in concrete: ", bad)
+	print("objectives standing in concrete: ", bad, "   up on the roof: ", roof.size())
 	# the floor is solid under them and the slab is overhead
 	var floor_hits := 0
 	var ceiling_hits := 0
@@ -63,9 +64,44 @@ func _ready() -> void:
 		if not ray(w, p + Vector3(0, 2.0, 0), p - Vector3(0, 1.0, 0)).is_empty(): floor_hits += 1
 		if not ray(w, p + Vector3(0, 1.0, 0), p + Vector3(0, 9.0, 0)).is_empty(): ceiling_hits += 1
 	print("floor under them: ", floor_hits, "/", all.size(), "   slab over them: ", ceiling_hits, "/", all.size())
+	# ---------- the roof: you can stand on it, walk up to it, and it has the last generator ----------
+	for p in roof:
+		var under := ray(w, p + Vector3(0, 1.5, 0), p - Vector3(0, 0.8, 0))
+		print("roof objective at y=", snappedf(p.y, 0.01), ": slab under it=", not under.is_empty(),
+			"  open sky above=", ray(w, p + Vector3(0, 1.0, 0), p + Vector3(0, 40.0, 0)).is_empty())
+	var ramp_foot := Vector3((NightWorld.GAR_RAMP_X[0] + NightWorld.GAR_RAMP_X[1]) / 2.0, 0, NightWorld.GAR_RAMP_Z[0] - 8.0)
+	var ramp_top := Vector3(ramp_foot.x, NightWorld.GAR_ROOF, NightWorld.GAR_RAMP_Z[1] + 1.0)
+	var steps := 0
+	for i in 13: # walk up the slope and check there is road under every step
+		var f := float(i) / 12.0
+		var at := ramp_foot.lerp(ramp_top, f)
+		if not ray(w, at + Vector3(0, 2.0, 0), at - Vector3(0, 1.2, 0)).is_empty(): steps += 1
+	print("the ramp: solid under ", steps, "/13 steps, rises ", snappedf(NightWorld.GAR_ROOF, 0.1), " m over ",
+		int(NightWorld.GAR_RAMP_Z[1] - NightWorld.GAR_RAMP_Z[0]), " m")
+	# and actually drive up it
+	m.body.position = ramp_foot + Vector3(0, 0.4, 0)
+	m.body.velocity = Vector3.ZERO
+	m.yaw = PI          # face up the slope (+z)
+	m.stick_vec = Vector2(0, -1)
+	m.sprint = true
+	for i in 600: await tree.physics_frame
+	m.stick_vec = Vector2.ZERO
+	m.sprint = false
+	print("walked up the ramp: now at y=", snappedf(m.body.position.y, 0.1),
+		" (roof is ", snappedf(NightWorld.GAR_ROOF, 0.1), ")  made it=", m.body.position.y > NightWorld.GAR_ROOF - 0.6)
+	# the roof generator cannot be worked on from the floor underneath it
+	var rg: Vector3 = roof[0]
+	m.body.position = Vector3(rg.x, 0.3, rg.z)
+	m.body.velocity = Vector3.ZERO
+	for i in 10: await tree.physics_frame
+	print("standing under the roof generator: interact=", m.ctx.get("interact", {}).get("kind", "nothing"))
+	m.body.position = rg + Vector3(1.4, 0.3, 0)
+	for i in 10: await tree.physics_frame
+	print("standing next to it on the roof: interact=", m.ctx.get("interact", {}).get("kind", "nothing"))
 	# the way out: from the middle to each gate opening
 	for g in w.gate_points:
 		var gp: Vector3 = g[0]
+		print("gate at z=", int(gp.z), " sits at y=", snappedf(gp.y, 0.1))
 		var hit := ray(w, Vector3(0, 1.2, signf(gp.z) * (NightWorld.GAR_D * NightWorld.GAR_S * NightWorld.GAR_ROWS / 2.0 - 2.0)),
 			Vector3(0, 1.2, gp.z * 0.97))
 		print("the opening toward the gate at z=", int(gp.z), " is clear: ", hit.is_empty())

@@ -41,6 +41,8 @@ var garage_cars := 0          # parked cars, counted for the headless test
 var ao_blobs: Array = []      # [pos, radius] soft ground shadows, drawn as one MultiMesh
 var ao_mm: MultiMeshInstance3D
 var models_used := 0          # how many props were drawn from a real model this round
+var beach_palms := 0          # palms placed on the beach map
+var beach_props := 0          # wet-sand patches and shells
 var _models := {}             # name -> PackedScene or null
 var pumpkins := 0   # halloween dressing
 var webs := 0
@@ -116,6 +118,7 @@ func _random_site(rng: RandomNumberGenerator, pad: float, lo: float, hi: float) 
 	for k in 200:
 		var p := Vector2.from_angle(rng.randf() * TAU) * rng.randf_range(lo, hi)
 		if absf(p.x) > WALL - 8.0 or absf(p.y) > WALL - 8.0: continue
+		if map_id == "beach" and p.y > BEACH_SHORE - 10.0: continue # keep it out of the water
 		if not in_site(p.x, p.y, pad) and not on_street(p.x, p.y, 1.0): return p
 	return Vector2(lo, lo)
 
@@ -154,6 +157,20 @@ func configure(id: String, seed := 1, th := "normal") -> void:
 		tents = camps.size()
 		for h in [[-40.0, 8.0, 0.2], [26.0, -20.0, 1.2], [-8.0, 52.0, -0.5], [62.0, -86.0, 0.8], [-86.0, -8.0, 1.6]]:
 			buildings.append([h[0], h[1], h[2], 8.0, 6.5, 3.2]) # mud house
+	elif id == "beach": # «الشاطئ»: a lagoon, palms and beach huts, with the sea on the north side
+		noise.seed = 616
+		noise.frequency = 0.009
+		relief = 1.1
+		tree_count = 0        # the palms come from the model, not the procedural tree mesh
+		grass_per_chunk = 45  # beach grass up on the dry sand
+		fog_density = 0.011
+		moon_dir = Vector3(-0.3, 0.38, 0.87).normalized() # the moon over the water
+		var hut := RandomNumberGenerator.new()
+		hut.seed = 2211
+		for h in [[-74.0, -30.0], [-38.0, -58.0], [6.0, -44.0], [52.0, -62.0], [78.0, -18.0],
+				[-60.0, 14.0], [34.0, 8.0], [-10.0, 24.0]]:
+			buildings.append([h[0], h[1], hut.randf() * TAU, hut.randf_range(7.0, 9.5),
+				hut.randf_range(6.0, 7.5), 3.0]) # beach huts
 	elif id == "garage": # «المواقف»: the car park under an apartment block, all concrete and columns
 		noise.seed = 2026
 		relief = 0.0
@@ -187,9 +204,10 @@ func configure(id: String, seed := 1, th := "normal") -> void:
 	for b in buildings:
 		sites.append([b[0], b[1], _raw_h(b[0], b[1]), maxf(b[3], b[4]) * (1.05 if id == "fareej" else 0.75) + 1.0])
 	# the market: a big flat plot on the east side, shop fronts facing the middle of the map
-	var mh := _raw_h(56.0, 2.0)
-	sites.append([56.0, 2.0, mh, 21.0])
-	market = {"pos": Vector3(62.0, mh, 2.0), "yaw": -PI / 2.0, "w": MARKET_W, "d": MARKET_D}
+	var mz: float = -34.0 if id == "beach" else 2.0 # on the beach it sits back from the water
+	var mh := _raw_h(56.0, mz)
+	sites.append([56.0, mz, mh, 21.0])
+	market = {"pos": Vector3(62.0, mh, mz), "yaw": -PI / 2.0, "w": MARKET_W, "d": MARKET_D}
 	var mrot := Basis(Vector3.UP, market.yaw)
 	var mbase: Vector3 = market.pos + Vector3(0, 0.15, 0)
 	# 7 generators out of all the possible spots (beside a front door, or on the market's parking)
@@ -246,6 +264,7 @@ func _plan_trees() -> void:
 ## What the ground is at a position: "indoor" (floors, pavement), "sand" (the bare yards around buildings) or "grass".
 func surface_at(pos: Vector3) -> String:
 	if map_id == "garage": return "indoor" # bare concrete everywhere
+	if map_id == "beach": return "sand"
 	var ml: Vector3 = Basis(Vector3.UP, market.yaw).inverse() * (pos - market.pos)
 	if absf(ml.x) < MARKET_W / 2.0 + 2.0 and ml.z > -MARKET_D / 2.0 - 0.3 and ml.z < MARKET_D / 2.0 + 16.0: return "indoor"
 	for b in buildings:
@@ -255,7 +274,7 @@ func surface_at(pos: Vector3) -> String:
 	return "sand" if (map_id in ["fareej", "rubkhali"] or in_site(pos.x, pos.z, 0.0)) else "grass"
 
 func _sandiness(x: float, z: float) -> float:
-	if map_id in ["fareej", "rubkhali"]: return 1.0
+	if map_id in ["fareej", "rubkhali", "beach"]: return 1.0
 	var v := 0.0
 	for st in sites:
 		var d := Vector2(x - st[0], z - st[1]).length()
@@ -280,7 +299,10 @@ func spawn_point(role: String, slot: int) -> Vector3:
 	return Vector3(p.x, height(p.x, p.y) + 0.3, p.y)
 
 func _raw_h(x: float, z: float) -> float:
-	return (noise.get_noise_2d(x, z) * 2.4 + noise.get_noise_2d(x * 3.0 + 50.0, z * 3.0) * 0.35) * relief
+	var h := (noise.get_noise_2d(x, z) * 2.4 + noise.get_noise_2d(x * 3.0 + 50.0, z * 3.0) * 0.35) * relief
+	if map_id == "beach": # the sand slopes down into the lagoon on the north side
+		h -= smoothstep(BEACH_SHORE - 16.0, BEACH_SHORE + 44.0, z) * 3.4
+	return h
 
 func height(x: float, z: float) -> float:
 	var h := _raw_h(x, z)
@@ -304,6 +326,7 @@ func build() -> void:
 	if map_id == "fareej": _build_fareej()
 	elif map_id == "rubkhali": _build_rubkhali()
 	elif map_id == "garage": _build_garage()
+	elif map_id == "beach": _build_beach()
 	else: _build_buildings()
 	_build_objectives()
 	_build_extras()
@@ -452,6 +475,14 @@ func _build_environment() -> void:
 	env.adjustment_contrast = 1.12
 	env.adjustment_saturation = 0.95
 	match theme:
+		"fog": # a night the killer can hide in: you see a few metres and then nothing
+			env.ambient_light_color = Color(0.17, 0.19, 0.24)
+			env.ambient_light_energy = 0.95
+			env.fog_light_color = Color(0.1, 0.11, 0.13)
+			env.fog_density = fog_density * 3.1
+			env.fog_height_density = 0.3
+			env.adjustment_saturation = 0.72
+			env.adjustment_contrast = 1.05
 		"snow":
 			env.ambient_light_color = Color(0.23, 0.27, 0.38)
 			env.ambient_light_energy = 1.0
@@ -488,6 +519,9 @@ func _build_environment() -> void:
 	moon.light_energy = 1.1
 	if map_id == "rubkhali": moon.light_color = Color(0.78, 0.72, 0.6) # dusty moonlight
 	match theme:
+		"fog":
+			moon.light_color = Color(0.6, 0.68, 0.88)
+			moon.light_energy = 0.75 # the fog eats the moonlight
 		"snow":
 			moon.light_color = Color(0.72, 0.82, 1.0)
 			moon.light_energy = 1.35
@@ -856,14 +890,20 @@ func _build_objectives() -> void:
 	var open_h := 6.0
 	for g in gate_points:
 		var gy: float = g[0].y
+		# a gate up on a roof needs a taller wall around it than one standing on the ground
+		var gtop: float = maxf(top, gy + open_h + 1.5)
+		var gh := gtop - bottom
+		var gmid := (gtop + bottom) / 2.0
 		var body := StaticBody3D.new()
 		body.position = Vector3(g[0].x, 0, g[0].z)
 		body.rotation.y = g[1]
 		var seg := WALL - open_w / 2.0
 		for sx in [-1.0, 1.0]:
-			_box(body, Vector3(seg, wall_h, 1.4), Vector3(sx * (open_w / 2.0 + seg / 2.0), wall_y, 0), _mat.concrete, true)
-			_box(body, Vector3(1.8, top + 1.5 - bottom, 2.0), Vector3(sx * (open_w / 2.0 + 0.9), (top + 1.5 + bottom) / 2.0, 0), _mat.concrete) # gate towers
-		_box(body, Vector3(open_w, top - (gy + open_h), 1.4), Vector3(0, (top + gy + open_h) / 2.0, 0), _mat.concrete)
+			_box(body, Vector3(seg, gh, 1.4), Vector3(sx * (open_w / 2.0 + seg / 2.0), gmid, 0), _mat.concrete, true)
+			_box(body, Vector3(1.8, gtop + 1.5 - bottom, 2.0), Vector3(sx * (open_w / 2.0 + 0.9), (gtop + 1.5 + bottom) / 2.0, 0), _mat.concrete) # gate towers
+		_box(body, Vector3(open_w, gtop - (gy + open_h), 1.4), Vector3(0, (gtop + gy + open_h) / 2.0, 0), _mat.concrete)
+		if gy > bottom + 0.1: # wall the opening off underneath a raised gate
+			_box(body, Vector3(open_w, gy - bottom, 1.4), Vector3(0, (gy + bottom) / 2.0, 0), _mat.concrete)
 		var doors := []
 		for sx in [-1.0, 1.0]:
 			var door := StaticBody3D.new()
@@ -1116,7 +1156,7 @@ func _build_market() -> void:
 func _free_spot(rng: RandomNumberGenerator, pad: float) -> Vector3:
 	for k in 60:
 		var x := rng.randf_range(-WALL + 8.0, WALL - 8.0)
-		var z := rng.randf_range(-WALL + 8.0, WALL - 8.0)
+		var z := rng.randf_range(-WALL + 8.0, (BEACH_SHORE + 4.0) if map_id == "beach" else (WALL - 8.0))
 		if in_site(x, z, pad) or near_tree(x, z, pad + 1.0) or on_street(x, z, pad): continue
 		return Vector3(x, height(x, z), z)
 	return Vector3.INF
@@ -2393,6 +2433,103 @@ func _build_theme_props() -> void:
 	for hp in hook_points: # webs on the hooks
 		_cobweb(hp + Vector3(0, 3.0, 0), rng.randf() * TAU, 1.0)
 
+# ---------------- «الشاطئ»: the lagoon beach ----------------
+## The model (assets/maps/beach.glb, de-quantized by tools/dequant_glb.py) is a five-metre
+## diorama: one palm, a wet-sand tile, a lagoon tile, shells and a creeper. The map keeps the
+## palms, the shells and the wet sand and builds everything else — the sand, the sea, the huts —
+## the way the other maps do. Each piece of the model becomes one MultiMesh, so a hundred palms
+## cost fifteen draw calls.
+const BEACH_SHORE := 42.0   # where the dry sand gives way to the water
+const BEACH_WATER := -0.55  # the surface of the lagoon
+
+func _beach_group(name: String) -> Array:
+	var out := []
+	var src := (load("res://assets/maps/beach.glb") as PackedScene).instantiate()
+	for g in src.find_children("*", "Node3D", true, false):
+		if not str(g.name).begins_with(name): continue
+		for mi in g.find_children("*", "MeshInstance3D", true, false):
+			out.append([(mi as MeshInstance3D).mesh, g.transform.affine_inverse() * (mi as MeshInstance3D).transform])
+		break
+	src.queue_free()
+	return out
+
+## Drop one piece of the model at every transform given, as one MultiMesh per sub-mesh.
+func _beach_scatter(group: String, places: Array, shadow := false) -> void:
+	var parts := _beach_group(group)
+	for part in parts:
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = part[0]
+		mm.instance_count = places.size()
+		for i in places.size():
+			mm.set_instance_transform(i, (places[i] as Transform3D) * (part[1] as Transform3D))
+		var mi := MultiMeshInstance3D.new()
+		mi.multimesh = mm
+		mi.name = "Beach_%s_%d" % [group, parts.find(part)]
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadow else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(mi)
+
+func _build_beach() -> void:
+	_build_buildings() # the huts, the doors, the lockers: same bones as every other map
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 8899
+	# ---- the lagoon ----
+	var water := StandardMaterial3D.new()
+	water.albedo_color = Color(0.06, 0.22, 0.26, 0.78)
+	water.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	water.metallic = 0.35
+	water.roughness = 0.08
+	water.normal_enabled = true
+	water.normal_texture = _noise_tex(0.08, 256, true)
+	water.normal_scale = 0.45
+	water.uv1_scale = Vector3(0.06, 0.06, 0.06)
+	water.uv1_triplanar = true
+	var sea := MeshInstance3D.new()
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(SIZE, SIZE)
+	pm.material = water
+	sea.mesh = pm
+	sea.position = Vector3(0, BEACH_WATER, BEACH_SHORE + SIZE / 2.0 - 10.0)
+	sea.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(sea)
+	var deep := StaticBody3D.new() # you can wade in, you cannot swim out
+	deep.name = "Lagoon"
+	var cs := CollisionShape3D.new()
+	var bs := BoxShape3D.new()
+	bs.size = Vector3(SIZE, 14.0, 4.0)
+	cs.shape = bs
+	cs.position = Vector3(0, 5.0, BEACH_SHORE + 9.0) # wade in knee-deep, no further
+	deep.add_child(cs)
+	add_child(deep)
+	# ---- palms: clusters on the dry sand, a few leaning over the water ----
+	var palms := []
+	for i in 90:
+		var p := _free_spot(rng, 2.6)
+		if p == Vector3.INF: continue
+		if p.z > BEACH_SHORE + 2.0: continue
+		var sc: float = rng.randf_range(0.85, 1.35)
+		palms.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc, sc, sc)),
+			Vector3(p.x, height(p.x, p.z) - 0.1, p.z)))
+	_beach_scatter("002-coconut-palm", palms, true)
+	beach_palms = palms.size()
+	# ---- shells along the shoreline (the model's wet-sand tile is a flat pale square: it reads
+	# as a sheet of paper on the beach, so the shoreline is the foam line below instead) ----
+	var shells := []
+	for i in 46:
+		var x := rng.randf_range(-WALL + 10.0, WALL - 10.0)
+		var z: float = BEACH_SHORE + rng.randf_range(-14.0, 4.0)
+		shells.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * rng.randf_range(0.9, 1.8)),
+			Vector3(x, height(x, z) + 0.07, z)))
+	_beach_scatter("004-shell-scatter", shells)
+	beach_props = shells.size()
+	# ---- a line of foam where the water meets the sand ----
+	var foam := _flat(Color(0.75, 0.86, 0.88, 0.5), 0.4)
+	foam.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	for i in 26:
+		var fx: float = -WALL + 8.0 + i * (WALL * 2.0 - 16.0) / 25.0
+		var fz: float = BEACH_SHORE - 1.5 + sin(fx * 0.05) * 2.5
+		_mesh_box(self, Vector3(10.0, 0.06, 1.6), Vector3(fx, BEACH_WATER + 0.12, fz), foam)
+
 # ---------------- «المواقف»: the car park under the apartment block ----------------
 ## assets/maps/carpark.glb is one 30 x 20 m module with a 3 m ceiling, split into named
 ## pieces by tools/split_glb.py (CC0 model by Innerscene Corp). The map repeats the module
@@ -2409,6 +2546,9 @@ const GAR_COL_X := [7.5, 15.0, 22.5, 30.0] # the columns inside a module
 const GAR_COL_Z := [-9.0, -15.0]
 const GAR_BAY_Z := [-17.6, -6.5]           # the two rows of parking bays
 const GAR_AISLE_Z := -12.0                 # the driving aisle between them
+const GAR_ROOF := GAR_H * GAR_S + 0.5      # the walking surface on top of the slab (4.7 m)
+const GAR_RAMP_X := [78.0, 93.0]           # the car ramp up to the roof, in world metres
+const GAR_RAMP_Z := [-14.0, 14.0]
 
 ## The world position of a module's own origin (its north-west corner, floor level).
 func _gar_origin(c: int, r: int) -> Vector3:
@@ -2473,6 +2613,9 @@ func _plan_garage(rng: RandomNumberGenerator) -> void:
 			if core: _gar_solid(c, r, -0.3, 5.1, -20.0, 0.0)
 			if "wall_s" in pieces: _gar_solid(c, r, -0.3, 30.3, -20.35, -19.9)
 			if "north_block" in pieces: _gar_solid(c, r, 5.7, 30.2, -3.85, -0.2)
+	# the ramp up to the roof is a road, not a parking bay: keep everything off it before the
+	# candidate spots are worked out
+	garage_solids.append([GAR_RAMP_X[0] - 3.0, GAR_RAMP_X[1] + 3.0, GAR_RAMP_Z[0] - 8.0, GAR_RAMP_Z[1] + 4.0])
 	# candidate spots: down the aisles, in the bays, and flat against a core or a plant room
 	var aisle := []
 	var bays := []
@@ -2496,7 +2639,11 @@ func _plan_garage(rng: RandomNumberGenerator) -> void:
 				var p := _gar(c, r, 9.0 + k * 7.0, -4.9)
 				if _gar_free(p.x, p.z, 1.0): walls.append([p, PI])
 	var taken: Array = []
-	for e in _gar_pick(bays + aisle, 7, 34.0, taken, rng, 6.0): gen_points.append(e[0])
+	for e in _gar_pick(bays + aisle, 6, 34.0, taken, rng, 6.0): gen_points.append(e[0])
+	# the last generator is on the roof, out in the open, where everyone can see you working
+	var roof_spots := [Vector3(-52.0, GAR_ROOF, -40.0), Vector3(46.0, GAR_ROOF, 44.0),
+		Vector3(-60.0, GAR_ROOF, 52.0), Vector3(30.0, GAR_ROOF, -56.0)]
+	gen_points.append(roof_spots[rng.randi() % roof_spots.size()])
 	for e in _gar_pick(aisle, 9, 24.0, taken, rng, 6.0): hook_points.append(e[0])
 	for e in _gar_pick(walls + bays, 10, 14.0, taken, rng, 5.0): locker_points.append(e)
 	for e in _gar_pick(aisle, 9, 18.0, taken, rng, 5.0): pallet_points.append(e)
@@ -2505,9 +2652,13 @@ func _plan_garage(rng: RandomNumberGenerator) -> void:
 	for e in _gar_pick(aisle, 8, 22.0, taken, rng, 5.0):
 		garage_barriers.append(e)
 		window_points.append([e[0] + Vector3(0, 0.55, 0), Vector3(0, 0, 1).rotated(Vector3.UP, e[1])])
-	# the two exit gates, same place as every other map: the ramps out of the basement
-	for g in [[0.0, -WALL, 0.0], [0.0, WALL, PI]]:
-		gate_points.append([Vector3(g[0], 0.0, g[1]), g[2]])
+	# one hook on the roof, so a survivor downed up there does not have to be carried all the
+	# way back down the ramp
+	hook_points.append(Vector3(gen_points[6].x + 18.0, GAR_ROOF, gen_points[6].z - 14.0))
+	# the gates: one on the ground floor as always, and one **on the roof** — the road out of
+	# the building runs off the top of the slab
+	gate_points.append([Vector3(0.0, 0.0, -WALL), 0.0])
+	gate_points.append([Vector3(0.0, GAR_ROOF, WALL), PI])
 
 func _build_garage() -> void:
 	var src := (load("res://assets/maps/carpark.glb") as PackedScene).instantiate()
@@ -2561,15 +2712,23 @@ func _build_garage_shell() -> void:
 			if "wall_s" in t.pieces: _gar_block(body, c, r, -0.2, 30.2, -20.25, -20.0)
 			if "north_block" in t.pieces: _gar_block(body, c, r, 5.8, 30.1, -3.75, -0.25)
 		add_child(body)
-	# the slab overhead, one strip per row so it is lit by that row's lamps
+	# the slab overhead, one strip per row so it is lit by that row's lamps. It is also the
+	# roof you can walk on, so the strips the ramp comes up through are left open.
 	var slab := StaticBody3D.new()
 	slab.name = "GarageCeiling"
 	var w: float = GAR_W * GAR_S * GAR_COLS
 	var d: float = GAR_D * GAR_S
 	for r in GAR_ROWS:
 		var zc: float = -GAR_D * GAR_S * GAR_ROWS / 2.0 + (r + 0.5) * d
+		if zc + d / 2.0 > GAR_RAMP_Z[0] and zc - d / 2.0 < GAR_RAMP_Z[1]: # the hole for the ramp
+			var left: float = GAR_RAMP_X[0] - 1.0 + w / 2.0
+			var right: float = w / 2.0 - (GAR_RAMP_X[1] + 1.0)
+			_box(slab, Vector3(left, 0.5, d), Vector3(-w / 2.0 + left / 2.0, ceil_y + 0.25, zc), _mat.concrete, true)
+			_box(slab, Vector3(right, 0.5, d), Vector3(w / 2.0 - right / 2.0, ceil_y + 0.25, zc), _mat.concrete, true)
+			continue
 		_box(slab, Vector3(w, 0.5, d), Vector3(0, ceil_y + 0.25, zc), _mat.concrete, true)
 	add_child(slab)
+	_build_garage_roof(w)
 	# the outside wall of the level, with the two openings that lead to the gates
 	var sides := StaticBody3D.new()
 	sides.name = "GarageWall"
@@ -2580,6 +2739,67 @@ func _build_garage_shell() -> void:
 	for sz in [-1.0, 1.0]:
 		_wall_with_gap(sides, true, sz * ez, -ex, ex, -5.5, 5.5, 0.0, ceil_y, 0.0, ceil_y, _mat.concrete, 0.5)
 	add_child(sides)
+
+## The roof: the ramp up, the parapet round the edge, the bridge out to the gate, and the
+## lamps along it. The slab itself is the floor up here (built in _build_garage_shell).
+func _build_garage_roof(w: float) -> void:
+	var ex: float = w / 2.0
+	var ez: float = GAR_D * GAR_S * GAR_ROWS / 2.0
+	var road := _flat(Color(0.16, 0.16, 0.17), 0.85)
+	var body := StaticBody3D.new()
+	body.name = "GarageRoof"
+	# ---- the ramp: a long slope from the floor up through the hole in the slab ----
+	var x0: float = GAR_RAMP_X[0]
+	var x1: float = GAR_RAMP_X[1]
+	# the slope starts four metres further back and a little under the floor, so you walk onto
+	# it instead of stepping up onto a lip, and it lands exactly flush with the roof
+	var z_foot: float = GAR_RAMP_Z[0] - 4.0
+	var z_top: float = GAR_RAMP_Z[1]
+	var y_foot := -0.6
+	var run: float = z_top - z_foot
+	var rise: float = GAR_ROOF - y_foot
+	var slope := atan2(rise, run) # about nine degrees: a car ramp, you keep your speed on it
+	var length := sqrt(run * run + rise * rise)
+	var mid := Vector3((x0 + x1) / 2.0, (y_foot + GAR_ROOF) / 2.0 - 0.3, (z_foot + z_top) / 2.0)
+	_box(body, Vector3(x1 - x0, 0.6, length), mid, road, false, Vector3(-slope, 0, 0))
+	for sx in [-1.0, 1.0]: # kerbs, so you cannot walk off the side of the ramp
+		_box(body, Vector3(0.5, 1.2, length), mid + Vector3(sx * (x1 - x0) / 2.0, 0.7, 0), _mat.concrete, false, Vector3(-slope, 0, 0))
+	_mesh_box(body, Vector3(x1 - x0 - 1.0, 0.03, 0.5), Vector3(mid.x, 0.06, z_foot + 5.0), _flat(Color(0.75, 0.62, 0.1), 0.6)) # the yellow line at the foot
+	# ---- the parapet round the roof, with the gaps the ramp and the bridge need ----
+	for sx in [-1.0, 1.0]:
+		_box(body, Vector3(0.45, 1.15, ez * 2.0), Vector3(sx * ex, GAR_ROOF + 0.57, 0), _mat.concrete)
+	_wall_with_gap(body, true, -ez, -ex, ex, -1.0, 1.0, GAR_ROOF, 1.15, 0.0, 1.15, _mat.concrete, 0.45)
+	_wall_with_gap(body, true, ez, -ex, ex, -5.0, 5.0, GAR_ROOF, 1.15, 0.0, 1.15, _mat.concrete, 0.45) # the way out
+	# ---- the bridge from the roof to the gate ----
+	var span: float = WALL - ez
+	_box(body, Vector3(10.0, 0.6, span + 1.0), Vector3(0, GAR_ROOF - 0.3, ez + span / 2.0), road)
+	for sx in [-1.0, 1.0]:
+		_box(body, Vector3(0.4, 1.1, span), Vector3(sx * 5.0, GAR_ROOF + 0.55, ez + span / 2.0), _mat.concrete)
+	for i in 4: # lamps along the bridge and the roof edge
+		var lz: float = ez + 3.0 + i * (span / 4.0)
+		_mesh_box(body, Vector3(0.14, 3.2, 0.14), Vector3(-4.4, GAR_ROOF + 1.6, lz), _mat.metal)
+		_mesh_box(body, Vector3(0.4, 0.14, 0.5), Vector3(-4.4, GAR_ROOF + 3.2, lz + 0.3), _flat(Color(1.0, 0.85, 0.55), 0.5, 0.0, 3.0))
+		var l := OmniLight3D.new()
+		l.position = Vector3(-4.2, GAR_ROOF + 3.0, lz + 0.5)
+		l.light_color = Color(1.0, 0.82, 0.55)
+		l.light_energy = 2.2
+		l.omni_range = 14.0
+		l.shadow_enabled = false
+		body.add_child(l)
+		_amb_light(l)
+	# a lamp at the top of the ramp and one at the bottom, so the way up reads at night
+	for at in [Vector3((x0 + x1) / 2.0 - 9.0, 0.0, z_foot - 1.5), Vector3((x0 + x1) / 2.0 - 9.0, GAR_ROOF, z_top + 2.0)]:
+		var l2 := OmniLight3D.new()
+		l2.position = at + Vector3(0, 3.4, 0)
+		l2.light_color = Color(0.95, 0.85, 0.6)
+		l2.light_energy = 2.4
+		l2.omni_range = 16.0
+		l2.shadow_enabled = false
+		body.add_child(l2)
+		_amb_light(l2)
+		_mesh_box(body, Vector3(0.14, 3.4, 0.14), at + Vector3(0, 1.7, 0), _mat.metal)
+	add_child(body)
+	_sign_text(body, "السطح", Vector3((x0 + x1) / 2.0, 3.2, z_foot - 2.0), 90, Color(1.0, 0.85, 0.4))
 
 ## An empty coloured MultiMesh of one box, for the parked cars.
 func _gar_cars(size: Vector3, mat: Material) -> MultiMesh:
