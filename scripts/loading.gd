@@ -133,8 +133,13 @@ func _draw_preview(r: Rect2) -> void:
 			var carw := r.size.x * 0.17
 			_pad.draw_rect(Rect2(Vector2(carx, base - r.size.y * 0.1), Vector2(carw, r.size.y * 0.07)), Color(0.14, 0.1, 0.1, a))
 			_pad.draw_rect(Rect2(Vector2(carx + carw * 0.2, base - r.size.y * 0.15), Vector2(carw * 0.6, r.size.y * 0.05)), Color(0.1, 0.08, 0.08, a))
-		"rubkhali": # dunes, a tent and a palm cluster in a dust haze
-			var sand := Color(0.3, 0.24, 0.17, a)
+		"rubkhali": # daylight: pale dunes and a white sun behind the blowing sand
+			_pad.draw_rect(r, Color(0.62, 0.5, 0.33, a))
+			var sunc := r.position + Vector2(r.size.x * 0.72, r.size.y * 0.3)
+			for ring in 4:
+				_pad.draw_circle(sunc, r.size.y * (0.06 + ring * 0.07), Color(1.0, 0.93, 0.72, a * 0.1))
+			_pad.draw_circle(sunc, r.size.y * 0.055, Color(1.0, 0.97, 0.85, a * 0.85))
+			var sand := Color(0.52, 0.42, 0.28, a)
 			for depth in 3:
 				var dy := base + depth * r.size.y * 0.1 - r.size.y * 0.12
 				var pts := PackedVector2Array([Vector2(r.position.x, r.position.y + r.size.y)])
@@ -143,20 +148,20 @@ func _draw_preview(r: Rect2) -> void:
 					pts.append(Vector2(r.position.x + r.size.x * fx,
 						dy - sin(fx * PI * (1.4 + depth * 0.7) + depth * 2.1) * r.size.y * 0.1))
 				pts.append(Vector2(r.position.x + r.size.x, r.position.y + r.size.y))
-				_pad.draw_colored_polygon(pts, Color(sand.r + depth * 0.03, sand.g + depth * 0.02, sand.b + depth * 0.01, a))
+				_pad.draw_colored_polygon(pts, Color(sand.r + depth * 0.08, sand.g + depth * 0.06, sand.b + depth * 0.04, a))
 			var tx := r.position.x + r.size.x * 0.33
 			var th := r.size.y * 0.13
 			_pad.draw_colored_polygon(PackedVector2Array([Vector2(tx - th * 1.9, base), Vector2(tx, base - th),
-				Vector2(tx + th * 1.9, base), Vector2(tx + th * 1.5, base + 4.0), Vector2(tx - th * 1.5, base + 4.0)]), Color(0.1, 0.08, 0.07, a))
+				Vector2(tx + th * 1.9, base), Vector2(tx + th * 1.5, base + 4.0), Vector2(tx - th * 1.5, base + 4.0)]), Color(0.17, 0.13, 0.1, a))
 			for i in 3:
 				var px2 := r.position.x + r.size.x * (0.62 + i * 0.09)
 				var ph2 := r.size.y * rng.randf_range(0.2, 0.3)
-				_pad.draw_line(Vector2(px2, base + 4.0), Vector2(px2 + ph2 * 0.08, base - ph2), Color(0.09, 0.08, 0.06, a), 3.0)
+				_pad.draw_line(Vector2(px2, base + 4.0), Vector2(px2 + ph2 * 0.08, base - ph2), Color(0.16, 0.13, 0.08, a), 3.0)
 				for k in 6:
 					var ang2: float = -PI * 0.9 + k * PI * 0.16
 					_pad.draw_line(Vector2(px2 + ph2 * 0.08, base - ph2), Vector2(px2 + ph2 * 0.08, base - ph2) + Vector2(cos(ang2), sin(ang2)) * ph2 * 0.28,
-						Color(0.09, 0.09, 0.07, a), 2.0)
-			_pad.draw_rect(r, Color(0.5, 0.36, 0.18, 0.1 * a)) # dust haze
+						Color(0.16, 0.15, 0.09, a), 2.0)
+			_pad.draw_rect(r, Color(0.78, 0.62, 0.38, 0.3 * a)) # the storm washes it all out
 		_: # fareej: flat roofs, parapets, palms
 			for depth in 2:
 				var col3 := Color(0.055, 0.05, 0.045, a) if depth == 0 else Color(0.03, 0.027, 0.024, a)

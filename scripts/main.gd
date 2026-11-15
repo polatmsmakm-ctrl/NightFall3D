@@ -806,6 +806,8 @@ func _round_event(dt: float) -> void:
 	if live and ev_shown != rules.ev_kind:
 		ev_shown = rules.ev_kind
 		var msg: String = EVENT_NAME[rules.ev_kind]
+		if world.map_id == "rubkhali" and rules.ev_kind < 2: # daylight out there: it is the storm, not the dark
+			msg = "عجاج ثقيل!" if rules.ev_kind == 0 else "العاصفة اشتدت!"
 		if rules.ev_kind == 2:
 			if rules.ev_n == my_name: msg = "إنذار! انكشف مكانك"
 			elif my_role == "killer": msg = "إنذار! انكشف %s" % rules.ev_n
@@ -987,9 +989,10 @@ func _draw_ui() -> void:
 	var top := Vector2(mid.x, 96)
 	if doom_up:
 		_draw_moon(Vector2(mid.x, 120.0))
-		if my_role == "killer": _text(Vector2(mid.x, 214), "امنعهم من الهرب قبل لا ينزل القمر", 22, Color(1, 0.5, 0.4))
+		var falling := "تنزل الشمس" if world.map_id == "rubkhali" else "ينزل القمر"
+		if my_role == "killer": _text(Vector2(mid.x, 214), "امنعهم من الهرب قبل لا %s" % falling, 22, Color(1, 0.5, 0.4))
 		elif my_state in ["escaped", "dead"]: _text(Vector2(mid.x, 214), "باقي %d من ربعك داخل" % _others_alive().size(), 22, Color(1, 0.9, 0.6))
-		else: _text(Vector2(mid.x, 214), "اهرب قبل لا ينزل القمر!", 24, Color(1, 0.45, 0.35))
+		else: _text(Vector2(mid.x, 214), "اهرب قبل لا %s!" % falling, 24, Color(1, 0.45, 0.35))
 	elif my_role == "survivor" and my_state in ["escaped", "dead"]:
 		_text(top, "باقي %d من ربعك داخل" % _others_alive().size(), 24, Color(1, 0.9, 0.6))
 	else:
@@ -1117,7 +1120,8 @@ func _draw_moon(c: Vector2) -> void:
 	if left < 30.0: pulse = 0.72 + 0.28 * sin(Time.get_ticks_msec() / 1000.0 * 9.0)
 	var r: float = 30.0 + (3.0 * pulse if left < 30.0 else 0.0)
 	ui.draw_circle(c, 27.0, Color(0.03, 0.025, 0.035, 0.92))
-	NFIcons.draw(ui, "moon", c, 38.0, Color(0.96, 0.93, 0.88).lerp(Color(1.0, 0.55, 0.4), f * 0.8))
+	NFIcons.draw(ui, "sun" if world.map_id == "rubkhali" else "moon", c, 38.0,
+		Color(0.96, 0.93, 0.88).lerp(Color(1.0, 0.55, 0.4), f * 0.8))
 	ui.draw_arc(c, r, 0, TAU, 44, Color(1, 1, 1, 0.12), 6.0)
 	ui.draw_arc(c, r, -PI / 2.0, -PI / 2.0 + TAU * f, 48, Color(1.0, 0.13, 0.1, pulse), 6.0)
 	_text(c + Vector2(0, r + 22.0), "%d:%02d" % [int(ceil(left)) / 60, int(ceil(left)) % 60], 22,
@@ -1584,7 +1588,8 @@ func _process(dt: float) -> void:
 		for g in world.gate_points: _sfx("gate", g[0] + Vector3(0, 3, 0), 8.0)
 		_sfx("gate", null, -12.0)
 		doom_music.play()
-		_flash("البوابات انفتحت — القمر نازل عليكم! عندكم دقيقتين")
+		_flash("البوابات انفتحت — الشمس نازلة عليكم! عندكم دقيقتين" if world.map_id == "rubkhali"
+			else "البوابات انفتحت — القمر نازل عليكم! عندكم دقيقتين")
 	# survivors feel the killer coming: heartbeat inside the terror radius, heavy breathing when he is very close
 	danger = 0.0
 	var kdist := 999.0

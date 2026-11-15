@@ -45,6 +45,7 @@ var buildings: Array = []
 var tree_count := 450
 var tree_plan: Array = [] # [x, y, z, variant, scale, yaw]
 var fog_density := 0.016
+var fog_base := 0.016 # what the map settled on, after the theme and the weather
 var gen_points: Array[Vector3] = []
 var gate_points: Array = [] # [Vector3, yaw]
 var hook_points: Array[Vector3] = []
@@ -143,7 +144,7 @@ func configure(id: String, seed := 1, th := "normal") -> void:
 		tree_count = 85     # palm clusters around the camps
 		grass_per_chunk = 45 # dry tufts
 		fog_density = 0.021  # the storm: you cannot see far
-		moon_dir = Vector3(0.25, 0.42, -0.86).normalized()
+		moon_dir = Vector3(0.32, 0.6, -0.73).normalized() # the sun, high and behind the dust
 		var camps := [[-62.0, -38.0, 0.4], [-20.0, -72.0, 1.9], [44.0, -58.0, -0.8], [70.0, 22.0, 2.6], [-74.0, 44.0, 0.9], [18.0, 74.0, -2.2]]
 		for t in camps: buildings.append([t[0], t[1], t[2], 9.0, 7.0, 2.6]) # بيت شعر
 		tents = camps.size()
@@ -449,7 +450,21 @@ func _build_environment() -> void:
 			env.fog_light_color = Color(0.15, 0.06, 0.02)
 			env.fog_density = fog_density * 1.5
 			env.adjustment_saturation = 1.05
+	if map_id == "rubkhali": # «الربع الخالي» plays in daylight: a sandstorm with the sun in it
+		_sky_mat.set_shader_parameter("sun", 1.0)
+		env.ambient_light_color = Color(0.72, 0.6, 0.44)
+		env.ambient_light_energy = 1.5
+		env.fog_light_color = Color(0.76, 0.6, 0.38)
+		env.fog_density = fog_density * 1.3   # the storm is what hides the killer here, not the dark
+		env.fog_sky_affect = 0.5 # the sun still burns through the dust
+		env.fog_sun_scatter = 0.5
+		env.fog_height_density = 0.05
+		env.adjustment_contrast = 1.04
+		env.adjustment_saturation = 0.92
+		env.tonemap_white = 8.0
+		env.glow_hdr_threshold = 1.5
 	_amb_base = env.ambient_light_energy
+	fog_base = env.fog_density
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
@@ -465,6 +480,9 @@ func _build_environment() -> void:
 		"halloween":
 			moon.light_color = Color(1.0, 0.6, 0.3)
 			moon.light_energy = 0.45 # the pumpkins should be the light, not the sky
+	if map_id == "rubkhali": # hard noon light through the dust
+		moon.light_color = Color(1.0, 0.91, 0.74)
+		moon.light_energy = 2.4
 	moon.shadow_enabled = true
 	moon.directional_shadow_blend_splits = true
 	add_child(moon)
@@ -1263,12 +1281,14 @@ func set_blackout(on: bool) -> void:
 	tw.tween_property(env, "ambient_light_energy", (0.45 if on else 1.0) * _amb_base, 1.2)
 	for m in garage_panels: # the strip lights go dead with everything else
 		tw.parallel().tween_property(m, "emission_energy_multiplier", 0.05 if on else 3.2, 1.0)
+	if map_id == "rubkhali": # broad daylight: what hits you is a wall of sand, not the dark
+		tw.parallel().tween_property(env, "fog_density", fog_base * (2.3 if on else 1.0), 1.2)
 
 ## The heavy-fog event, 0..1.
 func set_fog(level: float) -> void:
 	if env == null: return
 	fog_boost = clampf(level, 0.0, 1.0)
-	env.fog_density = fog_density * lerpf(1.0, 3.4, fog_boost)
+	env.fog_density = fog_base * lerpf(1.0, 3.4, fog_boost)
 
 func set_killer_at(p: Vector3) -> void:
 	killer_at = p
@@ -1295,15 +1315,19 @@ func set_blood_moon(on: bool) -> void:
 	var tw := create_tween().set_parallel(true)
 	var d := 4.0
 	tw.tween_method(func(v: float): _sky_mat.set_shader_parameter("blood", v), 0.0 if on else 1.0, 1.0 if on else 0.0, d)
-	tw.tween_property(moon, "light_color", Color(1.0, 0.42, 0.36) if on else Color(0.55, 0.65, 0.95), d)
-	tw.tween_property(env, "ambient_light_color", Color(0.26, 0.15, 0.17) if on else Color(0.16, 0.2, 0.32), d)
-	tw.tween_property(env, "fog_light_color", Color(0.14, 0.05, 0.05) if on else Color(0.07, 0.09, 0.14), d)
+	var sun_map: bool = map_id == "rubkhali" # out there it is the sun that turns on you
+	tw.tween_property(moon, "light_color", (Color(1.0, 0.36, 0.2) if sun_map else Color(1.0, 0.42, 0.36)) if on
+		else (Color(1.0, 0.91, 0.74) if sun_map else Color(0.55, 0.65, 0.95)), d)
+	tw.tween_property(env, "ambient_light_color", (Color(0.44, 0.21, 0.14) if sun_map else Color(0.26, 0.15, 0.17)) if on
+		else (Color(0.72, 0.6, 0.44) if sun_map else Color(0.16, 0.2, 0.32)), d)
+	tw.tween_property(env, "fog_light_color", (Color(0.42, 0.15, 0.08) if sun_map else Color(0.14, 0.05, 0.05)) if on
+		else (Color(0.76, 0.6, 0.38) if sun_map else Color(0.07, 0.09, 0.14)), d)
 
 # 0..1: the moon swells as it falls toward the map (drives the sky shader and the moonlight)
 func set_moon_near(v: float) -> void:
 	if _sky_mat == null: return
 	_sky_mat.set_shader_parameter("near", clampf(v, 0.0, 1.0))
-	if _blood and v > 0.03: moon.light_energy = 1.1 + 2.2 * v * v
+	if _blood and v > 0.03: moon.light_energy = (2.4 if map_id == "rubkhali" else 1.1) + 2.2 * v * v
 
 func set_market_dark(dark: bool) -> void:
 	if dark == market_dark: return

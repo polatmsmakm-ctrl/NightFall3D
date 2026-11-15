@@ -41,6 +41,37 @@ func _ready() -> void:
 	print("dunes: lowest=", snappedf(lo, 0.1), " highest=", snappedf(hi, 0.1), " (wall top is 12)")
 	print("ground=", w.surface_at(Vector3(40, 0, 40)), " fog=", snappedf(w.env.fog_density, 0.001),
 		" storm grains=", m.world.dust.amount)
+	# daylight: the sky carries the sun, not the moon, and the light is hard and warm
+	print("weather: sun in the sky=", w._sky_mat.get_shader_parameter("sun"),
+		" sunlight=", w.moon.light_color, " x", snappedf(w.moon.light_energy, 0.01),
+		" elevation=", snappedf(rad_to_deg(asin(w.moon_dir.y)), 0.1), " deg",
+		"  ambient=", w.env.ambient_light_color, " x", snappedf(w.env.ambient_light_energy, 0.01))
+	var clear: float = w.env.fog_density
+	w.set_blackout(true)
+	for i in 100: await tree.process_frame
+	print("the round's dust surge: fog ", snappedf(clear, 0.001), " -> ", snappedf(w.env.fog_density, 0.001),
+		" (no lights to put out at noon)")
+	w.set_blackout(false)
+	for i in 80: await tree.process_frame
+	print("it passes: fog back to ", snappedf(w.env.fog_density, 0.001))
+	# the gates powering up turns the storm red and the sun swells as it comes down
+	w.set_blood_moon(true)
+	for i in 160: await tree.process_frame
+	w.set_moon_near(0.6)
+	for i in 6: await tree.process_frame
+	print("gates powered: sky blood=", snappedf(float(w._sky_mat.get_shader_parameter("blood")), 0.01),
+		" sunlight=", w.moon.light_color, " x", snappedf(w.moon.light_energy, 0.01),
+		" near=", snappedf(float(w._sky_mat.get_shader_parameter("near")), 0.01))
+	w.set_moon_near(0.0)
+	w.set_blood_moon(false)
+	var night := NightWorld.new()
+	night.configure("forest", 3)
+	night._make_materials()
+	night._build_environment()
+	var nsun = night._sky_mat.get_shader_parameter("sun")
+	print("the other maps are still night: forest sun=", 0.0 if nsun == null else nsun,
+		" moonlight=", night.moon.light_color)
+	night.free()
 	# seeded the same for everyone, different each round
 	var a := NightWorld.new(); a.configure("rubkhali", 7)
 	var b := NightWorld.new(); b.configure("rubkhali", 7)
@@ -122,7 +153,9 @@ func _ready() -> void:
 	print("dancing: anim=", lob.me_rig.current, " tracks=", lob.me_rig.player.get_animation("dance").get_track_count())
 	# a friend at the fire emotes too
 	lob.set_cast([{"name": "P", "role": "survivor", "char": "survivor2"}, {"name": "B", "role": "survivor", "char": "survivor5"}], "P")
-	await frames(10)
+	for i in 120: # the seated cast loads its characters over the next frames
+		await tree.process_frame
+		if lob.cast.has("B") and lob.cast["B"].rig.player != null: break
 	lob.emote("B", 2)
 	await frames(5)
 	print("friend clapping: anim=", lob.cast["B"].rig.current, " seated cast=", lob.cast.size())

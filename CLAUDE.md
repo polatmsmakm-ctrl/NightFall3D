@@ -60,7 +60,8 @@ NF_URL=ws://127.0.0.1:8099 godot --headless --path . res://tools/online.tscn   #
 Screenshots — `tools/shot.tscn` for the interface, `tools/shot2.tscn` for the desert, the themes, the emotes
 and the jumpscare, `tools/shot4.tscn` for the sound settings and the hidden tools, `tools/shot6.tscn` for the
 doors, the blackout, the fog and the alarm, `tools/shot7.tscn` for the camp by time of day, the shared
-unhook and the victory screen, `tools/shot8.tscn` for the car park:
+unhook and the victory screen, `tools/shot8.tscn` for the car park, `tools/shot9.tscn` for the
+daylight Empty Quarter:
 ```
 NF_SHOTS=/tmp/shots LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a godot --rendering-driver opengl3 \
   --resolution 1564x720 --path . res://tools/shot.tscn      # software GL: ~15 min
@@ -71,7 +72,8 @@ NF_SHOTS=/tmp/shots LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a godot --rendering-driver
 - Hook escape is a mash: each `struggle` adds `MASH_STEP` to `esc`, which decays by `MASH_DECAY`/s; only on the first hook. Hooked survivors hang still and bleed.
 - Unhooking is a **hold shared between survivors**: `rescue` is `{k:"rescue", n, on}`, `resc` fills at `hands / RESCUE_TIME` per second (2.0 s alone, 1.1 s with two, 0.7 s with three) and drains at half speed when everyone lets go. The snapshot row carries `resc` (8) and the number of hands (9), so each phone shows «%d يشيلونه سوا — أسرع!» on the bar, and the `rescued` event carries `hands`. **`tick()` returns an Array of events in both rules files** and `server.js` broadcasts them, because a rescue can finish inside a tick.
 - All sounds are the owner's mp3s (`assets/sfx`); the synthesized wavs were removed at his request, so skill checks, pallets, hatch and flashlight are silent until he supplies files. `MALE` in `main.gd` picks male pain vs female scream/oof voices.
-- `world.set_blood_moon(true)` (sky shader `blood` uniform + moonlight/ambient/fog tween) fires when the gates get power.
+- `world.set_blood_moon(true)` (sky shader `blood` uniform + moonlight/ambient/fog tween) fires when the gates get power; on `rubkhali` it reddens the sunlight and the storm instead.
+- `fog_base` is the density the map settled on after its weather and theme; `set_fog` (the heavy-fog event) and the desert's dust surge both scale that, never the raw `fog_density`.
 - Fareej house at `NightWorld.DIWAN` is «ديوان راشد الشمري» (`_build_diwan`): fake wall-wash quads (`_sconce`/`_beam`, additive) plus a handful of shadowless real lights — keep it under the Mobile renderer's 8 omni + 8 spot per mesh. Palms use `shaders/palm.gdshader` (alpha-cut feather fronds).
 
 - Moon fall: when the gates get power `doom` (snapshot `dm`) counts down `DOOM_TIME` = 120 s in both rules files; at 0 everyone still inside dies. Client: `world.set_moon_near`, `doom.mp3`, camera shake, flash, results 3.5 s after impact.
@@ -83,7 +85,7 @@ NF_SHOTS=/tmp/shots LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a godot --rendering-driver
 - **Player card** (top corner, `GameMenu._draw_card`): name, level, XP bar, total escapes and kills.
 - **HUD buttons**: icon + small Arabic label, context icons from `NFControls.CTX_ICON`; the rings for battery / power cooldown / swing cooldown are unchanged.
 - **Team bar** (`main._draw_team`): one portrait per survivor along the top — character colour, state ring, state glyph, hook countdown ring and seconds, a pip per hook survived, a gold ring around me. The killer sees it as well; **it never shows positions**, and the killer's minimap still has no player dots.
-- **Moon countdown** (`main._draw_moon`): a red ring filling around a crescent over `DOOM_TIME`, beating in the last 30 s, with the clock under it.
+- **Moon countdown** (`main._draw_moon`): a red ring filling around a crescent (a sun on `rubkhali`) over `DOOM_TIME`, beating in the last 30 s, with the clock under it.
 - **Quick signals**: the `sig` button opens three messages (تعال هني / القاتل هني / قاعد أصلّح). They draw as an arrow on a ring around the middle of the screen pointing at the sender, with their name and the distance, for `SIG_LIFE` seconds. Online they go through the new `sig` message, relayed to the sender's own side only; in trial mode they only show locally.
 - **Control layout**: `NFControls` + `NFControlsEdit`. Drag any button, resize the selected one with the slider, "إرجاع الأصلي" restores the shipped layout. Saved per role in `user://controls.cfg`; the editor is in the menu settings page and in the in-game settings panel (`Gfx.menu_open` stays true while it is open, so the round ignores touches).
 - **Loading screen**: `NFLoading` while `world.build()` runs, with a drawn preview per map and a random tip from `NFLoading.TIPS`.
@@ -118,7 +120,15 @@ Every map keeps the same skeleton: perimeter wall, two gates with a long escape 
   with one box collider each, plus the concrete crash barriers that are the only vault spots down
   there. No trees, grass, market, scatter or doors on this map; footsteps are always `indoor`, and
   the minimap draws the cores and cross walls instead of the market.
-- `rubkhali` «الربع الخالي» — the Empty Quarter (`_build_rubkhali`): long dunes (`relief = 3.0`, low-frequency noise),
+- `rubkhali` «الربع الخالي» — **the only map that plays in daylight**: a sandstorm at noon with the
+  sun in the sky instead of the moon. `shaders/sky.gdshader` has a `sun` uniform (0 everywhere else)
+  that replaces the night gradient with ochre dust, kills the stars, turns the disc into a flat white
+  sun with a wide halo and paints the clouds as sheets of sand; `_build_environment` gives it hard warm
+  sunlight (2.4), bright sandy ambient (1.5), sand-coloured fog at 1.3x density and `fog_sky_affect 0.5`
+  so the sun still burns through. The round's blackout event is a **surge of sand** there (fog x2.3,
+  «عجاج ثقيل!») instead of the lights going out, and when the gates get power the whole storm turns
+  blood red and **the sun** comes down — same `doom` countdown, with the sun icon in the HUD and
+  «اهرب قبل لا تنزل الشمس!». The rest of the map (`_build_rubkhali`): long dunes (`relief = 3.0`, low-frequency noise),
   6 bedouin tents (`_build_tent`, dark woven cloth, open front, rug, cold fire pit, a locker inside) and 5 mud houses
   (`_build_mud_house`, palm beams through the walls). A dust storm: thick sand-coloured fog plus the `dust` particles
   turned into blowing grains, so you cannot see far. Cover is the point out here — `_build_desert_scatter` lays down

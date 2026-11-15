@@ -144,6 +144,12 @@ static func draw(ci: CanvasItem, name: String, c: Vector2, size: float, col: Col
 				var a2: float = -PI / 2.0 + (k - 1) * 0.5
 				ci.draw_line(c + Vector2(cos(a2), sin(a2)) * size * 0.42, c + Vector2(cos(a2), sin(a2)) * size * 0.56, Color(col, col.a * 0.8), w * 0.8, true)
 		"moon": _moon(ci, c, size, col)
+		"sun": # the Empty Quarter plays in daylight, so its countdown is a sun
+			ci.draw_circle(c, size * 0.32, col)
+			for k in 8:
+				var sa: float = k * PI / 4.0
+				var dir := Vector2(cos(sa), sin(sa))
+				ci.draw_line(c + dir * size * 0.44, c + dir * size * 0.6, col, w, true)
 		"skull":
 			ci.draw_circle(_u(c, size, 0.0, -0.22), size * 0.42, col)
 			_fill(ci, c, size, [[-0.42, 0.06], [0.42, 0.06], [0.3, 0.76], [-0.3, 0.76]], col)
