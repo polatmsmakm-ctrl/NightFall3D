@@ -1157,6 +1157,31 @@ func _draw_moon(c: Vector2) -> void:
 	_text(c + Vector2(0, r + 22.0), "%d:%02d" % [int(ceil(left)) / 60, int(ceil(left)) % 60], 22,
 		Color(1, 0.45, 0.35) if left < 30.0 else Color(1, 0.85, 0.7))
 
+## The ramp up to the car park's roof: a lit strip with chevrons running toward the top, and the
+## word «السطح» on the big map, so you can always see where the way up is.
+const ROOF_COL := Color(0.35, 0.9, 1.0)
+
+func _draw_roof_ramp(c: Vector2, k: float, u: float, big: bool) -> void:
+	var x0: float = NightWorld.GAR_RAMP_X[0]
+	var x1: float = NightWorld.GAR_RAMP_X[1]
+	var z0: float = NightWorld.GAR_RAMP_Z[0] - 4.0
+	var z1: float = NightWorld.GAR_RAMP_Z[1]
+	var r := Rect2(c + Vector2(x0, z0) * k, Vector2(x1 - x0, z1 - z0) * k)
+	minimap.draw_rect(r, Color(ROOF_COL, 0.28))
+	minimap.draw_rect(r, ROOF_COL, false, 1.4 * u)
+	for i in 3: # chevrons pointing up the slope (toward +z, the top of the ramp)
+		var cy: float = r.position.y + r.size.y * (0.25 + i * 0.25)
+		var cx: float = r.position.x + r.size.x / 2.0
+		var w: float = r.size.x * 0.32
+		minimap.draw_polyline(PackedVector2Array([Vector2(cx - w, cy - w * 0.6), Vector2(cx, cy), Vector2(cx + w, cy - w * 0.6)]),
+			ROOF_COL, 1.4 * u)
+	if big: _map_text(r.position + Vector2(r.size.x + 6.0, r.size.y * 0.6), "السطح ↑", 16, ROOF_COL)
+
+## A small cyan "up" triangle beside anything that is on the roof.
+func _roof_badge(at: Vector2, u: float) -> void:
+	minimap.draw_colored_polygon(PackedVector2Array([at + Vector2(0, -4) * u, at + Vector2(3.5, 2.5) * u,
+		at + Vector2(-3.5, 2.5) * u]), ROOF_COL)
+
 ## A team-mate's quick message: an arrow on a ring around the middle of the screen, pointing at them.
 func _draw_sigs(mid: Vector2) -> void:
 	for sg in sigs:
@@ -1206,6 +1231,7 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 		var open: bool = rules.gates[i].open
 		if big: minimap.draw_rect(Rect2(c + Vector2(-4.5, minf(p.z, p.z + out_dir * NightWorld.ROAD_LEN)) * k, Vector2(9.0, NightWorld.ROAD_LEN) * k), Color(0.3, 0.3, 0.3) if not open else Color(0.25, 0.5, 0.3))
 		minimap.draw_rect(Rect2(c + Vector2(p.x, p.z) * k - Vector2(7, 3) * u, Vector2(14, 6) * u), Color(0.4, 1, 0.5) if open else Color(1, 0.3, 0.25))
+		if p.y > 1.0: _roof_badge(c + Vector2(p.x, p.z) * k + Vector2(0, 9) * u, u)
 	minimap.draw_rect(Rect2(c - Vector2(wl, wl), Vector2(wl, wl) * 2.0), Color(0.85, 0.85, 0.8, 0.8), false, 2.0 * u)
 	for b in world.buildings:
 		minimap.draw_set_transform(c + Vector2(b[0], b[1]) * k, -b[2], Vector2.ONE)
@@ -1225,10 +1251,7 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 				var w0: Vector3 = world._gar(tc, tr, -0.2, -20.1)
 				var w1: Vector3 = world._gar(tc, tr, 30.2, -20.1)
 				minimap.draw_line(c + Vector2(w0.x, w0.z) * k, c + Vector2(w1.x, w1.z) * k, Color(0.5, 0.5, 0.52), 2.0)
-			if "north_block" in t.pieces:
-				var b0: Vector3 = world._gar(tc, tr, 5.8, -3.75)
-				var b1: Vector3 = world._gar(tc, tr, 30.1, -0.25)
-				minimap.draw_rect(Rect2(c + Vector2(b0.x, b0.z) * k, Vector2(b1.x - b0.x, b1.z - b0.z) * k), Color(0.38, 0.38, 0.4))
+		_draw_roof_ramp(c, k, u, big)
 	else:
 		var mk: Dictionary = world.market
 		minimap.draw_set_transform(c + Vector2(mk.pos.x, mk.pos.z) * k, -mk.yaw, Vector2.ONE)
@@ -1244,6 +1267,7 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 		minimap.draw_line(hc + Vector2(-3, -3) * u, hc + Vector2(3, 3) * u, col, 1.6 * u)
 		minimap.draw_line(hc + Vector2(-3, 3) * u, hc + Vector2(3, -3) * u, col, 1.6 * u)
 		if used: minimap.draw_arc(hc, 6.0 * u, 0, TAU, 16, Color(1, 0.3, 0.3), 1.5)
+		if hp.y > 1.0: _roof_badge(hc + Vector2(0, -8) * u, u)
 	for i in world.gen_points.size():
 		var gp: Vector3 = world.gen_points[i]
 		var g: Dictionary = rules.gens[i]
@@ -1253,6 +1277,7 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 		if my_role == "survivor" or g.done: # survivors see repair progress fill up; the killer only sees finished ones
 			minimap.draw_rect(Rect2(gc - Vector2(sz, sz) / 2.0 + Vector2(0, sz * (1.0 - g.p)), Vector2(sz, sz * g.p)), Color(0.4, 1, 0.5) if g.done else Color(1, 0.85, 0.2))
 		minimap.draw_rect(Rect2(gc - Vector2(sz, sz) / 2.0, Vector2(sz, sz)), Color(0.4, 1, 0.5) if g.done else Color(1, 0.85, 0.2), false, 1.2)
+		if gp.y > 1.0: _roof_badge(gc + Vector2(0, -sz), u)
 	if rules.hatch >= 0 and my_role == "survivor":
 		var hp2: Vector3 = world.hatch_points[rules.hatch]
 		minimap.draw_circle(c + Vector2(hp2.x, hp2.z) * k, 5.0 * u, Color(0.5, 1, 0.7))
@@ -1267,10 +1292,16 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 	var sd := Vector2(-f.y, f.x)
 	minimap.draw_colored_polygon(PackedVector2Array([me + f * 8.0 * u, me - f * 4.0 * u + sd * 5.0 * u, me - f * 4.0 * u - sd * 5.0 * u]),
 		Color(1, 0.3, 0.3) if my_role == "killer" else Color(1, 1, 1))
+	if world.map_id == "garage" and body.position.y > 3.0: # standing on the roof
+		minimap.draw_arc(me, 11.0 * u, 0, TAU, 20, ROOF_COL, 1.6 * u)
+		_map_text(o + Vector2(side / 2.0 - (40.0 if big else 26.0), 18.0 if big else 14.0), "على السطح",
+			20 if big else 13, ROOF_COL)
 	if big:
 		var ly := o.y + side + 22.0
 		var items := [["■", Color(1, 0.85, 0.2), "مولد"], ["■", Color(0.4, 1, 0.5), "مولد شغال"], ["✕", Color(0.75, 0.3, 0.3), "خطاف"], ["▬", Color(1, 0.3, 0.25), "بوابة"]]
-		if world.map_id == "garage": items.append(["■", Color(0.45, 0.45, 0.48), "درج"]) # the stair cores
+		if world.map_id == "garage":
+			items.append(["■", Color(0.45, 0.45, 0.48), "درج"]) # the stair cores
+			items.append(["▲", ROOF_COL, "فوق السطح"])
 		else: items.append(["■", Color(0.8, 0.25, 0.25), "السوق"])
 		var lx := o.x
 		for it in items:

@@ -139,13 +139,16 @@ Every map keeps the same skeleton: perimeter wall, two gates with a long escape 
   model instead of code (`assets/maps/carpark.glb`, CC0). `_plan_garage` repeats the 30 x 20 m
   module in a 5 x 7 grid, scaled 1.4 (so the floor is 210 x 196 m with a 4.2 m slab overhead),
   and decides per module which pieces it gets: the stair core on the west edge and a few inside,
-  a cross wall every third module, a plant room here and there — that is what makes the bays
-  join into one floor you can run around instead of 35 sealed boxes. `_build_garage` draws each
+  and a cross wall every third module — that is what makes the bays join into one floor you can
+  run around instead of 35 sealed boxes. **The model's `north_block` piece is never placed**: it is
+  the model's own ramp to a next storey that does not exist (a slope running up into the slab,
+  walled in, solid), and players could never climb it. The only ramp in the map is the real one
+  to the roof. `_build_garage` draws each
   piece as one MultiMesh per row of modules (≈60 draw calls, and a row is small enough that the
   mobile renderer's 8 lights per object still land where they should), `_build_garage_shell`
   adds the box collision, the slab and the outside wall with its two openings toward the gates,
-  `_build_garage_lights` hangs a fluorescent strip over every module (one in six is dead, all of
-  them die in the blackout) and `_build_garage_props` parks ~87 cars as three coloured MultiMeshes
+  `_build_garage_lights` hangs a fluorescent strip over every module (one in ten is dead, all of
+  them die in the blackout; ambient 1.12, strips at 3.3 with a 23 m reach, fog 0.016) and `_build_garage_props` parks ~87 cars as three coloured MultiMeshes
   with one box collider each, plus the concrete crash barriers that are the only vault spots down
   there. No trees, grass, market, scatter or doors on this map; footsteps are always `indoor`, and
   the minimap draws the cores and cross walls instead of the market.
@@ -156,6 +159,10 @@ Every map keeps the same skeleton: perimeter wall, two gates with a long escape 
   in the open, with one hook beside it. A gate whose `y` is above the ground now gets a taller
   frame and a wall under its opening (`_build_objectives`), and `main._near` requires the two
   points to be within 3 m vertically, so you cannot work the roof generator from the floor below.
+  **On the map** (`main._draw_roof_ramp` / `_roof_badge`): the ramp is a cyan strip with chevrons
+  pointing up the slope and «السطح ↑» beside it on the big map; the roof gate, the roof generator
+  and the roof hook each carry a cyan ▲; the legend has «▲ فوق السطح»; and while you stand on the
+  roof the minimap rings your arrow and says «على السطح».
 - `beach` «الشاطئ» — a lagoon beach: sand (`relief 1.1`), eight beach huts, the market set back
   from the water, and the sea along the **north** side. `_raw_h` drops the ground by up to 3.4 m
   north of `BEACH_SHORE` (42 m), the lagoon surface sits at `BEACH_WATER` (-0.55) as one

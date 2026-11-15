@@ -176,7 +176,7 @@ func configure(id: String, seed := 1, th := "normal") -> void:
 		relief = 0.0
 		tree_count = 0
 		grass_per_chunk = 0
-		fog_density = 0.02   # damp basement air
+		fog_density = 0.016  # damp basement air, thin enough that the far strip lights still read
 		moon_dir = Vector3(0.3, 0.5, -0.81).normalized()
 	elif id == "fareej": # a Kuwaiti neighbourhood: walled houses on streets around the market, flat sandy ground
 		noise.seed = 77
@@ -453,8 +453,8 @@ func _build_environment() -> void:
 	env.ambient_light_color = Color(0.16, 0.2, 0.32)
 	env.ambient_light_energy = 0.8 # dark: survivors carry flashlights
 	if map_id == "garage": # concrete under strip lights, not moonlit grass
-		env.ambient_light_color = Color(0.21, 0.22, 0.24)
-		env.ambient_light_energy = 0.75
+		env.ambient_light_color = Color(0.24, 0.25, 0.27)
+		env.ambient_light_energy = 1.12
 		env.fog_light_color = Color(0.09, 0.095, 0.1)
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
@@ -2609,17 +2609,18 @@ func _plan_garage(rng: RandomNumberGenerator) -> void:
 			var core: bool = c == 0 or (c * 3 + r * 2) % 7 == 3 # the west side plus a few inside
 			if core: pieces.append_array(["core", "doors", "lift"])
 			if r > 0 and (c + r) % 3 == 0: pieces.append("wall_s")
-			if not core and (c * 2 + r) % 5 == 2: pieces.append("north_block")
+			# the model's "north_block" is its own ramp to the next storey: a slope that runs up
+			# into the slab, walled in and solid. Nobody could ever climb it, so it is never placed;
+			# the only way up is the real ramp to the roof (_build_garage_roof).
 			garage_tiles.append({"c": c, "r": r, "pieces": pieces})
 			for x in GAR_COL_X:
 				for z in GAR_COL_Z: _gar_solid(c, r, x - 0.25, x + 0.25, z - 0.25, z + 0.25)
 			if core: _gar_solid(c, r, -0.3, 5.1, -20.0, 0.0)
 			if "wall_s" in pieces: _gar_solid(c, r, -0.3, 30.3, -20.35, -19.9)
-			if "north_block" in pieces: _gar_solid(c, r, 5.7, 30.2, -3.85, -0.2)
 	# the ramp up to the roof is a road, not a parking bay: keep everything off it before the
 	# candidate spots are worked out
 	garage_solids.append([GAR_RAMP_X[0] - 3.0, GAR_RAMP_X[1] + 3.0, GAR_RAMP_Z[0] - 8.0, GAR_RAMP_Z[1] + 4.0])
-	# candidate spots: down the aisles, in the bays, and flat against a core or a plant room
+	# candidate spots: down the aisles, in the bays, and flat against a stair core
 	var aisle := []
 	var bays := []
 	var walls := []
@@ -2637,10 +2638,6 @@ func _plan_garage(rng: RandomNumberGenerator) -> void:
 			for k in 3:
 				var p := _gar(c, r, 6.2, -3.5 - k * 6.5)
 				if _gar_free(p.x, p.z, 1.0): walls.append([p, -PI / 2.0])
-		if "north_block" in t.pieces:
-			for k in 3:
-				var p := _gar(c, r, 9.0 + k * 7.0, -4.9)
-				if _gar_free(p.x, p.z, 1.0): walls.append([p, PI])
 	var taken: Array = []
 	for e in _gar_pick(bays + aisle, 6, 34.0, taken, rng, 6.0): gen_points.append(e[0])
 	# the last generator is on the roof, out in the open, where everyone can see you working
@@ -2670,7 +2667,7 @@ func _build_garage() -> void:
 		if ch is MeshInstance3D: piece[str(ch.name)] = (ch as MeshInstance3D).mesh
 	src.free()
 	var lift := {"aisle": 0.012, "paint": 0.02, "detail": 0.004} # keep the paint off the slab
-	var shadowed := ["core", "cols", "north_block", "wall_s"]
+	var shadowed := ["core", "cols", "wall_s"]
 	# one MultiMesh per piece per row of modules: a handful of draw calls, and a row is small
 	# enough that the mobile renderer's eight lights per object still land where they should
 	for r in GAR_ROWS:
@@ -2713,7 +2710,6 @@ func _build_garage_shell() -> void:
 				for z in GAR_COL_Z: _gar_block(body, c, r, x - 0.2, x + 0.2, z - 0.2, z + 0.2)
 			if "core" in t.pieces: _gar_block(body, c, r, -0.25, 5.0, -20.0, 0.0)
 			if "wall_s" in t.pieces: _gar_block(body, c, r, -0.2, 30.2, -20.25, -20.0)
-			if "north_block" in t.pieces: _gar_block(body, c, r, 5.8, 30.1, -3.75, -0.25)
 		add_child(body)
 	# the slab overhead, one strip per row so it is lit by that row's lamps. It is also the
 	# roof you can walk on, so the strips the ramp comes up through are left open.
@@ -2811,8 +2807,8 @@ func _build_garage_roof(w: float) -> void:
 		var dl := OmniLight3D.new()
 		dl.position = p + Vector3(0, 3.7, 0.4)
 		dl.light_color = Color(1.0, 0.84, 0.6)
-		dl.light_energy = 2.6
-		dl.omni_range = 22.0
+		dl.light_energy = 3.0
+		dl.omni_range = 24.0
 		dl.shadow_enabled = false
 		body.add_child(dl)
 		_amb_light(dl)
@@ -2851,7 +2847,7 @@ func _build_garage_lights() -> void:
 	for t in garage_tiles:
 		var c: int = int(t.c)
 		var r: int = int(t.r)
-		var lit: bool = (c * 5 + r * 3) % 6 != 4 # one module in six is dark
+		var lit: bool = (c * 5 + r * 3) % 10 != 7 # one module in ten is dark: enough to hide in
 		for k in 2:
 			var at := _gar(c, r, 8.0 + k * 13.0, GAR_AISLE_Z, 0.0)
 			at.y = y
@@ -2868,8 +2864,8 @@ func _build_garage_lights() -> void:
 		var l := OmniLight3D.new()
 		l.position = _gar(c, r, 14.0, GAR_AISLE_Z) + Vector3(0, y - 0.2, 0)
 		l.light_color = Color(0.82, 0.92, 1.0)
-		l.light_energy = 2.3
-		l.omni_range = 19.0
+		l.light_energy = 3.3
+		l.omni_range = 23.0
 		l.shadow_enabled = false
 		add_child(l)
 		_amb_light(l)

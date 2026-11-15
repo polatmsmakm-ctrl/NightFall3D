@@ -40,7 +40,8 @@ func _ready() -> void:
 		if "core" in t.pieces: cores += 1
 		if "wall_s" in t.pieces: walls += 1
 		if "north_block" in t.pieces: blocks += 1
-	print("stair cores=", cores, " cross walls=", walls, " plant rooms=", blocks)
+	print("stair cores=", cores, " cross walls=", walls, " ramps nobody can climb=", blocks,
+		" (the model's own ramp to a storey that does not exist — must be 0)")
 	print("objectives: gens=", w.gen_points.size(), " hooks=", w.hook_points.size(),
 		" lockers=", w.locker_points.size(), " pallets=", w.pallet_points.size(),
 		" hatches=", w.hatch_points.size(), " vault barriers=", w.window_points.size(),
@@ -89,6 +90,16 @@ func _ready() -> void:
 	m.sprint = false
 	print("walked up the ramp: now at y=", snappedf(m.body.position.y, 0.1),
 		" (roof is ", snappedf(NightWorld.GAR_ROOF, 0.1), ")  made it=", m.body.position.y > NightWorld.GAR_ROOF - 0.6)
+	# the map shows the way up and everything that is on the roof
+	m.big_map = true
+	await frames(3)
+	var roof_marks := 0
+	for p in w.gen_points: if p.y > 1.0: roof_marks += 1
+	for p in w.hook_points: if p.y > 1.0: roof_marks += 1
+	for g in w.gate_points: if (g[0] as Vector3).y > 1.0: roof_marks += 1
+	print("on the map: the ramp is drawn, and ", roof_marks, " things carry the roof badge (gate, generator, hook)")
+	print("standing on the roof the map says so: ", m.body.position.y > 3.0)
+	m.big_map = false
 	# the roof generator cannot be worked on from the floor underneath it
 	var rg: Vector3 = roof[0]
 	m.body.position = Vector3(rg.x, 0.3, rg.z)
