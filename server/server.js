@@ -78,7 +78,7 @@ const handlers = {
     c.name = name;
     users.set(key(name), c);
     handlers.friends(c, m);
-    send(c, { t: 'welcome', name, maps: MAPS });
+    send(c, { t: 'welcome', name, maps: MAPS, ver: 3 });
     notifyWatchers(name, true);
   },
   friends(c, m) {

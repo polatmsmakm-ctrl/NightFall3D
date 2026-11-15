@@ -93,6 +93,12 @@ func _on_msg(m: Dictionary) -> void:
 			start_game.emit({"map": m.map, "players": m.players, "me": Net.username, "offline": false,
 				"seed": int(m.get("seed", 1)), "theme": str(m.get("theme", "normal"))})
 			return
+		"welcome": # an older server does not know the newer maps and silently ignores them
+			var known: Array = m.get("maps", [])
+			for id in MAPS:
+				if not known.has(id):
+					toast = "السيرفر قديم وما يعرف كل الخرايط — حدّث السيرفر"
+					break
 		"invite": invite = m
 		"emote": # someone at the fire waved / danced / clapped
 			if lobby and is_instance_valid(lobby): lobby.emote(str(m.get("n", "")), int(m.get("k", 0)))
