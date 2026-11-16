@@ -961,7 +961,7 @@ func _process(dt: float) -> void:
 	cam.rotation = cr
 	if dof: # focus on the character, the fire and the trees behind go soft as the camera moves in
 		dof.dof_blur_amount = 0.09 * e
-		dof.dof_blur_far_distance = lerpf(60.0, cam.global_position.distance_to(STAND + Vector3(0, 1.2, 0)) + 1.6, e)
+		dof.dof_blur_far_distance = lerpf(60.0, cam.global_position.distance_to(to_global(STAND + Vector3(0, 1.2, 0))) + 1.8, e)
 		dof.dof_blur_far_transition = lerpf(8.0, 5.0, e)
 	key_light.light_energy = lerpf(0.9, 2.6, _focus) # all three come up as the camera moves in
 	fill_light.light_energy = lerpf(0.25, 1.0, _focus)

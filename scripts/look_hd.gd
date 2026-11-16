@@ -35,7 +35,9 @@ static func apply(env: Environment, kind: String) -> void:
 	env.ssil_normal_rejection = 1.0
 	# global illumination over the whole map, worked out live (the maps change every round, so it
 	# cannot be baked)
-	env.sdfgi_enabled = fx >= 2 and kind != "stage"
+	# (daylight and the strip-lit car park only: on the moonlit maps it washed the white walls out,
+	# and the lamps' bounce there comes from SSIL instead)
+	env.sdfgi_enabled = fx >= 2 and kind in ["day", "garage"]
 	env.sdfgi_use_occlusion = true
 	env.sdfgi_read_sky_light = kind == "day"
 	env.sdfgi_bounce_feedback = 0.45
@@ -47,7 +49,7 @@ static func apply(env: Environment, kind: String) -> void:
 	env.sdfgi_probe_bias = 1.1
 	# volumetric fog: shafts of light from the lamps, the headlights and the torches
 	env.volumetric_fog_enabled = fx >= 1 and kind != "stage"
-	env.volumetric_fog_density = {"night": 0.024, "fog": 0.045, "garage": 0.018, "day": 0.01, "camp": 0.03}.get(kind, 0.024)
+	env.volumetric_fog_density = {"night": 0.024, "fog": 0.045, "garage": 0.018, "day": 0.01, "camp": 0.018}.get(kind, 0.024)
 	env.volumetric_fog_albedo = Color(0.95, 0.82, 0.62) if kind == "day" else Color(0.78, 0.82, 0.9)
 	env.volumetric_fog_emission = Color.BLACK
 	env.volumetric_fog_anisotropy = 0.7 if kind == "day" else 0.55 # forward glow round every light
