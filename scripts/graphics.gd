@@ -19,6 +19,8 @@ var shadows := 1
 var aa := 1
 var scale_idx := 2
 var effects := 1
+var brightness := 1.0 # «السطوع»: multiplies the exposure of the maps and the camp (0.6 .. 1.6)
+signal look_changed
 
 # runtime-only reductions made by the governor (not saved)
 var dyn_scale := 1.0
@@ -85,12 +87,14 @@ func _load() -> void:
 	aa = clampi(c.get_value("g", "aa", aa), 0, 2)
 	scale_idx = clampi(c.get_value("g", "scale", scale_idx), 0, 2)
 	effects = clampi(c.get_value("g", "effects", effects), 0, 2)
+	brightness = clampf(float(c.get_value("g", "bright", brightness)), 0.6, 1.6)
 
 func _save() -> void:
 	var c := ConfigFile.new()
 	c.set_value("g", "fps", fps_idx); c.set_value("g", "preset", preset)
 	c.set_value("g", "shadows", shadows); c.set_value("g", "aa", aa)
 	c.set_value("g", "scale", scale_idx); c.set_value("g", "effects", effects)
+	c.set_value("g", "bright", brightness)
 	c.save(PATH)
 
 # ---------- adaptive governor ----------
@@ -182,6 +186,7 @@ func _build_ui() -> void:
 	_vol_rows.append(_vol_row(v, "music", "صوت الموسيقى"))
 	_vol_rows.append(_vol_row(v, "sfx", "صوت اللعب"))
 	for r in _vol_rows: r.visible = false
+	_bright_row(v)
 	_row(v, "fps", "الإطارات", ["تلقائي", "30", "60", "120"])
 	_row(v, "preset", "الجرافيكس", ["متوسط", "عالي", "فائق"])
 	_row(v, "shadows", "الظلال", ["منخفض", "متوسط", "عالي"])
@@ -228,6 +233,31 @@ func _vol_row(parent: Control, key: String, label: String) -> HBoxContainer:
 	_vol[key] = [s, pct]
 	return h
 
+## «السطوع»: 60-160%, live on the map (or the camp) behind the panel while it is dragged.
+func _bright_row(parent: Control) -> void:
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 10)
+	parent.add_child(h)
+	var l := Label.new(); l.text = "السطوع"; l.custom_minimum_size.x = 150; h.add_child(l)
+	var s := HSlider.new()
+	s.min_value = 60.0; s.max_value = 160.0; s.step = 5.0
+	s.custom_minimum_size = Vector2(220, 44)
+	s.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	s.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	s.set_value_no_signal(roundf(brightness * 100.0))
+	h.add_child(s)
+	var pct := Label.new()
+	pct.text = "%d%%" % roundi(brightness * 100.0)
+	pct.custom_minimum_size.x = 64
+	pct.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	h.add_child(pct)
+	s.value_changed.connect(func(val: float) -> void:
+		brightness = val / 100.0
+		pct.text = "%d%%" % roundi(val)
+		look_changed.emit())
+	s.drag_ended.connect(func(_c: bool) -> void: _save())
+	_vol["_bright"] = [s, pct]
+
 func _row(parent: Control, key: String, label: String, items: Array) -> void:
 	var h := HBoxContainer.new(); parent.add_child(h)
 	var l := Label.new(); l.text = label; l.size_flags_horizontal = Control.SIZE_EXPAND_FILL; h.add_child(l)
@@ -239,8 +269,9 @@ func _row(parent: Control, key: String, label: String, items: Array) -> void:
 
 func _refresh() -> void:
 	for key in _vol:
-		_vol[key][0].set_value_no_signal(roundf(Aud.get_vol(key) * 100.0))
-		_vol[key][1].text = "%d%%" % roundi(Aud.get_vol(key) * 100.0)
+		var val: float = brightness if key == "_bright" else Aud.get_vol(key)
+		_vol[key][0].set_value_no_signal(roundf(val * 100.0))
+		_vol[key][1].text = "%d%%" % roundi(val * 100.0)
 	_opts["fps"].select(fps_idx); _opts["preset"].select(preset); _opts["shadows"].select(shadows)
 	_opts["aa"].select(aa); _opts["scale"].select(scale_idx); _opts["effects"].select(effects)
 

@@ -34,6 +34,7 @@ func _ready() -> void:
 	tree.root.add_child.call_deferred(m)
 	await frames(3)
 	var lob: NFLobby = m.lobby_scene
+	Net.online = {"بدر": true, "فهد": true}
 	m.menu.open("main")
 	# the opening shot, three moments of it
 	for st in [[0.05, "00_intro_a"], [0.45, "00_intro_b"], [0.8, "00_intro_c"]]:
@@ -48,8 +49,9 @@ func _ready() -> void:
 	await frames(6)
 	await shot("01_main")
 	for i in 3: # she moves between the trees
-		lob._stalk_t = 0.0; lob._stalk_seen = false; lob._tick_stalker(0.01)
+		lob._stalk_t = 0.0; lob._stalk_seen = false; lob._stalk_i = mini(i * 2 + 1, NFLobby.STALK.size() - 1); lob._tick_stalker(0.01)
 		await frames(3)
+		print("stalker on screen at ", lob.cam.unproject_position(lob.stalker.global_position + Vector3(0, 1.0, 0)))
 		await shot("02_stalker_%d" % i)
 	m.menu.open("friends")
 	await frames(4)
@@ -59,6 +61,7 @@ func _ready() -> void:
 	m.menu.open("chars")
 	await frames(30)
 	await shot("04_chars")
+	m.menu.visible = false # the card would cover her head
 	for e in 3: # the emotes, four moments each
 		lob.emote("", e)
 		await frames(2)
@@ -69,6 +72,7 @@ func _ready() -> void:
 			await frames(2)
 			await shot("05_%s_%d" % [NFLobby.EMOTES[e], q])
 		lob.me_rig.player.play()
+	m.menu.visible = true
 	m.menu.open("offline")
 	for id in ["village", "fareej", "rubkhali", "garage", "beach"]:
 		m.menu.off_map = id

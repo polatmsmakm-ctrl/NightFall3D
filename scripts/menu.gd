@@ -67,7 +67,7 @@ func _ready() -> void:
 	add_child(char_pad)
 	card = Control.new() # username / level / experience / escapes / kills
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	card.size = Vector2(304, 162)
+	card.size = Vector2(340, 116)
 	card.draw.connect(_draw_card)
 	add_child(card)
 	version = Label.new()
@@ -387,7 +387,7 @@ func _draw_card() -> void:
 	card.draw_arc(Vector2(s.x - 32.0, 36.0), 24.0, 0, TAU, 28, Color(0.8, 0.2, 0.2, 0.9), 2.0)
 	var nm := Net.username if Net.username != "" else "لاعب"
 	card.draw_string(f, Vector2(12.0, 30.0), nm, HORIZONTAL_ALIGNMENT_RIGHT, s.x - 70.0, 24, Color(0.95, 0.93, 0.9))
-	card.draw_string(f, Vector2(12.0, 54.0), "المستوى %d" % Net.level(), HORIZONTAL_ALIGNMENT_RIGHT, s.x - 70.0, 18, Color(1, 0.85, 0.45))
+	card.draw_string(f, Vector2(12.0, 54.0), "المستوى %d  •  %s" % [Net.level(), Net.title()], HORIZONTAL_ALIGNMENT_RIGHT, s.x - 70.0, 18, Color(1, 0.85, 0.45))
 	var br := Rect2(Vector2(12.0, 64.0), Vector2(s.x - 70.0, 12.0))
 	NFUI.bar(card, br, Net.level_progress(), Color(0.8, 0.12, 0.12), Color(1, 1, 1, 0.3))
 	card.draw_string(f, Vector2(12.0, 90.0), "خبرة %d/%d" % [Net.xp, Net.level_xp(Net.level() + 1)],
@@ -396,21 +396,12 @@ func _draw_card() -> void:
 	card.draw_string(f, Vector2(38.0, 110.0), "%d" % Net.escapes, HORIZONTAL_ALIGNMENT_LEFT, 60.0, 17, Color(0.6, 0.9, 1.0))
 	NFIcons.draw(card, "skull", Vector2(104.0, 104.0), 18.0, Color(1.0, 0.4, 0.35))
 	card.draw_string(f, Vector2(116.0, 110.0), "%d" % Net.kills, HORIZONTAL_ALIGNMENT_LEFT, 60.0, 17, Color(1.0, 0.55, 0.5))
-	card.draw_string(f, Vector2(170.0, 110.0), Net.title(), HORIZONTAL_ALIGNMENT_RIGHT, s.x - 182.0, 16, Color(1, 0.85, 0.45))
-	card.draw_line(Vector2(12.0, 122.0), Vector2(s.x - 12.0, 122.0), Color(0.55, 0.08, 0.09, 0.7), 1.0)
-	var lr: Dictionary = Net.last_round
+	var lr: Dictionary = Net.last_round # the last round, on the same line
 	var res := str(lr.get("res", ""))
-	var line := "ما لعبت جولة للحين"
-	var lc := Color(0.7, 0.7, 0.72)
-	if res == "escaped":
-		line = "آخر جولة: هربت  •  %d نقطة" % int(lr.get("score", 0)); lc = Color(0.6, 0.9, 1.0)
-	elif res == "killer":
-		line = "آخر جولة: قاتل  •  %d نقطة" % int(lr.get("score", 0)); lc = Color(1.0, 0.55, 0.5)
-	elif res != "":
-		line = "آخر جولة: ما نجوت  •  %d نقطة" % int(lr.get("score", 0)); lc = Color(0.9, 0.5, 0.45)
-	card.draw_string(f, Vector2(12.0, 142.0), line, HORIZONTAL_ALIGNMENT_RIGHT, s.x - 24.0, 16, lc)
 	if res != "":
-		card.draw_string(f, Vector2(12.0, 157.0), "المولدات %d" % int(lr.get("gens", 0)), HORIZONTAL_ALIGNMENT_RIGHT, s.x - 24.0, 13, Color(0.6, 0.6, 0.63))
+		var line := "آخر جولة: %s +%d" % [{"escaped": "هربت", "killer": "قاتل"}.get(res, "ما نجوت"), int(lr.get("score", 0))]
+		var lc := Color(0.6, 0.9, 1.0) if res == "escaped" else (Color(1.0, 0.55, 0.5) if res == "killer" else Color(0.9, 0.5, 0.45))
+		card.draw_string(f, Vector2(160.0, 110.0), line, HORIZONTAL_ALIGNMENT_RIGHT, s.x - 172.0, 15, lc)
 
 # ---------- pages ----------
 func _page_name() -> void:

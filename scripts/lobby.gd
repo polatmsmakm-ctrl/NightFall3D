@@ -15,8 +15,9 @@ const SEATS := [[-1.05, 2.1], [-0.38, 2.2], [0.42, 2.2], [1.1, 2.1], [-1.78, 2.3
 const KILLER_AT := Vector3(1.6, 0.0, -7.4)
 ## Where she shows herself between the trees while nobody plays the killer: each time she comes
 ## back it is from the next spot, and the later ones are nearer the fire.
-const STALK := [Vector3(1.6, 0.0, -7.4), Vector3(-3.4, 0.0, -8.6), Vector3(4.8, 0.0, -6.4), Vector3(-5.6, 0.0, -5.8),
-	Vector3(0.6, 0.0, -6.2), Vector3(3.3, 0.0, -5.0), Vector3(-2.6, 0.0, -4.6)]
+## (all of them right of the menu column, clear of the seats and the hook)
+const STALK := [Vector3(1.6, 0.0, -7.4), Vector3(4.6, 0.0, -8.2), Vector3(-0.8, 0.0, -8.0), Vector3(6.2, 0.0, -5.4),
+	Vector3(2.8, 0.0, -5.6), Vector3(-1.6, 0.0, -5.2), Vector3(3.6, 0.0, -4.2)]
 const HOOK_AT := Vector3(4.9, 0.0, -0.2)
 
 var stock: Array[Node3D] = []     # the shipped cast, shown when we are not in a room
@@ -376,8 +377,8 @@ func _ready() -> void:
 	var rim := OmniLight3D.new() # faint red rim so his outline reads in the dark
 	rim.position = Vector3(2.4, 2.2, -8.6)
 	rim.light_color = Color(1.0, 0.15, 0.1)
-	rim.light_energy = 1.4
-	rim.omni_range = 5.0
+	rim.light_energy = 2.2
+	rim.omni_range = 4.0
 	add_child(rim)
 	stalk_rim = rim
 	# the stand is lit the way a photographer would do it: a warm key in front and to one side,
@@ -429,6 +430,8 @@ func _ready() -> void:
 	set_map("forest")
 	_time_of_day()
 	kit.free()
+	_place_stalker()
+	Gfx.look_changed.connect(_apply_look)
 	if not intro_done and DisplayServer.get_name() != "headless":
 		intro_done = true
 		intro = 0.0
@@ -482,7 +485,8 @@ func _time_of_day() -> void:
 	moon.light_color = moon_col
 	moon.light_energy = moon_e
 	env.ambient_light_color = amb
-	env.ambient_light_energy = amb_e
+	env.ambient_light_energy = amb_e * 1.25 # lighter, like the maps
+	env.tonemap_exposure = 1.1 * Gfx.brightness
 	env.fog_light_color = fog
 	env.fog_density = fog_d
 	# a round nobody got out of leaves its moon over the camp until one goes better
@@ -735,7 +739,7 @@ func set_map(id: String) -> void:
 				var dune := MeshInstance3D.new()
 				var sp := SphereMesh.new()
 				sp.radius = float(dn[1]); sp.height = float(dn[1]) * 0.55; sp.radial_segments = 20; sp.rings = 8
-				sp.material = _mat_flat(Color(0.8, 0.64, 0.4))
+				sp.material = _mat_flat(Color(0.8, 0.64, 0.4), 0.3)
 				dune.mesh = sp
 				dune.position = dn[0]
 				_dress.add_child(dune)
@@ -754,7 +758,7 @@ func set_map(id: String) -> void:
 			_bx(_dress, Vector3(220, 0.03, 0.55), Vector3(0, 0.04, -12.2), _mat_flat(Color(0.75, 0.82, 0.86), 0.25)) # the foam line
 		"fareej":
 			gcol = Color(0.62, 0.54, 0.42); dcol = Color(0.7, 0.6, 0.46)
-			var clay := _mat_flat(Color(0.7, 0.6, 0.44))
+			var clay := _mat_flat(Color(0.7, 0.6, 0.44), 0.32)
 			for seg in [[-13.0, 12.0], [9.5, 13.0]]: # the neighbourhood wall, with a way in
 				_bx(_dress, Vector3(float(seg[1]), 3.2, 0.5), Vector3(float(seg[0]), 1.6, -11.5), clay)
 			_bx(_dress, Vector3(6.5, 3.8, 5.0), Vector3(8.5, 1.9, -16.5), clay)
@@ -767,7 +771,7 @@ func set_map(id: String) -> void:
 			_bx(_dress, Vector3(0.5, 1.0, 0.5), Vector3(-7.5, 10.4, -18.0), _mat_flat(Color(0.4, 1.0, 0.6), 2.5))
 		"garage":
 			gcol = Color(0.34, 0.34, 0.35); dcol = Color(0.4, 0.4, 0.41)
-			var conc := _mat_flat(Color(0.3, 0.3, 0.31))
+			var conc := _mat_flat(Color(0.3, 0.3, 0.31), 0.45)
 			_bx(_dress, Vector3(44, 0.4, 24), Vector3(0, 3.7, -17.0), conc) # the slab overhead
 			for cx in [-10.5, -3.5, 3.5, 10.5]:
 				for cz in [-7.0, -14.0, -21.0]:
@@ -779,7 +783,7 @@ func set_map(id: String) -> void:
 			_bx(_dress, Vector3(1.8, 1.25, 4.2), Vector3(-6.8, 0.63, -11.0), _mat_flat(Color(0.12, 0.13, 0.16), 0.0, 0.4), 0.05)
 			_bx(_dress, Vector3(1.8, 1.25, 4.2), Vector3(6.6, 0.63, -17.5), _mat_flat(Color(0.25, 0.06, 0.06), 0.0, 0.4), -0.08)
 		"village":
-			var plank := _mat_flat(Color(0.2, 0.17, 0.14))
+			var plank := _mat_flat(Color(0.2, 0.17, 0.14), 0.35)
 			for hs in [[Vector3(-10, 0, -14), 0.3], [Vector3(4, 0, -17), -0.15], [Vector3(12, 0, -10), 0.8]]:
 				var house := Node3D.new()
 				house.position = hs[0]
@@ -794,14 +798,21 @@ func set_map(id: String) -> void:
 				roof.position.y = 3.9
 				house.add_child(roof)
 				_bx(house, Vector3(0.8, 0.9, 0.06), Vector3(-1.2, 1.7, 2.23), _mat_flat(Color(0.9, 0.6, 0.25), 1.2))
+	if id in ["fareej", "garage", "village"]: # one warm (or strip-white) light on what the map added
+		var o := OmniLight3D.new()
+		o.light_color = Color(0.85, 0.92, 1.0) if id == "garage" else Color(1.0, 0.72, 0.42)
+		o.light_energy = 2.4
+		o.omni_range = 14.0
+		o.position = Vector3(1.0, 3.0, -12.5)
+		_dress.add_child(o)
 	_ground_mat.albedo_color = gcol
 	_dirt_mat.albedo_color = dcol
 
 func _palms(n: int) -> void:
 	var spots := [Vector3(-6.2, 0, -6.4), Vector3(5.8, 0, -8.0), Vector3(-3.0, 0, -10.5), Vector3(8.4, 0, -3.6),
 		Vector3(-8.8, 0, -1.8), Vector3(2.2, 0, -11.5), Vector3(11.0, 0, -8.5)]
-	var trunk := _mat_flat(Color(0.3, 0.22, 0.14))
-	var leaf := _mat_flat(Color(0.14, 0.3, 0.12))
+	var trunk := _mat_flat(Color(0.3, 0.22, 0.14), 0.3)
+	var leaf := _mat_flat(Color(0.14, 0.3, 0.12), 0.35)
 	leaf.cull_mode = BaseMaterial3D.CULL_DISABLED
 	for i in mini(n, spots.size()):
 		var palm := Node3D.new()
@@ -817,6 +828,10 @@ func _palms(n: int) -> void:
 			palm.add_child(frond)
 			var blade := _bx(frond, Vector3(0.3, 0.03, 1.9), Vector3(0, -0.28, 0.9), leaf)
 			blade.rotation.x = 0.42
+
+## The player's «السطوع» on the camp as well.
+func _apply_look() -> void:
+	if env: env.tonemap_exposure = 1.1 * Gfx.brightness
 
 ## Which player stands under this point of the screen ("" if none): the menu uses it for a tap.
 func pick(at: Vector2) -> String:
@@ -838,7 +853,7 @@ func _place_stalker() -> void:
 	var t: Vector3 = CAM_IDLE[0]
 	stalker.position = p
 	stalker.rotation.y = atan2(t.x - p.x, t.z - p.z) # she looks at whoever holds the phone
-	stalk_rim.position = p + Vector3(0.8, 2.2, -1.2)
+	stalk_rim.position = p + Vector3(-0.5, 1.9, 1.3) # in front of her, low and red: her face reads from the fire
 
 ## Nobody plays the killer here, so she is never quite where she was: gone for a few seconds,
 ## then back between other trees, and nearer the longer the menu stays open.

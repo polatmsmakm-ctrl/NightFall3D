@@ -87,6 +87,8 @@ var flicker: Array[OmniLight3D] = []
 var amb_lights: Array = [] # [light, base energy, is a house light, flickers, current dim 0..1]
 var blackout := false      # the blackout event has the lights out
 var _amb_base := 0.8       # ambient energy before a blackout dims it
+var _moon_base := 1.1      # moonlight before the moon starts to fall
+var _exp_base := 1.0       # exposure before the player's «السطوع»
 var fog_boost := 0.0       # 0..1: the heavy-fog event
 var killer_at := Vector3(9999, 0, 9999) # fed by main.gd so lights can shy away from him
 var door_nodes: Array = [] # one per door_point: {hinge, yaw, shut} (null where there is no leaf)
@@ -508,6 +510,14 @@ func _build_environment() -> void:
 		env.adjustment_saturation = 0.92
 		env.tonemap_white = 8.0
 		env.glow_hdr_threshold = 1.5
+	# lighter nights (the owner asked for it): the dark is still there, but the map reads
+	if map_id != "rubkhali":
+		env.ambient_light_energy *= 1.55
+		env.fog_density *= 0.72
+		env.adjustment_brightness = 1.06
+		_exp_base = 1.22
+	_apply_look()
+	if not Gfx.look_changed.is_connected(_apply_look): Gfx.look_changed.connect(_apply_look)
 	_amb_base = env.ambient_light_energy
 	fog_base = env.fog_density
 	var we := WorldEnvironment.new()
@@ -531,6 +541,8 @@ func _build_environment() -> void:
 	if map_id == "rubkhali": # hard noon light through the dust
 		moon.light_color = Color(1.0, 0.91, 0.74)
 		moon.light_energy = 2.4
+	else: moon.light_energy *= 1.3 # lighter nights
+	_moon_base = moon.light_energy
 	moon.shadow_enabled = true
 	moon.directional_shadow_blend_splits = true
 	add_child(moon)
@@ -1464,16 +1476,20 @@ func set_blood_moon(on: bool) -> void:
 	var sun_map: bool = map_id == "rubkhali" # out there it is the sun that turns on you
 	tw.tween_property(moon, "light_color", (Color(1.0, 0.36, 0.2) if sun_map else Color(1.0, 0.42, 0.36)) if on
 		else (Color(1.0, 0.91, 0.74) if sun_map else Color(0.55, 0.65, 0.95)), d)
-	tw.tween_property(env, "ambient_light_color", (Color(0.44, 0.21, 0.14) if sun_map else Color(0.26, 0.15, 0.17)) if on
+	tw.tween_property(env, "ambient_light_color", (Color(0.44, 0.21, 0.14) if sun_map else Color(0.3, 0.17, 0.19)) if on
 		else (Color(0.72, 0.6, 0.44) if sun_map else Color(0.16, 0.2, 0.32)), d)
 	tw.tween_property(env, "fog_light_color", (Color(0.42, 0.15, 0.08) if sun_map else Color(0.14, 0.05, 0.05)) if on
 		else (Color(0.76, 0.6, 0.38) if sun_map else Color(0.07, 0.09, 0.14)), d)
+
+## The player's «السطوع» on top of the map's own exposure.
+func _apply_look() -> void:
+	if env: env.tonemap_exposure = _exp_base * Gfx.brightness
 
 # 0..1: the moon swells as it falls toward the map (drives the sky shader and the moonlight)
 func set_moon_near(v: float) -> void:
 	if _sky_mat == null: return
 	_sky_mat.set_shader_parameter("near", clampf(v, 0.0, 1.0))
-	if _blood and v > 0.03: moon.light_energy = (2.4 if map_id == "rubkhali" else 1.1) + 2.2 * v * v
+	if _blood and v > 0.03: moon.light_energy = _moon_base + 2.2 * v * v
 
 func set_market_dark(dark: bool) -> void:
 	if dark == market_dark: return

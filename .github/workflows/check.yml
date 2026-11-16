@@ -12,7 +12,7 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 70
     steps:
       - uses: actions/checkout@v4
       - name: Install Godot
@@ -37,6 +37,7 @@ jobs:
         run: |
           mkdir -p shots
           [ -f tools/shot15.tscn ] && NF_SHOTS=$PWD/shots LIBGL_ALWAYS_SOFTWARE=1 timeout 1500 xvfb-run -a godot --rendering-driver opengl3 --resolution 1564x720 --path . res://tools/shot15.tscn 2>&1 | tail -60 || true
+          [ -f tools/shot16.tscn ] && NF_SHOTS=$PWD/shots LIBGL_ALWAYS_SOFTWARE=1 timeout 1500 xvfb-run -a godot --rendering-driver opengl3 --resolution 1564x720 --path . res://tools/shot16.tscn 2>&1 | tail -30 || true
           ls -la shots
       - name: Publish the shots and the log on the check-shots branch
         if: always()

@@ -15,6 +15,7 @@ func _ready() -> void:
 	get_tree().root.add_child.call_deferred(m)
 	await frames(12)
 	var lob: NFLobby = m.lobby_scene
+	Net.online = {"بدر": true} # Net clears it while it fails to reach a server here
 	m.menu.open("main")
 	await frames(4)
 	print("stands at the fire: ", lob.me_char, " (last played survivor5)")
@@ -33,6 +34,10 @@ func _ready() -> void:
 		if lob.stalker.visible: seen += 1
 		spots[lob._stalk_i] = true
 	print("stalker visible ", seen, "/400 ticks, spots used=", spots.size())
+	if not lob.cast.has("بدر"):
+		push_error("CAMP FAIL: the online friend is not at the fire")
+		get_tree().quit(1)
+		return
 	var at: Vector2 = lob.cam.unproject_position(lob.cast["بدر"].rig.global_position + Vector3(0, 1.0, 0))
 	print("tap on بدر picks: ", lob.pick(at), "   tap on empty sky picks: '", lob.pick(Vector2(5, 5)), "'")
 	for e in 3:
@@ -45,5 +50,10 @@ func _ready() -> void:
 	await frames(4)
 	lob._tick_stalker(1.0)
 	print("in a room on the beach: camp=", lob.map_id, " stalker hidden (a player is the killer)=", not lob.stalker.visible)
+	var e0: float = m.world.env.tonemap_exposure if m.world else 0.0
+	Gfx.brightness = 1.4
+	Gfx.look_changed.emit()
+	print("brightness 140%: camp exposure=", lob.env.tonemap_exposure)
+	Gfx.brightness = 1.0
 	print("camp check done")
 	get_tree().quit()
