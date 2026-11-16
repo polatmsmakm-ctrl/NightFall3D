@@ -50,6 +50,19 @@ func _ready() -> void:
 	await frames(2)
 	check(m.car_inside and car.inside.visible, "and back into the seat")
 	check(m.rules.carrying == "" and m.attack_t <= 0.0, "no swing at the wheel")
+	check(car.radio != null, "the car has the radio song")
+	m._press("power", 5)
+	await frames(3)
+	check(car.radio_on and car._radio_started and not car.radio.stream_paused, "the power button turns the radio on")
+	var lab := ""
+	for bt in m._buttons():
+		if bt[3] == "power": lab = bt[2]
+	check(lab == "سكّر الراديو", "the button now says سكّر الراديو (%s)" % lab)
+	m._press("power", 5)
+	await frames(3)
+	check(not car.radio_on and car.radio.stream_paused, "and off again (paused, not restarted)")
+	m._press("power", 5)
+	await frames(3)
 	check(m.cshape.disabled, "the killer's own body is out of the way")
 	# run the dummy down: put it 7 m in front, on the ground, and floor it
 	var d = m.remotes["D"]
@@ -88,6 +101,7 @@ func _ready() -> void:
 	m._press("interact", 5)
 	await frames(10)
 	check(not m.driving and m.arm.spring_length < 0.5 and not car.inside.visible, "out, first person again, cabin hidden")
+	check(car.radio_on and car.radio.stream_paused, "the radio stays switched on but goes quiet when he gets out")
 	check(absf(m.cam_pivot.position.y - 1.6) < 0.01, "the camera is back at his own eyes")
 	check(flat(m.body.position, car.position) > 1.4, "standing beside it, not inside it (%.1f m)" % flat(m.body.position, car.position))
 	check(not m.cshape.disabled, "the killer's body is solid again")
@@ -131,10 +145,15 @@ func _ready() -> void:
 	check(car.driven and car.position.distance_to(to) < 0.6, "the car follows the killer's position")
 	check(not k.node.visible, "the killer is out of sight while he drives")
 	check(car.lights.light_energy > 2.0, "headlights on while someone drives")
+	check(not car.radio_on, "radio off while his f is 0")
+	k.lit = true
+	for i in 10: await tree.process_frame
+	check(car.radio_on and car._radio_started and not car.radio.stream_paused, "his radio plays on my phone, from the car")
 	k.anim = "idle"
 	k.pos = car.position + car.global_basis.x * 2.2
 	for i in 40: await tree.process_frame
 	check(not car.driven and k.node.visible, "he got out: lights off, he is back")
+	check(car.radio.stream_paused, "and the radio stops with him out of the car")
 	m.queue_free()
 	await frames(5)
 	print("drive check: ", "FAILED %d" % bad if bad else "all good")

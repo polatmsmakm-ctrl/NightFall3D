@@ -28,6 +28,9 @@ var model: Node3D         # the visible car, tilted to the ground under it
 var lights: SpotLight3D
 var tail: OmniLight3D
 var engine: AudioStreamPlayer3D
+var radio: AudioStreamPlayer3D # the owner's song (assets/sfx/radio.mp3), from the dashboard
+var radio_on := false     # the switch; it only plays while someone is at the wheel
+var _radio_started := false
 var inside: Node3D        # the cabin + headliner + pillars, only shown to the killer while he drives
 var _last := Vector3.ZERO # remote phones work the speed out from how far it moved
 
@@ -102,7 +105,27 @@ func setup(ps: PackedScene, scale_k: float, cabin_ps: PackedScene = null) -> voi
 		engine.unit_size = 6.0
 		engine.max_distance = 60.0
 		add_child(engine)
+	# the radio: a real 3D sound in the car, so survivors hear it coming (muffled and fading with
+	# distance) and the driver hears it up close
+	if ResourceLoader.exists("res://assets/sfx/radio.mp3"):
+		var rs = load("res://assets/sfx/radio.mp3")
+		if rs is AudioStreamMP3: (rs as AudioStreamMP3).loop = true
+		radio = AudioStreamPlayer3D.new()
+		radio.stream = rs
+		radio.bus = Aud.MUSIC
+		radio.position = Vector3(0, 1.2, 0.55)
+		radio.unit_size = 5.0
+		radio.max_db = 0.0
+		radio.max_distance = 48.0
+		radio.attenuation_filter_cutoff_hz = 2200.0 # further away it loses its treble, like through a car body
+		radio.attenuation_filter_db = -20.0
+		radio.panning_strength = 0.7
+		model.add_child(radio)
 	_last = position
+
+## Turn the radio on or off. Off pauses it, so it carries on from the same place next time.
+func set_radio(on: bool) -> void:
+	radio_on = on
 
 ## Seen from the driver's seat the body's own shell is invisible (its faces point outward and are
 ## culled), which leaves the windows clear and keeps the bonnet in view; these give the inside a
@@ -214,6 +237,13 @@ func _effects(dt: float) -> void:
 	lights.visible = lights.light_energy > 0.05
 	tail.light_energy = lerpf(tail.light_energy, (0.45 + (0.55 if speed < -0.3 or (driven and absf(speed) < 0.4) else 0.0)) * on, 1.0 - exp(-8.0 * dt))
 	tail.visible = tail.light_energy > 0.05
+	if radio:
+		var want := radio_on and driven
+		if want and not _radio_started:
+			radio.play()
+			_radio_started = true
+		elif _radio_started:
+			radio.stream_paused = not want
 	if engine:
 		if driven and not engine.playing: engine.play()
 		elif not driven and engine.playing: engine.stop()

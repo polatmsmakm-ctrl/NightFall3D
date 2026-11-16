@@ -957,7 +957,12 @@ func _buttons() -> Array:
 					label = "الكاميرا"
 					icon = "car"
 					on = true
-			"power": on = rules.power_cd <= 0.0 and rules.carrying == "" and not driving
+			"power":
+				on = rules.power_cd <= 0.0 and rules.carrying == ""
+				if driving:
+					label = "سكّر الراديو" if car.radio_on else "الراديو"
+					icon = "note"
+					on = car.radio != null
 			"vault": on = ctx.has("vault")
 			"heal": on = ctx.has("heal")
 			"item": on = ctx.has("item")
@@ -1023,7 +1028,9 @@ func _draw_ui() -> void:
 			int(clampf(r * 0.33, 13.0, 19.0)), icol)
 		if id == "light": # battery ring
 			ui.draw_arc(b[0], b[1] + 5.0, -PI / 2.0, -PI / 2.0 + TAU * battery / 100.0, 32, Color(1, 0.9, 0.4) if battery > 25.0 else Color(1, 0.3, 0.2), 4.0)
-		if id == "power": # power indicator: ring refills during the cooldown
+		if id == "power" and driving: # the radio: a green ring while it plays
+			if car.radio_on: ui.draw_arc(b[0], b[1] + 5.0, 0, TAU, 40, Color(0.4, 1, 0.5), 5.0)
+		elif id == "power": # power indicator: ring refills during the cooldown
 			var f := 1.0 - rules.power_cd / Rules.POWER_CD
 			ui.draw_arc(b[0], b[1] + 5.0, -PI / 2.0, -PI / 2.0 + TAU * f, 40, Color(1, 0.5, 0.2) if f < 1.0 else Color(0.4, 1, 0.5), 5.0)
 		if id == "attack" and attack_cd > 0.0:
@@ -1445,7 +1452,11 @@ func _press(id: String, touch: int) -> void:
 				hit_sent = false
 				rig.play("attack", 2.0)
 		"power":
-			if not driving: _ev({"k": "power"})
+			if driving: # at the wheel this is the radio
+				if car.radio:
+					car.set_radio(not car.radio_on)
+					_flash("الراديو شغّال — الكل يسمعه إذا قرّبت" if car.radio_on else "سكّرت الراديو")
+			else: _ev({"k": "power"})
 		"sig": # open / close the three quick messages
 			sig_open = not sig_open
 			sig_close = 6.0
@@ -1647,6 +1658,7 @@ func _process(dt: float) -> void:
 		r.node.visible = st != "escaped" and not (rules.s.has(n) and rules.s[n].locker >= 0)
 		if r.role == "killer" and car and r.anim == "drive": # he is at the wheel: the car follows him, he is out of sight
 			car.driven = true
+			car.set_radio(r.lit) # his `f` is the radio switch
 			car.follow(r.pos, r.yaw, dt)
 			r.node.visible = false
 			r.node.position = r.pos
@@ -1861,7 +1873,8 @@ func _physics_process(delta: float) -> void:
 		if send_t <= 0.0:
 			send_t = 1.0 / 15.0
 			var p := body.position
-			Net.send({"t": "st", "p": [snappedf(p.x, 0.01), snappedf(p.y, 0.01), snappedf(p.z, 0.01), snappedf(rig.rotation.y, 0.01)], "a": "drive" if driving else rig.current, "f": 1 if light_on else 0})
+			Net.send({"t": "st", "p": [snappedf(p.x, 0.01), snappedf(p.y, 0.01), snappedf(p.z, 0.01), snappedf(rig.rotation.y, 0.01)], "a": "drive" if driving else rig.current,
+					"f": 1 if (light_on or (driving and car.radio_on)) else 0}) # the killer has no torch: f is his radio
 
 # ---------------- the killer's car ----------------
 func _enter_car() -> void:

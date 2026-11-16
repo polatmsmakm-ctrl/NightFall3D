@@ -429,6 +429,12 @@ objectives and out of the lagoon. Every phone runs the same search, so they all 
   outward and are culled from inside, so the windows are clear and the bonnet stays in view;
   `_trim()` adds the headliner and the pillars. Only the driver's phone shows the cabin. While he
   drives, the attack button is «الكاميرا»: seat <-> chase camera.
+- **The radio**: `assets/sfx/radio.mp3` is the owner's song (his m4a, mono 112k, loudness-normalised),
+  looped on an `AudioStreamPlayer3D` in the dashboard on the **Music** bus, muffled and fading with
+  distance (48 m reach), so survivors hear it as the car comes close. At the wheel the power button
+  is «الراديو» / «سكّر الراديو» (green ring while it plays); off by default, and off pauses it.
+  It plays only while someone is at the wheel. **No server change**: the killer has no torch, so
+  his `st` `f` flag carries the radio switch and every phone plays it from the car.
 - Silent until `assets/sfx/engine.mp3` exists (looped, pitch follows speed). The wheels do not
   turn: the model is one mesh. `tools/drive.tscn` tests the whole loop; shot17 photographs it.
 
