@@ -34,12 +34,22 @@ func _ready() -> void:
 	var m = await boot("forest", players)
 	var car: NFCar = m.car
 	check(car != null, "the car is there")
+	print("   forest car at ", car.position.snappedf(0.1), " yaw ", snappedf(car.rotation.y, 0.01))
 	m.body.position = car.position + car.global_basis.x * 2.4 + Vector3(0, 0.3, 0)
 	await frames(6)
 	check(m.ctx.get("interact", {}).get("kind", "") == "car_in", "next to it the button says اركب")
 	m._press("interact", 5)
 	await frames(3)
-	check(m.driving and m.arm.spring_length > 5.0, "in the seat, camera behind the car")
+	check(m.driving and m.car_inside and car.inside.visible and m.arm.spring_length < 0.1, "in the driver's seat, the cabin around him")
+	await frames(2)
+	check(m.main_cam.global_position.distance_to(car.eye()) < 0.35, "the camera is at the driver's eyes (%.2f m off)" % m.main_cam.global_position.distance_to(car.eye()))
+	m._press("attack", 5)
+	await frames(2)
+	check(not m.car_inside and not car.inside.visible and m.arm.spring_length > 5.0, "the attack button switches to the camera behind the car")
+	m._press("attack", 5)
+	await frames(2)
+	check(m.car_inside and car.inside.visible, "and back into the seat")
+	check(m.rules.carrying == "" and m.attack_t <= 0.0, "no swing at the wheel")
 	check(m.cshape.disabled, "the killer's own body is out of the way")
 	# run the dummy down: put it 7 m in front, on the ground, and floor it
 	var d = m.remotes["D"]
@@ -61,6 +71,9 @@ func _ready() -> void:
 	await frames(150)
 	var sp: float = car.speed
 	check(sp > 6.0 or flat(car.position, start) > 12.0, "gas: %.1f m/s, %.1f m" % [sp, flat(car.position, start)])
+	for i in car.get_slide_collision_count(): # what it is pushing against, if anything
+		var col := car.get_slide_collision(i)
+		print("   touching ", (col.get_collider() as Node).get_path() if col.get_collider() is Node else "?", " normal ", col.get_normal().snappedf(0.01))
 	check(flat(m.body.position, car.position) < 0.2, "the killer rides with it (what the others are sent)")
 	var y0: float = car.rotation.y
 	m.stick_vec = Vector2(1, -1)
@@ -74,7 +87,8 @@ func _ready() -> void:
 	check(m.ctx.get("interact", {}).get("kind", "") == "car_out", "at the wheel the button says انزل")
 	m._press("interact", 5)
 	await frames(10)
-	check(not m.driving and m.arm.spring_length < 0.5, "out, first person again")
+	check(not m.driving and m.arm.spring_length < 0.5 and not car.inside.visible, "out, first person again, cabin hidden")
+	check(absf(m.cam_pivot.position.y - 1.6) < 0.01, "the camera is back at his own eyes")
 	check(flat(m.body.position, car.position) > 1.4, "standing beside it, not inside it (%.1f m)" % flat(m.body.position, car.position))
 	check(not m.cshape.disabled, "the killer's body is solid again")
 	var parked: Vector3 = car.position

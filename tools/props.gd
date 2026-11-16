@@ -45,8 +45,8 @@ func _ready() -> void:
 			if map == "beach": check(dc.position.z < NightWorld.BEACH_SHORE, "not in the lagoon")
 			var rq := PhysicsRayQueryParameters3D.create(dc.position + Vector3(0, 1.0, 0), dc.position + Vector3(0, -1.5, 0))
 			rq.exclude = [dc.get_rid()]
-			var g := w.get_world_3d().direct_space_state.intersect_ray(rq)
-			check(not g.is_empty() and absf(g.position.y - dc.position.y) < 0.4, "its wheels are on the ground")
+			var hitg := w.get_world_3d().direct_space_state.intersect_ray(rq)
+			check(not hitg.is_empty() and absf(hitg.position.y - dc.position.y) < 0.4, "its wheels are on the ground")
 		if map == "rubkhali": check(w.tent_models == w.tents and w.tents > 0, "every tent is the crimson tent (%d of %d)" % [w.tent_models, w.tents])
 		var leaf: Node3D = null
 		for ch in (g.doors[0] as Node).get_children():

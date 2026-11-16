@@ -128,6 +128,7 @@ var driving := false          # I am the killer and I am at the wheel
 var car_look := 0.0           # seconds since I last dragged the camera while driving
 var ram_cd := {}              # survivor -> seconds before the car can hit them again
 var car_told := false         # the "your car is here" line has been shown
+var car_inside := true        # driving from the seat (true) or from the chase camera behind
 var escape_banner := 0.0
 
 func _ready() -> void:
@@ -950,7 +951,12 @@ func _buttons() -> Array:
 				label = str(c.label) if c else ("حمل" if my_role == "killer" else "تفاعل")
 				icon = str(NFControls.CTX_ICON.get(str(c.kind), "hand")) if c else "hand"
 				on = c != null
-			"attack": on = attack_cd <= 0.0 and rules.carrying == "" and not driving
+			"attack":
+				on = attack_cd <= 0.0 and rules.carrying == ""
+				if driving:
+					label = "الكاميرا"
+					icon = "car"
+					on = true
 			"power": on = rules.power_cd <= 0.0 and rules.carrying == "" and not driving
 			"vault": on = ctx.has("vault")
 			"heal": on = ctx.has("heal")
@@ -1430,6 +1436,9 @@ func _press(id: String, touch: int) -> void:
 			if battery > 0.0 or light_on:
 				light_on = not light_on
 		"attack":
+			if driving: # at the wheel this button switches the camera: the seat or behind the car
+				_car_view(not car_inside)
+				return
 			if attack_cd <= 0.0 and rules.stun <= 0.0 and rules.carrying == "" and not driving:
 				attack_t = 1.1
 				attack_cd = 2.4
@@ -1866,11 +1875,9 @@ func _enter_car() -> void:
 	body.velocity = Vector3.ZERO
 	body.position = car.position
 	arm.add_excluded_object(car.get_rid())
-	arm.spring_length = 6.8 # out of first person: the camera rides behind the car
-	arm.position.y = 1.0
-	main_cam.fov = 74.0
+	_car_view(car_inside)
 	yaw = car.rotation.y + PI
-	pitch = -0.26
+	pitch = -0.08 if car_inside else -0.26
 	car_look = 1.0
 	NFHaptics.pulse("hook")
 
@@ -1903,10 +1910,21 @@ func _exit_car() -> void:
 	body.position = spot
 	body.velocity = Vector3.ZERO
 	arm.remove_excluded_object(car.get_rid())
+	car.show_inside(false)
+	cam_pivot.position = Vector3(0, 1.6, 0)
 	arm.spring_length = 0.0 # back to first person
 	arm.position.y = 0.2
 	main_cam.fov = 80.0
 	yaw = car.rotation.y + PI
+
+## In the driver's seat looking out over the bonnet, or behind the car.
+func _car_view(seat: bool) -> void:
+	car_inside = seat
+	car.show_inside(seat)
+	arm.spring_length = 0.0 if seat else 6.8
+	arm.position.y = 0.0 if seat else 1.0
+	main_cam.fov = 78.0 if seat else 74.0
+	if not seat: cam_pivot.position = Vector3(0, 1.6, 0)
 
 ## At the wheel: the stick is the pedal and the steering (up = gas, down = brake and reverse,
 ## sideways = steer), and the camera rides behind. A survivor in the car's way is hit.
@@ -1921,6 +1939,7 @@ func _drive(delta: float) -> void:
 	body.position = car.position
 	body.velocity = car.velocity
 	rig.rotation.y = car.rotation.y # what the others get as my yaw: the car's heading
+	if car_inside: cam_pivot.position = car.eye() - body.global_position
 	if car.bump > 0.0: # crashed into something
 		_shake(0.25 + car.bump * 0.7)
 		NFHaptics.pulse_scaled("hit", car.bump)
@@ -1931,7 +1950,7 @@ func _drive(delta: float) -> void:
 	if car_look > 0.9:
 		var k := 1.0 - exp(-2.5 * delta)
 		yaw = lerp_angle(yaw, car.rotation.y + PI, k)
-		pitch = lerpf(pitch, -0.26, k)
+		pitch = lerpf(pitch, -0.08 if car_inside else -0.26, k)
 	for n in ram_cd.keys():
 		ram_cd[n] -= delta
 		if ram_cd[n] <= 0.0: ram_cd.erase(n)

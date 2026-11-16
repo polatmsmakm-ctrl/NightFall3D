@@ -15,6 +15,10 @@ const COAST := 3.5
 const TURN := 1.6         # rad/s once it is moving
 const RAM_SPEED := 3.0    # slower than this, touching a survivor is not a hit
 const LIGHT_ENERGY := 9.0
+# the cabin (assets/props/cabin.glb, the owner's Mud-Caked Toyota Cabin) in the car's own space:
+# its floor on the body's floor, its dashboard against the bottom of the windscreen
+const CABIN_AT := Vector3(0.0, 0.5, 0.15)
+const EYE := Vector3(0.42, 1.5, -0.3) # the driver's eyes: left-hand seat, under the 1.68 m roof
 
 var speed := 0.0          # along the car's own +z (its front); negative in reverse
 var steer := 0.0
@@ -24,9 +28,10 @@ var model: Node3D         # the visible car, tilted to the ground under it
 var lights: SpotLight3D
 var tail: OmniLight3D
 var engine: AudioStreamPlayer3D
+var inside: Node3D        # the cabin + headliner + pillars, only shown to the killer while he drives
 var _last := Vector3.ZERO # remote phones work the speed out from how far it moved
 
-func setup(ps: PackedScene, scale_k: float) -> void:
+func setup(ps: PackedScene, scale_k: float, cabin_ps: PackedScene = null) -> void:
 	floor_snap_length = 0.7
 	floor_max_angle = deg_to_rad(42.0)
 	floor_constant_speed = true
@@ -62,6 +67,14 @@ func setup(ps: PackedScene, scale_k: float) -> void:
 		mi.mesh = bm
 		mi.position.y = 0.95
 		model.add_child(mi)
+	inside = Node3D.new()
+	inside.visible = false
+	model.add_child(inside)
+	if cabin_ps:
+		var cab_m := cabin_ps.instantiate() as Node3D
+		cab_m.position = CABIN_AT
+		inside.add_child(cab_m)
+	_trim()
 	lights = SpotLight3D.new() # one beam for both headlamps: the mobile renderer counts lights
 	lights.position = Vector3(0, 1.0, 2.25)
 	lights.rotation = Vector3(-0.08, PI, 0) # a spot light shines down its -z; the car's front is +z
@@ -90,6 +103,40 @@ func setup(ps: PackedScene, scale_k: float) -> void:
 		engine.max_distance = 60.0
 		add_child(engine)
 	_last = position
+
+## Seen from the driver's seat the body's own shell is invisible (its faces point outward and are
+## culled), which leaves the windows clear and keeps the bonnet in view; these give the inside a
+## roof and the windscreen its frame.
+func _trim() -> void:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color(0.075, 0.068, 0.062)
+	m.roughness = 1.0
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var parts := [ # size, position, tilt about x
+		[Vector3(1.62, 0.03, 1.2), Vector3(0, 1.66, -0.13), 0.0],      # headliner
+		[Vector3(0.07, 0.6, 0.09), Vector3(0.78, 1.43, 0.63), -0.65],  # A-pillars
+		[Vector3(0.07, 0.6, 0.09), Vector3(-0.78, 1.43, 0.63), -0.65],
+		[Vector3(0.07, 0.7, 0.13), Vector3(0.8, 1.32, -0.78), 0.0],    # B-pillars
+		[Vector3(0.07, 0.7, 0.13), Vector3(-0.8, 1.32, -0.78), 0.0],
+		[Vector3(1.6, 0.06, 0.08), Vector3(0, 1.64, 0.46), 0.0],       # top of the windscreen
+	]
+	for e in parts:
+		var mi := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = e[0]
+		bm.material = m
+		mi.mesh = bm
+		mi.position = e[1]
+		mi.rotation.x = e[2]
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		inside.add_child(mi)
+
+func show_inside(on: bool) -> void:
+	inside.visible = on
+
+## Where the driver's eyes are, in the world (follows the car's tilt).
+func eye() -> Vector3:
+	return model.global_transform * EYE
 
 ## Where it is facing (flat).
 func forward() -> Vector3:

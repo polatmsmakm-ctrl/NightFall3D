@@ -74,9 +74,19 @@ func _ready() -> void:
 			look(cam, dc.position - f * 8.0 + Vector3(0, 3.6, 0), dc.position + f * 7.0 + Vector3(0, 0.8, 0))
 			await frames(3)
 			await shot("%s_9_drive" % map)
-			look(cam, dc.position + f * 6.5 + dc.global_basis.x * 3.0 + Vector3(0, 1.8, 0), dc.position + Vector3(0, 1.0, 0))
+			dc.show_inside(true) # what the killer sees from the seat
+			var fov := cam.fov
+			cam.fov = 78.0
+			cam.near = 0.1
+			var e := dc.eye()
+			look(cam, e, e + f * 10.0 + Vector3(0, -0.8, 0))
 			await frames(3)
-			await shot("%s_9_drive_front" % map)
+			await shot("%s_9_drive_seat" % map)
+			look(cam, e, e + f * 3.0 - dc.global_basis.x * 0.9 + Vector3(0, -1.1, 0))
+			await frames(3)
+			await shot("%s_9_drive_dash" % map)
+			dc.show_inside(false)
+			cam.fov = fov
 		var c := Vector3(NightWorld.WALL, 0, NightWorld.WALL)
 		look(cam, c + Vector3(-34, 6, -22), c + Vector3(-6, 3, -4))
 		await frames(3)

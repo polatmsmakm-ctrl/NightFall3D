@@ -3035,16 +3035,27 @@ func _place_drive_car() -> void:
 		var crowded := false
 		for q in keep:
 			if Vector2((q as Vector3).x - p.x, (q as Vector3).z - p.z).length() < 4.5 and absf((q as Vector3).y - p.y) < 3.0: crowded = true
-		if crowded or not _car_room(p, c[1]): continue
-		pick = c
-		break
+		if crowded: continue
+		# the nose toward the middle if the way is clear, otherwise the first heading that is:
+		# the killer should be able to drive straight off, not reverse out from against a tree
+		for turn in [0.0, 0.8, -0.8, 1.6, -1.6, 2.4, -2.4, PI]:
+			var yaw: float = c[1] + turn
+			if _car_room(p, yaw) and _car_lane(p, yaw):
+				pick = [p, yaw]
+				break
+		if not pick.is_empty(): break
+	if pick.is_empty():
+		for c in cands:
+			if _car_room(c[0], c[1]):
+				pick = c
+				break
 	if pick.is_empty(): pick = cands[0]
 	drive_car = NFCar.new()
 	drive_car.name = "KillerCar"
 	drive_car.position = pick[0] + Vector3(0, 0.05, 0)
 	drive_car.rotation.y = pick[1]
 	add_child(drive_car)
-	drive_car.setup(_model("car"), CAR_SCALE)
+	drive_car.setup(_model("car"), CAR_SCALE, _model("cabin"))
 
 ## Nothing solid in a car-sized box over this spot. The box starts 0.35 m above the ground, so
 ## ground that rises more than that under the car (a dune, a kerb, a step) counts as in the way.
@@ -3054,6 +3065,19 @@ func _car_room(p: Vector3, yaw: float) -> bool:
 	bs.size = Vector3(2.6, 2.0, 5.4)
 	q.shape = bs
 	q.transform = Transform3D(Basis(Vector3.UP, yaw), p + Vector3(0, 0.35 + 1.0, 0))
+	q.collide_with_areas = false
+	return get_world_3d().direct_space_state.intersect_shape(q, 1).is_empty()
+
+## Ten metres of open ground in front of the car (trees, rocks, walls and steep ground all count).
+func _car_lane(p: Vector3, yaw: float) -> bool:
+	var f := Vector3(sin(yaw), 0.0, cos(yaw))
+	var mid := p + f * 8.0
+	var gy := height(mid.x, mid.z) if map_id != "garage" else p.y
+	var q := PhysicsShapeQueryParameters3D.new()
+	var bs := BoxShape3D.new()
+	bs.size = Vector3(2.4, 1.6, 10.0)
+	q.shape = bs
+	q.transform = Transform3D(Basis(Vector3.UP, yaw), Vector3(mid.x, maxf(gy, p.y) + 0.7 + 0.8, mid.z))
 	q.collide_with_areas = false
 	return get_world_3d().direct_space_state.intersect_shape(q, 1).is_empty()
 
