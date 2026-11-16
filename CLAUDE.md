@@ -58,6 +58,28 @@ Owner: Rashid (Arabic UI, plays with friends, installs the IPA with Sideloadly).
   sheet (idle / run / crouch / repair / attack + hand and feet close-ups) to judge a rig.
   `survivor1` «الناجية», `survivor2` «الرحّال», `survivor3` «الشريف» and `survivor8` «وردة الليل» are
   all made this way, from the owner's textured sculpts; `MALE` in `main.gd` lists the men.
+- `tools/rig_character.py --bake` (`tools/rig_bake.py` + `tools/simplify.cpp`) — **the second way
+  in, with no pymeshlab**, for a sculpt whose own UV atlas cannot survive the collapse. It was
+  written for the killer, «البركة القرمزية» (Crimson Benediction): 3.1 M triangles in 3,937 UV
+  islands, almost all of them hair, so keeping the atlas would have pinned ~21k triangles to
+  island corners. Instead it welds the sculpt, collapses it with its own quadric simplifier (the
+  same four region budgets, an importance per vertex — face skin x7, dark hair x0.25 — no edge
+  longer than 6 cm so limbs keep rings to bend at, and hair strands allowed to pinch shut),
+  unwraps the result into a **new atlas** (charts by facing direction, packed as bitmaps; the face
+  gets 2.1x the texels per metre, hair 0.32x) and **bakes** colour, metallic-roughness and normal
+  from the closest point of the full sculpt. The normal map holds the sculpt's geometry in the
+  small mesh's tangent space, and the GLB carries `TANGENT` so Godot shades with the frame the
+  bake used. Needs numpy, scipy, opencv, pillow and g++; ~1.5 min for 30k, ~4 min for 70k/2048.
+  Three switches came with her and work on both paths:
+  `--arms SHOULDER,ELBOW,WRIST` (metres from the centre line; her hair hides the armpit and her
+  claws run 7 cm past the fingertips, so the automatic arm fit put the elbow in the forearm),
+  `--chest 0.12` (what stands further than that in front of the spine at chest height moves with
+  `Spine2` as one piece — by height alone a full bust is split between two spine bones and
+  stretches in the crouch), and, bake path only, a **hair mask** from the sculpt's colour: dark
+  vertices above the hips and inside the shoulders take no arm weight, so a lowered arm does
+  not drag the hair on the shoulder down with it. Her two files were made with
+  `python3 tools/rig_character.py sculpt.glb assets/chars/killer.glb --faces 30000 --tex 1024 --facing keep --arms 0.235,0.50,0.745 --chest 0.12 --bake`
+  and `... killer_hi.glb --faces 70000 --tex 2048 ...` (same switches).
 - `assets/chars` — the owner's 5 characters (SF3D meshes rigged to the Mixamo skeleton). `assets/sfx` — the owner's sounds (mp3) plus synthesized ones (wav).
 - `tools/*.gd|tscn` — headless tests (not exported).
 
@@ -279,6 +301,17 @@ runtime instead:
 - **Grade pass** (`shaders/grade.gdshader`, `main._build_grade`): one fullscreen shader under the
   HUD — vignette, film grain, corner desaturation, and the edges tighten and go red as `danger`
   rises (or while you are down / hooked). Off on the lowest graphics preset.
+
+## The killer is «البركة القرمزية»
+`assets/chars/killer.glb` (30k triangles, the round) and `killer_hi.glb` (70k, the character stand
+in trial mode) are the owner's Crimson Benediction sculpt. **The old masked killer is gone** — his
+model and its two extracted textures were deleted, and nothing else had to change because the
+character id is still `killer` (server, rules, menus, tests). Two things in `main.gd` follow her:
+the jumpscare aims at 1.74 m (her face while she lifts; his was 1.62) and `killer` left `MALE`.
+She was rigged on a machine with no Godot, so she was checked with a software renderer that
+skins the GLB with the clips in `assets/anims` the way `character_rig.gd` retargets them (idle,
+run, crouch, repair, attack, carry, injured, hang, crawl) — **run `tools/shot14.tscn` on her
+the first time a Godot build is at hand.**
 
 ## Known gaps
 - `survivor8` «وردة الليل» is the first character with the owner's own textures (colour + normal +

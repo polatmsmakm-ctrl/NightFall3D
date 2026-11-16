@@ -11,7 +11,7 @@ const NATURAL := {"walk": 1.3, "run": 3.7, "sprint": 5.2, "crouchwalk": 1.0, "in
 const ACCEL := 20.0
 const DECEL := 28.0
 const SFX := ["gate", "heart", "breath", "steps_out", "steps_in", "gen_run", "chase", "ambient", "doom", "rope", "male_pain", "scream1", "scream2", "oof1", "oof2", "oof3"]
-const MALE := ["survivor2", "survivor3", "killer"] # the other characters use the female voice clips
+const MALE := ["survivor2", "survivor3"] # the other characters (the killer «البركة القرمزية» too) use the female voice clips
 const TERROR_RADIUS := 24.0 # survivors start to feel the killer inside this distance
 ## quick signals: what the three buttons say, their icon, and how they look on a team-mate's screen
 const SIG_TEXT := ["تعال هني", "القاتل هني", "قاعد أصلّح", "باب"]  # the fourth is local only: a door somebody heard
@@ -366,7 +366,7 @@ func _make_breath(parent: Node3D) -> GPUParticles3D:
 	parent.add_child(p)
 	return p
 
-## The killer lifts you: his face fills the screen for a moment (scripts/main.gd `scare_t`).
+## The killer lifts you: her face fills the screen for a moment (scripts/main.gd `scare_t`).
 func _start_scare() -> void:
 	if rules.killer == "" or not remotes.has(rules.killer): return
 	scare_t = 0.62
@@ -380,7 +380,7 @@ func _start_scare() -> void:
 
 func _aim_scare() -> void:
 	if scare_cam == null: return
-	var head := _pos_of(rules.killer) + Vector3(0, 1.62, 0)
+	var head := _pos_of(rules.killer) + Vector3(0, 1.74, 0) # her face while she lifts (the old killer's sat at 1.62)
 	var fwd := Basis(Vector3.UP, _yaw_of(rules.killer)) * Vector3(0, 0, 1)
 	var shake := Vector3(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0), 0.0) * 0.012
 	scare_cam.global_position = head + fwd * 0.52 + Vector3(0, 0.05, 0) + shake

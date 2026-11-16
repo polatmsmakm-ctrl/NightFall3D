@@ -23,6 +23,13 @@ Meshy sculpts arrive with half a million triangles, real textures and no skeleto
 
 Needs `pip install pymeshlab numpy pillow` and the system's libopengl0. The donor rig is
 tools/rig/donor_mixamo22.glb (the 22-joint Mixamo skeleton every character shares).
+
+`--bake` is a second way through with no pymeshlab (tools/rig_bake.py): it collapses with
+tools/simplify.cpp, makes a new UV atlas and bakes the sculpt's maps onto it. Use it when the
+sculpt's own atlas is cut into thousands of islands, as the killer «البركة القرمزية» was:
+
+    python3 tools/rig_character.py sculpt.glb assets/chars/killer.glb --faces 30000 --tex 1024 \
+        --facing keep --arms 0.235,0.50,0.745 --chest 0.12 --bake
 """
 import argparse, io, json, os, struct
 import numpy as np
@@ -138,8 +145,10 @@ def mid(v):
     return (v.min() + v.max()) / 2.0
 
 
-def measure(P):
-    """The landmarks both bodies are measured by. Left is +x, forward is +z, up is +y."""
+def measure(P, arms=None):
+    """The landmarks both bodies are measured by. Left is +x, forward is +z, up is +y.
+    `arms` = (shoulder, elbow, wrist) distances from the centre line, for a sculpt the arm
+    cannot be read from (hair down over the shoulders, claws past the fingertips)."""
     m = {}
     for side, s in (('Left', 1.0), ('Right', -1.0)):
         A = P[(P[:, 0] * s > 0.10) & (P[:, 1] > 1.15)]
@@ -160,6 +169,8 @@ def measure(P):
                 armpit = xs[i]
                 break
         ok = (xs > armpit + 0.02) & (xs < armpit + 0.72 * (tip - armpit)) & ~np.isnan(cy)
+        if arms:                                       # the bare arm only: past the hair, short of the hand
+            ok = (xs > arms[0] + 0.06) & (xs < arms[2] - 0.03) & ~np.isnan(cy)
         if ok.sum() >= 3:
             ky, by = np.polyfit(xs[ok], cy[ok], 1)
             kz, bz = np.polyfit(xs[ok], cz[ok], 1)
@@ -183,10 +194,10 @@ def measure(P):
     return m
 
 
-def fit_skeleton(P, donor):
+def fit_skeleton(P, donor, arms=None):
     """Donor joints moved onto this body: same measurement on both, the donor's offset kept."""
     D = measure(donor.mesh)
-    S = measure(P)
+    S = measure(P, arms)
     pos = donor.pos.copy()
     ix = donor.idx
     for side, s in (('Left', 1.0), ('Right', -1.0)):
@@ -200,6 +211,8 @@ def fit_skeleton(P, donor):
         for n in ('Arm', 'ForeArm', 'Hand'):
             ud = dj[n][0] * s
             us = b['armpit'] + (ud - d['armpit']) * (span_s / span_d)
+            if arms:
+                us = arms[('Arm', 'ForeArm', 'Hand').index(n)]
             ly_d, lz_d = line(d, ud)
             ly_s, lz_s = line(b, us)
             pos[ix[side + n]] = [us * s, ly_s + (dj[n][1] - ly_d), lz_s + (dj[n][2] - lz_d)]
@@ -238,7 +251,12 @@ def chain(u, knots, blends):
     return [s[i] * (1.0 - s[i + 1]) if i + 1 < n else s[i] for i in range(n)]
 
 
-def skin_weights(P, F, pos, ix):
+def skin_weights(P, F, pos, ix, hair=None, chest=None):
+    """`hair` (0..1 per vertex, from the bake path) keeps long hair off the arms: it hangs from
+    the head and the spine, so a lowered arm does not drag the hair on the shoulder down with it.
+    `chest`: whatever stands further than this in front of the spine at chest height is carried by
+    the upper chest as one piece. By height alone a full bust is split between two spine bones and
+    pulls like dough when the character crouches."""
     nJ = len(pos)
     W = np.zeros((len(P), nJ))
     x, y, z = P[:, 0], P[:, 1], P[:, 2]
@@ -247,7 +265,13 @@ def skin_weights(P, F, pos, ix):
     ks = [pos[ix[n]][1] for n in names]
     ks[0] = -9.0
     torso = np.zeros((len(P), nJ))
-    for n, w in zip(names, chain(y, ks, [0.05, 0.05, 0.05, 0.035, 0.03])):
+    proud = np.zeros(len(P))
+    if chest is not None:
+        s1, s2, nk = pos[ix['Spine1']], pos[ix['Spine2']], pos[ix['Neck']]
+        proud = (smooth(s2[2] + chest, s2[2] + chest + 0.05, z) * smooth(s1[1] - 0.06, s1[1] + 0.02, y)
+                 * (1.0 - smooth(nk[1] - 0.06, nk[1], y)))
+    yt = y + (pos[ix['Spine2']][1] + 0.075 - y) * proud
+    for n, w in zip(names, chain(yt, ks, [0.05, 0.05, 0.05, 0.035, 0.03])):
         torso[:, ix[n]] = w
     # legs, by height, split left/right with a soft seam down the middle
     legs = np.zeros((len(P), nJ))
@@ -269,6 +293,9 @@ def skin_weights(P, F, pos, ix):
         sh, arm, fore, hand = (pos[ix[side + n]] for n in ('Shoulder', 'Arm', 'ForeArm', 'Hand'))
         u = x * s
         part = smooth(arm[0] * s - 0.07, arm[0] * s + 0.03, u) * smooth(arm[1] - 0.45, arm[1] - 0.3, y)
+        if hair is not None:
+            part = part * (1.0 - smooth(0.35, 0.65, hair))
+        part = part * (1.0 - proud)
         ws = chain(u, [-9.0, arm[0] * s, fore[0] * s, hand[0] * s], [0.05, 0.06, 0.025])
         for n, w in zip(('Shoulder', 'Arm', 'ForeArm', 'Hand'), ws):
             arms[:, ix[side + n]] += w * part
@@ -381,7 +408,7 @@ def shrink_images(j, blob, side, T, F):
 
 
 # ------------------------------------------------------------------ the whole job
-def build(src, out_path, donor_path, faces, tex_side, facing='auto'):
+def build(src, out_path, donor_path, faces, tex_side, facing='auto', arms=None, bake=False, chest=None):
     sj, sb = load(src)
     donor = Donor(donor_path)
     ix = donor.idx
@@ -399,7 +426,7 @@ def build(src, out_path, donor_path, faces, tex_side, facing='auto'):
         P[:, 2] *= -1.0
         print('turned to face +z')
     # 2. the skeleton, fitted to this body
-    pos = fit_skeleton(P, donor)
+    pos = fit_skeleton(P, donor, arms)
     for side in ('Left', 'Right'):
         a, f, h = (pos[ix[side + n]] for n in ('Arm', 'ForeArm', 'Hand'))
         da, dh = donor.pos[ix[side + 'Arm']], donor.pos[ix[side + 'Hand']]
@@ -409,9 +436,16 @@ def build(src, out_path, donor_path, faces, tex_side, facing='auto'):
                 for k, t in enumerate(donor.local_translations(donor.pos)))
     print('  rest-translation round trip on the donor: max error %.5f' % check)
     # 3. decimate by region, 4. weight by body part
-    P, T, F, N = decimate(P, T, F, faces, pos, ix)
+    TAN = pics = hair = None
+    if bake:                                               # no pymeshlab: collapse, new atlas, bake the maps
+        import sys
+        sys.path.insert(0, HERE)
+        import rig_bake
+        P, T, F, N, TAN, pics, hair = rig_bake.run(P, T, F, rig_bake.source_images(sj, sb), faces, tex_side, pos, ix)
+    else:
+        P, T, F, N = decimate(P, T, F, faces, pos, ix)
     print('mesh: %d faces, %d vertices' % (len(F), len(P)))
-    JJ, WW = skin_weights(P, F, pos, ix)
+    JJ, WW = skin_weights(P, F, pos, ix, hair, chest)
     # ---- write the GLB ----
     out = {'asset': {'version': '2.0', 'generator': 'NightFall rig_character.py'}}
     blob = bytearray()
@@ -434,10 +468,12 @@ def build(src, out_path, donor_path, faces, tex_side, facing='auto'):
     pos_a = put(P.astype('<f4').tobytes(), len(P), 5126, 'VEC3', 34962, P.min(axis=0).tolist(), P.max(axis=0).tolist())
     nrm_a = put(N.astype('<f4').tobytes(), len(N), 5126, 'VEC3', 34962)
     uv_a = put(T.astype('<f4').tobytes(), len(T), 5126, 'VEC2', 34962)
+    tan_a = put(TAN.astype('<f4').tobytes(), len(TAN), 5126, 'VEC4', 34962) if TAN is not None else None
     j_a = put(JJ.astype('<u2').tobytes(), len(JJ), 5123, 'VEC4', 34962)
     w_a = put(WW.astype('<f4').tobytes(), len(WW), 5126, 'VEC4', 34962)
     i_a = put(F.astype('<u4').reshape(-1).tobytes(), F.size, 5125, 'SCALAR', 34963)
-    pics = shrink_images(sj, sb, tex_side, T0, F0)
+    if pics is None:
+        pics = shrink_images(sj, sb, tex_side, T0, F0)
     out['images'] = []
     for raw in pics:
         while len(blob) % 4:
@@ -464,6 +500,8 @@ def build(src, out_path, donor_path, faces, tex_side, facing='auto'):
     out['meshes'] = [{'name': 'body', 'primitives': [{'attributes': {
         'POSITION': pos_a, 'NORMAL': nrm_a, 'TEXCOORD_0': uv_a, 'JOINTS_0': j_a, 'WEIGHTS_0': w_a},
         'indices': i_a, 'material': 0}]}]
+    if tan_a is not None:                                  # the frame the normal map was baked in
+        out['meshes'][0]['primitives'][0]['attributes']['TANGENT'] = tan_a
     # the donor's joints and rotations, with rest translations that fit this body
     dj = donor.j
     keep = sorted(set(donor.joints) | {donor.root_node})
@@ -510,5 +548,15 @@ if __name__ == '__main__':
     ap.add_argument('--tex', type=int, default=1024)
     ap.add_argument('--facing', choices=['auto', 'keep', 'turn'], default='auto',
                     help="auto looks at which way the toes point; high heels fool it, so say 'keep' or 'turn'")
+    ap.add_argument('--arms', default=None, metavar='SHOULDER,ELBOW,WRIST',
+                    help="where the arm joints sit, in metres from the centre line at the cast's 1.95 m, "
+                         "for a sculpt whose hair or claws hide the armpit and the fingertip")
+    ap.add_argument('--chest', type=float, default=None, metavar='METRES',
+                    help="a full bust: what stands further than this in front of the spine at chest height "
+                         "moves with the upper chest as one piece (0.12 for «البركة القرمزية»)")
+    ap.add_argument('--bake', action='store_true',
+                    help="no pymeshlab: collapse with tools/simplify.cpp, make a new atlas and bake the "
+                         "sculpt's maps onto it (tools/rig_bake.py). For sculpts cut into thousands of UV islands")
     a = ap.parse_args()
-    build(a.src, a.out, a.donor, a.faces, a.tex, a.facing)
+    arms = tuple(float(v) for v in a.arms.split(',')) if a.arms else None
+    build(a.src, a.out, a.donor, a.faces, a.tex, a.facing, arms, a.bake, a.chest)
