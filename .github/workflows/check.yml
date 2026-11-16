@@ -35,6 +35,13 @@ jobs:
             timeout 240 godot --headless --path . res://tools/$t.tscn 2>&1 | tee -a all.log || echo "::warning::$t stopped (timeout or exit $?)"
           done
           if grep -E "SCRIPT ERROR|Parse Error|Parser Error|Invalid call|Invalid access|Invalid get|Cannot call|Nonexistent function" all.log; then echo "::error::script errors"; exit 1; fi
+      - name: Publish the test log early (the screenshots take a long time)
+        if: always()
+        run: |
+          mkdir early && cp all.log early/ 2>/dev/null || true
+          cd early && git init -q -b check-log && git add -A
+          git -c user.name=check -c user.email=check@users.noreply.github.com commit -qm "tests of ${GITHUB_SHA}" || true
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" check-log
       - name: Screenshots
         if: always()
         run: |

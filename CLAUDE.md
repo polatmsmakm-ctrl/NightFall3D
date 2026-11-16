@@ -403,6 +403,28 @@ nodes. `NightWorld.prop_glow(root, colour, energy, own)` turns the glow on in th
   `car_models` counts them (the garage counts as one).
 `tools/props.tscn` checks all six maps headless; `tools/shot17.tscn` photographs each prop per map.
 
+## The killer's car (`scripts/drive.gd`, `NFCar`)
+**One** Land Cruiser per map that **only the killer** can drive. `world._place_drive_car()` puts
+it at the end of `build()` (after two physics frames, because it asks the physics space for a
+clear car-sized box, `_car_room`): on the garage **on the roof**, nose toward the top of the ramp;
+everywhere else a few metres from the killer's spawn, nose toward the middle, clear of the
+objectives and out of the lagoon. Every phone runs the same search, so they all agree.
+- The car is a `CharacterBody3D` (two capsule "skids" + a cabin box), arcade handling: stick up =
+  gas (11 m/s top, the killer runs 4.6), down = brake then reverse, sideways = steer; head-on
+  crashes stop it and shake the camera. Headlights (one spot) and a red tail glow while driven.
+- `main`: next to it the interact button is «اركب» (`car_in`), at the wheel it is «انزل»
+  (`car_out`); attack and power are off while driving, the killer cannot get in while carrying,
+  and a pallet stun stops the car. The camera leaves first person for a chase camera (drag to
+  look round, it swings back behind the car). The killer's own body rides with the car, so his
+  position, terror radius, heartbeat and the server's distance checks all use the car.
+- **No server change**: the killer's `st` carries the car's position and heading and the
+  animation name `drive`; other phones hide him and move the car (`NFCar.follow`).
+- Running a survivor down sends the ordinary `hit` input (2 s per survivor on the phone, the
+  rules' own cooldown): ok -> hurt, hurt -> down, as the owner chose.
+- The killer's map shows the car (orange, «سيارتك», with ▲ on the roof); survivors' maps do not.
+- Silent until `assets/sfx/engine.mp3` exists (looped, pitch follows speed). The wheels do not
+  turn: the model is one mesh. `tools/drive.tscn` tests the whole loop; shot17 photographs it.
+
 ## Lighter nights and «السطوع»
 The owner found the maps too dark. `world._build_environment` now multiplies every night map's
 ambient by 2.0, its fog by 0.65 and its moonlight by 1.4, with exposure 1.32 (the Empty Quarter
