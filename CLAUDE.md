@@ -130,7 +130,7 @@ NF_SHOTS=/tmp/shots LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a godot --rendering-driver
 - Fareej house at `NightWorld.DIWAN` is «ديوان راشد الشمري» (`_build_diwan`): fake wall-wash quads (`_sconce`/`_beam`, additive) plus a handful of shadowless real lights — keep it under the Mobile renderer's 8 omni + 8 spot per mesh. Palms use `shaders/palm.gdshader` (alpha-cut feather fronds).
 
 - Moon fall: when the gates get power `doom` (snapshot `dm`) counts down `DOOM_TIME` = 120 s in both rules files; at 0 everyone still inside dies. Client: `world.set_moon_near`, `doom.mp3`, camera shake, flash, results 3.5 s after impact.
-- Characters `survivor2/5/6/7` come from the owner's untextured Meshy sculpts (0.8–2.2 M tris): painted by body zones, decimated to 26k tris with baked colour+normal maps, rigged like the others. Blender's JPEGs inside the GLB must be re-encoded with Pillow or Godot fails to load them.
+- Characters `survivor2/6` (and `5/7` before they were replaced) come from the owner's untextured Meshy sculpts (0.8–2.2 M tris): painted by body zones, decimated to 26k tris with baked colour+normal maps, rigged like the others. Blender's JPEGs inside the GLB must be re-encoded with Pillow or Godot fails to load them.
 
 ## The interface (rebuilt)
 - **Buttons**: everything goes through `NFUI.dress()` — dark scratched plate, dry-blood edge, a drawn icon, and `NFUI.click()`, which plays `assets/sfx/ui_click.mp3` or `click.mp3` **only if the owner drops one in**; there is no file yet, so menu clicks are silent on purpose (nothing is ever synthesized).
@@ -312,6 +312,23 @@ She was rigged on a machine with no Godot, so she was checked with a software re
 skins the GLB with the clips in `assets/anims` the way `character_rig.gd` retargets them (idle,
 run, crouch, repair, attack, carry, injured, hang, crawl) — **run `tools/shot14.tscn` on her
 the first time a Godot build is at hand.**
+
+## The hidden character and the three new survivors
+- `survivor4` is now «الفالكيري القرمزية» (Crimson Valkyrie) and it is **hidden** (`GameMenu.SECRET`):
+  `_char_list()` leaves it out unless `Net.has_secret()` — true on the owner's phone (the one with
+  the hidden tools unlocked, `Dev.unlocked`) and on any phone he has opened it for (`Net.secret`
+  in `user://profile.cfg`). On the owner's phone every friend row on the friends page has
+  «افتح السرية / اقفل السرية»: it sends `{t:"gift", to, on}`, the server relays `{t:"gift", from, on}`
+  to that friend **if he is online**, and his phone saves it. `Net.gifted` remembers who got it.
+  The server never hands `survivor4` out by itself (`HIDDEN` in `server.js`), and the practice
+  dummy in trial mode no longer wears it. «ناجي 4» (the old model) is deleted.
+- `survivor5` is «المحاربة الجريحة» (Battle-Scarred Survivor) in place of «المقاتلة», and
+  `survivor7` is «الباحثة» (Neon Genome Researcher) in place of «الطالبة». Same ids, new models.
+- All three were rigged with `--bake`, each with a `_hi` copy:
+  valkyrie `--arms 0.26,0.52,0.81 --chest 0.12 --hair 125`, battle `--arms 0.235,0.375,0.515
+  --chest 0.12 --hair 85`, researcher `--arms 0.26,0.43,0.60 --chest 0.12 --hair 85`
+  (`--hair` = how dark counts as hair: 70 for black, ~120 for brown). Checked with the software
+  renderer only, like the killer.
 
 ## Known gaps
 - `survivor8` «وردة الليل» is the first character with the owner's own textures (colour + normal +

@@ -498,7 +498,7 @@ def source_images(j, blob):
     return get(pbr.get('baseColorTexture')), get(pbr.get('metallicRoughnessTexture')), get(mat.get('normalTexture'))
 
 
-def run(P, T, F, images, faces, tex_side, pos, ix):
+def run(P, T, F, images, faces, tex_side, pos, ix, hair_lum=70.0):
     """P is the sculpt already in the cast's space. Returns the game mesh and its maps:
     V, UV, F, normals, tangents, [colour, (metal-rough), normal] JPEGs, hair (0..1 per vertex)."""
     log('bake path: welding %d vertices' % len(P))
@@ -510,7 +510,7 @@ def run(P, T, F, images, faces, tex_side, pos, ix):
     reach = max(abs(pos[ix['LeftArm']][0]), abs(pos[ix['RightArm']][0])) + 0.10
     # (above the hips and no further out than the shoulders: dark boots and the shadows between
     #  the fingers are not hair)
-    dark = (lum < 70.0) & (Pw[:, 1] > hip) & (np.abs(Pw[:, 0]) < reach)
+    dark = (lum < hair_lum) & (Pw[:, 1] > hip) & (np.abs(Pw[:, 0]) < reach)
     # regions, as in the pymeshlab path: the head, the hands and the feet keep their own budget
     wrist = min(abs(pos[ix['LeftHand']][0]), abs(pos[ix['RightHand']][0])) - 0.03
     ankle = max(pos[ix['LeftFoot']][1], pos[ix['RightFoot']][1]) + 0.04
@@ -523,7 +523,7 @@ def run(P, T, F, images, faces, tex_side, pos, ix):
     targets = [int(faces * s) for s in (0.47, 0.27, 0.17, 0.09)]
     weight = np.ones(len(Pw), np.float32)
     weight[dark] = 0.25                  # hair: a soft mass, not the place for triangles
-    weight[(lum >= 70.0) & (Pw[:, 1] > neck) & (np.abs(Pw[:, 0]) < reach)] = 7.0  # the face
+    weight[(lum >= hair_lum) & (Pw[:, 1] > neck) & (np.abs(Pw[:, 0]) < reach)] = 7.0  # the face
     log('   collapsing %d faces to %d (body %d, head %d, hands %d, feet %d)' % ((len(Fw), faces) + tuple(targets)))
     V, G = simplify(Pw, Fw, region, targets, weight, dark)
     log('   mesh: %d faces, %d vertices' % (len(G), len(V)))

@@ -10,7 +10,8 @@ const MAPS := {"forest": "الغابة", "village": "القرية المهجور
 const THEMES := {"normal": "ليل", "fog": "ضباب", "snow": "ثلج", "halloween": "هالوين"}
 const THEME_ICON := {"normal": "moon", "fog": "fog", "snow": "star", "halloween": "skull"}
 const VERSION := "v1.4"
-const CHARS := {"killer": "القاتل", "survivor1": "الناجية", "survivor2": "الرحّال", "survivor3": "الشريف", "survivor4": "ناجي 4", "survivor5": "المقاتلة", "survivor6": "الممرضة", "survivor7": "الطالبة", "survivor8": "وردة الليل"}
+const CHARS := {"killer": "القاتل", "survivor1": "الناجية", "survivor2": "الرحّال", "survivor3": "الشريف", "survivor4": "الفالكيري القرمزية", "survivor5": "المحاربة الجريحة", "survivor6": "الممرضة", "survivor7": "الباحثة", "survivor8": "وردة الليل"}
+const SECRET := "survivor4" # hidden: only on phones Net.has_secret() is true for
 const ERRORS := {"no_room": "ما في غرفة بهالكود", "room_full": "الغرفة ممتلئة", "in_game": "اللعبة بدأت بالغرفة",
 	"killer_taken": "في قاتل بالغرفة", "offline": "صديقك مو متصل", "bad_name": "الاسم لازم 2 إلى 16 حرف بدون مسافات",
 	"name_taken": "الاسم مستخدم الحين، اختر غيره"}
@@ -100,6 +101,8 @@ func _on_msg(m: Dictionary) -> void:
 					toast = "السيرفر قديم وما يعرف كل الخرايط — حدّث السيرفر"
 					break
 		"invite": invite = m
+		"gift":
+			toast = ("%s فتح لك شخصية سرية: الفالكيري القرمزية" if bool(m.get("on", true)) else "%s قفل الشخصية السرية") % str(m.get("from", ""))
 		"emote": # someone at the fire waved / danced / clapped
 			if lobby and is_instance_valid(lobby): lobby.emote(str(m.get("n", "")), int(m.get("k", 0)))
 			return
@@ -235,6 +238,7 @@ func _char_list() -> Array:
 	var trial := _offline_flow()
 	for id in CHARS:
 		if id == "killer" and not trial: continue # online the role button picks the killer
+		if id == SECRET and not Net.has_secret(): continue
 		out.append(id)
 	return out
 
@@ -378,6 +382,12 @@ func _page_friends() -> void:
 		if Net.in_room():
 			var b := _button("دعوة", func(): Net.send({"t": "invite", "to": name}); toast = "انرسلت الدعوة لـ" + name; _refresh(), r, on, "chat")
 			b.size_flags_horizontal = Control.SIZE_SHRINK_END
+		if Dev.unlocked: # the owner's phone: open or shut the hidden character for this friend
+			var has := Net.gifted.has(name.to_lower())
+			var g := _button("اقفل السرية" if has else "افتح السرية", func():
+				Net.gift(name, not has); toast = ("انقفلت عن " if has else "انفتحت لـ") + name; _refresh(), r, on, "star")
+			g.size_flags_horizontal = Control.SIZE_SHRINK_END
+			if has: g.modulate = Color(1, 0.75, 0.3)
 		var d := _button("حذف", func(): Net.remove_friend(name), r, true, "exit")
 		d.size_flags_horizontal = Control.SIZE_SHRINK_END
 	_button("رجوع", func(): open("lobby" if Net.in_room() else "main"), null, true, "exit")
@@ -492,6 +502,6 @@ func _page_offline() -> void:
 		var n := Net.username if Net.username != "" else "Player"
 		var list := [{"name": n, "role": "killer" if off_char == "killer" else "survivor", "char": off_char, "slot": 0}]
 		# a practice dummy: a target for the killer, or a wounded teammate to heal
-		list.append({"name": "دمية", "role": "survivor", "char": "survivor4" if off_char != "survivor4" else "survivor1", "slot": 1, "dummy": true})
+		list.append({"name": "دمية", "role": "survivor", "char": "survivor1" if off_char != "survivor1" else "survivor2", "slot": 1, "dummy": true})
 		start_game.emit({"map": off_map, "me": n, "offline": true, "theme": off_theme, "players": list}), null, true, "out")
 	_button("رجوع", func(): chars_from = "main"; open("main" if Net.username != "" else "name"), null, true, "exit")

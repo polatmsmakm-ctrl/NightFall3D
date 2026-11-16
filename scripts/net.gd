@@ -18,6 +18,8 @@ var xp := 0
 var replay := {}   # trial-mode round to start again right after a scene reload
 var escapes := 0   # how many rounds I got out of, all time
 var kills := 0     # survivors I killed as the killer, all time
+var secret := false # the hidden character is open on this phone (a gift from the owner)
+var gifted: Array = [] # owner's phone only: the friends I opened it for
 
 var _ws: WebSocketPeer
 var _hello := false
@@ -39,6 +41,8 @@ func _ready() -> void:
 		xp = int(c.get_value("p", "xp", 0))
 		escapes = int(c.get_value("p", "escapes", 0))
 		kills = int(c.get_value("p", "kills", 0))
+		secret = bool(c.get_value("p", "secret", false))
+		gifted = c.get_value("p", "gifted", [])
 	var env_url := OS.get_environment("NF_URL")
 	if env_url != "": url = env_url
 
@@ -50,7 +54,23 @@ func save() -> void:
 	c.set_value("p", "xp", xp)
 	c.set_value("p", "escapes", escapes)
 	c.set_value("p", "kills", kills)
+	c.set_value("p", "secret", secret)
+	c.set_value("p", "gifted", gifted)
 	c.save(PATH)
+
+## The hidden character («الفالكيري القرمزية») shows on the owner's phone (the one with the hidden
+## tools unlocked) and on every phone he has opened it for.
+func has_secret() -> bool:
+	return secret or Dev.unlocked
+
+## Owner only: open or shut the hidden character for a friend who is online right now.
+func gift(friend: String, on: bool) -> void:
+	send({"t": "gift", "to": friend, "on": on})
+	var k := friend.to_lower()
+	gifted.erase(k)
+	if on: gifted.append(k)
+	save()
+	changed.emit()
 
 func level() -> int:
 	return 1 + int(sqrt(xp / 200.0))
@@ -155,6 +175,9 @@ func _handle(m: Dictionary) -> void:
 			else: online.erase(str(m.name).to_lower())
 		"room":
 			room = m if str(m.get("code", "")) != "" else {}
+		"gift": # the owner opened (or shut) the hidden character for me
+			secret = bool(m.get("on", true))
+			save()
 		"error":
 			if str(m.get("code", "")) == "name_taken":
 				state = "name_taken"

@@ -408,7 +408,7 @@ def shrink_images(j, blob, side, T, F):
 
 
 # ------------------------------------------------------------------ the whole job
-def build(src, out_path, donor_path, faces, tex_side, facing='auto', arms=None, bake=False, chest=None):
+def build(src, out_path, donor_path, faces, tex_side, facing='auto', arms=None, bake=False, chest=None, hair_lum=70.0):
     sj, sb = load(src)
     donor = Donor(donor_path)
     ix = donor.idx
@@ -441,7 +441,7 @@ def build(src, out_path, donor_path, faces, tex_side, facing='auto', arms=None, 
         import sys
         sys.path.insert(0, HERE)
         import rig_bake
-        P, T, F, N, TAN, pics, hair = rig_bake.run(P, T, F, rig_bake.source_images(sj, sb), faces, tex_side, pos, ix)
+        P, T, F, N, TAN, pics, hair = rig_bake.run(P, T, F, rig_bake.source_images(sj, sb), faces, tex_side, pos, ix, hair_lum)
     else:
         P, T, F, N = decimate(P, T, F, faces, pos, ix)
     print('mesh: %d faces, %d vertices' % (len(F), len(P)))
@@ -554,9 +554,12 @@ if __name__ == '__main__':
     ap.add_argument('--chest', type=float, default=None, metavar='METRES',
                     help="a full bust: what stands further than this in front of the spine at chest height "
                          "moves with the upper chest as one piece (0.12 for «البركة القرمزية»)")
+    ap.add_argument('--hair', type=float, default=70.0, metavar='0-255',
+                    help="bake path: how dark (brightest colour channel) counts as hair; 70 for black hair, "
+                         "about 120 for brown")
     ap.add_argument('--bake', action='store_true',
                     help="no pymeshlab: collapse with tools/simplify.cpp, make a new atlas and bake the "
                          "sculpt's maps onto it (tools/rig_bake.py). For sculpts cut into thousands of UV islands")
     a = ap.parse_args()
     arms = tuple(float(v) for v in a.arms.split(',')) if a.arms else None
-    build(a.src, a.out, a.donor, a.faces, a.tex, a.facing, arms, a.bake, a.chest)
+    build(a.src, a.out, a.donor, a.faces, a.tex, a.facing, arms, a.bake, a.chest, a.hair)

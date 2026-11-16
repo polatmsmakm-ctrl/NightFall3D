@@ -8,6 +8,7 @@ const PORT = process.env.PORT || 8080;
 const MAX_PLAYERS = 7;
 const MAPS = ['forest', 'village', 'fareej', 'rubkhali', 'garage', 'beach'];
 const THEMES = ['normal', 'fog', 'snow', 'halloween'];
+const HIDDEN = ['survivor4']; // never handed out: only a phone that has it unlocked asks for it
 const CHARS = ['killer', 'survivor1', 'survivor2', 'survivor3', 'survivor4', 'survivor5', 'survivor6', 'survivor7', 'survivor8'];
 
 const users = new Map();   // lowercase name -> client
@@ -37,7 +38,7 @@ function newCode() { // short room code friends can type in: 4 digits, never reu
 }
 function freeSurvivor(r) {
   const used = new Set(r.members.map((m) => m.char));
-  return CHARS.slice(1).find((c) => !used.has(c)) || 'survivor1';
+  return CHARS.slice(1).find((c) => !used.has(c) && !HIDDEN.includes(c)) || 'survivor1';
 }
 function notifyWatchers(name, online) {
   const k = key(name);
@@ -113,6 +114,11 @@ const handlers = {
     }
     if (m.char !== undefined && c.role === 'survivor' && CHARS.indexOf(m.char) > 0) c.char = m.char;
     broadcast(r, roomView(r));
+  },
+  gift(c, m) { // the owner opens (or shuts) the hidden character for a friend who is online
+    const u = users.get(key(m.to));
+    if (!u) return send(c, { t: 'error', code: 'offline' });
+    send(u, { t: 'gift', from: c.name, on: m.on !== false });
   },
   invite(c, m) {
     if (!c.room) return;

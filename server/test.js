@@ -56,6 +56,16 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   await wait(200);
   ok(third.room && third.room.players.length === 3, 'a third player joins the same room');
 
+  // --- the hidden character: never handed out, picked only on request, opened by a gift ---
+  ok(host.room.players.every((p) => p.char !== 'survivor4'), 'nobody is given the hidden character on joining');
+  mate.send({ t: 'gift', to: 'Rashid', on: true });
+  await wait(200);
+  const gift = host.last('gift');
+  ok(gift && gift.from === 'Badr' && gift.on === true, 'a gift reaches the friend it is for', JSON.stringify(gift));
+  mate.send({ t: 'set', char: 'survivor4' });
+  await wait(200);
+  ok(host.room.players.find((p) => p.name === 'Badr').char === 'survivor4', 'the hidden character can be picked by a phone that asks for it');
+
   // --- map + theme are the host's choice and reach everyone ---
   ok(host.room.theme === 'normal', 'rooms start on the normal theme');
   host.send({ t: 'set', map: 'rubkhali' });
