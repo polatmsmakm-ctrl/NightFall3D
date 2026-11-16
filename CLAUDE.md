@@ -367,7 +367,7 @@ the first time a Godot build is at hand.**
 
 ## Lighter nights and «السطوع»
 The owner found the maps too dark. `world._build_environment` now multiplies every night map's
-ambient by 1.55, its fog by 0.72 and its moonlight by 1.3, with exposure 1.22 (the Empty Quarter
+ambient by 2.0, its fog by 0.65 and its moonlight by 1.4, with exposure 1.32 (the Empty Quarter
 is untouched: it is daylight). On top of that the settings panel has «السطوع» (60-160%,
 `Gfx.brightness`, saved in `user://graphics.cfg`): it multiplies the exposure live on the map and
 the camp through `Gfx.look_changed`. `tools/shot16.tscn` shoots three maps before and after.

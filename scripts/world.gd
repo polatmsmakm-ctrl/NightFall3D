@@ -512,10 +512,10 @@ func _build_environment() -> void:
 		env.glow_hdr_threshold = 1.5
 	# lighter nights (the owner asked for it): the dark is still there, but the map reads
 	if map_id != "rubkhali":
-		env.ambient_light_energy *= 1.55
-		env.fog_density *= 0.72
-		env.adjustment_brightness = 1.06
-		_exp_base = 1.22
+		env.ambient_light_energy *= 2.0
+		env.fog_density *= 0.65
+		env.adjustment_brightness = 1.08
+		_exp_base = 1.32
 	_apply_look()
 	if not Gfx.look_changed.is_connected(_apply_look): Gfx.look_changed.connect(_apply_look)
 	_amb_base = env.ambient_light_energy
@@ -541,7 +541,7 @@ func _build_environment() -> void:
 	if map_id == "rubkhali": # hard noon light through the dust
 		moon.light_color = Color(1.0, 0.91, 0.74)
 		moon.light_energy = 2.4
-	else: moon.light_energy *= 1.3 # lighter nights
+	else: moon.light_energy *= 1.4 # lighter nights
 	_moon_base = moon.light_energy
 	moon.shadow_enabled = true
 	moon.directional_shadow_blend_splits = true

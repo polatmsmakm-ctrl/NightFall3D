@@ -34,8 +34,8 @@ func _ready() -> void:
 		await frames(20)
 		var w: NightWorld = m.world
 		var after := [w.env.ambient_light_energy, w.env.fog_density, w.env.tonemap_exposure, w.env.adjustment_brightness, w.moon.light_energy]
-		w.env.ambient_light_energy = after[0] / 1.55; w.env.fog_density = after[1] / 0.72
-		w.env.tonemap_exposure = 1.0; w.env.adjustment_brightness = 1.0; w.moon.light_energy = after[4] / 1.3
+		w.env.ambient_light_energy = after[0] / 2.0; w.env.fog_density = after[1] / 0.65
+		w.env.tonemap_exposure = 1.0; w.env.adjustment_brightness = 1.0; w.moon.light_energy = after[4] / 1.4
 		await frames(4)
 		await shot("10_%s_before" % map)
 		w.env.ambient_light_energy = after[0]; w.env.fog_density = after[1]
