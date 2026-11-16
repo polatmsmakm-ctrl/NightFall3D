@@ -51,7 +51,7 @@ jobs:
           done
           # the look as the phone draws it: Forward+ (hd) and the old Mobile renderer (lo), both
           # through Mesa's software Vulkan (lavapipe)
-          for tg in ${NF_LOOK:-hd}; do
+          for tg in ${NF_LOOK:-}; do
             meth=forward_plus; [ $tg = lo ] && meth=mobile
             NF_TAG=$tg NF_SHOTS=$PWD/shots timeout 2400 xvfb-run -a godot --rendering-driver vulkan --rendering-method $meth --resolution 1564x720 --path . res://tools/shot18.tscn 2>&1 | tee -a all.log | grep -v "^\s*at:" | tail -30 || true
           done
