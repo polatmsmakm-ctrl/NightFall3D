@@ -45,6 +45,8 @@ var fortress_parts := 0       # sections of the owner's fortress wall around the
 var campfires := 0            # burning barrels that became the owner's campfire
 var campfire_points: Array = [] # where they burn (tests and screenshots look at them)
 var tent_models := 0          # bedouin tents drawn with the owner's crimson tent
+var car_models := 0           # cars drawn with the owner's Land Cruiser (the garage counts as one MultiMesh)
+const CAR_SCALE := 0.9        # 1.8 x 4.3 m, the size of the old car boxes and their collision
 var beach_palms := 0          # palms placed on the beach map
 var beach_props := 0          # wet-sand patches and shells
 var _models := {}             # name -> PackedScene or null
@@ -1317,7 +1319,7 @@ func _car(at: Vector3, yaw: float, col: Color, parent: Node3D = null) -> void:
 			wh.rotation.z = PI / 2.0
 			wh.position = Vector3(wx, 0.36, wz)
 			body.add_child(wh)
-	_swap_model(body, "car")
+	if _swap_model(body, "car", 0.0, CAR_SCALE): car_models += 1
 	(parent if parent else self).add_child(body)
 
 func _lamp_post(at: Vector3, yaw: float) -> void:
@@ -2465,6 +2467,9 @@ func _wreck(at: Vector3, yaw: float, rng: RandomNumberGenerator) -> void:
 			wh.position = Vector3(wx, 0.42, wz)
 			body.add_child(wh)
 	_snow_cap(body, Vector3(1.9, 1.0, 2.9), Vector3(0, 1.8, -0.2))
+	if _swap_model(body, "car", 0.0, 1.0): # the owner's Land Cruiser, half buried like the wreck was
+		_last_model.position.y = 0.12
+		car_models += 1
 	add_child(body)
 
 ## Low-poly animal built as a single merged mesh: one draw call, no bones, no collision.
@@ -2994,6 +2999,20 @@ func _build_garage_roof(w: float) -> void:
 	# the sign faces the driver coming up the ramp (they are looking toward +z)
 	_sign_text(body, "السطح", Vector3((x0 + x1) / 2.0, 3.2, z_foot - 2.0), 90, Color(1.0, 0.85, 0.4), PI)
 
+## The mesh of assets/props/car.glb with its material on the surface, for instancing (null if absent).
+func _car_mesh() -> Mesh:
+	var ps := _model("car")
+	if ps == null: return null
+	var inst := ps.instantiate()
+	var src: MeshInstance3D = null
+	for c in inst.find_children("*", "MeshInstance3D", true, false): src = c
+	var m: Mesh = null
+	if src:
+		m = src.mesh
+		if m.surface_get_material(0) == null: m.surface_set_material(0, src.get_active_material(0))
+	inst.free()
+	return m
+
 ## An empty coloured MultiMesh of one box, for the parked cars.
 func _gar_cars(size: Vector3, mat: Material) -> MultiMesh:
 	var bm := BoxMesh.new()
@@ -3118,6 +3137,21 @@ func _build_garage_props() -> void:
 		cs.transform = Transform3D(b3, at + Vector3(0, 0.8, 0))
 		hulls.add_child(cs)
 	add_child(hulls)
+	var model_mesh := _car_mesh()
+	if model_mesh: # the owner's Land Cruiser in every bay: one MultiMesh instead of the three box ones
+		var car_mm := MultiMesh.new()
+		car_mm.transform_format = MultiMesh.TRANSFORM_3D
+		car_mm.mesh = model_mesh
+		car_mm.instance_count = spots.size()
+		for i in spots.size():
+			var b3 := Basis(Vector3.UP, float(spots[i][1])).scaled(Vector3(CAR_SCALE, CAR_SCALE, CAR_SCALE))
+			car_mm.set_instance_transform(i, Transform3D(b3, spots[i][0]))
+		var cmi := MultiMeshInstance3D.new()
+		cmi.multimesh = car_mm
+		cmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(cmi)
+		car_models += 1
+		return
 	for mm in [body_mm, cabin_mm, wheel_mm]:
 		var mi := MultiMeshInstance3D.new()
 		mi.multimesh = mm

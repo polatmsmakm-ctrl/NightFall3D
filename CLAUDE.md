@@ -395,6 +395,12 @@ nodes. `NightWorld.prop_glow(root, colour, energy, own)` turns the glow on in th
   outside the old 9 x 7 m tent walls, which stay as the collision (open front, vault gap on the
   left, the locker inside); the ember light moved up to 1.6 m. The fires outside the first three
   tents moved out to clear its guy ropes. No glow map: its lanterns are too small to bake one.
+- `assets/props/car.glb` (7k, the owner's blood-stained Land Cruiser, 2 x 2.3 x 4.8 m, front +z):
+  every car in every map. `_car` (market cars, wrecks, fareej driveways) draws it at
+  `CAR_SCALE` 0.9 so it matches the old 1.8 x 4.2 m boxes and their collision; the desert's
+  `_wreck` draws it at full size, sunk into the sand like before; the garage's ~87 bays are one
+  MultiMesh of its mesh (`_car_mesh`) in place of the three box ones, with the same hull boxes.
+  `car_models` counts them (the garage counts as one).
 `tools/props.tscn` checks all six maps headless; `tools/shot17.tscn` photographs each prop per map.
 
 ## Lighter nights and «السطوع»
