@@ -454,8 +454,7 @@ The owner asked for a high-end look. The project now runs **Forward+ on the phon
 - **Skin**: `NFLook.skin(model, file)` turns on subsurface scattering, masked by
   `assets/chars/<file>_skin.png` (made by `tools/skin_mask.py` from the colour map — warm or rosy,
   moderately saturated; **re-run it after every re-bake**, the atlas changes). No mask, no effect.
-- **Depth of field** on the character stand (`NFLobby.dof`): the camp behind melts away as the
-  camera moves in.
+- Full HDR: `tonemap_white` goes to 11 on every night environment, or moonlit white plaster burns out.
 - **«محرك الرسم»** in the settings: «خفيف (أسرع)» writes `user://override.cfg` (read at start-up
   through `application/config/project_settings_override`) and the next launch runs the old Mobile
   renderer, where none of the above runs and the game looks as it did. «عالي (فخم)» deletes it.

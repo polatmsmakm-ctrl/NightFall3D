@@ -60,6 +60,9 @@ static func apply(env: Environment, kind: String) -> void:
 	env.volumetric_fog_sky_affect = 0.0 # the sky stays sharp
 	env.volumetric_fog_temporal_reprojection_enabled = true
 	env.volumetric_fog_temporal_reprojection_amount = 0.9
+	# full HDR (the Mobile renderer clipped it): give the highlights room, so moonlit white plaster
+	# keeps its shape instead of burning out, without darkening the rest
+	if kind != "day": env.tonemap_white = maxf(env.tonemap_white, 11.0)
 	# bloom round bright things
 	env.glow_enabled = true
 	env.glow_intensity = 0.75
