@@ -713,9 +713,9 @@ func _build_hook(kit: NightWorld) -> void:
 	root.position = HOOK_AT
 	root.rotation.y = -0.5
 	add_child(root)
-	var gallows: PackedScene = kit._model("hook")
-	if gallows: # the owner's gallows, a size down for the camp; it does not swing
-		var g := gallows.instantiate() as Node3D
+	var gallows_ps: PackedScene = kit._model("hook")
+	if gallows_ps: # the owner's gallows, a size down for the camp; it does not swing
+		var g := gallows_ps.instantiate() as Node3D
 		g.scale = Vector3(0.62, 0.62, 0.62)
 		g.position.z = -0.9 * 0.62 # its hook over the hook point, the post behind it
 		root.add_child(g)
