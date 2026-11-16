@@ -385,11 +385,19 @@ func _page_friends() -> void:
 		if Dev.unlocked: # the owner's phone: open or shut the hidden character for this friend
 			var has := Net.gifted.has(name.to_lower())
 			var g := _button("اقفل السرية" if has else "افتح السرية", func():
-				Net.gift(name, not has); toast = ("انقفلت عن " if has else "انفتحت لـ") + name; _refresh(), r, on, "star")
+				Net.gift(name, not has)
+				toast = ("انقفلت عن " + name) if has else ("كود %s: %s — يكتبه بصفحة الأصدقاء عنده" % [name, Net.secret_code(name)])
+				_refresh(), r, true, "star")
 			g.size_flags_horizontal = Control.SIZE_SHRINK_END
 			if has: g.modulate = Color(1, 0.75, 0.3)
 		var d := _button("حذف", func(): Net.remove_friend(name), r, true, "exit")
 		d.size_flags_horizontal = Control.SIZE_SHRINK_END
+	if not Net.has_secret(): # a friend with a code from the owner types it here
+		var hc := _row()
+		_edit("code", "كود الشخصية السرية", hc)
+		_button("تفعيل", func():
+			toast = "انفتحت الشخصية السرية: الفالكيري القرمزية" if Net.redeem(typed.get("code", "")) else "الكود غلط"
+			typed["code"] = ""; _refresh(), hc, true, "star")
 	_button("رجوع", func(): open("lobby" if Net.in_room() else "main"), null, true, "exit")
 
 ## The three campfire emotes: played here at once, and relayed to the room if I am in one.

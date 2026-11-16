@@ -63,6 +63,21 @@ func save() -> void:
 func has_secret() -> bool:
 	return secret or Dev.unlocked
 
+## The six digits that open the hidden character for one username, with no server in between:
+## the owner reads them off his phone, the friend types them in on the friends page.
+func secret_code(who: String) -> String:
+	return "%06d" % (abs(("nf-valk:" + who.strip_edges().to_lower()).hash()) % 1000000)
+
+## A friend typing the code he was given. Arabic-Indic digits count too.
+func redeem(code: String) -> bool:
+	var c := code.strip_edges()
+	for i in 10: c = c.replace(char(0x0660 + i), str(i)).replace(char(0x06F0 + i), str(i))
+	if username == "" or c != secret_code(username): return false
+	secret = true
+	save()
+	changed.emit()
+	return true
+
 ## Owner only: open or shut the hidden character for a friend who is online right now.
 func gift(friend: String, on: bool) -> void:
 	send({"t": "gift", "to": friend, "on": on})

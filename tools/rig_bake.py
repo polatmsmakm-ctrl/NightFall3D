@@ -511,6 +511,10 @@ def run(P, T, F, images, faces, tex_side, pos, ix, hair_lum=70.0):
     # (above the hips and no further out than the shoulders: dark boots and the shadows between
     #  the fingers are not hair)
     dark = (lum < hair_lum) & (Pw[:, 1] > hip) & (np.abs(Pw[:, 0]) < reach)
+    # ...and nothing on the arm itself: a dark armband or sleeve past the shoulder joint, at arm
+    # height, belongs to the arm (it tore off «المحاربة الجريحة» when it was taken for hair)
+    arm_y = (pos[ix['LeftArm']][1] + pos[ix['RightArm']][1]) / 2.0
+    dark &= ~((np.abs(Pw[:, 0]) > reach - 0.07) & (np.abs(Pw[:, 1] - arm_y) < 0.09))
     # regions, as in the pymeshlab path: the head, the hands and the feet keep their own budget
     wrist = min(abs(pos[ix['LeftHand']][0]), abs(pos[ix['RightHand']][0])) - 0.03
     ankle = max(pos[ix['LeftFoot']][1], pos[ix['RightFoot']][1]) + 0.04

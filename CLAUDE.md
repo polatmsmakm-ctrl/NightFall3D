@@ -325,10 +325,17 @@ the first time a Godot build is at hand.**
 - `survivor5` is «المحاربة الجريحة» (Battle-Scarred Survivor) in place of «المقاتلة», and
   `survivor7` is «الباحثة» (Neon Genome Researcher) in place of «الطالبة». Same ids, new models.
 - All three were rigged with `--bake`, each with a `_hi` copy:
-  valkyrie `--arms 0.26,0.52,0.81 --chest 0.12 --hair 125`, battle `--arms 0.235,0.375,0.515
-  --chest 0.12 --hair 85`, researcher `--arms 0.26,0.43,0.60 --chest 0.12 --hair 85`
+  valkyrie `--arms 0.23,0.52,0.81 --chest 0.12 --hair 125`, battle `--arms 0.205,0.375,0.515
+  --chest 0.12 --hair 85`, researcher `--arms 0.23,0.43,0.60 --chest 0.12 --hair 85`
   (`--hair` = how dark counts as hair: 70 for black, ~120 for brown). Checked with the software
-  renderer only, like the killer.
+  renderer only, like the killer. **The shoulder joint sits 3 cm inside the armpit crease** on all
+  three: at the crease (the first build) the top of the shoulder stayed a square shelf in idle and
+  the owner sent it back; further in (6 cm) the upper arm balloons. The bake path also keeps dark
+  things *on the arm* (armbands, sleeves) out of the hair mask now.
+- **The unlock code**: the gift needs the Render server to be on this version and the friend online,
+  so there is a second way with no server: `Net.secret_code(name)` — six digits from the friend's
+  username — shows on the owner's phone when he presses «افتح السرية», and the friend types it into
+  «كود الشخصية السرية» on his own friends page (`Net.redeem`). Tied to the username.
 
 ## Known gaps
 - `survivor8` «وردة الليل» is the first character with the owner's own textures (colour + normal +
