@@ -4,7 +4,7 @@ Asymmetric horror game (1 killer vs up to 6 survivors, Dead-by-Daylight style) f
 Owner: Rashid (Arabic UI, plays with friends, installs the IPA with Sideloadly).
 
 ## Stack
-- **Godot 4.5**, Mobile renderer, everything built in GDScript at runtime (no hand-made scenes; `scenes/main.tscn` only attaches `scripts/main.gd`).
+- **Godot 4.5**, **Forward+ renderer** (Metal on iOS; it was Mobile until the high-end pass), everything built in GDScript at runtime (no hand-made scenes; `scenes/main.tscn` only attaches `scripts/main.gd`).
 - **Server**: Node + `ws` in `server/` (deployed on Render, root dir `server`, `npm start`). Rooms, friends presence, position relay, and the **authoritative match rules**.
 - **CI**: `.github/workflows/build-ipa.yml` exports the Xcode project on a macOS runner and publishes an unsigned `Nightfall.ipa` to the `latest` release on every push to `main` (≈5 min, macOS minutes are billed ×10 on a private repo).
 
@@ -437,6 +437,35 @@ objectives and out of the lagoon. Every phone runs the same search, so they all 
   his `st` `f` flag carries the radio switch and every phone plays it from the car.
 - Silent until `assets/sfx/engine.mp3` exists (looped, pitch follows speed). The wheels do not
   turn: the model is one mesh. `tools/drive.tscn` tests the whole loop; shot17 photographs it.
+
+## The high-end pass (Forward+, `scripts/look_hd.gd`, `NFLook`)
+The owner asked for a high-end look. The project now runs **Forward+ on the phone too**
+(`rendering_method.mobile="forward_plus"`), and everything Forward+ adds goes through `NFLook`:
+- `NFLook.apply(env, kind)` on every environment: the maps (`world.look_kind()`: night / fog /
+  day / garage), the camp ("camp") and the results stage ("stage"). By «جودة المؤثرات»:
+  0 glow; 1 + SSAO, **volumetric fog** (beams from lamps, torches, headlights), torch and headlight
+  shadows; 2 + SSIL bounce light, **SDFGI** (desert and car park only: on the moonlit maps it
+  washed the white walls out), SSR in the car park. The governor drops effects first when the
+  frame rate falls, so the heavy ones go first. `Gfx.apply()` sets their quality (half-size
+  SSAO/SSIL, SDFGI 16 rays / 15 frames, fog volume 64 or 48).
+- `NFLook.soft_sun` (moon / sun / camp moon: angular size -> soft PCSS shadows),
+  `shadows_on` (my torch, the car's headlights, the camp key light; also a 3.5 fog beam),
+  `halo` (every map lamp through `world._amb_light`, the camp fire: a glow in the fog).
+- **Skin**: `NFLook.skin(model, file)` turns on subsurface scattering, masked by
+  `assets/chars/<file>_skin.png` (made by `tools/skin_mask.py` from the colour map — warm or rosy,
+  moderately saturated; **re-run it after every re-bake**, the atlas changes). No mask, no effect.
+- **Depth of field** on the character stand (`NFLobby.dof`): the camp behind melts away as the
+  camera moves in.
+- **«محرك الرسم»** in the settings: «خفيف (أسرع)» writes `user://override.cfg` (read at start-up
+  through `application/config/project_settings_override`) and the next launch runs the old Mobile
+  renderer, where none of the above runs and the game looks as it did. «عالي (فخم)» deletes it.
+- **Sharper bakes** (same switches as before, only resolution): killer and survivors 4/5/7 at
+  2048 in the round and 4096 / 100k triangles for `_hi`; the cabin 60k / 4096; the gate 4096; the
+  gallows, campfire and fortress wall at 2048. Survivors 1/2/3/6/8, the car, the tent and the
+  generator keep their old files: their sculpts (or their exact bake switches) are not here.
+- `tools/shot18.tscn` photographs the camp, the stand and every map (a survivor at a generator,
+  the car with its lights on); `check.yml` renders it through Mesa's software Vulkan (lavapipe):
+  `NF_LOOK="hd lo"` gives the new look and the old one side by side.
 
 ## Lighter nights and «السطوع»
 The owner found the maps too dark. `world._build_environment` now multiplies every night map's
