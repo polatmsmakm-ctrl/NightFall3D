@@ -37,6 +37,9 @@ func _ready() -> void:
 		if lob.stalker.visible: seen += 1
 		spots[lob._stalk_i] = true
 	print("stalker visible ", seen, "/400 ticks, spots used=", spots.size())
+	Net.online = {"بدر": true} # the reconnect loop clears it again while the maps were being swapped
+	m.menu._sync_lobby()
+	await frames(2)
 	if not lob.cast.has("بدر"):
 		push_error("CAMP FAIL: the online friend is not at the fire")
 		get_tree().quit(1)
