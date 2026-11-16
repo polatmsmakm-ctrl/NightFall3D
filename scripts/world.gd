@@ -44,6 +44,7 @@ var models_used := 0          # how many props were drawn from a real model this
 var fortress_parts := 0       # sections of the owner's fortress wall around the map
 var campfires := 0            # burning barrels that became the owner's campfire
 var campfire_points: Array = [] # where they burn (tests and screenshots look at them)
+var tent_models := 0          # bedouin tents drawn with the owner's crimson tent
 var beach_palms := 0          # palms placed on the beach map
 var beach_props := 0          # wet-sand patches and shells
 var _models := {}             # name -> PackedScene or null
@@ -2362,6 +2363,12 @@ func _build_tent(body: StaticBody3D, w: float, d: float, H: float, y0: float) ->
 	ember.omni_range = 6.0
 	body.add_child(ember)
 	_amb_light(ember, true)
+	if _swap_model(body, "tent"): # the owner's crimson tent over the same walls (collision unchanged)
+		_last_model.position.y = y0 - 0.05
+		prop_glow(_last_model, Color(1.0, 0.45, 0.3), 2.0) # its lanterns
+		ember.position.y = y0 + 1.6
+		ember.light_energy = 1.6
+		tent_models += 1
 
 ## A small mud-brick house: thick walls, one door, one window to vault, a flat roof.
 func _build_mud_house(body: StaticBody3D, w: float, d: float, H: float, y0: float) -> void:
@@ -2388,7 +2395,7 @@ func _build_mud_house(body: StaticBody3D, w: float, d: float, H: float, y0: floa
 
 ## A campfire out in front of a bedouin tent, on the sand (the open front faces +z).
 func _desert_fire(tent: Node3D, d: float) -> void:
-	var at: Vector3 = tent.position + Basis(Vector3.UP, tent.rotation.y) * Vector3(0.6, 0, d / 2.0 + 2.6)
+	var at: Vector3 = tent.position + Basis(Vector3.UP, tent.rotation.y) * Vector3(0.6, 0, d / 2.0 + 4.2) # clear of the guy ropes
 	at.y = _raw_h(at.x, at.z)
 	var body := StaticBody3D.new()
 	body.position = at

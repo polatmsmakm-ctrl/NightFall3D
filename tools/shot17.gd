@@ -57,6 +57,15 @@ func _ready() -> void:
 			look(cam, cf + Vector3(2.2, 1.6, 2.6), cf + Vector3(0, 0.4, 0))
 			await frames(3)
 			await shot("%s_4_campfire" % map)
+		if map == "rubkhali": # the crimson tents, front and side
+			for k in 2:
+				var tb: Array = w.buildings[k]
+				var tp := Vector3(tb[0], w._raw_h(tb[0], tb[1]), tb[1])
+				var fwd := Basis(Vector3.UP, float(tb[2])) * Vector3(0, 0, 1)
+				var side := Basis(Vector3.UP, float(tb[2])) * Vector3(1, 0, 0)
+				look(cam, tp + fwd * 13.0 + side * (4.0 if k == 0 else 9.0) + Vector3(0, 3.2, 0), tp + Vector3(0, 2.4, 0))
+				await frames(3)
+				await shot("%s_7_tent_%d" % [map, k])
 		var c := Vector3(NightWorld.WALL, 0, NightWorld.WALL)
 		look(cam, c + Vector3(-34, 6, -22), c + Vector3(-6, 3, -4))
 		await frames(3)

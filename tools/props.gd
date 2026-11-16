@@ -35,6 +35,7 @@ func _ready() -> void:
 		check((g.mat as StandardMaterial3D).get_texture(BaseMaterial3D.TEXTURE_EMISSION) != null, "the gate's sign is its own glow map")
 		check((w.gen_nodes[0].mat as StandardMaterial3D).get_texture(BaseMaterial3D.TEXTURE_EMISSION) != null, "the generator's lamp is its own glow map")
 		if map != "garage": check(w.campfires > 0, "burning barrels became campfires")
+		if map == "rubkhali": check(w.tent_models == w.tents and w.tents > 0, "every tent is the crimson tent (%d of %d)" % [w.tent_models, w.tents])
 		var leaf: Node3D = null
 		for ch in (g.doors[0] as Node).get_children():
 			if str(ch.name) == "leaf_l": leaf = ch

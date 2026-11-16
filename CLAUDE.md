@@ -390,6 +390,11 @@ nodes. `NightWorld.prop_glow(root, colour, energy, own)` turns the glow on in th
 - `assets/props/campfire.glb` (8k, 1.6 m): the three burning barrels of each map are campfires
   now (`campfire_points`), and the camp's fire is the model plus the old core, sparks and smoke.
   The camp's hook is the gallows at 0.62x.
+- `assets/props/tent.glb` (12k, the owner's Crimson Nomad Tent, 12.4 m wide, 7.8 m tall): drawn over
+  every bedouin tent on the Empty Quarter (`_build_tent`, `tent_models`). Its cloth sits just
+  outside the old 9 x 7 m tent walls, which stay as the collision (open front, vault gap on the
+  left, the locker inside); the ember light moved up to 1.6 m. The fires outside the first three
+  tents moved out to clear its guy ropes. No glow map: its lanterns are too small to bake one.
 `tools/props.tscn` checks all six maps headless; `tools/shot17.tscn` photographs each prop per map.
 
 ## Lighter nights and «السطوع»
