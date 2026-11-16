@@ -3018,7 +3018,7 @@ func _place_drive_car() -> void:
 		var yaw := atan2(-k.x, -k.z)
 		for ring in [6.0, 8.0, 10.0, 13.0, 16.0, 20.0, 25.0, 31.0, 38.0]:
 			for a in 16:
-				var p := Vector2(k.x, k.z) + Vector2.from_angle(a * TAU / 16.0) * ring
+				var p: Vector2 = Vector2(k.x, k.z) + Vector2.from_angle(a * TAU / 16.0) * ring
 				cands.append([Vector3(p.x, height(p.x, p.y), p.y), yaw])
 	var keep: Array = [] # stay clear of the objectives
 	keep.append_array(gen_points)
