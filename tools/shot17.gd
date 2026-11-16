@@ -66,24 +66,17 @@ func _ready() -> void:
 				look(cam, tp + fwd * 13.0 + side * (4.0 if k == 0 else 9.0) + Vector3(0, 3.2, 0), tp + Vector3(0, 2.4, 0))
 				await frames(3)
 				await shot("%s_7_tent_%d" % [map, k])
-		var car := w.find_child("ParkedCars", false, false)
-		if map == "garage" and car: # a row of bays
-			var g0: Vector3 = w.gen_points[0]
-			look(cam, g0 + Vector3(6, 2.2, 8), g0 + Vector3(0, 1.0, 0))
+		var dc: NFCar = w.drive_car
+		if dc: # the killer's car with its lights on, seen from behind the way he drives it
+			dc.driven = true
+			for k in 6: dc.park(0.5)
+			var f := dc.forward()
+			look(cam, dc.position - f * 8.0 + Vector3(0, 3.6, 0), dc.position + f * 7.0 + Vector3(0, 0.8, 0))
 			await frames(3)
-			await shot("%s_8_cars" % map)
-		else:
-			for ch in w.get_children():
-				if ch is StaticBody3D and ch.get_child_count() > 0:
-					var hit := false
-					for g in ch.get_children():
-						if g is Node3D and g.scene_file_path.ends_with("car.glb"): hit = true
-					if hit:
-						var cp: Vector3 = (ch as Node3D).global_position
-						look(cam, cp + Vector3(5.0, 2.6, 6.0), cp + Vector3(0, 1.0, 0))
-						await frames(3)
-						await shot("%s_8_cars" % map)
-						break
+			await shot("%s_9_drive" % map)
+			look(cam, dc.position + f * 6.5 + dc.global_basis.x * 3.0 + Vector3(0, 1.8, 0), dc.position + Vector3(0, 1.0, 0))
+			await frames(3)
+			await shot("%s_9_drive_front" % map)
 		var c := Vector3(NightWorld.WALL, 0, NightWorld.WALL)
 		look(cam, c + Vector3(-34, 6, -22), c + Vector3(-6, 3, -4))
 		await frames(3)

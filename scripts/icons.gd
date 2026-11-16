@@ -104,6 +104,14 @@ static func draw(ci: CanvasItem, name: String, c: Vector2, size: float, col: Col
 			_stroke(ci, c, size, [[0.1, -0.84], [-0.68, -0.84], [-0.68, 0.84], [0.1, 0.84]], col, w)
 			_bar(ci, c, size, -0.1, 0.0, 0.8, 0.0, col, w)
 			_stroke(ci, c, size, [[0.4, -0.34], [0.84, 0.0], [0.4, 0.34]], col, w)
+		"car": # the killer's Land Cruiser, side on
+			_fill(ci, c, size, [[-0.92, 0.36], [-0.92, -0.08], [-0.6, -0.14], [-0.42, -0.62], [0.44, -0.62], [0.62, -0.12], [0.92, -0.04], [0.92, 0.36]], col)
+			_fill(ci, c, size, [[-0.3, -0.5], [-0.02, -0.5], [-0.02, -0.16], [-0.42, -0.16]], Color(0, 0, 0, 0.55))
+			_fill(ci, c, size, [[0.08, -0.5], [0.36, -0.5], [0.5, -0.16], [0.08, -0.16]], Color(0, 0, 0, 0.55))
+			ci.draw_circle(_u(c, size, -0.5, 0.42), size * 0.2, Color(0, 0, 0, 0.85))
+			ci.draw_circle(_u(c, size, 0.52, 0.42), size * 0.2, Color(0, 0, 0, 0.85))
+			ci.draw_arc(_u(c, size, -0.5, 0.42), size * 0.2, 0, TAU, 18, col, w * 0.8, true)
+			ci.draw_arc(_u(c, size, 0.52, 0.42), size * 0.2, 0, TAU, 18, col, w * 0.8, true)
 		"plank": # pallet
 			for k in 2:
 				var y := -0.3 + k * 0.6

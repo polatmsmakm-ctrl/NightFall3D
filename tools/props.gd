@@ -36,6 +36,17 @@ func _ready() -> void:
 		check((w.gen_nodes[0].mat as StandardMaterial3D).get_texture(BaseMaterial3D.TEXTURE_EMISSION) != null, "the generator's lamp is its own glow map")
 		if map != "garage": check(w.campfires > 0, "burning barrels became campfires")
 		check(w.car_models > 0, "cars are the Land Cruiser (%d)" % w.car_models)
+		var dc: NFCar = w.drive_car
+		check(dc != null, "the killer's car is parked")
+		if dc:
+			print("   killer car at ", dc.position.snappedf(0.1), " yaw ", snappedf(dc.rotation.y, 0.01))
+			if map == "garage": check(dc.position.y > NightWorld.GAR_ROOF - 0.5, "on the garage it waits on the roof")
+			else: check(Vector2(dc.position.x, dc.position.z).distance_to(Vector2(w.spawn_point("killer", 0).x, w.spawn_point("killer", 0).z)) < 40.0, "near where the killer starts")
+			if map == "beach": check(dc.position.z < NightWorld.BEACH_SHORE, "not in the lagoon")
+			var rq := PhysicsRayQueryParameters3D.create(dc.position + Vector3(0, 1.0, 0), dc.position + Vector3(0, -1.5, 0))
+			rq.exclude = [dc.get_rid()]
+			var g := w.get_world_3d().direct_space_state.intersect_ray(rq)
+			check(not g.is_empty() and absf(g.position.y - dc.position.y) < 0.4, "its wheels are on the ground")
 		if map == "rubkhali": check(w.tent_models == w.tents and w.tents > 0, "every tent is the crimson tent (%d of %d)" % [w.tent_models, w.tents])
 		var leaf: Node3D = null
 		for ch in (g.doors[0] as Node).get_children():

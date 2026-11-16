@@ -29,7 +29,7 @@ jobs:
           # a script that does not compile stops everything here, before minutes of tests
           timeout 120 godot --headless --path . --quit 2>&1 | tee boot.log | tail -20
           if grep -E "Parse Error|Compile Error" boot.log; then echo "::error::scripts do not compile"; cat boot.log >> all.log; exit 1; fi
-          for t in ${NF_TESTS:-props ui smoke map win camp}; do
+          for t in ${NF_TESTS:-drive props ui smoke map win camp}; do
             [ -f tools/$t.tscn ] || continue
             echo "=== $t" | tee -a all.log
             timeout 240 godot --headless --path . res://tools/$t.tscn 2>&1 | tee -a all.log || echo "::warning::$t stopped (timeout or exit $?)"

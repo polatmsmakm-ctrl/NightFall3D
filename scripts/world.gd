@@ -47,6 +47,7 @@ var campfire_points: Array = [] # where they burn (tests and screenshots look at
 var tent_models := 0          # bedouin tents drawn with the owner's crimson tent
 var car_models := 0           # cars drawn with the owner's Land Cruiser (the garage counts as one MultiMesh)
 const CAR_SCALE := 0.9        # 1.8 x 4.3 m, the size of the old car boxes and their collision
+var drive_car: NFCar          # the one car the killer can drive (placed at the end of build())
 var beach_palms := 0          # palms placed on the beach map
 var beach_props := 0          # wet-sand patches and shells
 var _models := {}             # name -> PackedScene or null
@@ -360,6 +361,9 @@ func build() -> void:
 	_build_blobs()
 	_build_particles()
 	_build_probe()
+	await get_tree().physics_frame # the colliders have to be in the physics space before the
+	await get_tree().physics_frame # killer's car looks for a clear spot among them
+	_place_drive_car()
 	for l in find_children("*", "OmniLight3D", true, false): # far lights cost nothing
 		l.distance_fade_enabled = true
 		l.distance_fade_begin = 45.0
@@ -2998,6 +3002,60 @@ func _build_garage_roof(w: float) -> void:
 	add_child(body)
 	# the sign faces the driver coming up the ramp (they are looking toward +z)
 	_sign_text(body, "السطح", Vector3((x0 + x1) / 2.0, 3.2, z_foot - 2.0), 90, Color(1.0, 0.85, 0.4), PI)
+
+## The killer's car: on the garage it waits on the roof at the top of the ramp, everywhere else
+## it is parked a few metres from where the killer starts, nose toward the middle of the map.
+## Every phone runs the same search over the same seeded map, so they all put it in the same spot.
+func _place_drive_car() -> void:
+	var cands: Array = []
+	if map_id == "garage":
+		var rx: float = (GAR_RAMP_X[0] + GAR_RAMP_X[1]) / 2.0
+		var top: float = GAR_RAMP_Z[1]
+		for e in [[0.0, 9.0], [-7.0, 9.0], [7.0, 11.0], [0.0, 15.0], [-12.0, 14.0], [-20.0, 9.0], [-30.0, 20.0]]:
+			cands.append([Vector3(rx + e[0], GAR_ROOF, top + e[1]), PI]) # nose toward the ramp, ready to drive down
+	else:
+		var k := spawn_point("killer", 0)
+		var yaw := atan2(-k.x, -k.z)
+		for ring in [6.0, 8.0, 10.0, 13.0, 16.0, 20.0, 25.0, 31.0, 38.0]:
+			for a in 16:
+				var p := Vector2(k.x, k.z) + Vector2.from_angle(a * TAU / 16.0) * ring
+				cands.append([Vector3(p.x, height(p.x, p.y), p.y), yaw])
+	var keep: Array = [] # stay clear of the objectives
+	keep.append_array(gen_points)
+	keep.append_array(hatch_points)
+	keep.append_array(hook_points)
+	for e in locker_points: keep.append(e[0])
+	for e in pallet_points: keep.append(e[0])
+	var pick: Array = []
+	for c in cands:
+		var p: Vector3 = c[0]
+		if map_id != "garage":
+			if absf(p.x) > WALL - 12.0 or absf(p.z) > WALL - 12.0: continue
+			if map_id == "beach" and p.z > BEACH_SHORE - 6.0: continue
+		var crowded := false
+		for q in keep:
+			if Vector2((q as Vector3).x - p.x, (q as Vector3).z - p.z).length() < 4.5 and absf((q as Vector3).y - p.y) < 3.0: crowded = true
+		if crowded or not _car_room(p, c[1]): continue
+		pick = c
+		break
+	if pick.is_empty(): pick = cands[0]
+	drive_car = NFCar.new()
+	drive_car.name = "KillerCar"
+	drive_car.position = pick[0] + Vector3(0, 0.05, 0)
+	drive_car.rotation.y = pick[1]
+	add_child(drive_car)
+	drive_car.setup(_model("car"), CAR_SCALE)
+
+## Nothing solid in a car-sized box over this spot. The box starts 0.35 m above the ground, so
+## ground that rises more than that under the car (a dune, a kerb, a step) counts as in the way.
+func _car_room(p: Vector3, yaw: float) -> bool:
+	var q := PhysicsShapeQueryParameters3D.new()
+	var bs := BoxShape3D.new()
+	bs.size = Vector3(2.6, 2.0, 5.4)
+	q.shape = bs
+	q.transform = Transform3D(Basis(Vector3.UP, yaw), p + Vector3(0, 0.35 + 1.0, 0))
+	q.collide_with_areas = false
+	return get_world_3d().direct_space_state.intersect_shape(q, 1).is_empty()
 
 ## The mesh of assets/props/car.glb with its material on the surface, for instancing (null if absent).
 func _car_mesh() -> Mesh:

@@ -123,6 +123,11 @@ var lobby_scene: Node3D
 var spectating := "" # who I am watching after escaping or dying
 var big_map := false
 var match_time := 0.0
+var car: NFCar                # the killer's Land Cruiser (world.drive_car), the same on every phone
+var driving := false          # I am the killer and I am at the wheel
+var car_look := 0.0           # seconds since I last dragged the camera while driving
+var ram_cd := {}              # survivor -> seconds before the car can hit them again
+var car_told := false         # the "your car is here" line has been shown
 var escape_banner := 0.0
 
 func _ready() -> void:
@@ -945,8 +950,8 @@ func _buttons() -> Array:
 				label = str(c.label) if c else ("حمل" if my_role == "killer" else "تفاعل")
 				icon = str(NFControls.CTX_ICON.get(str(c.kind), "hand")) if c else "hand"
 				on = c != null
-			"attack": on = attack_cd <= 0.0 and rules.carrying == ""
-			"power": on = rules.power_cd <= 0.0 and rules.carrying == ""
+			"attack": on = attack_cd <= 0.0 and rules.carrying == "" and not driving
+			"power": on = rules.power_cd <= 0.0 and rules.carrying == "" and not driving
 			"vault": on = ctx.has("vault")
 			"heal": on = ctx.has("heal")
 			"item": on = ctx.has("item")
@@ -1164,6 +1169,7 @@ func _draw_moon(c: Vector2) -> void:
 ## The ramp up to the car park's roof: a lit strip with chevrons running toward the top, and the
 ## word «السطح» on the big map, so you can always see where the way up is.
 const ROOF_COL := Color(0.35, 0.9, 1.0)
+const CAR_COL := Color(1.0, 0.55, 0.2) # the killer's car on his map
 
 func _draw_roof_ramp(c: Vector2, k: float, u: float, big: bool) -> void:
 	var x0: float = NightWorld.GAR_RAMP_X[0]
@@ -1285,6 +1291,15 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 	if rules.hatch >= 0 and my_role == "survivor":
 		var hp2: Vector3 = world.hatch_points[rules.hatch]
 		minimap.draw_circle(c + Vector2(hp2.x, hp2.z) * k, 5.0 * u, Color(0.5, 1, 0.7))
+	if car and my_role == "killer": # the killer always knows where he left his car
+		var cp := c + Vector2(car.position.x, car.position.z) * k
+		var cf := Vector2(sin(car.rotation.y), cos(car.rotation.y))
+		var cs := Vector2(-cf.y, cf.x)
+		minimap.draw_colored_polygon(PackedVector2Array([cp + (cf * 5.0 + cs * 2.6) * u, cp + (cf * 5.0 - cs * 2.6) * u,
+			cp + (-cf * 5.0 - cs * 2.6) * u, cp + (-cf * 5.0 + cs * 2.6) * u]), CAR_COL)
+		minimap.draw_line(cp + (cf * 2.6 + cs * 2.3) * u, cp + (cf * 2.6 - cs * 2.3) * u, Color(0.1, 0.1, 0.1), 1.4 * u) # windscreen
+		if world.map_id == "garage" and car.position.y > 3.0: _roof_badge(cp + Vector2(0, -10) * u, u)
+		if big: _map_text(cp + Vector2(9, 5) * u, "سيارتك", 15, CAR_COL)
 	for n in remotes: # survivors see their team; the killer never sees players here
 		var r = remotes[n]
 		if my_role == "survivor" and r.role == "survivor" and r.node.visible:
@@ -1307,6 +1322,7 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 			items.append(["■", Color(0.45, 0.45, 0.48), "درج"]) # the stair cores
 			items.append(["▲", ROOF_COL, "فوق السطح"])
 		else: items.append(["■", Color(0.8, 0.25, 0.25), "السوق"])
+		if my_role == "killer" and car: items.append(["■", CAR_COL, "سيارتك"])
 		var lx := o.x
 		for it in items:
 			_map_text(Vector2(lx, ly), it[0], 18, it[1])
@@ -1365,6 +1381,8 @@ func _update_ctx() -> void:
 			for i in world.gate_points.size():
 				if world.is_outside_gate(i, pos): _ev({"k": "escape"})
 		if rules.hatch >= 0 and _near(pos, world.hatch_points[rules.hatch], 1.5): _ev({"k": "escape", "h": true})
+	elif driving:
+		if rules.stun <= 0.0: ctx.interact = {"kind": "car_out", "label": "انزل"}
 	elif rules.stun <= 0.0:
 		if rules.carrying != "":
 			for i in world.hook_points.size():
@@ -1384,6 +1402,8 @@ func _update_ctx() -> void:
 			for w in world.window_points:
 				if _near(pos, w[0], 1.7): ctx.interact = {"kind": "vault", "label": "اقفز", "c": w[0], "n": w[1]}
 		if not ctx.has("interact"): _door_ctx(pos)
+		if not ctx.has("interact") and car and _near(pos, car.position, 3.6):
+			ctx.interact = {"kind": "car_in", "label": "اركب"}
 
 ## A doorway within reach becomes the interact button.
 func _door_ctx(pos: Vector3) -> void:
@@ -1410,12 +1430,13 @@ func _press(id: String, touch: int) -> void:
 			if battery > 0.0 or light_on:
 				light_on = not light_on
 		"attack":
-			if attack_cd <= 0.0 and rules.stun <= 0.0 and rules.carrying == "":
+			if attack_cd <= 0.0 and rules.stun <= 0.0 and rules.carrying == "" and not driving:
 				attack_t = 1.1
 				attack_cd = 2.4
 				hit_sent = false
 				rig.play("attack", 2.0)
-		"power": _ev({"k": "power"})
+		"power":
+			if not driving: _ev({"k": "power"})
 		"sig": # open / close the three quick messages
 			sig_open = not sig_open
 			sig_close = 6.0
@@ -1434,6 +1455,8 @@ func _press(id: String, touch: int) -> void:
 				"hook": _ev({"k": "hook", "i": c.i})
 				"search": _ev({"k": "search", "i": c.i})
 				"vault": _start_vault(c)
+				"car_in": _enter_car()
+				"car_out": _exit_car()
 				_:
 					hold = {"btn": id, "kind": c.kind, "touch": touch, "t": 0.0, "need": float(c.get("need", -1.0)), "i": int(c.get("i", -1)), "n": str(c.get("n", ""))}
 					if c.kind == "rep":
@@ -1576,6 +1599,13 @@ func _process(dt: float) -> void:
 	var kpos := _pos_of(rules.killer) if rules.killer != "" else Vector3.ZERO
 	var w := 1.0 - exp(-12.0 * dt)
 	noise = 0.0
+	if car == null and world.drive_car: car = world.drive_car
+	if car and my_role == "killer" and not car_told and loading == null:
+		car_told = true
+		_flash("سيارتك تنتظرك فوق السطح — اطلع لها من المنحدر" if world.map_id == "garage" else "سيارتك قريبة منك — اركبها وادعسهم")
+	if car and not driving and not (rules.killer != "" and remotes.has(rules.killer) and remotes[rules.killer].anim == "drive"):
+		car.driven = false # nobody at the wheel: lights off, it stays where it was left
+		car.park(dt)
 	for n in remotes:
 		var r = remotes[n]
 		var st: String = rules.hp(n)
@@ -1588,6 +1618,7 @@ func _process(dt: float) -> void:
 			face = _yaw_of(rules.killer) + PI / 2.0
 		elif st == "hooked":
 			target = world.hook_points[rules.s[n].hook_i] + Vector3(0, 0, 0.9)
+		elif anim == "drive": anim = "idle" # hidden in the car anyway
 		elif st == "dead" or (st == "down" and anim != "crawl"): anim = "dying"
 		elif st == "hurt" and anim == "idle": anim = "injured"
 		r.node.position = r.node.position.lerp(target, w)
@@ -1605,6 +1636,11 @@ func _process(dt: float) -> void:
 				oof_t[n] = randf_range(2.2, 4.0)
 				_sfx("oof%d" % randi_range(1, 3), r.node.position + Vector3(0, 1.5, 0), 2.0)
 		r.node.visible = st != "escaped" and not (rules.s.has(n) and rules.s[n].locker >= 0)
+		if r.role == "killer" and car and r.anim == "drive": # he is at the wheel: the car follows him, he is out of sight
+			car.driven = true
+			car.follow(r.pos, r.yaw, dt)
+			r.node.visible = false
+			r.node.position = r.pos
 		if r.torch: r.torch.visible = r.lit and st in ["ok", "hurt"]
 		# footsteps are 3D and depend on the ground; the killer also gets scratch marks and the detection indicator
 		var moving: bool = r.node.visible and anim in ["run", "walk", "injured", "carry"]
@@ -1768,6 +1804,8 @@ func _physics_process(delta: float) -> void:
 		_hook_pose(rig, delta)
 	elif locker >= 0:
 		body.position = world.locker_points[locker][0]
+	elif driving:
+		_drive(delta)
 	elif not vault.is_empty():
 		vault.t += delta
 		var f: float = clampf(vault.t / vault.dur, 0.0, 1.0)
@@ -1814,7 +1852,101 @@ func _physics_process(delta: float) -> void:
 		if send_t <= 0.0:
 			send_t = 1.0 / 15.0
 			var p := body.position
-			Net.send({"t": "st", "p": [snappedf(p.x, 0.01), snappedf(p.y, 0.01), snappedf(p.z, 0.01), snappedf(rig.rotation.y, 0.01)], "a": rig.current, "f": 1 if light_on else 0})
+			Net.send({"t": "st", "p": [snappedf(p.x, 0.01), snappedf(p.y, 0.01), snappedf(p.z, 0.01), snappedf(rig.rotation.y, 0.01)], "a": "drive" if driving else rig.current, "f": 1 if light_on else 0})
+
+# ---------------- the killer's car ----------------
+func _enter_car() -> void:
+	if car == null or driving or rules.carrying != "" or my_role != "killer": return
+	_end_hold()
+	attack_t = 0.0
+	vault = {}
+	driving = true
+	car.driven = true
+	car.speed = 0.0
+	body.velocity = Vector3.ZERO
+	body.position = car.position
+	arm.add_excluded_object(car.get_rid())
+	arm.spring_length = 6.8 # out of first person: the camera rides behind the car
+	arm.position.y = 1.0
+	main_cam.fov = 74.0
+	yaw = car.rotation.y + PI
+	pitch = -0.26
+	car_look = 1.0
+	NFHaptics.pulse("hook")
+
+## Out on the driver's side if there is room, then the other side, then behind or in front.
+func _exit_car() -> void:
+	if not driving: return
+	var spot := car.position + Vector3(0, 2.4, 0) # nowhere else: climb out onto the roof
+	var space := world.get_world_3d().direct_space_state
+	var cap := CapsuleShape3D.new()
+	cap.radius = 0.36
+	cap.height = 1.8
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = cap
+	q.exclude = [car.get_rid(), body.get_rid()]
+	for off in [Vector3(1.9, 0, 0.4), Vector3(-1.9, 0, 0.4), Vector3(0, 0, -3.4), Vector3(0, 0, 3.5), Vector3(2.7, 0, -1.6), Vector3(-2.7, 0, -1.6)]:
+		var p: Vector3 = car.global_transform * off
+		var ray := PhysicsRayQueryParameters3D.create(p + Vector3(0, 2.4, 0), p + Vector3(0, -3.0, 0))
+		ray.exclude = [car.get_rid(), body.get_rid()]
+		var g := space.intersect_ray(ray)
+		if g.is_empty(): continue
+		var at: Vector3 = g.position
+		q.transform = Transform3D(Basis(), at + Vector3(0, 1.0, 0))
+		if space.intersect_shape(q, 1).is_empty():
+			spot = at + Vector3(0, 0.05, 0)
+			break
+	driving = false
+	car.driven = false
+	car.speed = 0.0
+	car.velocity = Vector3.ZERO
+	body.position = spot
+	body.velocity = Vector3.ZERO
+	arm.remove_excluded_object(car.get_rid())
+	arm.spring_length = 0.0 # back to first person
+	arm.position.y = 0.2
+	main_cam.fov = 80.0
+	yaw = car.rotation.y + PI
+
+## At the wheel: the stick is the pedal and the steering (up = gas, down = brake and reverse,
+## sideways = steer), and the camera rides behind. A survivor in the car's way is hit.
+func _drive(delta: float) -> void:
+	var move := stick_vec
+	if move == Vector2.ZERO:
+		move = Vector2(float(Input.is_key_pressed(KEY_D)) - float(Input.is_key_pressed(KEY_A)),
+			float(Input.is_key_pressed(KEY_S)) - float(Input.is_key_pressed(KEY_W)))
+	if rules.over or rules.stun > 0.0: move = Vector2.ZERO # a dropped pallet stops the car too
+	car.driven = true
+	car.drive(-move.y, move.x, delta)
+	body.position = car.position
+	body.velocity = car.velocity
+	rig.rotation.y = car.rotation.y # what the others get as my yaw: the car's heading
+	if car.bump > 0.0: # crashed into something
+		_shake(0.25 + car.bump * 0.7)
+		NFHaptics.pulse_scaled("hit", car.bump)
+		car.bump = 0.0
+	# the camera swings back behind the car a moment after I stop looking around
+	car_look += delta
+	if look_id >= 0: car_look = 0.0
+	if car_look > 0.9:
+		var k := 1.0 - exp(-2.5 * delta)
+		yaw = lerp_angle(yaw, car.rotation.y + PI, k)
+		pitch = lerpf(pitch, -0.26, k)
+	for n in ram_cd.keys():
+		ram_cd[n] -= delta
+		if ram_cd[n] <= 0.0: ram_cd.erase(n)
+	if absf(car.speed) < NFCar.RAM_SPEED or rules.stun > 0.0 or rules.over: return
+	var inv := car.global_transform.affine_inverse()
+	for n in remotes:
+		var r = remotes[n]
+		if r.role != "survivor" or not rules.free_now(n) or ram_cd.has(n): continue
+		var lp: Vector3 = inv * (r.node.position as Vector3)
+		if absf(lp.x) < 1.35 and absf(lp.z) < 3.0 and absf(lp.y) < 2.5:
+			ram_cd[n] = 2.0
+			_ev({"k": "hit", "n": n}) # the same hit as a swing: hurt, then down
+			car.speed *= 0.6
+			_shake(0.45)
+			NFHaptics.pulse("hit")
 
 func _move(delta: float) -> void:
 	var frozen: bool = rules.over or my_state in ["dead", "escaped"] or not hold.is_empty() or (my_role == "killer" and rules.stun > 0.0)
