@@ -1,0 +1,45 @@
+name: Check (headless tests + camp screenshots)
+# Runs on work branches only: Godot on Linux, the headless tests, and software-rendered
+# screenshots of the start screen, so a change can be seen before it reaches main and the IPA.
+on:
+  push:
+    branches: ['claude/**']
+  workflow_dispatch:
+env:
+  GODOT_VERSION: "4.5-stable"
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Godot
+        run: |
+          curl -sL "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_linux.x86_64.zip" -o godot.zip
+          unzip -q godot.zip
+          sudo mv Godot_v${GODOT_VERSION}_linux.x86_64 /usr/local/bin/godot
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb libgl1-mesa-dri mesa-utils >/dev/null
+      - name: Import
+        run: godot --headless --path . --import 2>&1 | tail -40 || true
+      - name: Headless tests
+        run: |
+          : > all.log
+          for t in ${NF_TESTS:-ui smoke map win camp}; do
+            [ -f tools/$t.tscn ] || continue
+            echo "=== $t" | tee -a all.log
+            timeout 600 godot --headless --path . res://tools/$t.tscn 2>&1 | tee -a all.log | tail -60
+          done
+          if grep -E "SCRIPT ERROR|Parse Error|Parser Error|Invalid call|Invalid access|Invalid get|Cannot call|Nonexistent function" all.log; then echo "::error::script errors"; exit 1; fi
+      - name: Screenshots
+        if: always()
+        run: |
+          mkdir -p shots
+          [ -f tools/shot15.tscn ] && NF_SHOTS=$PWD/shots LIBGL_ALWAYS_SOFTWARE=1 timeout 1500 xvfb-run -a godot --rendering-driver opengl3 --resolution 1564x720 --path . res://tools/shot15.tscn 2>&1 | tail -60 || true
+          ls -la shots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shots
+          path: |
+            shots
+            all.log
