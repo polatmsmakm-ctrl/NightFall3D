@@ -365,6 +365,33 @@ the first time a Godot build is at hand.**
   blended (arms up / arms rolling in front) and stepping knees. `tools/camp.tscn` checks the camp
   headless; `tools/shot15.tscn` photographs it.
 
+## The owner's props: gate, fortress, generator, gallows, campfire
+Five Meshy models (1-2.6 M triangles each) went through **`tools/prop_bake.py`** — the bake path of
+the rig tool with no skeleton: placed in metres (`--width/--height`, `--yaw`, `--depth` squashes
+front to back, `--shift` moves the origin), collapsed with `tools/simplify.cpp`, a new atlas,
+colour / metal-rough / normal baked from the sculpt, **a glow map** (`--emit LO,HI` on the
+brightest channel, `--emit-red R`, `--emit-white`, or after the fact `--reglow --emit-box ...` to
+light only what sits inside a box), and `--split X,Y` cuts the gate's two leaves into their own
+nodes. `NightWorld.prop_glow(root, colour, energy, own)` turns the glow on in the game
+(multiply operator: glow map x colour); `own` gives one instance its own material.
+- `assets/props/gate.glb` (16k, 14.7 x 9.9 m, opening 6.8 m): the frame on the wall line, the
+  leaves `leaf_l`/`leaf_r` moved onto the two sliding door bodies, so `set_gate_state` slides them
+  as before; the EXIT sign and beacons are the gate's `mat`, red, green when powered. The
+  concrete towers, header and walls of the gate stay as collision, hidden.
+- `assets/props/wall.glb` (6k, a 16 m section, squashed to 2.2 m deep): `_build_fortress` lines
+  every side with it, one MultiMesh per run (4-6 runs), each section on the lowest ground under
+  it, inside face toward the map, 0.4 m outside the collision line; 1.35x on the Empty Quarter.
+  The concrete perimeter is collision only now.
+- `assets/props/generator.glb` (10k, 2.2 m): its work lamp and red beacons are the generator's
+  `mat`: dark, blinking near the end, lit when done (the old bulbs are not built).
+- `assets/props/hook.glb` (8k, 5.2 m gallows): the hook sits where survivors already hung (0.9 m
+  in front of the hook point), the post 1.46 m behind it (`HOOK_POST_Z`, its collision moved
+  there), and `hook_hang_y` drops from 0.62 to 0.43 so the shoulder meets the lower hook.
+- `assets/props/campfire.glb` (8k, 1.6 m): the three burning barrels of each map are campfires
+  now (`campfire_points`), and the camp's fire is the model plus the old core, sparks and smoke.
+  The camp's hook is the gallows at 0.62x.
+`tools/props.tscn` checks all six maps headless; `tools/shot17.tscn` photographs each prop per map.
+
 ## Lighter nights and «السطوع»
 The owner found the maps too dark. `world._build_environment` now multiplies every night map's
 ambient by 2.0, its fog by 0.65 and its moonlight by 1.4, with exposure 1.32 (the Empty Quarter

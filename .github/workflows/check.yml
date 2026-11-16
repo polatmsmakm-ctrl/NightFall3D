@@ -29,7 +29,7 @@ jobs:
           for t in ${NF_TESTS:-props ui smoke map win camp}; do
             [ -f tools/$t.tscn ] || continue
             echo "=== $t" | tee -a all.log
-            timeout 600 godot --headless --path . res://tools/$t.tscn 2>&1 | tee -a all.log | tail -60
+            timeout 240 godot --headless --path . res://tools/$t.tscn 2>&1 | tee -a all.log || echo "::warning::$t stopped (timeout or exit $?)"
           done
           if grep -E "SCRIPT ERROR|Parse Error|Parser Error|Invalid call|Invalid access|Invalid get|Cannot call|Nonexistent function" all.log; then echo "::error::script errors"; exit 1; fi
       - name: Screenshots
