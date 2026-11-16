@@ -337,7 +337,44 @@ the first time a Godot build is at hand.**
   username — shows on the owner's phone when he presses «افتح السرية», and the friend types it into
   «كود الشخصية السرية» on his own friends page (`Net.redeem`). Tied to the username.
 
-## Known gaps
+## The start screen (the camp), second pass
+- **Logo and opening shot**: `assets/ui/logo.png` (the owner's NightFall wordmark, cut out of
+  `assets/ui/poster.jpg`) replaces the «NightFall» label on the main and name pages. Once per launch
+  (`NFLobby.intro_done`) the poster fills the screen and fades while the camera comes down from the
+  moon (`NFLobby.intro` 0 -> 1 over 2.8 s); the menu fades in at the end. Skipped headless.
+- **The killer stalks**: while nobody in the room plays the killer, the shipped killer (`stalker`)
+  vanishes for 2-4.5 s and comes back at the next of `STALK` (all right of the menu column),
+  usually nearer the fire, with a low red light on her face (`stalk_rim`).
+- **At the fire**: the character standing there is the one I last started a round with
+  (`Net.last_char`). Online friends who are not in a room sit at the fire with green name tags
+  (`GameMenu._friends_at_fire`, the survivor picked from a hash of the name since the server does
+  not say); tapping one (`camp_pad`, `NFLobby.pick`) makes a room and invites him.
+- **Air**: ground mist and fireflies (`_drift`), a shape that crosses behind the trees every
+  16-30 s (`shade`, forest and village only), the hook at `HOOK_AT` swinging (bloody when I died
+  last round), the phone's tilt leaning the camera a few degrees.
+- **The camp wears the picked map** (`NFLobby.set_map`): palms and dunes for the Empty Quarter,
+  palms and the sea for the beach, the wall, a lit house and the minaret for the fareej, the slab,
+  columns and strip lights for the car park, three houses for the village. The dressing glows a
+  little of its own colour so it reads in the dark.
+- **Blood moon**: if nobody got out of my last round (`Net.last_round.wipe`), the camp sits under it.
+- **Card and daily line**: the card shows the level title (`Net.title()`) and the last round
+  (`Net.last_round`); under the status line, «تحدي اليوم» (`Net.daily()`, picked from the date,
+  counted on the phone, +150 XP once) and a tip that changes with the date.
+- **Emotes** (`character_rig.gd`): the wave has a hand on the hip and the forearm swinging over
+  the head; the clap goes over the head for the second half; the dance is 4 s with two moves
+  blended (arms up / arms rolling in front) and stepping knees. `tools/camp.tscn` checks the camp
+  headless; `tools/shot15.tscn` photographs it.
+
+## Lighter nights and «السطوع»
+The owner found the maps too dark. `world._build_environment` now multiplies every night map's
+ambient by 1.55, its fog by 0.72 and its moonlight by 1.3, with exposure 1.22 (the Empty Quarter
+is untouched: it is daylight). On top of that the settings panel has «السطوع» (60-160%,
+`Gfx.brightness`, saved in `user://graphics.cfg`): it multiplies the exposure live on the map and
+the camp through `Gfx.look_changed`. `tools/shot16.tscn` shoots three maps before and after.
+`.github/workflows/check.yml` runs the headless tests and these screenshots on every
+`claude/**` branch and pushes them to the `check-shots` branch (artifact downloads are blocked
+from the agent's machine).
+
 - `survivor8` «وردة الليل» is the first character with the owner's own textures (colour + normal +
   metallic-roughness from the sculpt). The others are still painted by body zones.
 - Models other than the characters and the car-park module are boxes/cylinders built in code;

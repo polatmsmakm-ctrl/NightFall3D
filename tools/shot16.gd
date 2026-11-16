@@ -23,8 +23,8 @@ func _ready() -> void:
 	Net.username = "راشد"
 	for map in ["forest", "fareej", "garage"]:
 		var m = load("res://scenes/main.tscn").instantiate()
-		tree.root.add_child(m)
-		await frames(6)
+		tree.root.add_child.call_deferred(m)
+		await frames(12)
 		m._start({"map": map, "me": "راشد", "offline": true, "players": [
 			{"name": "راشد", "role": "survivor", "char": "survivor5", "slot": 0},
 			{"name": "فهد", "role": "killer", "char": "killer", "slot": 1}]})

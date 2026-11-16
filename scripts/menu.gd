@@ -286,7 +286,7 @@ func _sync_lobby(dir := 0.0) -> void:
 	version.size = Vector2(130, 42)
 	version.position = Vector2(vs.x - 130.0 - 12.0 - safe.y, vs.y - 44.0)
 	card.visible = page != "name"
-	card.position = Vector2(vs.x - card.size.x - 16.0 - safe.y, 78.0)
+	card.position = Vector2(vs.x - card.size.x - 16.0 - safe.y, 50.0) # clear of the name over her head
 	card.queue_redraw()
 	char_pad.visible = page == "chars"
 	var px: float = maxf(596.0, vs.x * 0.44) # clear of the menu column on the left

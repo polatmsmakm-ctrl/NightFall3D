@@ -107,12 +107,12 @@ func _emote_world(a: String, bone: String, ph: float) -> Quaternion:
 				"mixamorig_Spine2": return _w(FWD, -0.04 * swing)
 				"mixamorig_Neck": return _w(FWD, 0.06)
 				"mixamorig_Head": return _w(FWD, 0.1 + 0.06 * swing) * _w(side, -0.06)
-				"mixamorig_RightShoulder": return _w(R_LIFT, 0.22)
-				"mixamorig_RightArm": return _w(UP, -0.05) * _w(R_LIFT, 2.0 + 0.16 * swing)
-				"mixamorig_RightForeArm": return _w(R_AXIS, 0.3 * swing) * _w(R_LIFT, 0.3 + 0.42 * swing)
-				"mixamorig_RightHand": return _w(R_LIFT, 0.3 * swing) * _w(R_AXIS, 0.2 * swing)
-				"mixamorig_LeftArm": return _w(UP, -0.5) * _w(L_LIFT, -1.05)        # hand on the hip
-				"mixamorig_LeftForeArm": return _w(UP, -1.3) * _w(L_LIFT, 0.5)
+				"mixamorig_RightShoulder": return _w(R_LIFT, 0.1)
+				"mixamorig_RightArm": return _w(UP, -0.1) * _w(R_LIFT, 1.25 + 0.08 * swing)    # elbow out at the shoulder
+				"mixamorig_RightForeArm": return _w(R_LIFT, 0.55 + 0.5 * swing)               # the forearm swings side to side
+				"mixamorig_RightHand": return _w(R_LIFT, 0.25 * swing)
+				"mixamorig_LeftArm": return _w(L_LIFT, -0.85)                          # hand on the hip
+				"mixamorig_LeftForeArm": return _w(L_LIFT, -1.45)
 				"mixamorig_RightUpLeg": return _w(R_AXIS, 0.05 * maxf(slow, 0.0))
 				"mixamorig_LeftUpLeg": return _w(R_AXIS, 0.05 * maxf(-slow, 0.0))
 		"clap":
