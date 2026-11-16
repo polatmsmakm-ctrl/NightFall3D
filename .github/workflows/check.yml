@@ -26,7 +26,7 @@ jobs:
       - name: Headless tests
         run: |
           : > all.log
-          for t in ${NF_TESTS:-ui smoke map win camp}; do
+          for t in ${NF_TESTS:-props ui smoke map win camp}; do
             [ -f tools/$t.tscn ] || continue
             echo "=== $t" | tee -a all.log
             timeout 600 godot --headless --path . res://tools/$t.tscn 2>&1 | tee -a all.log | tail -60
@@ -36,8 +36,9 @@ jobs:
         if: always()
         run: |
           mkdir -p shots
-          [ -f tools/shot15.tscn ] && NF_SHOTS=$PWD/shots LIBGL_ALWAYS_SOFTWARE=1 timeout 1500 xvfb-run -a godot --rendering-driver opengl3 --resolution 1564x720 --path . res://tools/shot15.tscn 2>&1 | tee -a all.log | tail -60 || true
-          [ -f tools/shot16.tscn ] && NF_SHOTS=$PWD/shots LIBGL_ALWAYS_SOFTWARE=1 timeout 900 xvfb-run -a godot --rendering-driver opengl3 --resolution 1564x720 --path . res://tools/shot16.tscn 2>&1 | tee -a all.log | tail -30 || true
+          for sc in ${NF_SHOT_SCENES:-shot17}; do
+            [ -f tools/$sc.tscn ] && NF_SHOTS=$PWD/shots LIBGL_ALWAYS_SOFTWARE=1 timeout 1500 xvfb-run -a godot --rendering-driver opengl3 --resolution 1564x720 --path . res://tools/$sc.tscn 2>&1 | tee -a all.log | tail -40 || true
+          done
           ls -la shots
       - name: Publish the shots and the log on the check-shots branch
         if: always()

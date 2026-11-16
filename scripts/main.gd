@@ -1537,7 +1537,7 @@ func me_locker() -> int:
 
 ## Hanging on the hook by the hands: lifted off the ground and still.
 func _hook_pose(r: CharacterRig, dt: float) -> void:
-	r.position.y = lerpf(r.position.y, 0.62, 1.0 - exp(-10.0 * dt))
+	r.position.y = lerpf(r.position.y, world.hook_hang_y if world else 0.62, 1.0 - exp(-10.0 * dt)) # the gallows hangs you lower
 	r.rotation = Vector3.ZERO
 	r.play("hang", 0.6)
 

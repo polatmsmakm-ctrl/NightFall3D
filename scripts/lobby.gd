@@ -215,7 +215,8 @@ func _ready() -> void:
 	# camp props: stone ring, sitting logs, tent, crate with a lantern, stump with an axe, backpacks
 	var rock: Material = kit._mat.rock
 	var wood: Material = kit._mat.wood
-	for k in 11:
+	var camp_fire: PackedScene = kit._model("campfire") # the owner's campfire, when it is there
+	for k in (0 if camp_fire else 11):
 		var st := MeshInstance3D.new()
 		var sp := SphereMesh.new()
 		sp.radius = rng.randf_range(0.13, 0.2); sp.height = sp.radius * 1.5; sp.radial_segments = 8; sp.rings = 4
@@ -318,7 +319,7 @@ func _ready() -> void:
 	char_mat.emission_enabled = true
 	char_mat.emission = Color(1.0, 0.3, 0.05)
 	char_mat.emission_energy_multiplier = 0.5
-	for k in 6:
+	for k in (0 if camp_fire else 6):
 		var log2 := MeshInstance3D.new()
 		var cyl := CylinderMesh.new()
 		cyl.top_radius = 0.06; cyl.bottom_radius = 0.085; cyl.height = 0.95; cyl.radial_segments = 8
@@ -340,10 +341,16 @@ func _ready() -> void:
 	embers.name = "Embers"
 	embers.position.y = 0.06
 	add_child(embers)
+	if camp_fire:
+		embers.visible = false
+		var cf := camp_fire.instantiate() as Node3D
+		cf.rotation.y = 0.6
+		add_child(cf)
+		NightWorld.prop_glow(cf, Color(1.0, 0.62, 0.3), 2.8)
 	var fire_root := Node3D.new()
 	fire_root.position = Vector3(0, 0.22, 0)
 	add_child(fire_root)
-	_fire_layer(fire_root, 46, 0.75, 0.17, 1.5, 0.34, [Color(1.0, 0.5, 0.1, 0.0), Color(1.0, 0.36, 0.06, 0.42), Color(0.6, 0.06, 0.0, 0.0)], true, Vector2(0.15, 0.5)) # outer flames
+	if camp_fire == null: _fire_layer(fire_root, 46, 0.75, 0.17, 1.5, 0.34, [Color(1.0, 0.5, 0.1, 0.0), Color(1.0, 0.36, 0.06, 0.42), Color(0.6, 0.06, 0.0, 0.0)], true, Vector2(0.15, 0.5)) # outer flames (the model has its own)
 	_fire_layer(fire_root, 30, 0.5, 0.1, 1.3, 0.2, [Color(1.0, 0.9, 0.6, 0.0), Color(1.0, 0.8, 0.35, 0.5), Color(1.0, 0.35, 0.05, 0.0)], true, Vector2(0.1, 0.4)) # bright core
 	_fire_layer(fire_root, 22, 2.4, 0.2, 0.9, 0.04, [Color(1.0, 0.8, 0.4, 1.0), Color(1.0, 0.5, 0.1, 1.0), Color(1.0, 0.2, 0.0, 0.0)], true, Vector2(0.7, 2.0), 30.0) # sparks
 	var smoke := _fire_layer(fire_root, 18, 4.5, 0.15, 0.45, 0.6, [Color(0.1, 0.1, 0.1, 0.0), Color(0.14, 0.14, 0.15, 0.16), Color(0.1, 0.1, 0.11, 0.0)], false, Vector2(0.3, 0.6), 10.0)
@@ -705,6 +712,16 @@ func _build_hook(kit: NightWorld) -> void:
 	root.position = HOOK_AT
 	root.rotation.y = -0.5
 	add_child(root)
+	var gallows: PackedScene = kit._model("hook")
+	if gallows: # the owner's gallows, a size down for the camp; it does not swing
+		var g := gallows.instantiate() as Node3D
+		g.scale = Vector3(0.62, 0.62, 0.62)
+		g.position.z = -0.9 * 0.62 # its hook over the hook point, the post behind it
+		root.add_child(g)
+		NightWorld.prop_glow(g, Color(1.0, 0.75, 0.45), 2.5)
+		if str(Net.last_round.get("res", "")) == "dead":
+			_cy(root, 0.42, 0.46, 0.012, Vector3(0, 0.05, 0), _mat_flat(Color(0.2, 0.005, 0.005), 0.0, 0.25))
+		return
 	_cy(root, 0.08, 0.11, 3.1, Vector3(0, 1.55, 0), kit._mat.bark)
 	_bx(root, Vector3(1.15, 0.1, 0.1), Vector3(-0.5, 3.0, 0), kit._mat.wood)
 	hook_arm = Node3D.new()

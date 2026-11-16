@@ -41,6 +41,9 @@ var garage_cars := 0          # parked cars, counted for the headless test
 var ao_blobs: Array = []      # [pos, radius] soft ground shadows, drawn as one MultiMesh
 var ao_mm: MultiMeshInstance3D
 var models_used := 0          # how many props were drawn from a real model this round
+var fortress_parts := 0       # sections of the owner's fortress wall around the map
+var campfires := 0            # burning barrels that became the owner's campfire
+var campfire_points: Array = [] # where they burn (tests and screenshots look at them)
 var beach_palms := 0          # palms placed on the beach map
 var beach_props := 0          # wet-sand patches and shells
 var _models := {}             # name -> PackedScene or null
@@ -87,6 +90,11 @@ var flicker: Array[OmniLight3D] = []
 var amb_lights: Array = [] # [light, base energy, is a house light, flickers, current dim 0..1]
 var blackout := false      # the blackout event has the lights out
 var _amb_base := 0.8       # ambient energy before a blackout dims it
+var _last_model: Node3D    # the model the last successful _swap_model put in
+var hook_hang_y := 0.62    # how high a hooked survivor hangs: the gallows model's hook is lower
+const HOOK_POST_Z := -1.46 # the gallows' post stands behind the hook point, its hook in front of it
+const GATE_HALF := 7.35    # half the width of the gate model, pillars and fences included
+const WALL_SEG := 16.0     # one fortress section, end pillar to end pillar
 var _moon_base := 1.1      # moonlight before the moon starts to fall
 var _exp_base := 1.0       # exposure before the player's «السطوع»
 var fog_boost := 0.0       # 0..1: the heavy-fog event
@@ -691,7 +699,26 @@ func _swap_model(body: Node3D, name: String, yaw := 0.0, scale := 1.0) -> bool:
 	n.scale = Vector3(scale, scale, scale)
 	body.add_child(n)
 	models_used += 1
+	_last_model = n
 	return true
+
+## The glow of a prop from tools/prop_bake.py: its baked glow map times `col`, at `energy`.
+## With `own` every mesh of this instance gets its own copy, so one gate (or generator) can
+## change colour without the others. Returns the material, or null when the model has no glow map.
+static func prop_glow(root: Node, col: Color, energy: float, own := false) -> StandardMaterial3D:
+	var mat: StandardMaterial3D = null
+	for mi in root.find_children("*", "MeshInstance3D", true, false):
+		var m := (mi as MeshInstance3D).get_active_material(0) as StandardMaterial3D
+		if m == null or m.get_texture(BaseMaterial3D.TEXTURE_EMISSION) == null: continue
+		if own:
+			if mat == null: mat = m.duplicate() as StandardMaterial3D
+			(mi as MeshInstance3D).set_surface_override_material(0, mat)
+		else: mat = m
+		mat.emission_enabled = true
+		mat.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY # glow map x colour, not + colour
+		mat.emission = col
+		mat.emission_energy_multiplier = energy
+	return mat
 
 # ---------------- buildings ----------------
 func _box(parent: Node3D, size: Vector3, pos: Vector3, mat: Material, occlude := false, rot := Vector3.ZERO) -> void:
@@ -790,7 +817,14 @@ func _build_props() -> void:
 		l.light_color = Color(1.0, 0.2, 0.15)
 		l.light_energy = 0.8; l.omni_range = 5.0
 		body.add_child(l)
-		_swap_model(body, "hook")
+		if _swap_model(body, "hook"): # the gallows: its hook hangs where the old one did, the post behind
+			hook_hang_y = 0.43
+			for ch in body.get_children():
+				if ch is CollisionShape3D: (ch as CollisionShape3D).position = Vector3(0, 2.6, HOOK_POST_Z)
+			for ch in body.get_children():
+				if ch is CollisionShape3D: ((ch as CollisionShape3D).shape as BoxShape3D).size = Vector3(0.5, 5.2, 0.5)
+			l.position = Vector3(0, 2.9, 0.9)
+			prop_glow(_last_model, Color(1.0, 0.75, 0.45), 2.5)
 		add_child(body)
 	var dark := _flat(Color(0.05, 0.05, 0.05), 0.6, 0.4)
 	for lp in locker_points:
@@ -870,9 +904,12 @@ func _build_objectives() -> void:
 		_mesh_box(body, Vector3(0.05, 1.3, 0.05), Vector3(-0.5, 1.75, -0.1), _flat(Color(0.5, 0.4, 0.1)), Vector3(0.2, 0, -0.35))
 		_box(body, Vector3(0.08, 1.6, 0.08), Vector3(0.6, 1.8, 0.3), _mat.metal)
 		_box(body, Vector3(0.08, 1.6, 0.08), Vector3(0.6, 1.8, -0.3), _mat.metal)
-		_swap_model(body, "generator")
 		var lamp_mat := _emissive(Color(1.0, 0.85, 0.5))
-		for z in [0.3, -0.3]:
+		var modelled := _swap_model(body, "generator")
+		if modelled: # its own lamp and beacons light up when it is done, like the bulbs did
+			var gm := prop_glow(_last_model, Color(1.0, 0.85, 0.5), 0.0, true)
+			if gm: lamp_mat = gm
+		for z in ([] if modelled else [0.3, -0.3]):
 			var bulb := MeshInstance3D.new()
 			var sm := SphereMesh.new()
 			sm.radius = 0.14; sm.height = 0.28
@@ -885,6 +922,7 @@ func _build_objectives() -> void:
 		light.light_color = Color(1.0, 0.85, 0.5)
 		light.light_energy = 0.7 # dim work light; goes bright when the generator is done
 		light.omni_range = 11.0
+		if modelled: light.position = Vector3(-0.55, 2.2, 0.35) # beside the model's own work lamp
 		body.add_child(light)
 		add_child(body)
 		gen_nodes.append({"light": light, "mat": lamp_mat, "done": false, "blink": false})
@@ -898,6 +936,7 @@ func _build_objectives() -> void:
 	for sx in [-1.0, 1.0]:
 		_box(sides, Vector3(1.4, wall_h, WALL * 2.0 + 1.4), Vector3(sx * WALL, wall_y, 0), _mat.concrete, true)
 	add_child(sides)
+	_build_fortress(sides)
 	var open_w := 7.0 # gate opening width
 	var open_h := 6.0
 	for g in gate_points:
@@ -914,8 +953,6 @@ func _build_objectives() -> void:
 			_box(body, Vector3(seg, gh, 1.4), Vector3(sx * (open_w / 2.0 + seg / 2.0), gmid, 0), _mat.concrete, true)
 			_box(body, Vector3(1.8, gtop + 1.5 - bottom, 2.0), Vector3(sx * (open_w / 2.0 + 0.9), (gtop + 1.5 + bottom) / 2.0, 0), _mat.concrete) # gate towers
 		_box(body, Vector3(open_w, gtop - (gy + open_h), 1.4), Vector3(0, (gtop + gy + open_h) / 2.0, 0), _mat.concrete)
-		if gy > bottom + 0.1: # wall the opening off underneath a raised gate
-			_box(body, Vector3(open_w, gy - bottom, 1.4), Vector3(0, (gy + bottom) / 2.0, 0), _mat.concrete)
 		var doors := []
 		for sx in [-1.0, 1.0]:
 			var door := StaticBody3D.new()
@@ -934,6 +971,33 @@ func _build_objectives() -> void:
 		sign.mesh = bm
 		sign.position = Vector3(0, gy + open_h + 0.7, 0.8)
 		body.add_child(sign)
+		var gate_ps := _model("gate")
+		if gate_ps: # the modelled gate: its frame on the wall line, its two leaves riding the sliding doors
+			for ch in body.get_children():
+				if ch is MeshInstance3D: (ch as MeshInstance3D).visible = false
+			for door in doors:
+				for ch in door.get_children():
+					if ch is MeshInstance3D: (ch as MeshInstance3D).visible = false
+			var gn := gate_ps.instantiate() as Node3D
+			gn.position = Vector3(0, gy, 0)
+			body.add_child(gn)
+			models_used += 1
+			var gmat := prop_glow(gn, Color(1.0, 0.15, 0.1), 2.0, true) # the EXIT sign and the beacons: red, then green
+			if gmat: sign_mat = gmat
+			for k in 2: # moved by hand: the gate is not in the scene yet, so there is no global transform
+				var leaf := gn.find_child("leaf_l" if k == 0 else "leaf_r", true, false) as Node3D
+				if leaf == null: continue
+				var t := leaf.transform
+				var up := leaf.get_parent() as Node3D
+				while up != null and up != gn:
+					t = up.transform * t
+					up = up.get_parent() as Node3D
+				t = (doors[k] as Node3D).transform.affine_inverse() * gn.transform * t
+				leaf.get_parent().remove_child(leaf)
+				(doors[k] as Node3D).add_child(leaf)
+				leaf.transform = t
+		if gy > bottom + 0.1: # wall the opening off underneath a raised gate
+			_box(body, Vector3(open_w, gy - bottom, 1.4), Vector3(0, (gy + bottom) / 2.0, 0), _mat.concrete)
 		var light := OmniLight3D.new()
 		light.position = Vector3(0, gy + open_h - 0.5, 3.0)
 		light.light_color = Color(1.0, 0.15, 0.1)
@@ -982,6 +1046,62 @@ func _build_objectives() -> void:
 		fl.light_energy = 5.0
 		fl.omni_range = 18.0
 		body.add_child(fl)
+
+## The owner's fortress wall along the whole perimeter, inside face toward the map: one MultiMesh
+## per side (so the sides behind you are culled), each section standing on the lowest ground under
+## it, and the gate sides stopping at the gate model's fences. The old concrete stays as collision.
+func _build_fortress(sides: Node3D) -> void:
+	var ps := _model("wall")
+	if ps == null: return
+	var inst := ps.instantiate()
+	var src: MeshInstance3D = null
+	for c in inst.find_children("*", "MeshInstance3D", true, false): src = c
+	if src == null:
+		inst.free()
+		return
+	var mesh: Mesh = src.mesh
+	prop_glow(src, Color(1.0, 0.62, 0.3), 2.2)
+	if mesh.surface_get_material(0) == null: mesh.surface_set_material(0, src.get_active_material(0))
+	inst.free()
+	for ch in sides.get_children():
+		if ch is MeshInstance3D: (ch as MeshInstance3D).visible = false
+	var big := 1.35 if map_id == "rubkhali" else 1.0 # the dunes are high: so is the wall
+	var step := WALL_SEG * 0.96 * big                 # end pillars overlap
+	var runs := [] # [start point, unit direction along the run, length, yaw facing inward]
+	runs.append([Vector3(WALL + 0.4, 0, -WALL), Vector3(0, 0, 1), WALL * 2.0, -PI / 2.0])
+	runs.append([Vector3(-WALL - 0.4, 0, -WALL), Vector3(0, 0, 1), WALL * 2.0, PI / 2.0])
+	for zs in [-1.0, 1.0]:
+		var z := zs * (WALL + 0.4)
+		var yaw := 0.0 if zs < 0.0 else PI
+		var gx := INF
+		for g in gate_points:
+			if absf(absf((g[0] as Vector3).z) - WALL) < 2.0 and signf((g[0] as Vector3).z) == zs and _model("gate"): gx = (g[0] as Vector3).x
+		if gx == INF:
+			runs.append([Vector3(-WALL, 0, z), Vector3(1, 0, 0), WALL * 2.0, yaw])
+		else:
+			runs.append([Vector3(gx + GATE_HALF, 0, z), Vector3(1, 0, 0), WALL - gx - GATE_HALF, yaw])
+			runs.append([Vector3(gx - GATE_HALF, 0, z), Vector3(-1, 0, 0), WALL + gx - GATE_HALF, yaw])
+	for r in runs:
+		var n := int(ceil(float(r[2]) / step))
+		if n <= 0: continue
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = mesh
+		mm.instance_count = n
+		var dir: Vector3 = r[1]
+		for i in n:
+			var c: Vector3 = (r[0] as Vector3) + dir * (step * (i + 0.5))
+			var low := INF
+			for k in 5: # stand on the lowest ground under the section, so no gap shows beneath it
+				var p: Vector3 = c + dir * (step * (k / 4.0 - 0.5))
+				low = minf(low, _raw_h(p.x, p.z))
+			var b := Basis(Vector3.UP, float(r[3])).scaled(Vector3(big, big, big))
+			mm.set_instance_transform(i, Transform3D(b, Vector3(c.x, low - 0.3, c.z)))
+		var mmi := MultiMeshInstance3D.new()
+		mmi.multimesh = mm
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(mmi)
+		fortress_parts += n
 
 ## True when a position has reached the end of a gate's escape road.
 func is_outside_gate(i: int, pos: Vector3) -> bool:
@@ -1267,6 +1387,13 @@ func _build_scatter() -> void:
 			l.omni_range = 8.0
 			body.add_child(l)
 			_amb_light(l)
+			if _swap_model(body, "campfire", rng.randf() * TAU): # a campfire on the ground in place of the barrel
+				sh.radius = 0.62; sh.height = 0.5
+				cs.position.y = 0.25
+				l.position.y = 0.9
+				prop_glow(_last_model, Color(1.0, 0.62, 0.3), 2.6)
+				campfires += 1
+				campfire_points.append(p)
 		add_child(body)
 	for i in 10:
 		var p := _free_spot(rng, 1.8)
