@@ -11,7 +11,7 @@ const ONCE := ["hit", "fall", "attack", "vault"] # played through once, then bac
 const LOOPING := ["idle", "walk", "run", "sprint", "crouchwalk", "hide", "injured", "carry", "carried", "hang", "crawl", "repair", "campfire", "wave", "clap", "dance", "cheer"]
 ## Campfire emotes. There is no Mixamo clip for these in assets/anims, so they are posed here on the
 ## same skeleton: drop wave.glb / clap.glb / dance.glb in and the real clip is used instead.
-const EMOTES := {"wave": 2.0, "clap": 1.1, "dance": 1.8}
+const EMOTES := {"wave": 2.4, "clap": 2.2, "dance": 4.0}
 const EMOTE_BONES := ["mixamorig_Hips", "mixamorig_Spine", "mixamorig_Spine1", "mixamorig_Spine2",
 	"mixamorig_Neck", "mixamorig_Head",
 	"mixamorig_LeftShoulder", "mixamorig_LeftArm", "mixamorig_LeftForeArm", "mixamorig_LeftHand",
@@ -93,43 +93,78 @@ static func _w(axis: Vector3, angle: float) -> Quaternion:
 ## Where a bone should point during an emote, in skeleton space (identity = leave it at rest).
 ## Arms must always be posed: at rest they stick straight out in a T.
 func _emote_world(a: String, bone: String, ph: float) -> Quaternion:
+	var side := Vector3(1, 0, 0) # lean forward / back, nod
 	match a:
 		"wave":
-			var swing := sin(ph * TAU * 2.0)
+			# a big friendly wave: up on the toes, the whole arm swinging from the shoulder, the
+			# body leaning into it, the other hand on the hip
+			var swing := sin(ph * TAU * 3.0)
+			var slow := sin(ph * TAU)
 			match bone:
-				"mixamorig_RightArm": return _w(UP, -0.05) * _w(R_LIFT, 1.9)      # up beside the head
-				"mixamorig_RightForeArm": return _w(R_AXIS, 0.38 * swing) * _w(R_LIFT, 0.45)
-				"mixamorig_RightHand": return _w(R_AXIS, 0.25 * swing)
-				"mixamorig_LeftArm": return _w(UP, -0.12) * _w(L_LIFT, -1.3)      # the other arm rests
-				"mixamorig_LeftForeArm": return _w(L_LIFT, 0.3)
-				"mixamorig_Head": return _w(FWD, 0.07 * swing)
-				"mixamorig_Spine1": return _w(UP, -0.08)
+				"mixamorig_Hips": return _w(FWD, 0.05 * slow)
+				"mixamorig_Spine": return _w(FWD, -0.06 - 0.03 * slow)
+				"mixamorig_Spine1": return _w(UP, -0.1) * _w(FWD, -0.05)
+				"mixamorig_Spine2": return _w(FWD, -0.04 * swing)
+				"mixamorig_Neck": return _w(FWD, 0.06)
+				"mixamorig_Head": return _w(FWD, 0.1 + 0.06 * swing) * _w(side, -0.06)
+				"mixamorig_RightShoulder": return _w(R_LIFT, 0.22)
+				"mixamorig_RightArm": return _w(UP, -0.05) * _w(R_LIFT, 2.0 + 0.16 * swing)
+				"mixamorig_RightForeArm": return _w(R_AXIS, 0.3 * swing) * _w(R_LIFT, 0.3 + 0.42 * swing)
+				"mixamorig_RightHand": return _w(R_LIFT, 0.3 * swing) * _w(R_AXIS, 0.2 * swing)
+				"mixamorig_LeftArm": return _w(UP, -0.5) * _w(L_LIFT, -1.05)        # hand on the hip
+				"mixamorig_LeftForeArm": return _w(UP, -1.3) * _w(L_LIFT, 0.5)
+				"mixamorig_RightUpLeg": return _w(R_AXIS, 0.05 * maxf(slow, 0.0))
+				"mixamorig_LeftUpLeg": return _w(R_AXIS, 0.05 * maxf(-slow, 0.0))
 		"clap":
-			var beat := absf(sin(ph * TAU))   # hands meet twice a loop
-			var open := 0.3 * (1.0 - beat)
+			# four claps to the loop, over the head on the last two, bouncing on the knees
+			var beat := absf(sin(ph * TAU * 2.0))
+			var open := 0.34 * (1.0 - beat)
+			var high: float = clampf((ph - 0.42) * 6.0, 0.0, 1.0) * clampf((0.98 - ph) * 12.0, 0.0, 1.0)
+			var turn := sin(ph * TAU)
 			match bone:
-				"mixamorig_RightArm": return _w(UP, 1.15 - open * 0.4) * _w(R_LIFT, -0.45)
-				"mixamorig_LeftArm": return _w(UP, -1.15 + open * 0.4) * _w(L_LIFT, -0.45)
-				"mixamorig_RightForeArm": return _w(UP, 1.5 - open)
-				"mixamorig_LeftForeArm": return _w(UP, -1.5 + open)
-				"mixamorig_Spine1": return _w(Vector3(1, 0, 0), 0.06 * beat)
-				"mixamorig_Head": return _w(Vector3(1, 0, 0), 0.05 * beat)
+				"mixamorig_Hips": return _w(UP, 0.12 * turn)
+				"mixamorig_Spine": return _w(side, 0.05 * beat)
+				"mixamorig_Spine1": return _w(UP, 0.1 * turn) * _w(side, 0.05 * beat - 0.1 * high)
+				"mixamorig_Head": return _w(side, 0.1 * beat - 0.12 * high) * _w(FWD, 0.06 * turn)
+				"mixamorig_RightArm": return _w(UP, 1.15 - open * 0.4) * _w(R_LIFT, -0.45 + 1.55 * high)
+				"mixamorig_LeftArm": return _w(UP, -1.15 + open * 0.4) * _w(L_LIFT, -0.45 + 1.55 * high)
+				"mixamorig_RightForeArm": return _w(UP, 1.5 - open - 0.55 * high)
+				"mixamorig_LeftForeArm": return _w(UP, -1.5 + open + 0.55 * high)
+				"mixamorig_RightUpLeg": return _w(KNEE, -0.12 * beat)
+				"mixamorig_LeftUpLeg": return _w(KNEE, -0.12 * beat)
+				"mixamorig_RightLeg": return _w(KNEE, 0.24 * beat)
+				"mixamorig_LeftLeg": return _w(KNEE, 0.24 * beat)
 		"dance":
-			var sway := sin(ph * TAU)
-			var sway2 := sin(ph * TAU * 2.0)
+			# two moves to the loop, blended: hands in the air with the hips swinging, then the
+			# arms rolling in front of the chest while the feet step; the head keeps the beat
+			var sway := sin(ph * TAU * 2.0)
+			var beat2 := sin(ph * TAU * 4.0)
+			var mix: float = 0.5 - 0.5 * cos(ph * TAU)      # 0 at the ends of the loop, 1 in the middle
+			mix = mix * mix * (3.0 - 2.0 * mix)
+			var step := sin(ph * TAU * 4.0)
 			match bone:
-				"mixamorig_Hips": return _w(UP, 0.25 * sway) * _w(FWD, 0.08 * sway)
-				"mixamorig_Spine1": return _w(UP, -0.14 * sway)
-				"mixamorig_Spine2": return _w(FWD, -0.1 * sway)
-				"mixamorig_Head": return _w(FWD, 0.12 * sway) * _w(Vector3(1, 0, 0), 0.07 * sway2)
-				"mixamorig_RightArm": return _w(UP, 0.12) * _w(R_LIFT, 1.5 + 0.32 * sway)
-				"mixamorig_LeftArm": return _w(UP, -0.12) * _w(L_LIFT, 1.5 - 0.32 * sway)
-				"mixamorig_RightForeArm": return _w(R_LIFT, 0.55 + 0.35 * sway2)
-				"mixamorig_LeftForeArm": return _w(L_LIFT, 0.55 - 0.35 * sway2)
-				"mixamorig_RightUpLeg": return _w(R_AXIS, 0.18 * maxf(sway2, 0.0))
-				"mixamorig_LeftUpLeg": return _w(R_AXIS, 0.18 * maxf(-sway2, 0.0))
-				"mixamorig_RightLeg": return _w(KNEE, 0.35 * maxf(sway2, 0.0))
-				"mixamorig_LeftLeg": return _w(KNEE, 0.35 * maxf(-sway2, 0.0))
+				"mixamorig_Hips": return _w(UP, 0.3 * sway) * _w(FWD, 0.13 * sway)
+				"mixamorig_Spine": return _w(FWD, -0.08 * sway)
+				"mixamorig_Spine1": return _w(UP, -0.2 * sway) * _w(side, 0.06 * mix)
+				"mixamorig_Spine2": return _w(FWD, -0.1 * sway) * _w(UP, -0.1 * sway)
+				"mixamorig_Neck": return _w(side, 0.05 * beat2)
+				"mixamorig_Head": return _w(FWD, 0.14 * sway) * _w(side, 0.1 * beat2)
+				"mixamorig_RightShoulder": return _w(R_LIFT, 0.15 * (1.0 - mix))
+				"mixamorig_LeftShoulder": return _w(L_LIFT, 0.15 * (1.0 - mix))
+				"mixamorig_RightArm":
+					return (_w(UP, 0.12) * _w(R_LIFT, 1.55 + 0.34 * sway)).slerp(_w(UP, 1.0 + 0.14 * beat2) * _w(R_LIFT, -0.2 + 0.26 * step), mix)
+				"mixamorig_LeftArm":
+					return (_w(UP, -0.12) * _w(L_LIFT, 1.55 - 0.34 * sway)).slerp(_w(UP, -1.0 + 0.14 * beat2) * _w(L_LIFT, -0.2 - 0.26 * step), mix)
+				"mixamorig_RightForeArm":
+					return _w(R_LIFT, 0.6 + 0.4 * beat2).slerp(_w(UP, 1.35 + 0.3 * step), mix)
+				"mixamorig_LeftForeArm":
+					return _w(L_LIFT, 0.6 - 0.4 * beat2).slerp(_w(UP, -1.35 + 0.3 * step), mix)
+				"mixamorig_RightHand": return _w(R_AXIS, 0.3 * beat2)
+				"mixamorig_LeftHand": return _w(R_AXIS, -0.3 * beat2)
+				"mixamorig_RightUpLeg": return _w(KNEE, -0.34 * maxf(step, 0.0))
+				"mixamorig_LeftUpLeg": return _w(KNEE, -0.34 * maxf(-step, 0.0))
+				"mixamorig_RightLeg": return _w(KNEE, 0.62 * maxf(step, 0.0))
+				"mixamorig_LeftLeg": return _w(KNEE, 0.62 * maxf(-step, 0.0))
 	return Quaternion.IDENTITY
 
 ## Bake an emote into a looping Animation on this character's skeleton.
@@ -137,7 +172,7 @@ func _emote_anim(a: String, skel_path: String, char_rest: Vector3) -> Animation:
 	var out := Animation.new()
 	out.length = EMOTES[a]
 	out.loop_mode = Animation.LOOP_LINEAR
-	var steps := 24
+	var steps := 48
 	for bone in EMOTE_BONES:
 		var bi := skeleton.find_bone(bone)
 		if bi < 0: continue
@@ -157,12 +192,14 @@ func _emote_anim(a: String, skel_path: String, char_rest: Vector3) -> Animation:
 		out.track_set_path(tr, NodePath("%s:%s" % [skel_path, bone]))
 		for k in steps + 1:
 			out.rotation_track_insert_key(tr, out.length * float(k) / steps, keys[k])
-	if a == "dance": # a little bounce; in hips local space z is the vertical axis
+	# the hop: in hips local space z is the vertical axis and -z is up
+	var dip := {"dance": [3.0, 4.0], "clap": [0.0, 1.0], "wave": [1.2, 3.0]}
+	if float(dip[a][0]) > 0.0:
 		var tr := out.add_track(Animation.TYPE_POSITION_3D)
 		out.track_set_path(tr, NodePath("%s:mixamorig_Hips" % skel_path))
 		for k in steps + 1:
 			var ph := float(k) / steps
-			out.position_track_insert_key(tr, out.length * ph, char_rest + Vector3(0, 0, -2.5 * absf(sin(ph * TAU))))
+			out.position_track_insert_key(tr, out.length * ph, char_rest + Vector3(0, 0, -float(dip[a][0]) * absf(sin(ph * PI * float(dip[a][1])))))
 	return out
 
 ## Is this clip actually available on this character? (false until the GLB is dropped in)

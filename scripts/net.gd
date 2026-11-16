@@ -20,6 +20,11 @@ var escapes := 0   # how many rounds I got out of, all time
 var kills := 0     # survivors I killed as the killer, all time
 var secret := false # the hidden character is open on this phone (a gift from the owner)
 var gifted: Array = [] # owner's phone only: the friends I opened it for
+var last_char := ""    # the character I last started a round with: the one standing at the fire
+var last_round := {}   # {res: escaped / dead / killer, score, gens, wipe}: the card and the camp read it
+var day := ""          # today's date, for the daily challenge
+var day_n: Array = [0, 0, 0] # today: rounds played, escapes, kills
+var day_paid := false  # today's challenge already paid its experience
 
 var _ws: WebSocketPeer
 var _hello := false
@@ -43,6 +48,12 @@ func _ready() -> void:
 		kills = int(c.get_value("p", "kills", 0))
 		secret = bool(c.get_value("p", "secret", false))
 		gifted = c.get_value("p", "gifted", [])
+		last_char = str(c.get_value("p", "last_char", ""))
+		last_round = c.get_value("p", "last_round", {})
+		day = str(c.get_value("p", "day", ""))
+		day_n = c.get_value("p", "day_n", [0, 0, 0])
+		day_paid = bool(c.get_value("p", "day_paid", false))
+		if day_n.size() != 3: day_n = [0, 0, 0]
 	var env_url := OS.get_environment("NF_URL")
 	if env_url != "": url = env_url
 
@@ -56,6 +67,11 @@ func save() -> void:
 	c.set_value("p", "kills", kills)
 	c.set_value("p", "secret", secret)
 	c.set_value("p", "gifted", gifted)
+	c.set_value("p", "last_char", last_char)
+	c.set_value("p", "last_round", last_round)
+	c.set_value("p", "day", day)
+	c.set_value("p", "day_n", day_n)
+	c.set_value("p", "day_paid", day_paid)
 	c.save(PATH)
 
 ## The hidden character («الفالكيري القرمزية») shows on the owner's phone (the one with the hidden
@@ -105,7 +121,47 @@ func level_progress() -> float:
 func record_match(got_out: int, killed: int) -> void:
 	escapes += maxi(got_out, 0)
 	kills += maxi(killed, 0)
+	_roll_day()
+	day_n[0] = int(day_n[0]) + 1
+	day_n[1] = int(day_n[1]) + maxi(got_out, 0)
+	day_n[2] = int(day_n[2]) + maxi(killed, 0)
+	if bool(daily().done) and not day_paid: # today's challenge pays once
+		day_paid = true
+		xp += DAILY_XP
 	save()
+
+## The challenge of the day: the same one for everybody on the same date, counted on the phone.
+const DAILY := [["العب 3 جولات اليوم", 0, 3], ["اهرب مرة اليوم", 1, 1], ["اهرب مرتين اليوم", 1, 2],
+	["اقتل 3 ناجين وأنت القاتل", 2, 3], ["العب جولتين اليوم", 0, 2], ["اقتل ناجي واحد وأنت القاتل", 2, 1]]
+const DAILY_XP := 150
+## A line that changes with the date, under the challenge.
+const WHISPERS := ["المولد اللي يرمش أقرب للنهاية — كمّله أول", "لا تركض جنب القاتلة: الركض له صوت",
+	"اثنين على الخطاف أسرع من واحد", "سكّر الباب وراك، بس تذكّر إن له صوت", "الخزانة تخبّيك، بس مو للأبد",
+	"إذا انفتحت البوابات لا تتأخر: القمر ما ينتظر", "الكشاف يعميها لحظة — استغلها", "امشِ منحني جنب النوافذ",
+	"القاتلة تسمع المولد من 8 متر بس", "لا تتركون واحد وراكم"]
+
+func _roll_day() -> void:
+	var today := Time.get_date_string_from_system()
+	if day == today: return
+	day = today
+	day_n = [0, 0, 0]
+	day_paid = false
+
+func daily() -> Dictionary:
+	_roll_day()
+	var d: Array = DAILY[absi(day.hash()) % DAILY.size()]
+	var have: int = mini(int(day_n[int(d[1])]), int(d[2]))
+	return {"text": str(d[0]), "have": have, "need": int(d[2]), "done": have >= int(d[2]),
+		"whisper": str(WHISPERS[absi((day + "w").hash()) % WHISPERS.size()])}
+
+## A name for the level, on the player card.
+func title() -> String:
+	var lv := level()
+	if lv >= 20: return "أسطورة الليل"
+	if lv >= 12: return "صيّاد الظلام"
+	if lv >= 7: return "ناجي متمرّس"
+	if lv >= 3: return "ناجي"
+	return "مبتدئ"
 
 func configure(new_name: String, new_url: String) -> void:
 	username = new_name.strip_edges()

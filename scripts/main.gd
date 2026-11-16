@@ -163,6 +163,8 @@ func _start(c: Dictionary) -> void:
 	rules.setup(world.gen_points.size(), world.gate_points.size(), world.pallet_points.size(), world.hatch_points.size(),
 		c.players, int(c.get("seed", 1)) if not offline else randi() % 1000000, world.door_points.size())
 	for p in c.players: chars[str(p.name)] = str(p.char)
+	Net.last_char = str(chars.get(my_name, Net.last_char)) # the one who stands at the fire next time
+	Net.save()
 	for p in c.players:
 		if str(p.name) == my_name:
 			my_role = str(p.role)
@@ -810,6 +812,8 @@ func _show_results() -> void:
 	if not xp_saved: # points become experience; levels, escapes and kills are kept on the phone
 		xp_saved = true
 		Net.xp += gain
+		Net.last_round = {"res": "killer" if my_role == "killer" else str(rules.hp(my_name)), "score": gain,
+			"gens": rules.done_count(), "wipe": my_role != "killer" and escaped == 0}
 		Net.record_match(1 if (my_role == "survivor" and rules.hp(my_name) == "escaped") else 0,
 			dead if my_role == "killer" else 0)
 	if hud_layer: hud_layer.visible = false # the stage replaces the HUD

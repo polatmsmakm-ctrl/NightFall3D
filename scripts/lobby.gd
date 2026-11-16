@@ -13,6 +13,11 @@ const EMOTE_TEXT := ["تلويح", "رقص", "تصفيق"]
 const EMOTE_ICON := ["hand", "note", "clap"]
 const SEATS := [[-1.05, 2.1], [-0.38, 2.2], [0.42, 2.2], [1.1, 2.1], [-1.78, 2.3], [1.82, 2.3]]
 const KILLER_AT := Vector3(1.6, 0.0, -7.4)
+## Where she shows herself between the trees while nobody plays the killer: each time she comes
+## back it is from the next spot, and the later ones are nearer the fire.
+const STALK := [Vector3(1.6, 0.0, -7.4), Vector3(-3.4, 0.0, -8.6), Vector3(4.8, 0.0, -6.4), Vector3(-5.6, 0.0, -5.8),
+	Vector3(0.6, 0.0, -6.2), Vector3(3.3, 0.0, -5.0), Vector3(-2.6, 0.0, -4.6)]
+const HOOK_AT := Vector3(4.9, 0.0, -0.2)
 
 var stock: Array[Node3D] = []     # the shipped cast, shown when we are not in a room
 var cast := {}                  # other players in the room: name -> {rig, tag}
@@ -38,6 +43,26 @@ var _focus := 0.0
 var _slide := 0.0
 var _slide_from := Vector3.ZERO
 var _dot_tex: ImageTexture
+var stalker: CharacterRig         # the killer of the shipped cast
+var stalk_rim: OmniLight3D
+var _stalk_t := 6.0
+var _stalk_i := 0
+var _stalk_seen := true
+var _trees: Array[MultiMeshInstance3D] = []
+var _grass: MultiMeshInstance3D
+var _ground_mat: StandardMaterial3D
+var _dirt_mat: StandardMaterial3D
+var _dress: Node3D                # what the picked map adds to the camp
+var map_id := "?"
+var intro := 1.0                  # 0 -> 1 while the opening shot comes down from the moon
+static var intro_done := false    # once per launch, not after every round
+var hook_arm: Node3D
+var shade: MeshInstance3D         # something crossing behind the trees
+var _shade_t := 11.0
+var _shade_dir := 1.0
+var _grav := Vector3.ZERO
+var _tilt := Vector2.ZERO
+var blood := false                # the last round was a wipe: the camp sits under a blood moon
 
 func _soft_dot() -> ImageTexture: # shared with the other particle systems
 	return NFUI.soft_dot()
@@ -167,6 +192,7 @@ func _ready() -> void:
 		var mmi := MultiMeshInstance3D.new()
 		mmi.multimesh = mm
 		add_child(mmi)
+		_trees.append(mmi)
 	var grass := MultiMesh.new()
 	grass.transform_format = MultiMesh.TRANSFORM_3D
 	grass.mesh = kit._grass_mesh()
@@ -182,6 +208,9 @@ func _ready() -> void:
 	gi.multimesh = grass
 	gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(gi)
+	_grass = gi
+	_ground_mat = gm
+	_dirt_mat = dmat
 	# camp props: stone ring, sitting logs, tent, crate with a lantern, stump with an axe, backpacks
 	var rock: Material = kit._mat.rock
 	var wood: Material = kit._mat.wood
@@ -343,13 +372,14 @@ func _ready() -> void:
 	killer.position = KILLER_AT
 	killer.rotation.y = atan2(-killer.position.x, -killer.position.z)
 	killer.play("idle")
-	stock.append(killer)
+	stalker = killer
 	var rim := OmniLight3D.new() # faint red rim so his outline reads in the dark
 	rim.position = Vector3(2.4, 2.2, -8.6)
 	rim.light_color = Color(1.0, 0.15, 0.1)
 	rim.light_energy = 1.4
 	rim.omni_range = 5.0
 	add_child(rim)
+	stalk_rim = rim
 	# the stand is lit the way a photographer would do it: a warm key in front and to one side,
 	# a cool fill on the other to open the shadows, and a hard rim behind to cut the character
 	# out of the dark. It is three small lights and it is what makes the model read.
@@ -394,8 +424,14 @@ func _ready() -> void:
 		a.volume_db = snd[1]
 		add_child(a)
 		a.play()
+	_build_air()
+	_build_hook(kit)
+	set_map("forest")
 	_time_of_day()
 	kit.free()
+	if not intro_done and DisplayServer.get_name() != "headless":
+		intro_done = true
+		intro = 0.0
 
 ## Tests and screenshots pretend it is this hour (and force the mist on or off); -1 = normal.
 static var force_hour := -1
@@ -449,6 +485,14 @@ func _time_of_day() -> void:
 	env.ambient_light_energy = amb_e
 	env.fog_light_color = fog
 	env.fog_density = fog_d
+	# a round nobody got out of leaves its moon over the camp until one goes better
+	blood = bool(Net.last_round.get("wipe", false)) and period == "night"
+	sky_mat.set_shader_parameter("blood", 1.0 if blood else 0.0)
+	if blood:
+		moon.light_color = Color(1.0, 0.32, 0.26)
+		moon.light_energy = 1.25
+		env.ambient_light_color = Color(0.3, 0.1, 0.12)
+		env.fog_light_color = fog.lerp(Color(0.3, 0.05, 0.05), 0.6)
 
 # ---------------- the chosen character in front of the fire ----------------
 func _tag(text: String, col: Color, y: float) -> Label3D:
@@ -506,6 +550,7 @@ func set_cast(players: Array, me: String) -> void:
 		var cid := str(p.get("char", "survivor1"))
 		want[n] = {"char": cid, "role": role, "seat": seat}
 		if role != "killer": seat += 1
+		if seat >= SEATS.size(): break
 	for n in cast.keys():
 		if not want.has(n) or cast[n].char != want[n].char:
 			cast[n].rig.queue_free()
@@ -533,10 +578,13 @@ func set_cast(players: Array, me: String) -> void:
 			r.rotation.y = atan2(-r.position.x, -r.position.z)
 			r.play("campfire")
 			r.player.seek(2.0 + float(d.seat) * 1.7, true)
-		r.add_child(_tag(n, Color(1, 0.45, 0.45) if killer else Color(0.78, 0.92, 1.0), 2.2))
-		cast[n] = {"rig": r, "char": str(d.char), "seat": int(d.seat)}
+		var tag_col := Color(1, 0.45, 0.45) if killer else Color(0.78, 0.92, 1.0)
+		if str(d.role) == "friend": tag_col = Color(0.55, 1.0, 0.6) # online, not in a room: tap to invite
+		r.add_child(_tag(n, tag_col, 2.2))
+		cast[n] = {"rig": r, "char": str(d.char), "seat": int(d.seat), "killer": killer}
 	var in_room := not players.is_empty()
 	for s in stock: s.visible = not in_room
+	if in_room: _stalk_t = minf(_stalk_t, 0.5) # settle who the killer is right away
 
 ## Play a campfire emote. `who` is the player's name; mine is the one standing at the fire.
 func emote(who: String, k: int) -> void:
@@ -547,7 +595,7 @@ func emote(who: String, k: int) -> void:
 	if r == null or not is_instance_valid(r): return
 	if not r.player.has_animation(EMOTES[k]): return
 	r.play(EMOTES[k])
-	_emoting[r] = 3.4 # then back to sitting / standing
+	_emoting[r] = float(CharacterRig.EMOTES.get(EMOTES[k], 3.0)) * (2.0 if EMOTES[k] != "dance" else 1.0) + 0.2 # then back to sitting / standing
 
 func _tick_emotes(dt: float) -> void:
 	for r in _emoting.keys():
@@ -559,19 +607,311 @@ func _tick_emotes(dt: float) -> void:
 			_emoting.erase(r)
 			r.play("idle" if r == me_rig else ("campfire" if r.player.has_animation("campfire") else "idle"))
 
+# ---------------- the camp is alive ----------------
+func _mat_flat(col: Color, glow := 0.0, rough := 0.9) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = col
+	m.roughness = rough
+	if glow > 0.0:
+		m.emission_enabled = true
+		m.emission = col
+		m.emission_energy_multiplier = glow
+	return m
+
+func _bx(parent: Node3D, size: Vector3, pos: Vector3, mat: Material, yaw := 0.0) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var b := BoxMesh.new()
+	b.size = size
+	b.material = mat
+	mi.mesh = b
+	mi.position = pos
+	mi.rotation.y = yaw
+	parent.add_child(mi)
+	return mi
+
+func _cy(parent: Node3D, top: float, bottom: float, h: float, pos: Vector3, mat: Material) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var c := CylinderMesh.new()
+	c.top_radius = top
+	c.bottom_radius = bottom
+	c.height = h
+	c.radial_segments = 10
+	c.material = mat
+	mi.mesh = c
+	mi.position = pos
+	parent.add_child(mi)
+	return mi
+
+## Slow particles that hang in a box of air: the ground mist and the fireflies.
+func _drift(amount: int, life: float, extents: Vector3, at: Vector3, size: float, colors: Array, additive: bool, speed: Vector2) -> GPUParticles3D:
+	var p := GPUParticles3D.new()
+	var m := ParticleProcessMaterial.new()
+	m.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	m.emission_box_extents = extents
+	m.gravity = Vector3.ZERO
+	m.direction = Vector3(1, 0.15, 0.3)
+	m.spread = 180.0
+	m.initial_velocity_min = speed.x
+	m.initial_velocity_max = speed.y
+	m.scale_min = 0.7
+	m.scale_max = 1.4
+	var g := Gradient.new()
+	g.offsets = PackedFloat32Array([0.0, 0.5, 1.0])
+	g.colors = PackedColorArray(colors)
+	var gt := GradientTexture1D.new()
+	gt.gradient = g
+	m.color_ramp = gt
+	p.process_material = m
+	var q := QuadMesh.new()
+	q.size = Vector2(size, size)
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	if additive: mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	mat.albedo_texture = _soft_dot()
+	mat.vertex_color_use_as_albedo = true
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	q.material = mat
+	p.draw_pass_1 = q
+	p.amount = amount
+	p.lifetime = life
+	p.preprocess = life
+	p.position = at
+	p.visibility_aabb = AABB(-extents - Vector3(4, 4, 4), extents * 2.0 + Vector3(8, 8, 8))
+	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(p)
+	return p
+
+func _build_air() -> void:
+	# a low mist that creeps over the clearing, and fireflies in the grass
+	_drift(22, 10.0, Vector3(10.0, 0.12, 8.0), Vector3(0, 0.3, -2.0), 3.4,
+		[Color(0.5, 0.56, 0.66, 0.0), Color(0.5, 0.56, 0.66, 0.06), Color(0.5, 0.56, 0.66, 0.0)], false, Vector2(0.08, 0.3))
+	_drift(18, 6.0, Vector3(9.0, 0.5, 7.0), Vector3(0, 0.9, -3.0), 0.07,
+		[Color(0.7, 1.0, 0.35, 0.0), Color(0.8, 1.0, 0.4, 1.0), Color(0.7, 1.0, 0.35, 0.0)], true, Vector2(0.1, 0.35))
+	# and now and then something tall walks past behind the trees
+	var dark := _mat_flat(Color(0.008, 0.008, 0.012))
+	dark.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	shade = _bx(self, Vector3(0.62, 2.05, 0.3), Vector3(-30, 1.02, -13.5), dark)
+	shade.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	shade.visible = false
+
+## A hook at the edge of the camp, swinging a little. It carries blood if I died last round.
+func _build_hook(kit: NightWorld) -> void:
+	var root := Node3D.new()
+	root.position = HOOK_AT
+	root.rotation.y = -0.5
+	add_child(root)
+	_cy(root, 0.08, 0.11, 3.1, Vector3(0, 1.55, 0), kit._mat.bark)
+	_bx(root, Vector3(1.15, 0.1, 0.1), Vector3(-0.5, 3.0, 0), kit._mat.wood)
+	hook_arm = Node3D.new()
+	hook_arm.position = Vector3(-0.98, 2.95, 0)
+	root.add_child(hook_arm)
+	var died := str(Net.last_round.get("res", "")) == "dead"
+	var steel: Material = _mat_flat(Color(0.32, 0.01, 0.01), 0.0, 0.35) if died else kit._mat.metal
+	_bx(hook_arm, Vector3(0.03, 0.75, 0.03), Vector3(0, -0.38, 0), kit._mat.metal)
+	_bx(hook_arm, Vector3(0.05, 0.3, 0.05), Vector3(0, -0.88, 0), steel)
+	_bx(hook_arm, Vector3(0.2, 0.05, 0.05), Vector3(0.08, -1.03, 0), steel)
+	_bx(hook_arm, Vector3(0.05, 0.14, 0.05), Vector3(0.16, -0.97, 0), steel)
+	if died: # what was left under it
+		_cy(root, 0.42, 0.46, 0.012, Vector3(-0.98, 0.05, 0), _mat_flat(Color(0.2, 0.005, 0.005), 0.0, 0.25))
+
+## Dress the camp for the map the room (or the trial menu) has picked.
+func set_map(id: String) -> void:
+	if id == map_id: return
+	map_id = id
+	if _dress and is_instance_valid(_dress): _dress.queue_free()
+	_dress = Node3D.new()
+	add_child(_dress)
+	var woods := id in ["forest", "village"]
+	for t in _trees: t.visible = woods
+	_grass.visible = woods
+	var gcol := Color(0.42, 0.56, 0.34)
+	var dcol := Color(0.75, 0.6, 0.42)
+	match id:
+		"rubkhali":
+			gcol = Color(0.86, 0.7, 0.46); dcol = Color(0.9, 0.76, 0.52)
+			_palms(5)
+			for dn in [[Vector3(-12, -0.6, -19), 8.0], [Vector3(6, -0.8, -24), 10.0], [Vector3(19, -0.5, -14), 7.0]]:
+				var dune := MeshInstance3D.new()
+				var sp := SphereMesh.new()
+				sp.radius = float(dn[1]); sp.height = float(dn[1]) * 0.55; sp.radial_segments = 20; sp.rings = 8
+				sp.material = _mat_flat(Color(0.8, 0.64, 0.4))
+				dune.mesh = sp
+				dune.position = dn[0]
+				_dress.add_child(dune)
+		"beach":
+			gcol = Color(0.88, 0.78, 0.56); dcol = Color(0.92, 0.82, 0.6)
+			_palms(7)
+			var sea := MeshInstance3D.new()
+			var pl := PlaneMesh.new()
+			pl.size = Vector2(220, 90)
+			var sm := _mat_flat(Color(0.02, 0.07, 0.12), 0.0, 0.12)
+			sm.metallic = 0.4
+			pl.material = sm
+			sea.mesh = pl
+			sea.position = Vector3(0, 0.03, -57.0)
+			_dress.add_child(sea)
+			_bx(_dress, Vector3(220, 0.03, 0.55), Vector3(0, 0.04, -12.2), _mat_flat(Color(0.75, 0.82, 0.86), 0.25)) # the foam line
+		"fareej":
+			gcol = Color(0.62, 0.54, 0.42); dcol = Color(0.7, 0.6, 0.46)
+			var clay := _mat_flat(Color(0.7, 0.6, 0.44))
+			for seg in [[-13.0, 12.0], [9.5, 13.0]]: # the neighbourhood wall, with a way in
+				_bx(_dress, Vector3(float(seg[1]), 3.2, 0.5), Vector3(float(seg[0]), 1.6, -11.5), clay)
+			_bx(_dress, Vector3(6.5, 3.8, 5.0), Vector3(8.5, 1.9, -16.5), clay)
+			var lit := _mat_flat(Color(1.0, 0.78, 0.42), 2.2)
+			_bx(_dress, Vector3(0.9, 1.1, 0.06), Vector3(7.2, 2.2, -13.97), lit)
+			_bx(_dress, Vector3(0.9, 1.1, 0.06), Vector3(9.8, 2.2, -13.97), lit)
+			_cy(_dress, 0.85, 1.0, 12.0, Vector3(-7.5, 6.0, -18.0), clay)      # the minaret
+			_cy(_dress, 1.35, 1.35, 0.35, Vector3(-7.5, 9.6, -18.0), clay)
+			_cy(_dress, 0.0, 0.8, 2.2, Vector3(-7.5, 13.1, -18.0), _mat_flat(Color(0.2, 0.5, 0.36)))
+			_bx(_dress, Vector3(0.5, 1.0, 0.5), Vector3(-7.5, 10.4, -18.0), _mat_flat(Color(0.4, 1.0, 0.6), 2.5))
+		"garage":
+			gcol = Color(0.34, 0.34, 0.35); dcol = Color(0.4, 0.4, 0.41)
+			var conc := _mat_flat(Color(0.3, 0.3, 0.31))
+			_bx(_dress, Vector3(44, 0.4, 24), Vector3(0, 3.7, -17.0), conc) # the slab overhead
+			for cx in [-10.5, -3.5, 3.5, 10.5]:
+				for cz in [-7.0, -14.0, -21.0]:
+					_bx(_dress, Vector3(0.6, 3.5, 0.6), Vector3(cx, 1.75, cz), conc)
+			var tube := _mat_flat(Color(0.85, 0.95, 1.0), 2.6)
+			for tz in [-9.5, -16.5]:
+				for tx in [-7.0, 0.0, 7.0]:
+					_bx(_dress, Vector3(2.2, 0.06, 0.18), Vector3(tx, 3.46, tz), tube)
+			_bx(_dress, Vector3(1.8, 1.25, 4.2), Vector3(-6.8, 0.63, -11.0), _mat_flat(Color(0.12, 0.13, 0.16), 0.0, 0.4), 0.05)
+			_bx(_dress, Vector3(1.8, 1.25, 4.2), Vector3(6.6, 0.63, -17.5), _mat_flat(Color(0.25, 0.06, 0.06), 0.0, 0.4), -0.08)
+		"village":
+			var plank := _mat_flat(Color(0.2, 0.17, 0.14))
+			for hs in [[Vector3(-10, 0, -14), 0.3], [Vector3(4, 0, -17), -0.15], [Vector3(12, 0, -10), 0.8]]:
+				var house := Node3D.new()
+				house.position = hs[0]
+				house.rotation.y = float(hs[1])
+				_dress.add_child(house)
+				_bx(house, Vector3(5.0, 3.0, 4.4), Vector3(0, 1.5, 0), plank)
+				var roof := MeshInstance3D.new()
+				var pr := PrismMesh.new()
+				pr.size = Vector3(5.6, 1.8, 5.0)
+				pr.material = _mat_flat(Color(0.1, 0.08, 0.08))
+				roof.mesh = pr
+				roof.position.y = 3.9
+				house.add_child(roof)
+				_bx(house, Vector3(0.8, 0.9, 0.06), Vector3(-1.2, 1.7, 2.23), _mat_flat(Color(0.9, 0.6, 0.25), 1.2))
+	_ground_mat.albedo_color = gcol
+	_dirt_mat.albedo_color = dcol
+
+func _palms(n: int) -> void:
+	var spots := [Vector3(-6.2, 0, -6.4), Vector3(5.8, 0, -8.0), Vector3(-3.0, 0, -10.5), Vector3(8.4, 0, -3.6),
+		Vector3(-8.8, 0, -1.8), Vector3(2.2, 0, -11.5), Vector3(11.0, 0, -8.5)]
+	var trunk := _mat_flat(Color(0.3, 0.22, 0.14))
+	var leaf := _mat_flat(Color(0.14, 0.3, 0.12))
+	leaf.cull_mode = BaseMaterial3D.CULL_DISABLED
+	for i in mini(n, spots.size()):
+		var palm := Node3D.new()
+		palm.position = spots[i]
+		palm.rotation = Vector3(0.05 * sin(i * 2.1), i * 1.7, 0.07 * cos(i * 1.3))
+		_dress.add_child(palm)
+		var h := 3.8 + 0.5 * sin(i * 3.3)
+		_cy(palm, 0.11, 0.17, h, Vector3(0, h / 2.0, 0), trunk)
+		for k in 8:
+			var frond := Node3D.new()
+			frond.position.y = h
+			frond.rotation = Vector3(0.0, k * TAU / 8.0, 0.0)
+			palm.add_child(frond)
+			var blade := _bx(frond, Vector3(0.3, 0.03, 1.9), Vector3(0, -0.28, 0.9), leaf)
+			blade.rotation.x = 0.42
+
+## Which player stands under this point of the screen ("" if none): the menu uses it for a tap.
+func pick(at: Vector2) -> String:
+	var best := ""
+	var bd := 85.0
+	for n in cast:
+		var r: Node3D = cast[n].rig
+		if not is_instance_valid(r) or not r.visible: continue
+		var p: Vector3 = r.global_position + Vector3(0, 1.0, 0)
+		if cam.is_position_behind(p): continue
+		var d: float = cam.unproject_position(p).distance_to(at)
+		if d < bd:
+			bd = d
+			best = str(n)
+	return best
+
+func _place_stalker() -> void:
+	var p: Vector3 = STALK[_stalk_i]
+	var t: Vector3 = CAM_IDLE[0]
+	stalker.position = p
+	stalker.rotation.y = atan2(t.x - p.x, t.z - p.z) # she looks at whoever holds the phone
+	stalk_rim.position = p + Vector3(0.8, 2.2, -1.2)
+
+## Nobody plays the killer here, so she is never quite where she was: gone for a few seconds,
+## then back between other trees, and nearer the longer the menu stays open.
+func _tick_stalker(dt: float) -> void:
+	if stalker == null or not is_instance_valid(stalker): return
+	var played := false
+	for n in cast:
+		if bool(cast[n].get("killer", false)): played = true
+	if played: # a real player is the killer in this room: she stands where the room puts her
+		stalker.visible = false
+		stalk_rim.visible = false
+		return
+	_stalk_t -= dt
+	if _stalk_t <= 0.0:
+		if _stalk_seen:
+			_stalk_seen = false
+			_stalk_t = randf_range(2.0, 4.5)
+		else:
+			_stalk_seen = true
+			_stalk_t = randf_range(5.0, 9.0)
+			if randf() < 0.75: _stalk_i = mini(_stalk_i + 1, STALK.size() - 1)
+			else: _stalk_i = randi() % STALK.size()
+			_place_stalker()
+	stalker.visible = _stalk_seen
+	stalk_rim.visible = _stalk_seen
+
+func _tick_air(dt: float, tt: float) -> void:
+	if hook_arm: hook_arm.rotation = Vector3(0.05 * sin(tt * 0.7), 0.0, 0.12 * sin(tt * 1.1))
+	if shade == null: return
+	_shade_t -= dt
+	if shade.visible:
+		shade.position.x += _shade_dir * dt * 3.2
+		shade.position.y = 1.02 + 0.04 * absf(sin(tt * 5.0))
+		if absf(shade.position.x) > 16.0: shade.visible = false
+	elif _shade_t <= 0.0:
+		_shade_t = randf_range(16.0, 30.0)
+		_shade_dir = 1.0 if randf() < 0.5 else -1.0
+		shade.position.x = -15.5 * _shade_dir
+		shade.visible = map_id in ["forest", "village"] # it needs trees to pass behind
+
 func _process(dt: float) -> void:
 	_tick_emotes(dt)
+	_tick_stalker(dt)
 	var tt := Time.get_ticks_msec() / 1000.0
 	var flick := 0.78 + 0.14 * sin(tt * 13.0) * sin(tt * 4.3) + 0.08 * sin(tt * 27.0)
 	fire.light_energy = 3.4 * flick * fire_mul
 	fire.position = Vector3(0.05 * sin(tt * 9.0), 0.75 + 0.05 * sin(tt * 7.0), 0.05 * cos(tt * 11.0)) # shadows dance
+	_tick_air(dt, tt)
 	pivot.rotation.y = 0.1 * sin(tt * 0.13) * (1.0 - _focus)
 	var want := 1.0 if focused else 0.0
-	if absf(_focus - want) > 0.001:
-		_focus = move_toward(_focus, want, dt * 1.6)
-		var e: float = _focus * _focus * (3.0 - 2.0 * _focus) # smoothstep
-		cam.position = (CAM_IDLE[0] as Vector3).lerp(CAM_CHAR[0], e)
-		cam.rotation = (CAM_IDLE[1] as Vector3).lerp(CAM_CHAR[1], e)
+	if absf(_focus - want) > 0.001: _focus = move_toward(_focus, want, dt * 1.6)
+	var e: float = _focus * _focus * (3.0 - 2.0 * _focus) # smoothstep
+	var cp: Vector3 = (CAM_IDLE[0] as Vector3).lerp(CAM_CHAR[0], e)
+	var cr: Vector3 = (CAM_IDLE[1] as Vector3).lerp(CAM_CHAR[1], e)
+	if intro < 1.0: # the opening shot: down from the moon onto the camp
+		intro = minf(intro + dt / 2.8, 1.0)
+		var up: float = 1.0 - intro
+		up = up * up * (3.0 - 2.0 * up)
+		cp += Vector3(0.6, 8.5, 3.5) * up
+		cr.x += 0.66 * up
+		cr.y -= 0.3 * up
+	# the picture leans a little with the phone (against a slow average, so any grip is "level")
+	var g := Input.get_gravity()
+	if g.length() > 1.0:
+		g = g.normalized()
+		if _grav == Vector3.ZERO: _grav = g
+		_grav = _grav.lerp(g, minf(dt * 0.35, 1.0))
+		var lean := g - _grav
+		_tilt = _tilt.lerp(Vector2(clampf(lean.y * 0.5, -0.05, 0.05), clampf(lean.z * 0.4, -0.035, 0.035)), minf(dt * 5.0, 1.0))
+	cr.y += _tilt.x
+	cr.x += _tilt.y
+	cam.position = cp
+	cam.rotation = cr
 	key_light.light_energy = lerpf(0.9, 2.6, _focus) # all three come up as the camera moves in
 	fill_light.light_energy = lerpf(0.25, 1.0, _focus)
 	back_light.light_energy = lerpf(0.4, 2.8, _focus)

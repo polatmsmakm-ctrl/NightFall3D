@@ -33,6 +33,11 @@ var _swipe_x := 0.0
 var _swiping := false
 var _editor: NFControlsEdit
 var version: Label      # the small build number in the corner
+var camp_pad: Control   # taps on the people at the fire (an online friend: invite him)
+var poster: TextureRect # the opening shot, fading into the camp
+var _logo_tex: Texture2D
+var _invite_after := ""  # a friend tapped while I had no room: invite him once the room exists
+var _tap_at := -9.0
 
 func _ready() -> void:
 	layer = 10
@@ -62,7 +67,7 @@ func _ready() -> void:
 	add_child(char_pad)
 	card = Control.new() # username / level / experience / escapes / kills
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	card.size = Vector2(304, 116)
+	card.size = Vector2(304, 162)
 	card.draw.connect(_draw_card)
 	add_child(card)
 	version = Label.new()
@@ -72,6 +77,23 @@ func _ready() -> void:
 	version.mouse_filter = Control.MOUSE_FILTER_STOP
 	version.gui_input.connect(_on_version_input)
 	add_child(version)
+	camp_pad = Control.new()
+	camp_pad.mouse_filter = Control.MOUSE_FILTER_STOP
+	camp_pad.visible = false
+	camp_pad.gui_input.connect(_on_camp_tap)
+	add_child(camp_pad)
+	move_child(camp_pad, char_pad.get_index())
+	if ResourceLoader.exists("res://assets/ui/logo.png"): _logo_tex = load("res://assets/ui/logo.png")
+	if ResourceLoader.exists("res://assets/ui/poster.jpg"):
+		poster = TextureRect.new()
+		poster.texture = load("res://assets/ui/poster.jpg")
+		poster.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		poster.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		poster.set_anchors_preset(Control.PRESET_FULL_RECT)
+		poster.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		poster.visible = false
+		add_child(poster)
+	if CHARS.has(Net.last_char) and (Net.last_char != SECRET or Net.has_secret()): off_char = Net.last_char
 	Net.changed.connect(_refresh)
 	Net.message.connect(_on_msg)
 	if Net.username == "": open("name")
@@ -88,6 +110,10 @@ func _on_msg(m: Dictionary) -> void:
 		"room":
 			want_char = "" # the room list is the truth about my character again
 			if str(m.get("code", "")) != "":
+				if _invite_after != "": # the room I made for the friend I tapped at the fire
+					Net.send({"t": "invite", "to": _invite_after})
+					toast = "انرسلت الدعوة لـ" + _invite_after
+					_invite_after = ""
 				if not (page in ["friends", "chars", "controls"]): page = "lobby"
 			elif page in ["lobby", "friends", "chars"]: page = "main"
 		"started":
@@ -199,7 +225,15 @@ func _refresh() -> void:
 	for c in box.get_children():
 		box.remove_child(c)
 		c.queue_free()
-	_label("NightFall", 44, Color(0.85, 0.1, 0.12))
+	if _logo_tex and page in ["main", "name"]: # the owner's wordmark
+		var lg := TextureRect.new()
+		lg.texture = _logo_tex
+		lg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		lg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		lg.custom_minimum_size = Vector2(540, 196)
+		lg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		box.add_child(lg)
+	else: _label("NightFall", 44, Color(0.85, 0.1, 0.12))
 	if not invite.is_empty():
 		_label("%s يدعوك لغرفته" % str(invite.from), 24, Color(1, 0.85, 0.4))
 		var h := _row()
@@ -258,6 +292,9 @@ func _sync_lobby(dir := 0.0) -> void:
 	var px: float = maxf(596.0, vs.x * 0.44) # clear of the menu column on the left
 	char_pad.position = Vector2(px, 0.0)
 	char_pad.size = Vector2(maxf(vs.x - px, 10.0), vs.y)
+	camp_pad.visible = page in ["main", "friends"] and not Net.in_room()
+	camp_pad.position = char_pad.position
+	camp_pad.size = Vector2(char_pad.size.x, maxf(vs.y - 60.0, 10.0)) # the version text stays reachable
 	if lobby == null or not is_instance_valid(lobby): return
 	if page == "name":
 		lobby.hide_preview()
@@ -266,8 +303,51 @@ func _sync_lobby(dir := 0.0) -> void:
 		return
 	lobby.preview(_my_char(), str(CHARS.get(_my_char(), "")), dir)
 	lobby.focus(page == "chars")
-	lobby.set_cast(Net.room.get("players", []) if Net.in_room() else [], Net.username)
+	lobby.set_cast(Net.room.get("players", []) if Net.in_room() else _friends_at_fire(), Net.username)
+	var camp_map := "forest" # the camp wears the map the room, or the trial menu, has picked
+	if Net.in_room(): camp_map = str(Net.room.get("map", "forest"))
+	elif page == "offline" or (page == "chars" and chars_from == "offline"): camp_map = off_map
+	lobby.set_map(camp_map)
 	_weather_changed()
+
+## Friends who are online right now sit at the fire, each as a survivor picked by his name
+## (the server does not say which one he plays until he is in a room).
+func _friends_at_fire() -> Array:
+	var out := []
+	var pool := ["survivor1", "survivor2", "survivor3", "survivor5", "survivor6", "survivor7", "survivor8"]
+	for f in Net.friends:
+		var n := str(f)
+		if n == Net.username or not Net.is_online(n): continue
+		out.append({"name": n, "role": "friend", "char": pool[absi(n.hash()) % pool.size()]})
+	return out
+
+## A tap on someone at the fire: an online friend gets a room and an invitation.
+func _on_camp_tap(e: InputEvent) -> void:
+	if not ((e is InputEventScreenTouch or e is InputEventMouseButton) and e.pressed): return
+	var now := Time.get_ticks_msec() / 1000.0
+	if now - _tap_at < 0.6: return # a touch arrives twice, once as a mouse press
+	_tap_at = now
+	if lobby == null or not is_instance_valid(lobby) or Net.in_room() or _invite_after != "": return
+	var n: String = lobby.pick(camp_pad.position + e.position)
+	if n == "" or not Net.is_online(n): return
+	_invite_after = n
+	NFUI.click()
+	Net.send({"t": "create", "map": "forest"})
+	toast = "أسوي غرفة وأدعو %s..." % n
+	_refresh()
+
+## The opening shot: the poster over everything, thinning out as the camera comes down.
+func _process(_dt: float) -> void:
+	if lobby == null or not is_instance_valid(lobby):
+		if poster: poster.visible = false
+		return
+	var k: float = lobby.intro
+	if poster:
+		poster.visible = k < 0.55
+		poster.modulate.a = clampf(1.0 - k / 0.5, 0.0, 1.0)
+	var seen := clampf((k - 0.72) / 0.28, 0.0, 1.0)
+	box.modulate.a = seen
+	card.modulate.a = seen
 
 ## One step along the carousel: the new character slides in, then the labels follow.
 func _step(d: int) -> void:
@@ -316,6 +396,21 @@ func _draw_card() -> void:
 	card.draw_string(f, Vector2(38.0, 110.0), "%d" % Net.escapes, HORIZONTAL_ALIGNMENT_LEFT, 60.0, 17, Color(0.6, 0.9, 1.0))
 	NFIcons.draw(card, "skull", Vector2(104.0, 104.0), 18.0, Color(1.0, 0.4, 0.35))
 	card.draw_string(f, Vector2(116.0, 110.0), "%d" % Net.kills, HORIZONTAL_ALIGNMENT_LEFT, 60.0, 17, Color(1.0, 0.55, 0.5))
+	card.draw_string(f, Vector2(170.0, 110.0), Net.title(), HORIZONTAL_ALIGNMENT_RIGHT, s.x - 182.0, 16, Color(1, 0.85, 0.45))
+	card.draw_line(Vector2(12.0, 122.0), Vector2(s.x - 12.0, 122.0), Color(0.55, 0.08, 0.09, 0.7), 1.0)
+	var lr: Dictionary = Net.last_round
+	var res := str(lr.get("res", ""))
+	var line := "ما لعبت جولة للحين"
+	var lc := Color(0.7, 0.7, 0.72)
+	if res == "escaped":
+		line = "آخر جولة: هربت  •  %d نقطة" % int(lr.get("score", 0)); lc = Color(0.6, 0.9, 1.0)
+	elif res == "killer":
+		line = "آخر جولة: قاتل  •  %d نقطة" % int(lr.get("score", 0)); lc = Color(1.0, 0.55, 0.5)
+	elif res != "":
+		line = "آخر جولة: ما نجوت  •  %d نقطة" % int(lr.get("score", 0)); lc = Color(0.9, 0.5, 0.45)
+	card.draw_string(f, Vector2(12.0, 142.0), line, HORIZONTAL_ALIGNMENT_RIGHT, s.x - 24.0, 16, lc)
+	if res != "":
+		card.draw_string(f, Vector2(12.0, 157.0), "المولدات %d" % int(lr.get("gens", 0)), HORIZONTAL_ALIGNMENT_RIGHT, s.x - 24.0, 13, Color(0.6, 0.6, 0.63))
 
 # ---------- pages ----------
 func _page_name() -> void:
@@ -333,6 +428,10 @@ func _page_name() -> void:
 
 func _page_main() -> void:
 	_label(_status(), 20, Color(0.6, 0.9, 0.6) if Net.state == "online" else Color(0.8, 0.8, 0.8))
+	var dy: Dictionary = Net.daily() # today's challenge, and a line that changes with the date
+	_label(("✓ تحدي اليوم: %s" if bool(dy.done) else "تحدي اليوم: %s") % str(dy.text) + "  (%d/%d)" % [int(dy.have), int(dy.need)],
+		19, Color(0.55, 1.0, 0.6) if bool(dy.done) else Color(1, 0.85, 0.45))
+	_label("«%s»" % str(dy.whisper), 16, Color(0.72, 0.72, 0.76))
 	var on := Net.state == "online"
 	_button("إنشاء غرفة", func(): Net.send({"t": "create", "map": "forest"}), null, on, "star")
 	var h := _row()
