@@ -86,9 +86,9 @@ func setup(ps: PackedScene, scale_k: float, cabin_ps: PackedScene = null) -> voi
 	lights.shadow_enabled = false
 	model.add_child(lights)
 	tail = OmniLight3D.new()
-	tail.position = Vector3(0, 1.0, -2.5)
+	tail.position = Vector3(0, 0.75, -3.0) # behind the bumper: a red patch on the ground, not a red car
 	tail.light_color = Color(1.0, 0.1, 0.06)
-	tail.omni_range = 4.0
+	tail.omni_range = 1.7
 	tail.light_energy = 0.0
 	tail.shadow_enabled = false
 	model.add_child(tail)
@@ -212,7 +212,7 @@ func _effects(dt: float) -> void:
 	var on := 1.0 if driven else 0.0
 	lights.light_energy = lerpf(lights.light_energy, LIGHT_ENERGY * on, 1.0 - exp(-6.0 * dt))
 	lights.visible = lights.light_energy > 0.05
-	tail.light_energy = lerpf(tail.light_energy, (0.9 + (1.4 if speed < -0.3 or (driven and absf(speed) < 0.4) else 0.0)) * on, 1.0 - exp(-8.0 * dt))
+	tail.light_energy = lerpf(tail.light_energy, (0.45 + (0.55 if speed < -0.3 or (driven and absf(speed) < 0.4) else 0.0)) * on, 1.0 - exp(-8.0 * dt))
 	tail.visible = tail.light_energy > 0.05
 	if engine:
 		if driven and not engine.playing: engine.play()
