@@ -14,7 +14,7 @@ const BRAKE := 16.0
 const COAST := 3.5
 const TURN := 1.6         # rad/s once it is moving
 const RAM_SPEED := 3.0    # slower than this, touching a survivor is not a hit
-const LIGHT_ENERGY := 9.0
+const LIGHT_ENERGY := 15.0
 # the cabin (assets/props/cabin.glb, the owner's Mud-Caked Toyota Cabin) in the car's own space:
 # its floor on the body's floor, its dashboard against the bottom of the windscreen
 const CABIN_AT := Vector3(0.0, 0.5, 0.15)
@@ -82,9 +82,9 @@ func setup(ps: PackedScene, scale_k: float, cabin_ps: PackedScene = null) -> voi
 	lights.position = Vector3(0, 1.0, 2.25)
 	lights.rotation = Vector3(-0.08, PI, 0) # a spot light shines down its -z; the car's front is +z
 	lights.light_color = Color(1.0, 0.93, 0.78)
-	lights.spot_range = 34.0
-	lights.spot_angle = 30.0
-	lights.spot_attenuation = 0.8
+	lights.spot_range = 42.0
+	lights.spot_angle = 33.0
+	lights.spot_attenuation = 0.6
 	lights.light_energy = 0.0
 	lights.shadow_enabled = false
 	NFLook.shadows_on(lights)

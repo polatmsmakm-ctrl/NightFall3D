@@ -30,7 +30,7 @@ static func apply(env: Environment, kind: String) -> void:
 	# light bouncing off nearby surfaces: a lamp warms the wall beside it, a torch the floor
 	env.ssil_enabled = fx >= 2
 	env.ssil_radius = 6.0
-	env.ssil_intensity = 1.1
+	env.ssil_intensity = 0.85
 	env.ssil_sharpness = 0.98
 	env.ssil_normal_rejection = 1.0
 	# global illumination over the whole map, worked out live (the maps change every round, so it
@@ -42,19 +42,19 @@ static func apply(env: Environment, kind: String) -> void:
 	env.sdfgi_cascades = 4
 	env.sdfgi_min_cell_size = 0.25
 	env.sdfgi_y_scale = Environment.SDFGI_Y_SCALE_75_PERCENT
-	env.sdfgi_energy = 1.0 if kind == "day" else 0.85
+	env.sdfgi_energy = 1.0 if kind == "day" else 0.55 # the night maps already carry a lot of flat ambient
 	env.sdfgi_normal_bias = 1.1
 	env.sdfgi_probe_bias = 1.1
 	# volumetric fog: shafts of light from the lamps, the headlights and the torches
 	env.volumetric_fog_enabled = fx >= 1 and kind != "stage"
-	env.volumetric_fog_density = {"night": 0.012, "fog": 0.03, "garage": 0.009, "day": 0.007, "camp": 0.016}.get(kind, 0.012)
+	env.volumetric_fog_density = {"night": 0.024, "fog": 0.045, "garage": 0.018, "day": 0.01, "camp": 0.03}.get(kind, 0.024)
 	env.volumetric_fog_albedo = Color(0.95, 0.82, 0.62) if kind == "day" else Color(0.78, 0.82, 0.9)
 	env.volumetric_fog_emission = Color.BLACK
 	env.volumetric_fog_anisotropy = 0.7 if kind == "day" else 0.55 # forward glow round every light
 	env.volumetric_fog_length = 56.0
 	env.volumetric_fog_detail_spread = 2.0
-	env.volumetric_fog_gi_inject = 0.6
-	env.volumetric_fog_ambient_inject = 0.12
+	env.volumetric_fog_gi_inject = 0.3
+	env.volumetric_fog_ambient_inject = 0.06
 	env.volumetric_fog_sky_affect = 0.0 # the sky stays sharp
 	env.volumetric_fog_temporal_reprojection_enabled = true
 	env.volumetric_fog_temporal_reprojection_amount = 0.9
@@ -81,11 +81,17 @@ static func soft_sun(l: DirectionalLight3D, angle_deg := 0.6) -> void:
 ## A torch, the headlights, the camp fire: real shadows from a moving light.
 static func shadows_on(l: Light3D, need_fx := 1) -> void:
 	if l == null or not hd(): return
+	l.light_volumetric_fog_energy = 3.5 # a visible beam in the fog
 	l.shadow_enabled = Gfx.eff_effects() >= need_fx
 	l.shadow_bias = 0.05
 	l.shadow_normal_bias = 1.2
 	if l is SpotLight3D: (l as Light3D).light_size = 0.08
 	else: l.light_size = 0.15
+
+## A lamp, a fire, a lit window: a soft halo in the volumetric fog.
+static func halo(l: Light3D, k := 1.8) -> void:
+	if l == null or not hd(): return
+	l.light_volumetric_fog_energy = k
 
 static var _masks := {}
 

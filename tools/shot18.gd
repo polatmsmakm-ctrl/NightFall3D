@@ -66,10 +66,19 @@ func _ready() -> void:
 		var rig := CharacterRig.new()
 		add_child(rig)
 		rig.setup("survivor1")
-		rig.position = gen + Vector3(1.4, 0.0, 1.3)
-		rig.rotation.y = 2.4
+		var off := Vector3(1.3, 0.0, 1.3)
+		for k in 8: # the side of the generator with open ground, so the shot is not into a wall
+			var o := Vector3(1.8, 0.0, 0.0).rotated(Vector3.UP, k * TAU / 8.0)
+			var q := PhysicsRayQueryParameters3D.create(gen + Vector3(0, 1.2, 0), gen + o * 3.2 + Vector3(0, 1.2, 0))
+			if w.get_world_3d().direct_space_state.intersect_ray(q).is_empty():
+				off = o
+				break
+		rig.position = gen + off
+		rig.position.y = gen.y
+		var fwd := off.normalized() # she stands beside it, facing away from it toward the camera
+		rig.rotation.y = atan2(fwd.x, fwd.z) + 0.5
 		rig.play("idle")
-		look(cam, gen + Vector3(4.2, 1.9, 4.6), gen + Vector3(0.6, 1.0, 0.6))
+		look(cam, rig.position + fwd * 2.6 + fwd.cross(Vector3.UP) * 0.9 + Vector3(0, 1.55, 0), rig.position + Vector3(0, 1.15, 0) - fwd * 0.6)
 		await frames(40)
 		await shot("%s_1_gen" % map)
 		var dc: NFCar = w.drive_car

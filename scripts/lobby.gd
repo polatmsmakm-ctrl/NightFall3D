@@ -36,6 +36,7 @@ var period := "night"
 var misty := false
 var pivot: Node3D
 var cam: Camera3D
+var dof: CameraAttributesPractical # depth of field on the character stand (Forward+ only)
 var key_light: OmniLight3D
 var fill_light: OmniLight3D   # the cool side that opens the shadows
 var back_light: OmniLight3D   # the rim behind the character
@@ -366,6 +367,7 @@ func _ready() -> void:
 	fire.light_energy = 3.4
 	fire.omni_range = 11.0
 	fire.shadow_enabled = true
+	NFLook.halo(fire, 2.5) # the fire glows in the camp's mist
 	add_child(fire)
 	# the shipped cast: survivors around the fire, the killer watching from the tree line
 	for i in 4:
@@ -425,6 +427,13 @@ func _ready() -> void:
 	cam.rotation = CAM_IDLE[1]
 	cam.fov = 55.0
 	cam.far = 300.0
+	if NFLook.hd(): # a photographer's lens: the camp behind the chosen character melts away
+		dof = CameraAttributesPractical.new()
+		dof.dof_blur_far_enabled = true
+		dof.dof_blur_far_distance = 60.0
+		dof.dof_blur_far_transition = 8.0
+		dof.dof_blur_amount = 0.0
+		cam.attributes = dof
 	pivot.add_child(cam)
 	cam.current = true
 	# sound: the crackle the owner supplied, over the ambient track
@@ -950,6 +959,10 @@ func _process(dt: float) -> void:
 	cr.x += _tilt.y
 	cam.position = cp
 	cam.rotation = cr
+	if dof: # focus on the character, the fire and the trees behind go soft as the camera moves in
+		dof.dof_blur_amount = 0.09 * e
+		dof.dof_blur_far_distance = lerpf(60.0, cam.global_position.distance_to(STAND + Vector3(0, 1.2, 0)) + 1.6, e)
+		dof.dof_blur_far_transition = lerpf(8.0, 5.0, e)
 	key_light.light_energy = lerpf(0.9, 2.6, _focus) # all three come up as the camera moves in
 	fill_light.light_energy = lerpf(0.25, 1.0, _focus)
 	back_light.light_energy = lerpf(0.4, 2.8, _focus)

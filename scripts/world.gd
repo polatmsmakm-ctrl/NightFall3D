@@ -451,6 +451,7 @@ func _make_materials() -> void:
 ## `house` lights go out when he walks up to them.
 func _amb_light(l: OmniLight3D, house := false, flick := true) -> void:
 	amb_lights.append([l, l.light_energy, house, flick, 1.0])
+	NFLook.halo(l)
 	if flick: flicker.append(l)
 
 func _build_environment() -> void:
