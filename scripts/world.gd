@@ -2386,6 +2386,31 @@ func _build_mud_house(body: StaticBody3D, w: float, d: float, H: float, y0: floa
 	body.add_child(l)
 	_amb_light(l, true)
 
+## A campfire out in front of a bedouin tent, on the sand (the open front faces +z).
+func _desert_fire(tent: Node3D, d: float) -> void:
+	var at: Vector3 = tent.position + Basis(Vector3.UP, tent.rotation.y) * Vector3(0.6, 0, d / 2.0 + 2.6)
+	at.y = _raw_h(at.x, at.z)
+	var body := StaticBody3D.new()
+	body.position = at
+	var cs := CollisionShape3D.new()
+	var sh := CylinderShape3D.new()
+	sh.radius = 0.62; sh.height = 0.5
+	cs.shape = sh
+	cs.position.y = 0.25
+	body.add_child(cs)
+	var l := OmniLight3D.new()
+	l.position = Vector3(0, 0.9, 0)
+	l.light_color = Color(1.0, 0.5, 0.2)
+	l.light_energy = 1.6
+	l.omni_range = 8.0
+	body.add_child(l)
+	_amb_light(l)
+	if _swap_model(body, "campfire", float(campfires) * 2.1):
+		prop_glow(_last_model, Color(1.0, 0.62, 0.3), 2.6)
+		campfires += 1
+		campfire_points.append(at)
+	add_child(body)
+
 func _build_rubkhali() -> void:
 	var idx := 0
 	for b in buildings:
@@ -2397,6 +2422,7 @@ func _build_rubkhali() -> void:
 		if idx < tents: _build_tent(body, w, d, H, 0.1)
 		else: _build_mud_house(body, w, d, H, 0.1)
 		add_child(body)
+		if idx < 3 and idx < tents: _desert_fire(body, d) # the first three tents keep a fire going outside
 		idx += 1
 
 ## A dead Land Cruiser, half swallowed by the dune it stopped on.

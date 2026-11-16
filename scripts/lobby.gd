@@ -58,6 +58,7 @@ var map_id := "?"
 var intro := 1.0                  # 0 -> 1 while the opening shot comes down from the moon
 static var intro_done := false    # once per launch, not after every round
 var hook_arm: Node3D
+var gallows: Node3D             # the owner's gallows, when it replaces the hook
 var shade: MeshInstance3D         # something crossing behind the trees
 var _shade_t := 11.0
 var _shade_dir := 1.0
@@ -718,6 +719,7 @@ func _build_hook(kit: NightWorld) -> void:
 		g.scale = Vector3(0.62, 0.62, 0.62)
 		g.position.z = -0.9 * 0.62 # its hook over the hook point, the post behind it
 		root.add_child(g)
+		gallows = g
 		NightWorld.prop_glow(g, Color(1.0, 0.75, 0.45), 2.5)
 		if str(Net.last_round.get("res", "")) == "dead":
 			_cy(root, 0.42, 0.46, 0.012, Vector3(0, 0.05, 0), _mat_flat(Color(0.2, 0.005, 0.005), 0.0, 0.25))

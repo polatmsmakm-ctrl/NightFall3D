@@ -18,9 +18,12 @@ func _ready() -> void:
 	Net.online = {"بدر": true} # Net clears it while it fails to reach a server here
 	m.menu.open("main")
 	await frames(4)
+	Net.online = {"بدر": true} # set again: the game's reconnect clears it while there is no server
+	m.menu._sync_lobby()
+	await frames(2)
 	print("stands at the fire: ", lob.me_char, " (last played survivor5)")
 	print("friends at the fire: ", lob.cast.keys(), "  stock hidden=", not lob.stock[0].visible)
-	print("blood moon=", lob.blood, " hook=", lob.hook_arm != null, " daily=", Net.daily())
+	print("blood moon=", lob.blood, " hook=", lob.hook_arm != null or lob.gallows != null, " daily=", Net.daily())
 	print("card title=", Net.title(), " logo=", m.menu._logo_tex != null, " poster=", m.menu.poster != null)
 	for id in ["forest", "village", "fareej", "rubkhali", "garage", "beach"]:
 		lob.set_map(id)
