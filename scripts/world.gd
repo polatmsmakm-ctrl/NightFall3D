@@ -1071,7 +1071,7 @@ func _build_fortress(sides: Node3D) -> void:
 	runs.append([Vector3(WALL + 0.4, 0, -WALL), Vector3(0, 0, 1), WALL * 2.0, -PI / 2.0])
 	runs.append([Vector3(-WALL - 0.4, 0, -WALL), Vector3(0, 0, 1), WALL * 2.0, PI / 2.0])
 	for zs in [-1.0, 1.0]:
-		var z := zs * (WALL + 0.4)
+		var z: float = zs * (WALL + 0.4)
 		var yaw := 0.0 if zs < 0.0 else PI
 		var gx := INF
 		for g in gate_points:
