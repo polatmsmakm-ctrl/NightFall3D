@@ -422,6 +422,13 @@ objectives and out of the lagoon. Every phone runs the same search, so they all 
 - Running a survivor down sends the ordinary `hit` input (2 s per survivor on the phone, the
   rules' own cooldown): ok -> hurt, hurt -> down, as the owner chose.
 - The killer's map shows the car (orange, «سيارتك», with ▲ on the roof); survivors' maps do not.
+- **The cabin**: `assets/props/cabin.glb` (30k, 2048, the owner's Mud-Caked Toyota Cabin, baked with
+  `prop_bake.py --faces 30000 --tex 2048 --width 1.5 --yaw 180`; left-hand drive) sits in the body at
+  `NFCar.CABIN_AT` (floor 0.5 m, dashboard against the windscreen). The killer drives **from the
+  seat** by default (`NFCar.EYE`, 1.5 m up under the 1.68 m roof): the body's own faces point
+  outward and are culled from inside, so the windows are clear and the bonnet stays in view;
+  `_trim()` adds the headliner and the pillars. Only the driver's phone shows the cabin. While he
+  drives, the attack button is «الكاميرا»: seat <-> chase camera.
 - Silent until `assets/sfx/engine.mp3` exists (looped, pitch follows speed). The wheels do not
   turn: the model is one mesh. `tools/drive.tscn` tests the whole loop; shot17 photographs it.
 
