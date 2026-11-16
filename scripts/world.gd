@@ -993,6 +993,7 @@ func _build_objectives() -> void:
 					t = up.transform * t
 					up = up.get_parent() as Node3D
 				t = (doors[k] as Node3D).transform.affine_inverse() * gn.transform * t
+				leaf.owner = null # it leaves the gate scene for the door body
 				leaf.get_parent().remove_child(leaf)
 				(doors[k] as Node3D).add_child(leaf)
 				leaf.transform = t
