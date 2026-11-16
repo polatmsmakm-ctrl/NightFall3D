@@ -35,6 +35,8 @@ func _ready() -> void:
 	var car: NFCar = m.car
 	check(car != null, "the car is there")
 	print("   forest car at ", car.position.snappedf(0.1), " yaw ", snappedf(car.rotation.y, 0.01))
+	var home: Vector3 = car.position
+	var home_yaw: float = car.rotation.y
 	m.body.position = car.position + car.global_basis.x * 2.4 + Vector3(0, 0.3, 0)
 	await frames(6)
 	check(m.ctx.get("interact", {}).get("kind", "") == "car_in", "next to it the button says اركب")
@@ -79,6 +81,11 @@ func _ready() -> void:
 	check(m.rules.hp("D") == "hurt", "the car hit the survivor: %s" % m.rules.hp("D"))
 	m.stick_vec = Vector2.ZERO
 	await frames(60)
+	car.position = home # back to where it was parked: the lane in front of it is known to be clear
+	car.rotation.y = home_yaw
+	car.speed = 0.0
+	car.velocity = Vector3.ZERO
+	await frames(5)
 	var start: Vector3 = car.position
 	m.stick_vec = Vector2(0, -1)
 	await frames(150)
