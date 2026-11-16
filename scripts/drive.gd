@@ -163,17 +163,18 @@ func drive(throttle: float, turn: float, dt: float) -> void:
 	move_and_slide()
 	# ran into something: a head-on crash stops it dead (and the camera feels it)
 	var crash := 0.0
+	var scrape := false
 	for i in get_slide_collision_count():
 		var n := get_slide_collision(i).get_normal()
 		if absf(n.y) > 0.6: continue
+		scrape = true
 		var into := -f.dot(n) * signf(speed)
 		if into > 0.55: crash = maxf(crash, absf(speed))
 	if crash > 2.5:
 		bump = clampf(crash / MAX_FWD, 0.0, 1.0)
 		speed *= -0.12
-	var rv := get_real_velocity()
-	var real := Vector2(rv.x, rv.z).length()
-	speed = signf(speed) * minf(absf(speed), real + 1.2) # sliding along a wall bleeds the speed off
+	elif scrape: # sliding along a wall bleeds the speed off
+		speed = move_toward(speed, 0.0, 9.0 * dt)
 	_tilt(get_floor_normal() if is_on_floor() else Vector3.UP, dt)
 	_effects(dt)
 
