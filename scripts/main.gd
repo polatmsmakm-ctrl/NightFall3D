@@ -244,6 +244,7 @@ func _build_player(char_name: String, at: Vector3) -> void:
 		lamp.light_energy = 0.45; lamp.omni_range = 7.0 # just enough to read your own character; the flashlight does the rest
 		flash_light = _make_flashlight()
 		flash_light.position = Vector3(0, 1.45, 0)
+		NFLook.shadows_on(flash_light) # my own torch throws real shadows (the others' do not: too costly)
 		body.add_child(flash_light)
 
 func _make_flashlight() -> SpotLight3D:

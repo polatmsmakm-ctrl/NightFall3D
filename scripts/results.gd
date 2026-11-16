@@ -42,6 +42,7 @@ func _env() -> Environment:
 	e.glow_enabled = true
 	e.glow_intensity = 0.45
 	e.tonemap_mode = Environment.TONE_MAPPER_ACES
+	NFLook.apply(e, "stage")
 	return e
 
 func setup(d: Dictionary) -> void:

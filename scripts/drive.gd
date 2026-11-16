@@ -87,6 +87,7 @@ func setup(ps: PackedScene, scale_k: float, cabin_ps: PackedScene = null) -> voi
 	lights.spot_attenuation = 0.8
 	lights.light_energy = 0.0
 	lights.shadow_enabled = false
+	NFLook.shadows_on(lights)
 	model.add_child(lights)
 	tail = OmniLight3D.new()
 	tail.position = Vector3(0, 0.75, -3.0) # behind the bumper: a red patch on the ground, not a red car

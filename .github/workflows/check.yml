@@ -12,7 +12,7 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 70
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
       - name: Install Godot
@@ -20,7 +20,7 @@ jobs:
           curl -sL "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_linux.x86_64.zip" -o godot.zip
           unzip -q godot.zip
           sudo mv Godot_v${GODOT_VERSION}_linux.x86_64 /usr/local/bin/godot
-          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb libgl1-mesa-dri mesa-utils >/dev/null
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb libgl1-mesa-dri mesa-utils mesa-vulkan-drivers >/dev/null
       - name: Import
         run: godot --headless --path . --import 2>&1 | tail -40 || true
       - name: Headless tests
@@ -46,8 +46,14 @@ jobs:
         if: always()
         run: |
           mkdir -p shots
-          for sc in ${NF_SHOT_SCENES:-shot17}; do
+          for sc in ${NF_SHOT_SCENES:-}; do # the old software-GL screenshots, when asked for
             [ -f tools/$sc.tscn ] && NF_SHOTS=$PWD/shots LIBGL_ALWAYS_SOFTWARE=1 timeout 1500 xvfb-run -a godot --rendering-driver opengl3 --resolution 1564x720 --path . res://tools/$sc.tscn 2>&1 | tee -a all.log | tail -40 || true
+          done
+          # the look as the phone draws it: Forward+ (hd) and the old Mobile renderer (lo), both
+          # through Mesa's software Vulkan (lavapipe)
+          for tg in ${NF_LOOK:-hd lo}; do
+            meth=forward_plus; [ $tg = lo ] && meth=mobile
+            NF_TAG=$tg NF_SHOTS=$PWD/shots timeout 2400 xvfb-run -a godot --rendering-driver vulkan --rendering-method $meth --resolution 1564x720 --path . res://tools/shot18.tscn 2>&1 | tee -a all.log | grep -v "^\s*at:" | tail -30 || true
           done
           ls -la shots
       - name: Publish the shots and the log on the check-shots branch

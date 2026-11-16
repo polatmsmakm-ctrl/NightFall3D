@@ -5,6 +5,10 @@ extends Node
 signal changed
 
 const PATH := "user://graphics.cfg"
+## «محرك الرسم»: the game ships on Forward+ (the high-end look, NFLook). If a phone cannot keep up,
+## this file switches it back to the Mobile renderer from the next launch: project.godot reads it
+## through application/config/project_settings_override.
+const ENGINE_PATH := "user://override.cfg"
 const FPS_OPTS := [0, 30, 60, 120] # 0 = Auto
 const SCALE_OPTS := [0.85, 0.9, 1.0]
 const PRESETS := { # shadows, aa, scale index, effects
@@ -41,6 +45,7 @@ var _vol := {}        # slider + percentage label per bus
 var _vol_rows := []   # the two rows that "تفصيل" folds away
 var _vol_split := false
 var _editor: NFControlsEdit
+var _engine_note: Label
 var last_avg_ms := 0.0
 
 func _ready() -> void:
@@ -63,6 +68,23 @@ func target_fps() -> int:
 func render_scale() -> float:
 	return clampf(SCALE_OPTS[scale_idx] * dyn_scale, 0.85, 1.0)
 
+## true: this launch runs the high-end renderer.
+func engine_hd() -> bool:
+	return RenderingServer.get_current_rendering_method() == "forward_plus"
+
+## What the next launch will use (the override file is only read at start-up).
+func engine_next_hd() -> bool:
+	return not FileAccess.file_exists(ENGINE_PATH)
+
+func set_engine(hd: bool) -> void:
+	if hd:
+		if FileAccess.file_exists(ENGINE_PATH): DirAccess.remove_absolute(ProjectSettings.globalize_path(ENGINE_PATH))
+	else:
+		var c := ConfigFile.new()
+		c.set_value("rendering", "renderer/rendering_method", "mobile")
+		c.set_value("rendering", "renderer/rendering_method.mobile", "mobile")
+		c.save(ENGINE_PATH)
+
 func apply() -> void:
 	var vp := get_viewport()
 	Engine.max_fps = target_fps()
@@ -72,6 +94,19 @@ func apply() -> void:
 	RenderingServer.directional_shadow_atlas_set_size([1024, 2048, 4096][s], true)
 	RenderingServer.directional_soft_shadow_filter_set_quality(
 		[RenderingServer.SHADOW_QUALITY_HARD, RenderingServer.SHADOW_QUALITY_SOFT_LOW, RenderingServer.SHADOW_QUALITY_SOFT_MEDIUM][s])
+	if engine_hd(): # how fine the high-end effects are drawn (NFLook decides which ones are on)
+		var fx := eff_effects()
+		vp.positional_shadow_atlas_size = [1024, 2048, 4096][s]
+		RenderingServer.positional_soft_shadow_filter_set_quality(
+			[RenderingServer.SHADOW_QUALITY_HARD, RenderingServer.SHADOW_QUALITY_SOFT_LOW, RenderingServer.SHADOW_QUALITY_SOFT_MEDIUM][s])
+		RenderingServer.environment_set_ssao_quality(RenderingServer.ENV_SSAO_QUALITY_MEDIUM if fx >= 2 else RenderingServer.ENV_SSAO_QUALITY_LOW,
+			true, 0.5, 2, 50.0, 300.0)
+		RenderingServer.environment_set_ssil_quality(RenderingServer.ENV_SSIL_QUALITY_LOW, true, 0.5, 2, 50.0, 300.0)
+		RenderingServer.environment_set_sdfgi_ray_count(RenderingServer.ENV_SDFGI_RAY_COUNT_16)
+		RenderingServer.environment_set_sdfgi_frames_to_converge(RenderingServer.ENV_SDFGI_CONVERGE_IN_16_FRAMES)
+		RenderingServer.environment_set_volumetric_fog_volume_size(64 if fx >= 2 else 48, 64 if fx >= 2 else 40)
+		RenderingServer.environment_set_volumetric_fog_filter_active(true)
+		RenderingServer.sub_surface_scattering_set_quality(RenderingServer.SUB_SURFACE_SCATTERING_QUALITY_LOW)
 	changed.emit()
 
 func _reset_runtime() -> void:
@@ -193,6 +228,12 @@ func _build_ui() -> void:
 	_row(v, "aa", "تنعيم الحواف", ["مغلق", "2x", "4x"])
 	_row(v, "scale", "دقة الرسم", ["85%", "90%", "100%"])
 	_row(v, "effects", "جودة المؤثرات", ["منخفض", "متوسط", "عالي"])
+	_row(v, "engine", "محرك الرسم", ["عالي (فخم)", "خفيف (أسرع)"])
+	_engine_note = Label.new()
+	_engine_note.add_theme_font_size_override("font_size", 15)
+	_engine_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_engine_note.modulate = Color(1, 0.8, 0.5)
+	v.add_child(_engine_note)
 	var ctl := Button.new(); ctl.text = "أزرار التحكم (مكان وحجم)"; ctl.custom_minimum_size.y = 52
 	ctl.pressed.connect(_edit_controls); NFUI.dress(ctl, "gear"); v.add_child(ctl)
 	var close := Button.new(); close.text = "إغلاق"; close.custom_minimum_size.y = 52
@@ -274,6 +315,9 @@ func _refresh() -> void:
 		_vol[key][1].text = "%d%%" % roundi(val * 100.0)
 	_opts["fps"].select(fps_idx); _opts["preset"].select(preset); _opts["shadows"].select(shadows)
 	_opts["aa"].select(aa); _opts["scale"].select(scale_idx); _opts["effects"].select(effects)
+	_opts["engine"].select(0 if engine_next_hd() else 1)
+	_engine_note.visible = engine_next_hd() != engine_hd()
+	_engine_note.text = "سكّر اللعبة وافتحها عشان يتغيّر محرك الرسم"
 
 func _on_select(i: int, key: String) -> void:
 	match key:
@@ -286,6 +330,7 @@ func _on_select(i: int, key: String) -> void:
 		"aa": aa = i
 		"scale": scale_idx = i
 		"effects": effects = i
+		"engine": set_engine(i == 0)
 	_reset_runtime()
 	_refresh(); _save(); apply()
 

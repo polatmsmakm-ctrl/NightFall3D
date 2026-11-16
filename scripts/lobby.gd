@@ -144,6 +144,8 @@ func _ready() -> void:
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	env.adjustment_enabled = true
 	env.adjustment_contrast = 1.1
+	NFLook.apply(env, "camp") # occlusion round the fire, its light in the mist, bloom
+	Gfx.changed.connect(func() -> void: NFLook.apply(env, "camp"))
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
@@ -153,6 +155,7 @@ func _ready() -> void:
 	moon.light_color = Color(0.5, 0.6, 0.95)
 	moon.light_energy = 1.0
 	moon.shadow_enabled = true
+	NFLook.soft_sun(moon, 0.5)
 	add_child(moon)
 	# ground: grass tinted, with a bare trampled circle around the fire
 	var ground := MeshInstance3D.new()
@@ -398,6 +401,7 @@ func _ready() -> void:
 	key_light.light_energy = 2.4
 	key_light.omni_range = 6.5
 	key_light.light_specular = 1.1
+	NFLook.shadows_on(key_light) # the character's own shadow on the ground in front of the fire
 	add_child(key_light)
 	fill_light = OmniLight3D.new()
 	fill_light.position = STAND + Vector3(-1.5, 1.5, 1.3)

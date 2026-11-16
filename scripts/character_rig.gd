@@ -31,6 +31,7 @@ func setup(char_name: String, anims: Array = ANIMS, close_up := false) -> void:
 	if not ResourceLoader.exists(body_path): body_path = "res://assets/chars/%s.glb" % char_name
 	model = (load(body_path) as PackedScene).instantiate()
 	add_child(model)
+	NFLook.skin(model, body_path.get_file().get_basename()) # skin that lets light through, on Forward+
 	skeleton = model.find_children("*", "Skeleton3D", true, false)[0]
 	player.name = "Anim"
 	model.add_child(player)

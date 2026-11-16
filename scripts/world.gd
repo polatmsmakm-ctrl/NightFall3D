@@ -531,6 +531,8 @@ func _build_environment() -> void:
 		env.fog_density *= 0.65
 		env.adjustment_brightness = 1.08
 		_exp_base = 1.32
+	if NFLook.hd(): # the volumetric fog carries the near air now; the flat fog only paints the distance
+		env.fog_density *= 0.8
 	_apply_look()
 	if not Gfx.look_changed.is_connected(_apply_look): Gfx.look_changed.connect(_apply_look)
 	_amb_base = env.ambient_light_energy
@@ -560,6 +562,7 @@ func _build_environment() -> void:
 	_moon_base = moon.light_energy
 	moon.shadow_enabled = true
 	moon.directional_shadow_blend_splits = true
+	NFLook.soft_sun(moon, 0.8 if map_id == "rubkhali" else 0.5)
 	add_child(moon)
 
 # ---------------- terrain ----------------
@@ -2276,10 +2279,17 @@ func _build_probe() -> void:
 	add_child(p)
 
 # ---------------- quality ----------------
+## Which high-end look this map gets (NFLook.apply).
+func look_kind() -> String:
+	if map_id == "rubkhali": return "day"
+	if map_id == "garage": return "garage"
+	return "fog" if theme == "fog" else "night"
+
 func _apply_quality() -> void:
 	var fx := Gfx.eff_effects()
 	var sh := Gfx.eff_shadows()
 	env.glow_enabled = fx >= 1
+	NFLook.apply(env, look_kind())
 	if dust:
 		var da: int = [40, 90, 160][fx]
 		if map_id == "rubkhali": da = [90, 170, 280][fx] # the storm needs grains, not motes
