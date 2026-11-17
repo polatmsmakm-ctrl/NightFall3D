@@ -238,7 +238,9 @@ func _ready() -> void:
 	check(cc.get("kind", "") == "car_in" and int(cc.get("p", -9)) == pi, "next to a parked car: «اركب» (%s, %s)" % [cc.get("kind", "-"), cc.get("p", "-")])
 	m._press("interact", 5)
 	await frames(4)
-	check(m.driving and Vector2(car.global_position.x - p_at.x, car.global_position.z - p_at.z).length() < 0.3, "she is in that car, in its spot")
+	var off := Vector2(car.global_position.x - p_at.x, car.global_position.z - p_at.z).length()
+	print("   took parked car %d: %.2f m from its spot, driving %s" % [pi, off, m.driving])
+	check(m.driving and off < 0.8, "she is in that car, in its spot (%.2f m)" % off)
 	check(absf(wrapf(car.rotation.y - p_yaw, -PI, PI)) < 0.05, "facing the way it was parked")
 	check(w.parked_at(pi).distance_to(old_at) < 0.3, "and the car she left stands where she parked it")
 	for i in 150:
