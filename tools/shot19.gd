@@ -34,12 +34,17 @@ func _ready() -> void:
 	vic.setup("survivor1")
 	vic.scale = Vector3.ONE * NFCar.VICTIM_SCALE
 	vic.play("slump")
+	var drv := CharacterRig.new() # the killer at the wheel, hands on the rim
+	add_child(drv)
+	drv.setup("killer")
+	drv.scale = Vector3.ONE * NFCar.VICTIM_SCALE
+	drv.play("drive")
 	var cam := Camera3D.new()
 	cam.fov = 78.0
 	cam.near = 0.05
 	add_child(cam)
 	cam.make_current()
-	var views := [["19_drive_straight", 0.0, Vector3(0, -0.35, 1.0)], ["19_drive_turning", 0.6, Vector3(0, -0.35, 1.0)],
+	var views := [["19_drive_straight", 0.0, Vector3(0, -0.29, 1.0)], ["19_drive_turning", 0.6, Vector3(0, -0.29, 1.0)],
 		["19_passenger", 0.3, Vector3(-1.0, -0.45, 0.55)]]
 	for v in views:
 		car.steer = v[1]
@@ -48,6 +53,10 @@ func _ready() -> void:
 		car._animate(0.016)
 		vic.global_position = car.seat_spot()
 		vic.rotation.y = car.rotation.y
+		drv.global_position = car.driver_spot()
+		drv.rotation.y = car.rotation.y
+		var gp := car.grips()
+		drv.reach(gp[0], gp[1], gp[2], gp[3], v[0] != "19_passenger") # from her seat her head is hidden
 		var e := car.eye()
 		var look: Vector3 = car.global_basis * (v[2] as Vector3)
 		cam.global_position = e
@@ -55,6 +64,12 @@ func _ready() -> void:
 		await frames(12)
 		await shot(v[0])
 	# outside: the passenger is inside the body, nothing pokes out
+	var gq := car.grips()
+	drv.reach(gq[0], gq[1], gq[2], gq[3], false)
+	cam.global_position = car.position + car.global_basis * Vector3(3.2, 1.9, 1.6) # her side: she is at the wheel
+	cam.look_at(car.position + car.global_basis * Vector3(0.4, 1.2, 0.0), Vector3.UP)
+	await frames(8)
+	await shot("19_driver_side")
 	cam.global_position = car.position + car.global_basis * Vector3(-4.5, 2.2, 1.0)
 	cam.look_at(car.position + Vector3(0, 1.0, 0), Vector3.UP)
 	await frames(8)

@@ -1980,7 +1980,7 @@ func _enter_car() -> void:
 	arm.add_excluded_object(car.get_rid())
 	_car_view(car_inside)
 	yaw = car.rotation.y + PI
-	pitch = -0.08 if car_inside else -0.26
+	pitch = -0.28 if car_inside else -0.26
 	car_look = 1.0
 	NFHaptics.pulse("hook")
 
@@ -2092,7 +2092,7 @@ func _drive(delta: float) -> void:
 	if car_look > 0.9:
 		var k := 1.0 - exp(-2.5 * delta)
 		yaw = lerp_angle(yaw, car.rotation.y + PI, k)
-		pitch = lerpf(pitch, -0.08 if car_inside else -0.26, k)
+		pitch = lerpf(pitch, -0.28 if car_inside else -0.26, k)
 	for n in ram_cd.keys():
 		ram_cd[n] -= delta
 		if ram_cd[n] <= 0.0: ram_cd.erase(n)
