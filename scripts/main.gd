@@ -1980,7 +1980,7 @@ func _enter_car() -> void:
 	arm.add_excluded_object(car.get_rid())
 	_car_view(car_inside)
 	yaw = car.rotation.y + PI
-	pitch = -0.28 if car_inside else -0.26
+	pitch = -0.08 if car_inside else -0.26
 	car_look = 1.0
 	NFHaptics.pulse("hook")
 
@@ -1990,16 +1990,17 @@ func _exit_car() -> void:
 	car_leaving = NFCar.SEQ_OUT.out
 	car.begin("out")
 
-## My own body at the wheel: in the seat, hands on the rim (NFReach); from the seat the head is
-## hidden, since the camera is in it. Shown once she is in, until she is on her way out.
+## My own body at the wheel: in the seat, hands on the rim (NFReach). Seen from the chase camera;
+## from the seat it is hidden on my phone (the camera is where her head is) and the gloves show
+## instead. Everyone else always sees her sitting there.
 func _sit_driver() -> void:
-	rig.visible = car.seated() > 0.55 and (car_leaving <= 0.0 or car_leaving > 0.2)
+	rig.visible = not car_inside and car.seated() > 0.55 and (car_leaving <= 0.0 or car_leaving > 0.2)
 	rig.scale = Vector3.ONE * NFCar.VICTIM_SCALE
 	rig.position = car.driver_spot() - body.global_position
 	rig.rotation = Vector3(0, car.rotation.y, 0)
 	rig.play("drive")
 	var gp := car.grips()
-	rig.reach(gp[0], gp[1], gp[2], gp[3], car_inside)
+	rig.reach(gp[0], gp[1], gp[2], gp[3])
 
 ## Where the camera is while he climbs in or out: outside the open driver's door.
 func _door_eye() -> Vector3:
@@ -2092,7 +2093,7 @@ func _drive(delta: float) -> void:
 	if car_look > 0.9:
 		var k := 1.0 - exp(-2.5 * delta)
 		yaw = lerp_angle(yaw, car.rotation.y + PI, k)
-		pitch = lerpf(pitch, -0.28 if car_inside else -0.26, k)
+		pitch = lerpf(pitch, -0.08 if car_inside else -0.26, k)
 	for n in ram_cd.keys():
 		ram_cd[n] -= delta
 		if ram_cd[n] <= 0.0: ram_cd.erase(n)

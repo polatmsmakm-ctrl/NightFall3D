@@ -63,7 +63,10 @@ func _ready() -> void:
 	await frames(150)
 	check(car.engine.playing and car.engine_gain > 0.3, "the engine loop comes up under the starter (%.2f)" % car.engine_gain)
 	# her own body at the wheel, hands on the rim
-	check(m.rig.visible and m.rig.current == "drive", "she sits at the wheel herself (%s)" % m.rig.current)
+	check(not m.rig.visible and car.hand_root.visible, "from the seat: the gloves on the wheel, her body hidden on my phone")
+	m._press("attack", 5) # the chase camera: now she is seen sitting at the wheel
+	await frames(4)
+	check(m.rig.visible and m.rig.current == "drive" and not car.hand_root.visible, "behind the car: she sits at the wheel herself (%s)" % m.rig.current)
 	var sk: Skeleton3D = m.rig.skeleton
 	var gp: Array = car.grips()
 	var miss := 0.0
@@ -78,7 +81,8 @@ func _ready() -> void:
 	check(rm != null and rm.miss < 0.06, "both hands on the steering wheel (%.3f m off)" % (rm.miss if rm else -1.0))
 	var hy: float = (sk.global_transform * sk.get_bone_global_pose(sk.find_bone("mixamorig_Head")).origin).y - car.global_position.y
 	check(hy < 1.6, "her head under the roof (%.2f m)" % hy)
-	check(not car.hand_root.visible, "the old gloves and sleeves are gone")
+	m._press("attack", 5) # back to the seat
+	await frames(2)
 	# second gear
 	var labels := {}
 	for bt in m._buttons(): labels[bt[3]] = bt[2]

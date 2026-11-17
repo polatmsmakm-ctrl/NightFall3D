@@ -519,9 +519,11 @@ objectives and out of the lagoon. Every phone runs the same search, so they all 
     `DRIVER_HIPS`, the `drive` pose posed in code like `slump`) on every phone, and
     **`scripts/reach_mod.gd` (`NFReach`, a `SkeletonModifier3D`)** is a two-bone IK that puts both
     wrists on the rim at ten to two (`NFCar.grips()`: the old glove points, which turn with the
-    wheel; elbows toward poles down and out) after the animation. From the seat her head is scaled
-    to nothing (`hide_head`), so the camera is not inside it. The old capsule gloves and sleeves
-    are hidden. `CharacterRig.reach()` / `reach_clear()`.
+    wheel; elbows toward poles down and out) after the animation. Everyone else always sees her
+    there, and so does the driver from the chase camera; **from the seat** her body is hidden on the
+    driver's own phone and the gloves and sleeves on the wheel show instead (a camera in her head
+    looked out through her hair and shoulders). `hide_head` (the neck scaled to nothing) is still
+    in `NFReach` but unused. `CharacterRig.reach()` / `reach_clear()`.
   - **The victim fits**: seated, every character is at most 0.81 m from hips to head top
     (measured offline, `_hi` models too); at the old 0.82 scale with the hips at 1.0 m the head
     reached 1.66 m, through the 1.645 m headliner and the roof. Now `VICTIM_SCALE` 0.72 and the

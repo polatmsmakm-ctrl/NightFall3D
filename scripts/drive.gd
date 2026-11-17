@@ -18,7 +18,7 @@ const LIGHT_ENERGY := 15.0
 # the cabin (assets/props/cabin.glb, the owner's Mud-Caked Toyota Cabin) in the car's own space:
 # its floor on the body's floor, its dashboard against the bottom of the windscreen
 const CABIN_AT := Vector3(0.0, 0.5, 0.15)
-const EYE := Vector3(0.42, 1.47, -0.12) # the driver's eyes: left-hand seat, under the 1.68 m roof
+const EYE := Vector3(0.42, 1.5, -0.3) # the driver's eyes: left-hand seat, under the 1.68 m roof
 const CARGO := Vector3(0.0, 0.62, -1.3) # (old) the load floor behind the seats
 ## A carried survivor rides in the passenger seat (right-hand side; the car is left-hand drive),
 ## slumped (CharacterRig "slump") at 0.82 of their size: our characters are 1.9 m tall and the car
@@ -495,7 +495,7 @@ var show_cabin := false   # this phone is driving and looking from the seat
 func show_inside(on: bool) -> void:
 	show_cabin = on
 	inside.visible = on or door_open > 0.02
-	if hand_root: hand_root.visible = false # her own arms are on the wheel now (NFReach)
+	if hand_root: hand_root.visible = on # from the seat: the gloves on the wheel (her body is hidden there)
 
 ## Where a carried survivor's rig stands so their hips land on the passenger seat.
 func seat_spot() -> Vector3:
