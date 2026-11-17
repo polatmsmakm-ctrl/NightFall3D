@@ -24,6 +24,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 
 LOSSLESS = False   # set by rig_character.py --external: the maps come out as PNG
+FACE_FACES = 0     # rig_character.py --face-faces: the front of the face gets its own triangle budget
 FRINGE = False     # rig_character.py --fringe: hair hanging over the face is kept, not pinched
 HAIR_DENSITY = 0.32  # texels per metre on hair, against the body (rig_character.py --hair-density)
 
@@ -388,7 +389,7 @@ class Sculpt:
             # hair on hair only: a texel of a hair face takes the nearest hair, and on the head the
             # edge of a hair mass (some hair around it) does too when hair is within 8 mm of the
             # nearest surface. Skin is never forced: eyes, brows and buckles are dark details on skin.
-            w = (want > 0.5) | ((want > 0.15) & (p[:, 1] > self.neck) & (d_hair <= d_any + 0.008))
+            w = ((want > 0.5) & (d_hair <= d_any + 0.02)) | ((want > 0.15) & (p[:, 1] > self.neck) & (d_hair <= d_any + 0.008))
             w &= np.isfinite(d_hair)
             d2 = np.where(w[:, None] & ~hair_tri, d2 + 1.0, d2)
         k = d2.argmin(1)
@@ -547,6 +548,15 @@ def run(P, T, F, images, faces, tex_side, pos, ix, hair_lum=70.0):
     # height, belongs to the arm (it tore off «المحاربة الجريحة» when it was taken for hair)
     arm_y = (pos[ix['LeftArm']][1] + pos[ix['RightArm']][1]) / 2.0
     dark &= ~((np.abs(Pw[:, 0]) > reach - 0.07) & (np.abs(Pw[:, 1] - arm_y) < 0.09))
+    # hair proper: the big dark masses. Brows, lashes and irises are small dark islands on the skin.
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+    e = np.concatenate([Fw[:, [0, 1]], Fw[:, [1, 2]], Fw[:, [2, 0]]])
+    e = e[dark[e[:, 0]] & dark[e[:, 1]]]
+    g = coo_matrix((np.ones(len(e)), (e[:, 0], e[:, 1])), shape=(len(Pw), len(Pw)))
+    _, lab = connected_components(g, directed=False)
+    size = np.bincount(lab, weights=dark.astype(float))
+    hair_only = dark & (size[lab] > 0.02 * max(dark.sum(), 1))
     # regions, as in the pymeshlab path: the head, the hands and the feet keep their own budget
     wrist = min(abs(pos[ix['LeftHand']][0]), abs(pos[ix['RightHand']][0])) - 0.03
     ankle = max(pos[ix['LeftFoot']][1], pos[ix['RightFoot']][1]) + 0.04
@@ -557,6 +567,17 @@ def run(P, T, F, images, faces, tex_side, pos, ix, hair_lum=70.0):
     region[x0 > wrist] = 2
     region[(y0 < ankle) & (x0 <= wrist)] = 3
     targets = [int(faces * s) for s in (0.47, 0.27, 0.17, 0.09)]
+    if FACE_FACES > 0:
+        # the front of the face on its own budget: brows, eyelids and lips keep their shape (out of
+        # the head's budget the hair took almost everything, and the face came out at a tenth of
+        # the sculpt's triangles, softer and with a different expression in the game's light)
+        head_z = pos[ix['Head']][2]
+        zf = Pw[Fw[:, 0], 2]
+        # everything on the front of the face but the hair: skin, and the brows, lashes and eyes
+        face = (y0 > neck) & (x0 < 0.10) & (zf > head_z - 0.01) & ~hair_only[Fw[:, 0]]
+        region[face] = 4
+        targets.append(int(FACE_FACES))
+        log('   face: %d sculpt faces, kept to %d' % (int(face.sum()), int(FACE_FACES)))
     weight = np.ones(len(Pw), np.float32)
     weight[dark] = 0.25                  # hair: a soft mass, not the place for triangles
     weight[(lum >= hair_lum) & (Pw[:, 1] > neck) & (np.abs(Pw[:, 0]) < reach)] = 7.0  # the face
@@ -569,7 +590,8 @@ def run(P, T, F, images, faces, tex_side, pos, ix, hair_lum=70.0):
         weight[fringe] = 4.0
         soft = dark & ~fringe
         log('   fringe: %d sculpt vertices of hair over the face kept as strands' % int(fringe.sum()))
-    log('   collapsing %d faces to %d (body %d, head %d, hands %d, feet %d)' % ((len(Fw), faces) + tuple(targets)))
+    log('   collapsing %d faces to %d (body %d, head %d, hands %d, feet %d%s)' % ((len(Fw), faces) + tuple(targets[:4]) + (
+        (', face %d' % targets[4]) if len(targets) > 4 else '',)))
     V, G = simplify(Pw, Fw, region, targets, weight, soft)
     log('   mesh: %d faces, %d vertices' % (len(G), len(V)))
     # hair and skin on the small mesh, from the sculpt around each vertex
@@ -587,7 +609,9 @@ def run(P, T, F, images, faces, tex_side, pos, ix, hair_lum=70.0):
     V2, N2 = V[vmap], Nv[vmap]
     tan = tangents(V2, N2, UV, F2)
     if FRINGE:
-        sculpt.dark = dark
+        # for the fringe rule only hair proper counts: letting the brows "win" made them thick and brown
+        log('   fringe: %d of %d dark sculpt vertices are hair (the rest: brows, lashes, eyes)' % (int(hair_only.sum()), int(dark.sum())))
+        sculpt.dark = hair_only
         sculpt.neck = neck
     pics = bake(V2, N2, UV, F2, tan, sculpt, side, tex_side, hair_v[vmap] if FRINGE else None)
     return V2, UV, F2, N2, tan, pics, hair_v[vmap]

@@ -9,28 +9,36 @@ var engaged := false
 var targets := [Vector3.ZERO, Vector3.ZERO]  # world: left hand, right hand (the wrist joint)
 var poles := [Vector3.ZERO, Vector3.ZERO]    # world: where each elbow should point
 var hide_head := false
-var _bones := []                             # [[arm, forearm, hand] left, [..] right], head
+var _bones := []                             # [[arm, forearm, hand] left, [..] right], neck
+var runs := 0                                # how many times it has run (the test reads it)
+var miss := 0.0                              # how far the wrists ended from the grips, last run
 
 func _bones_of(sk: Skeleton3D) -> void:
 	_bones = []
 	for side in ["Left", "Right"]:
 		_bones.append([sk.find_bone("mixamorig_%sArm" % side), sk.find_bone("mixamorig_%sForeArm" % side),
 			sk.find_bone("mixamorig_%sHand" % side)])
-	_bones.append(sk.find_bone("mixamorig_Head"))
+	_bones.append(sk.find_bone("mixamorig_Neck"))
 
 func _process_modification() -> void:
 	var sk := get_skeleton()
 	if sk == null or not engaged: return
 	if _bones.is_empty(): _bones_of(sk)
 	var inv := sk.global_transform.affine_inverse()
+	runs += 1
+	miss = 0.0
 	for i in 2:
 		var ch: Array = _bones[i]
 		if ch[0] < 0 or ch[1] < 0 or ch[2] < 0: continue
 		_two_bone(sk, ch[0], ch[1], ch[2], inv * (targets[i] as Vector3), inv * (poles[i] as Vector3))
-	var head: int = _bones[2]
-	if hide_head and head >= 0:
-		var hp := sk.get_bone_global_pose(head)
-		sk.set_bone_global_pose(head, Transform3D(hp.basis.scaled(Vector3.ONE * 0.001), hp.origin))
+		var wrist: Vector3 = sk.global_transform * sk.get_bone_global_pose(ch[2]).origin
+		miss = maxf(miss, wrist.distance_to(targets[i]))
+	# from the seat the camera is where her head is: the neck and everything on it (the head, and the
+	# hair weighted to it) shrink to nothing
+	var neck: int = _bones[2]
+	if hide_head and neck >= 0:
+		var hp := sk.get_bone_global_pose(neck)
+		sk.set_bone_global_pose(neck, Transform3D(hp.basis.scaled(Vector3.ONE * 0.001), hp.origin))
 
 ## Shoulder a, elbow b, wrist c; t and pole in skeleton space.
 func _two_bone(sk: Skeleton3D, a: int, b: int, c: int, t: Vector3, pole: Vector3) -> void:

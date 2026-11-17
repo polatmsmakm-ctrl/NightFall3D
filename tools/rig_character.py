@@ -409,6 +409,7 @@ def shrink_images(j, blob, side, T, F):
 
 HAIR_DENSITY = 0.32  # --hair-density
 FRINGE = False       # --fringe
+FACE_FACES = 0       # --face-faces
 EXTERNAL = None  # --external: the output path; the maps are written beside it as lossless PNGs
 
 
@@ -464,6 +465,7 @@ def build(src, out_path, donor_path, faces, tex_side, facing='auto', arms=None, 
         rig_bake.LOSSLESS = EXTERNAL is not None
         rig_bake.HAIR_DENSITY = HAIR_DENSITY
         rig_bake.FRINGE = FRINGE
+        rig_bake.FACE_FACES = FACE_FACES
         P, T, F, N, TAN, pics, hair = rig_bake.run(P, T, F, rig_bake.source_images(sj, sb), faces, tex_side, pos, ix, hair_lum)
     else:
         P, T, F, N = decimate(P, T, F, faces, pos, ix)
@@ -590,6 +592,8 @@ if __name__ == '__main__':
     ap.add_argument('--hair-density', type=float, default=0.32,
                     help='bake path: texels per metre on the hair against the body (0.32: hair is mostly one '
                          'colour; raise it for curls with highlights)')
+    ap.add_argument('--face-faces', type=int, default=0,
+                    help="bake path: the front of the face keeps this many triangles of its own (0: it shares the head's budget with the hair)")
     ap.add_argument('--fringe', action='store_true',
                     help='bake path: hair hanging in front of the face keeps its strands, and texels look for hair on hair and skin on skin (otherwise strands are '
                          'pinched like the rest of the hair and the bake paints the skin behind onto them)')
@@ -603,6 +607,7 @@ if __name__ == '__main__':
     arms = tuple(float(v) for v in a.arms.split(',')) if a.arms else None
     HAIR_DENSITY = a.hair_density
     FRINGE = a.fringe
+    FACE_FACES = a.face_faces
     if a.external:
         EXTERNAL = a.out
     build(a.src, a.out, a.donor, a.faces, a.tex, a.facing, arms, a.bake, a.chest, a.hair)

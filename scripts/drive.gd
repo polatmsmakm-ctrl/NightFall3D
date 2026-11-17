@@ -18,13 +18,13 @@ const LIGHT_ENERGY := 15.0
 # the cabin (assets/props/cabin.glb, the owner's Mud-Caked Toyota Cabin) in the car's own space:
 # its floor on the body's floor, its dashboard against the bottom of the windscreen
 const CABIN_AT := Vector3(0.0, 0.5, 0.15)
-const EYE := Vector3(0.42, 1.5, -0.3) # the driver's eyes: left-hand seat, under the 1.68 m roof
+const EYE := Vector3(0.42, 1.45, -0.02) # the driver's eyes: left-hand seat, under the 1.68 m roof
 const CARGO := Vector3(0.0, 0.62, -1.3) # (old) the load floor behind the seats
 ## A carried survivor rides in the passenger seat (right-hand side; the car is left-hand drive),
 ## slumped (CharacterRig "slump") at 0.82 of their size: our characters are 1.9 m tall and the car
 ## is 0.9 of a real one, and at that scale head and feet stay between the floor and the roof.
 const SEAT_HIPS := Vector3(-0.42, 0.95, -0.30)
-const DRIVER_HIPS := Vector3(0.42, 0.95, -0.22)  # the killer in the driver's seat, sitting forward a little
+const DRIVER_HIPS := Vector3(0.42, 0.95, -0.08)  # the killer in the driver's seat, forward on the cushion
 ## Characters are 1.9 m tall and the cabin's headliner is at 1.645 m: seated, a character is at most
 ## 0.81 m from the hips to the top of the head, so at 0.72 with the hips at 0.95 m the head is at
 ## 1.53 m (and the feet on the floor at 0.5). The same scale for the victim and the driver.

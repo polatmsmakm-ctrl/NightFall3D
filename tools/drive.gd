@@ -71,8 +71,11 @@ func _ready() -> void:
 		var hb := sk.find_bone("mixamorig_%sHand" % side[0])
 		var hw: Vector3 = sk.global_transform * sk.get_bone_global_pose(hb).origin
 		miss = maxf(miss, hw.distance_to(gp[side[1]]))
-	print("   hands to the rim: %.3f m" % miss)
-	check(miss < 0.08, "both hands on the steering wheel (%.3f m off)" % miss)
+	var rm: NFReach = m.rig.reach_mod
+	var sh: Vector3 = sk.global_transform * sk.get_bone_global_pose(sk.find_bone("mixamorig_LeftArm")).origin
+	print("   hands to the rim between frames: %.3f m; the IK ran %d times, its own miss %.3f m; shoulder to grip %.3f m" % [miss, rm.runs if rm else -1, rm.miss if rm else -1.0, sh.distance_to(gp[0])])
+	check(rm != null and rm.runs > 0, "the hand IK runs")
+	check(rm != null and rm.miss < 0.06, "both hands on the steering wheel (%.3f m off)" % (rm.miss if rm else -1.0))
 	var hy: float = (sk.global_transform * sk.get_bone_global_pose(sk.find_bone("mixamorig_Head")).origin).y - car.global_position.y
 	check(hy < 1.6, "her head under the roof (%.2f m)" % hy)
 	check(not car.hand_root.visible, "the old gloves and sleeves are gone")
@@ -217,7 +220,10 @@ func _ready() -> void:
 	m.body.position = car.position + car.global_basis.x * 2.4 + Vector3(0, 0.3, 0)
 	await frames(6)
 	m._press("interact", 5)
-	await frames(120)
+	for i in 300:
+		await frames(1)
+		if m.driving and car.seated() >= 1.0: break
+	await frames(10)
 	m.stick_vec = Vector2(0, -0.8)
 	var low := 99.0
 	for i in 600:
