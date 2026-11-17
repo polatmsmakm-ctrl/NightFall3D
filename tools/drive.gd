@@ -217,8 +217,12 @@ func _ready() -> void:
 	m = await boot("garage", players)
 	car = m.car
 	check(car.position.y > NightWorld.GAR_ROOF - 0.5, "garage: the car is on the roof (y %.1f)" % car.position.y)
-	m.body.position = car.position + car.global_basis.x * 2.4 + Vector3(0, 0.3, 0)
-	await frames(6)
+	for sd in [1.0, -1.0]: # the side of the car that has roof under it (the other may be the edge)
+		m.body.position = car.position + car.global_basis.x * 2.4 * sd + Vector3(0, 0.3, 0)
+		m.body.velocity = Vector3.ZERO
+		await frames(6)
+		if m.ctx.get("interact", {}).get("kind", "") == "car_in": break
+	print("   garage: standing at ", m.body.position.snappedf(0.1), " button ", m.ctx.get("interact", {}).get("kind", "-"))
 	m._press("interact", 5)
 	for i in 300:
 		await frames(1)
