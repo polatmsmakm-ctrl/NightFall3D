@@ -220,14 +220,21 @@ func _ready() -> void:
 	print("   forest: %d parked cars to take" % w.parked.size())
 	check(w.parked.size() >= 3, "the map's parked cars can be taken (%d)" % w.parked.size())
 	var pi := 0
-	var p_at: Vector3 = w.parked_at(pi)
-	var p_yaw: float = w.parked_yaw(pi)
+	var p_at: Vector3
+	var p_yaw: float
 	var old_at: Vector3 = car.global_position
-	var side := Basis(Vector3.UP, p_yaw) * Vector3(2.4, 0, 0)
-	m.body.position = p_at + side + Vector3(0, 0.4, 0)
-	m.body.velocity = Vector3.ZERO
-	await frames(6)
-	var cc: Dictionary = m.ctx.get("interact", {})
+	var cc: Dictionary = {}
+	for cand in w.parked.size(): # the first one with nothing else in reach (a pallet or a window wins the button)
+		pi = cand
+		p_at = w.parked_at(pi)
+		p_yaw = w.parked_yaw(pi)
+		for sd in [1.0, -1.0]:
+			m.body.position = p_at + Basis(Vector3.UP, p_yaw) * Vector3(2.4 * sd, 0, 0) + Vector3(0, 0.4, 0)
+			m.body.velocity = Vector3.ZERO
+			await frames(6)
+			cc = m.ctx.get("interact", {})
+			if cc.get("kind", "") == "car_in" and int(cc.get("p", -9)) == pi: break
+		if cc.get("kind", "") == "car_in" and int(cc.get("p", -9)) == pi: break
 	check(cc.get("kind", "") == "car_in" and int(cc.get("p", -9)) == pi, "next to a parked car: «اركب» (%s, %s)" % [cc.get("kind", "-"), cc.get("p", "-")])
 	m._press("interact", 5)
 	await frames(4)
