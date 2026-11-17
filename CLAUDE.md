@@ -395,7 +395,8 @@ nodes. `NightWorld.prop_glow(root, colour, energy, own)` turns the glow on in th
   outside the old 9 x 7 m tent walls, which stay as the collision (open front, vault gap on the
   left, the locker inside); the ember light moved up to 1.6 m. The fires outside the first three
   tents moved out to clear its guy ropes. No glow map: its lanterns are too small to bake one.
-- `assets/props/car.glb` (7k, the owner's blood-stained Land Cruiser, 2 x 2.3 x 4.8 m, front +z):
+- `assets/props/car.glb` (8k / 2048, the owner's blood-stained Land Cruiser, 2 x 2.3 x 4.8 m, front +z,
+  `prop_bake.py --faces 8000 --tex 2048 --width 2.0 --yaw 90`):
   every car in every map. `_car` (market cars, wrecks, fareej driveways) draws it at
   `CAR_SCALE` 0.9 so it matches the old 1.8 x 4.2 m boxes and their collision; the desert's
   `_wreck` draws it at full size, sunk into the sand like before; the garage's ~87 bays are one
@@ -422,8 +423,20 @@ objectives and out of the lagoon. Every phone runs the same search, so they all 
 - Running a survivor down sends the ordinary `hit` input (2 s per survivor on the phone, the
   rules' own cooldown): ok -> hurt, hurt -> down, as the owner chose.
 - The killer's map shows the car (orange, «سيارتك», with ▲ on the roof); survivors' maps do not.
-- **The cabin**: `assets/props/cabin.glb` (30k, 2048, the owner's Mud-Caked Toyota Cabin, baked with
-  `prop_bake.py --faces 30000 --tex 2048 --width 1.5 --yaw 180`; left-hand drive) sits in the body at
+- **The killer's own car is `assets/props/car_drive.glb`**: the same sculpt at 45k / 4096 with the four
+  wheels cut out on their axles (`prop_bake.py --faces 45000 --tex 4096 --width 2.0 --yaw 90 --wheels
+  0.47,1.48,0.42,-1.22,0.46,0.52` -> nodes `frame`, `wheel_fl/fr/rl/rr`). `NFCar._animate()` rolls
+  them with the speed (`WHEEL_R` 0.41 x the 0.9 scale), steers the front pair (`STEER_MAX` 0.55
+  rad) and leans the body (`frame` and the cabin, not the wheels) out of turns and on the brakes;
+  other phones get the speed sign and the steering from how the car moves and turns. Steering is
+  gentler flat out. The parked cars keep `car.glb` (one mesh: the garage draws it as a MultiMesh).
+- **Carrying in the car**: the killer can get in while carrying («حطّه بالسيارة»); the survivor lies in
+  the back (`NFCar.CARGO`, the `dying` pose) on every phone, through `main._in_car()` /
+  `_carry_spot()`. Near a free hook (4 m) the button is «انزل وعلّق» (`car_hook`): it sends `hook`
+  first, while the server still has the killer at the car (its reach is 4.5 m), then gets out.
+  No server change. A pallet stun while carrying still drops them, as on foot.
+- **The cabin**: `assets/props/cabin.glb` (120k, 4096, the owner's Mud-Caked Toyota Cabin, baked with
+  `prop_bake.py --faces 120000 --tex 4096 --width 1.5 --yaw 180`; left-hand drive) sits in the body at
   `NFCar.CABIN_AT` (floor 0.5 m, dashboard against the windscreen). The killer drives **from the
   seat** by default (`NFCar.EYE`, 1.5 m up under the 1.68 m roof): the body's own faces point
   outward and are culled from inside, so the windows are clear and the bonnet stays in view;
@@ -435,8 +448,9 @@ objectives and out of the lagoon. Every phone runs the same search, so they all 
   is «الراديو» / «سكّر الراديو» (green ring while it plays); off by default, and off pauses it.
   It plays only while someone is at the wheel. **No server change**: the killer has no torch, so
   his `st` `f` flag carries the radio switch and every phone plays it from the car.
-- Silent until `assets/sfx/engine.mp3` exists (looped, pitch follows speed). The wheels do not
-  turn: the model is one mesh. `tools/drive.tscn` tests the whole loop; shot17 photographs it.
+- Silent until `assets/sfx/engine.mp3` exists (looped, pitch follows speed). `tools/drive.tscn`
+  tests the whole loop (wheels, carrying, hooking from the seat); shot17 photographs it.
+- Every `prop_bake.py` output now carries its own command line in `asset.extras.bake`.
 
 ## The high-end pass (Forward+, `scripts/look_hd.gd`, `NFLook`)
 The owner asked for a high-end look. The project now runs **Forward+ on the phone too**
