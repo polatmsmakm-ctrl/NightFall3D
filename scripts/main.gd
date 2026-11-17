@@ -128,6 +128,9 @@ var driving := false          # I am the killer and I am at the wheel
 var car_look := 0.0           # seconds since I last dragged the camera while driving
 var ram_cd := {}              # survivor -> seconds before the car can hit them again
 var car_told := false         # the "your car is here" line has been shown
+var car_leaving := 0.0     # seconds until he is out (the door opens first)
+var car_remote := false   # the killer on another phone is at the wheel (to open the door when that changes)
+var pass_cd := 0.0        # the pass-by sound waits this long before it can play again
 var car_inside := true        # driving from the seat (true) or from the chase camera behind
 var escape_banner := 0.0
 
@@ -1675,6 +1678,7 @@ func _process(dt: float) -> void:
 	if car and my_role == "killer" and not car_told and loading == null:
 		car_told = true
 		_flash("سيارتك تنتظرك فوق السطح — اطلع لها من المنحدر" if world.map_id == "garage" else "سيارتك قريبة منك — اركبها وادعسهم")
+	_car_pass(dt)
 	if car and not driving and not (rules.killer != "" and remotes.has(rules.killer) and remotes[rules.killer].anim == "drive"):
 		car.driven = false # nobody at the wheel: lights off, it stays where it was left
 		car.park(dt)
@@ -1712,6 +1716,9 @@ func _process(dt: float) -> void:
 				oof_t[n] = randf_range(2.2, 4.0)
 				_sfx("oof%d" % randi_range(1, 3), r.node.position + Vector3(0, 1.5, 0), 2.0)
 		r.node.visible = st != "escaped" and not (rules.s.has(n) and rules.s[n].locker >= 0)
+		if r.role == "killer" and car and (r.anim == "drive") != car_remote: # he got in / out: the door opens and shuts here too
+			car_remote = r.anim == "drive"
+			car.begin("in" if car_remote else "out")
 		if r.role == "killer" and car and r.anim == "drive": # he is at the wheel: the car follows him, he is out of sight
 			car.driven = true
 			car.set_radio(r.lit) # his `f` is the radio switch
@@ -1945,7 +1952,9 @@ func _enter_car() -> void:
 	attack_t = 0.0
 	vault = {}
 	driving = true
+	car_leaving = 0.0
 	car.driven = true
+	car.begin("in") # door open, in, door shut, key
 	car.speed = 0.0
 	body.velocity = Vector3.ZERO
 	body.position = car.position
@@ -1956,9 +1965,20 @@ func _enter_car() -> void:
 	car_look = 1.0
 	NFHaptics.pulse("hook")
 
-## Out on the driver's side if there is room, then the other side, then behind or in front.
+## Getting out: the key comes out and the door opens; he steps out half a second later.
 func _exit_car() -> void:
+	if not driving or car_leaving > 0.0: return
+	car_leaving = NFCar.SEQ_OUT.out
+	car.begin("out")
+
+## Where the camera is while he climbs in or out: outside the open driver's door.
+func _door_eye() -> Vector3:
+	return car.global_transform * Vector3(1.55, 1.7, 0.3)
+
+## Out on the driver's side if there is room, then the other side, then behind or in front.
+func _leave_car() -> void:
 	if not driving: return
+	car_leaving = 0.0
 	var spot := car.position + Vector3(0, 2.4, 0) # nowhere else: climb out onto the roof
 	var space := world.get_world_3d().direct_space_state
 	var cap := CapsuleShape3D.new()
@@ -2009,13 +2029,23 @@ func _drive(delta: float) -> void:
 		move = Vector2(float(Input.is_key_pressed(KEY_D)) - float(Input.is_key_pressed(KEY_A)),
 			float(Input.is_key_pressed(KEY_S)) - float(Input.is_key_pressed(KEY_W)))
 	if rules.over or rules.stun > 0.0: move = Vector2.ZERO # a dropped pallet stops the car too
+	if car.seated() < 1.0 or car_leaving > 0.0: move = Vector2.ZERO # not until the door is shut
 	car.driven = true
 	car.drive(-move.y, move.x, delta)
 	body.position = car.position
 	body.velocity = car.velocity
 	rig.rotation.y = car.rotation.y # what the others get as my yaw: the car's heading
 	speedo_kmh = lerpf(speedo_kmh, absf(car.speed) * 3.6, 1.0 - exp(-10.0 * delta)) # the needle, eased
-	if car_inside: cam_pivot.position = car.eye() - body.global_position
+	if car_inside:
+		# climbing in: from outside the open door to the seat; getting out: the other way
+		var k := smoothstep(0.2, 0.85, car.seated())
+		if car_leaving > 0.0: k = smoothstep(0.0, 1.0, car_leaving / NFCar.SEQ_OUT.out)
+		cam_pivot.position = _door_eye().lerp(car.eye(), k) - body.global_position
+	if car_leaving > 0.0:
+		car_leaving -= delta
+		if car_leaving <= 0.0:
+			_leave_car()
+			return
 	if car.bump > 0.0: # crashed into something
 		_shake(0.25 + car.bump * 0.7)
 		NFHaptics.pulse_scaled("hit", car.bump)
@@ -2042,6 +2072,29 @@ func _drive(delta: float) -> void:
 			car.speed *= 0.6
 			_shake(0.45)
 			NFHaptics.pulse("hit")
+
+## The owner's pass-by clip, when the car goes past a survivor at speed: on that survivor's
+## phone (he is the one it goes past) and at the wheel (the driver hears himself fly past them).
+## Its loudest moment is 1.2 s in, so it starts when the car is about that far from passing.
+func _car_pass(dt: float) -> void:
+	pass_cd -= dt
+	if car == null or not car.driven or pass_cd > 0.0 or absf(car.speed) < 6.0: return
+	var who := []
+	if driving:
+		for n in remotes:
+			if remotes[n].role == "survivor" and rules.free_now(n): who.append(remotes[n].node.position)
+	elif my_role == "survivor" and my_state in ["ok", "hurt"]:
+		who.append(body.global_position)
+	var v := car.forward() * car.speed
+	for p in who:
+		var rel: Vector3 = (p as Vector3) - car.global_position
+		rel.y = 0.0
+		var t := rel.dot(v) / v.length_squared()       # seconds until it is level with them
+		var miss := (rel - v * t).length()              # how close it goes by
+		if (t > 0.3 and t < 1.6 and miss < 7.0) or rel.length() < 4.0:
+			car.whoosh()
+			pass_cd = 5.0
+			return
 
 func _move(delta: float) -> void:
 	var frozen: bool = rules.over or my_state in ["dead", "escaped"] or not hold.is_empty() or (my_role == "killer" and rules.stun > 0.0)

@@ -23,6 +23,9 @@ normal baked from the full sculpt. On top of that:
     through it across the axis A become their own mesh NAME, its node on the centre (the cabin's
     steering wheel: the game turns it about A). Can be given more than once.
 
+  * `--box NAME,X0,Y0,Z0,X1,Y1,Z1,HX,HY,HZ`: the faces inside the box become their own mesh NAME
+    with its node at the hinge H (the car's driver door, which the game swings open).
+
 Every bake writes its own command line into the GLB (asset.extras.bake), so it can be repeated.
 
 Every mesh lands as its own node under one root, with one shared material.
@@ -218,6 +221,7 @@ def main():
     ap.add_argument('--emit-box', default=None, metavar='X0,Y0,Z0,X1,Y1,Z1', help='with --reglow: bright texels inside this box (metres) glow')
     ap.add_argument('--reglow', action='store_true', help='only recompute the glow map of an existing OUT (src is ignored)')
     ap.add_argument('--split', default=None, metavar='X,Y', help='gate leaves: |x| < X and y < Y, in metres')
+    ap.add_argument('--box', action='append', default=[], metavar='NAME,X0,Y0,Z0,X1,Y1,Z1,HX,HY,HZ', help='cut a box-shaped piece out, its node on the hinge (repeat a NAME to add another box to it)')
     ap.add_argument('--part', action='append', default=[], metavar='NAME,CX,CY,CZ,R,AX,AY,AZ,T', help='cut a disc-shaped piece out on its own node')
     ap.add_argument('--wheels', default=None, metavar='YF,ZF,YR,ZR,R,XIN', help='a car: cut the four wheels out, each on its own axle node')
     a = ap.parse_args()
@@ -260,6 +264,15 @@ def main():
         names.append(nm)
         part[sel] = len(names) - 1
         origins[nm] = [float(x) for x in cen]
+        print('   %s: %d faces' % (nm, int(sel.sum())), flush=True)
+    for spec in a.box:
+        bits = spec.split(',')
+        nm, v = bits[0], np.array([float(x) for x in bits[1:]])
+        lo, hi, hinge = v[0:3], v[3:6], v[6:9]
+        sel = np.all((c >= lo) & (c <= hi), axis=1) & (part == 0)
+        if nm not in names: names.append(nm)   # a second box with the same name adds to that piece
+        part[sel] = names.index(nm)
+        origins[nm] = [float(x) for x in hinge]
         print('   %s: %d faces' % (nm, int(sel.sum())), flush=True)
     area = np.linalg.norm(np.cross(Pw[Fw[:, 1]] - Pw[Fw[:, 0]], Pw[Fw[:, 2]] - Pw[Fw[:, 0]]), axis=1)
     share = np.array([area[part == k].sum() for k in range(len(names))])

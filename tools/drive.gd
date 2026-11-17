@@ -46,7 +46,21 @@ func _ready() -> void:
 	m._press("interact", 5)
 	await frames(3)
 	check(m.driving and m.car_inside and car.inside.visible and m.arm.spring_length < 0.1, "in the driver's seat, the cabin around him")
-	await frames(2)
+	check(car.door_node != null, "the driver's door is its own piece")
+	check(car.door_anim.is_playing() and car.door_anim.current_animation == "get_in", "the AnimationPlayer plays get_in")
+	await frames(20)
+	check(car.door_open > 0.5 and car.door_node.basis.get_rotation_quaternion().get_angle() > 0.5, "the door swings open as he gets in (%.2f)" % car.door_open)
+	check(m.main_cam.global_position.distance_to(car.eye()) > 0.5, "the camera starts outside the door")
+	m.stick_vec = Vector2(0, -1)
+	await frames(20)
+	check(absf(car.speed) < 0.1, "no gas until he is in and the door is shut")
+	m.stick_vec = Vector2.ZERO
+	await frames(90)
+	check(car.door_open < 0.05 and car.seated() >= 1.0, "seated, door shut (%.2f)" % car.door_open)
+	check(car.running and (car.starter == null or car.starter.playing), "the key turns: the starter plays")
+	check(car.engine != null and car.starter != null and car.passer != null, "the three car sounds are loaded")
+	await frames(150)
+	check(car.engine.playing and car.engine_gain > 0.3, "the engine loop comes up under the starter (%.2f)" % car.engine_gain)
 	check(m.main_cam.global_position.distance_to(car.eye()) < 0.35, "the camera is at the driver's eyes (%.2f m off)" % m.main_cam.global_position.distance_to(car.eye()))
 	m._press("attack", 5)
 	await frames(2)
@@ -116,6 +130,9 @@ func _ready() -> void:
 	check(m.ctx.get("interact", {}).get("kind", "") == "car_out", "at the wheel the button says انزل")
 	m._press("interact", 5)
 	await frames(10)
+	check(m.driving and car.door_open > 0.1 and not car.running, "getting out: key off, the door opens first")
+	await frames(80)
+	check(car.door_open < 0.05, "and shuts behind him")
 	check(not m.driving and m.arm.spring_length < 0.5 and not car.inside.visible, "out, first person again, cabin hidden")
 	check(car.radio_on and car.radio.stream_paused, "the radio stays switched on but goes quiet when he gets out")
 	check(absf(m.cam_pivot.position.y - 1.6) < 0.01, "the camera is back at his own eyes")
@@ -146,7 +163,7 @@ func _ready() -> void:
 	await frames(10)
 	check(m.ctx.get("interact", {}).get("kind", "") == "car_hook", "pulled up at a hook: «انزل وعلّق» (%s)" % m.ctx.get("interact", {}).get("kind", ""))
 	m._press("interact", 5)
-	await frames(10)
+	await frames(45)
 	check(m.rules.hp("D") == "hooked" and not m.driving and m.rules.carrying == "", "hung on the hook straight from the car: %s" % m.rules.hp("D"))
 	car.position = home
 	car.rotation.y = home_yaw
@@ -166,7 +183,7 @@ func _ready() -> void:
 	m.body.position = car.position + car.global_basis.x * 2.4 + Vector3(0, 0.3, 0)
 	await frames(6)
 	m._press("interact", 5)
-	await frames(3)
+	await frames(120)
 	m.stick_vec = Vector2(0, -0.8)
 	var low := 99.0
 	for i in 600:
@@ -190,15 +207,29 @@ func _ready() -> void:
 	await frames(60)
 	for i in 30: await tree.process_frame
 	check(car.driven and car.position.distance_to(to) < 0.6, "the car follows the killer's position")
+	await frames(40)
+	check(car.running and car.door_anim.assigned_animation == "get_in", "his door opened and shut (AnimationPlayer) and the engine started on my phone too")
 	check(not k.node.visible, "the killer is out of sight while he drives")
 	check(car.lights.light_energy > 2.0, "headlights on while someone drives")
 	check(not car.radio_on, "radio off while his f is 0")
 	k.lit = true
 	for i in 10: await tree.process_frame
 	check(car.radio_on and car._radio_started and not car.radio.stream_paused, "his radio plays on my phone, from the car")
+	# he comes at me fast: the pass-by plays on my phone
+	var fw: Vector3 = car.forward()
+	var c0: Vector3 = car.position
+	k.yaw = car.rotation.y
+	m.body.position = c0 + fw * 14.0 + car.global_basis.x * 2.5
+	for i in 40:
+		k.pos = c0 + fw * (0.3 * i)
+		await frames(1)
+		if car.passer.playing: break
+	check(car.passer.playing, "the car flies past me: the pass-by sound")
 	k.anim = "idle"
 	k.pos = car.position + car.global_basis.x * 2.2
-	for i in 40: await tree.process_frame
+	for i in 20: await tree.process_frame
+	check(car.door_open > 0.1 and not car.running, "he gets out: his door opens on my phone, engine off")
+	for i in 20: await tree.process_frame
 	check(not car.driven and k.node.visible, "he got out: lights off, he is back")
 	check(car.radio.stream_paused, "and the radio stops with him out of the car")
 	m.queue_free()

@@ -55,11 +55,32 @@ var lean := Vector2.ZERO  # x: roll, y: pitch (radians), eased
 var _prev_speed := 0.0
 var steer_node: Node3D    # the steering wheel, turned with the steering; the hands ride on it
 var hands := []           # [glove, side] on the wheel rim
+var gloves := []          # the glove pieces on the rim (children of the steering wheel)
+var hand_root: Node3D     # the sleeves (the gloves ride on the steering wheel; hidden with it)
 var arms := []            # [upper arm, forearm, shoulder, side]
 var bob := 0.0            # suspension: how far the body sits from rest (m), a damped spring
 var bob_v := 0.0
 var _prev_vy := 0.0
 var _t := 0.0
+var door_node: Node3D     # car_drive.glb's driver door (`door_l`), on its hinge
+var door_hinge := Vector3.ZERO
+var door_open := 0.0      # 0 shut .. 1 wide open, eased toward the getting-in / out sequence
+## Getting in and out are two clips on an AnimationPlayer (`door_anim`), built in `_door_clips()`:
+## "get_in" — the door swings open, he climbs in, it shuts, and a method key turns the ignition;
+## "get_out" — the door opens, he steps out, it shuts (the key comes out when it starts). Played on
+## every phone (the others start it when the killer's `st` animation turns to or from "drive"),
+## so it costs nothing on the network.
+const SEQ_IN := {"open": 0.45, "shut": 1.2, "closed": 1.5, "done": 1.8}
+const SEQ_OUT := {"open": 0.45, "out": 0.5, "shut": 0.9, "done": 1.25}
+const DOOR_SWING := -1.15 # rad: the back edge of the door swings out (+x), on its front hinge
+var door_anim: AnimationPlayer
+var door_root: Node3D     # sits on the hinge and leans with the body; `door_node` turns inside it
+var seq := ""             # "in", "out" or "" (nothing playing)
+var seq_t := 0.0
+var starter: AudioStreamPlayer3D  # the owner's "starting the car" clip
+var passer: AudioStreamPlayer3D   # the owner's "car passing by" clip
+var engine_gain := 0.0    # the loop fades in under the starter and out when he switches off
+var running := false      # the engine is on (after the key, until he gets out)
 var dust: GPUParticles3D
 var smoke: GPUParticles3D
 var dust_on := true       # off in the car park: concrete does not throw dust
@@ -99,6 +120,15 @@ func setup(ps: PackedScene, scale_k: float, cabin_ps: PackedScene = null, dust_c
 			var w := n.find_child(nm, true, false) as Node3D
 			if w: wheels.append([w, nm.begins_with("wheel_f")])
 		frame_node = n.find_child("frame", true, false) as Node3D
+		door_node = n.find_child("door_l", true, false) as Node3D
+		if door_node: # put the door inside a hinge node so the clip only has to turn it
+			door_hinge = door_node.position
+			door_root = Node3D.new()
+			door_root.name = "door_hinge"
+			door_node.get_parent().add_child(door_root)
+			door_node.reparent(door_root, false)
+			door_node.transform = Transform3D()
+			door_root.position = door_hinge
 	else: # no model file: a plain dark box, so the round still works
 		var mi := MeshInstance3D.new()
 		var bm := BoxMesh.new()
@@ -117,6 +147,7 @@ func setup(ps: PackedScene, scale_k: float, cabin_ps: PackedScene = null, dust_c
 	_trim()
 	_seats()
 	_hands()
+	_door_clips()
 	dust_on = dusty
 	dust = _puffs(dust_col, 48, 1.3, 0.55, Vector3(0, 0.25, -2.2))
 	smoke = _puffs(Color(0.32, 0.32, 0.33, 0.5), 14, 0.9, 0.18, Vector3(-0.55, 0.42, -2.25))
@@ -138,16 +169,15 @@ func setup(ps: PackedScene, scale_k: float, cabin_ps: PackedScene = null, dust_c
 	tail.light_energy = 0.0
 	tail.shadow_enabled = false
 	model.add_child(tail)
-	# the engine is the owner's sound or nothing: drop assets/sfx/engine.mp3 in and it plays
-	if ResourceLoader.exists("res://assets/sfx/engine.mp3"):
-		var st = load("res://assets/sfx/engine.mp3")
-		if st is AudioStreamMP3: (st as AudioStreamMP3).loop = true
-		engine = AudioStreamPlayer3D.new()
-		engine.stream = st
-		engine.bus = Aud.SFX
-		engine.unit_size = 6.0
-		engine.max_distance = 60.0
-		add_child(engine)
+	# the owner's sounds: the engine running (a seamless loop), the starter, and a car going past
+	for f in ["engine.ogg", "engine.mp3"]:
+		if engine == null and ResourceLoader.exists("res://assets/sfx/" + f):
+			var st = load("res://assets/sfx/" + f)
+			if st is AudioStreamMP3: (st as AudioStreamMP3).loop = true
+			if st is AudioStreamOggVorbis: (st as AudioStreamOggVorbis).loop = true
+			engine = _snd(st, 6.0, 60.0)
+	if ResourceLoader.exists("res://assets/sfx/car_start.mp3"): starter = _snd(load("res://assets/sfx/car_start.mp3"), 7.0, 70.0)
+	if ResourceLoader.exists("res://assets/sfx/car_pass.mp3"): passer = _snd(load("res://assets/sfx/car_pass.mp3"), 9.0, 45.0)
 	# the radio: a real 3D sound in the car, so survivors hear it coming (muffled and fading with
 	# distance) and the driver hears it up close
 	if ResourceLoader.exists("res://assets/sfx/radio.mp3"):
@@ -197,6 +227,81 @@ func _trim() -> void:
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		inside.add_child(mi)
 
+func _snd(st: AudioStream, unit: float, reach: float) -> AudioStreamPlayer3D:
+	var p := AudioStreamPlayer3D.new()
+	p.stream = st
+	p.bus = Aud.SFX
+	p.unit_size = unit
+	p.max_distance = reach
+	p.position = Vector3(0, 0.8, 1.4) # under the bonnet
+	add_child(p)
+	return p
+
+## The two clips. The door's track is its yaw on the hinge (opens in 0.45 s, eased out like a door
+## thrown open; swings shut faster); "get_in" ends with a method key on `_turn_key`.
+func _door_clips() -> void:
+	door_anim = AnimationPlayer.new()
+	door_anim.name = "door_anim"
+	door_anim.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_PHYSICS
+	add_child(door_anim) # root node "..": the car
+	var lib := AnimationLibrary.new()
+	for kind in ["get_in", "get_out"]:
+		var q: Dictionary = SEQ_IN if kind == "get_in" else SEQ_OUT
+		var a := Animation.new()
+		a.length = q.done
+		if door_node:
+			var tr := a.add_track(Animation.TYPE_VALUE)
+			a.track_set_path(tr, NodePath(str(get_path_to(door_node)) + ":rotation:y"))
+			a.track_set_interpolation_type(tr, Animation.INTERPOLATION_LINEAR) # eased by each key's transition
+			a.value_track_set_update_mode(tr, Animation.UPDATE_CONTINUOUS)
+			a.track_insert_key(tr, 0.0, 0.0, 0.5)               # ease out: thrown open
+			a.track_insert_key(tr, q.open, DOOR_SWING)
+			a.track_insert_key(tr, q.shut, DOOR_SWING, 2.0)     # ease in: pulled shut, stops hard
+			a.track_insert_key(tr, q.get("closed", q.done), 0.0)
+		if kind == "get_in":
+			var mt := a.add_track(Animation.TYPE_METHOD)
+			a.track_set_path(mt, NodePath("."))
+			a.track_insert_key(mt, q.done - 0.02, {"method": "_turn_key", "args": []})
+		lib.add_animation(kind, a)
+	door_anim.add_animation_library("", lib)
+
+## The method key at the end of "get_in": door shut, he is in, the key turns.
+func _turn_key() -> void:
+	if running: return
+	running = true
+	if starter: starter.play()
+
+## Start the getting-in ("in") or getting-out ("out") clip on this phone.
+func begin(kind: String) -> void:
+	seq = kind
+	seq_t = 0.0
+	if kind == "out": # key off: the engine winds down at once
+		running = false
+		if starter and starter.playing: starter.stop()
+	door_anim.stop()
+	door_anim.play("get_in" if kind == "in" else "get_out")
+
+## How far through getting in he is: 0 at the door .. 1 in the seat with the door shut.
+func seated() -> float:
+	if seq == "in": return clampf(seq_t / SEQ_IN.done, 0.0, 1.0)
+	return 1.0
+
+## A car going past someone at speed: the owner's pass-by clip, from the car (with its own Doppler).
+func whoosh() -> void:
+	if passer and not passer.playing: passer.play()
+
+func _sequence(dt: float) -> void:
+	if seq != "":
+		seq_t += dt
+		if seq == "in" and seq_t >= SEQ_IN.done + 0.05:
+			_turn_key() # in case the clip's method key was skipped (a very long frame)
+			seq = ""
+		elif seq == "out" and seq_t >= SEQ_OUT.done:
+			seq = ""
+	door_open = clampf(door_node.rotation.y / DOOR_SWING, 0.0, 1.0) if door_node else 0.0
+	# the cabin shows through the open door for everyone; the driver always sees it from the seat
+	if not show_cabin: inside.visible = door_open > 0.02
+
 ## The two front seats (the cabin model has none): cushion, reclined back, headrest. Everyone sees
 ## them; the passenger seat is where a carried survivor slumps.
 func _seats() -> void:
@@ -223,6 +328,9 @@ func _seats() -> void:
 ## sleeves back to the shoulders (re-aimed every frame in _arms). Only the driver sees them.
 func _hands() -> void:
 	if steer_node == null: return
+	hand_root = Node3D.new()
+	hand_root.visible = false
+	inside.add_child(hand_root)
 	var glove := StandardMaterial3D.new()
 	glove.albedo_color = Color(0.07, 0.055, 0.055)
 	glove.roughness = 0.55
@@ -253,6 +361,7 @@ func _hands() -> void:
 		knuckle.position = at - n * 0.055
 		knuckle.basis = g.basis
 		steer_node.add_child(knuckle)
+		gloves.append(g); gloves.append(knuckle)
 		hands.append([g, side])
 		var arm := []
 		for r in [0.043, 0.036]:
@@ -263,7 +372,7 @@ func _hands() -> void:
 			c2.material = sleeve
 			mi.mesh = c2
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			inside.add_child(mi)
+			hand_root.add_child(mi)
 			arm.append(mi)
 		arm.append(Vector3(0.42 + 0.2 * side, 1.3, -0.44)) # the shoulder, in car space
 		arm.append(side)
@@ -271,7 +380,9 @@ func _hands() -> void:
 
 ## Upper arm and forearm from the shoulder to the glove on the wheel, the elbow dropped and out.
 func _arms() -> void:
-	if not inside.visible: return
+	if hand_root == null: return
+	for g in gloves: (g as Node3D).visible = hand_root.visible and seated() > 0.75
+	if not hand_root.visible: return
 	for i in arms.size():
 		var a: Array = arms[i]
 		var g: Node3D = hands[i][0]
@@ -347,8 +458,11 @@ func _puffs(col: Color, amount: int, life: float, size: float, at: Vector3) -> G
 	add_child(p)
 	return p
 
+var show_cabin := false   # this phone is driving and looking from the seat
 func show_inside(on: bool) -> void:
-	inside.visible = on
+	show_cabin = on
+	inside.visible = on or door_open > 0.02
+	if hand_root: hand_root.visible = on
 
 ## Where a carried survivor's rig stands so their hips land on the passenger seat.
 func seat_spot() -> Vector3:
@@ -470,6 +584,8 @@ func _animate(dt: float) -> void:
 	if frame_node:
 		frame_node.transform = t
 		inside.transform = t
+	if door_root: # the hinge leans with the body; the clip turns the door inside it
+		door_root.transform = t * Transform3D(Basis(), door_hinge)
 	if steer_node: # the steering wheel follows the front wheels, the gloves with it
 		steer_node.basis = Basis(STEER_AXIS.normalized(), steer * STEER_TURNS)
 	_arms()
@@ -479,6 +595,7 @@ func _animate(dt: float) -> void:
 		smoke.emitting = driven
 
 func _effects(dt: float) -> void:
+	_sequence(dt)
 	_animate(dt)
 	var on := 1.0 if driven else 0.0
 	lights.light_energy = lerpf(lights.light_energy, LIGHT_ENERGY * on, 1.0 - exp(-6.0 * dt))
@@ -493,6 +610,10 @@ func _effects(dt: float) -> void:
 		elif _radio_started:
 			radio.stream_paused = not want
 	if engine:
-		if driven and not engine.playing: engine.play()
-		elif not driven and engine.playing: engine.stop()
-		engine.pitch_scale = 0.8 + clampf(absf(speed) / MAX_FWD, 0.0, 1.0) * 0.7
+		# the loop comes up under the starter clip and dies away when he switches off
+		var want := 1.0 if (running and driven and (starter == null or not starter.playing or starter.get_playback_position() > 2.2)) else 0.0
+		engine_gain = move_toward(engine_gain, want, (0.8 if want > engine_gain else 2.0) * dt)
+		if engine_gain > 0.001 and not engine.playing: engine.play()
+		elif engine_gain <= 0.001 and engine.playing: engine.stop()
+		engine.volume_db = linear_to_db(maxf(engine_gain, 0.0001))
+		engine.pitch_scale = 0.85 + clampf(absf(speed) / MAX_FWD, 0.0, 1.0) * 0.6

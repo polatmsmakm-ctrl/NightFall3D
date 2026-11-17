@@ -461,7 +461,21 @@ objectives and out of the lagoon. Every phone runs the same search, so they all 
   it and with the lean; dust (`_puffs`, the map's colour, not in the car park) off the rear when
   over 2.5 m/s, exhaust smoke while it runs. **Speedometer** (`main._draw_speedo`): a 0-60 km/h
   dial bottom centre while driving, red band at 50, eased needle, figures and D / R.
-- Silent until `assets/sfx/engine.mp3` exists (looped, pitch follows speed). `tools/drive.tscn`
+- **Getting in and out, and the car's sounds** (the owner's three clips): `car_drive.glb` has the
+  driver's door as its own node `door_l` on its front hinge (`prop_bake.py --box door_l,0.78,0.55,-0.07,
+  1.2,1.42,0.85,0.98,1.1,0.85 --box door_l,0.6,1.42,-0.05,1.2,1.66,0.83,0.98,1.1,0.85`: two boxes,
+  because the window frame leans in). `NFCar` wraps it in a `door_hinge` node and drives it with an
+  **AnimationPlayer** (`door_anim`, clips `get_in` / `get_out` built in `_door_clips()`: a value track
+  on the door's yaw, and on `get_in` a method key that calls `_turn_key`). `NFCar.begin("in")`: the
+  door swings open, the camera glides from outside the door into the seat, the door shuts by 1.5 s,
+  and at 1.8 s the key turns —
+  `assets/sfx/car_start.mp3` plays and `engine.ogg` (a seamless loop cut from his driving clip; OGG
+  because an MP3 clicks at the seam) fades in under it, pitch following the speed. No gas until
+  `seated()` is 1. `begin("out")`: key off, door opens, he steps out 0.5 s later (`main.car_leaving`),
+  door shuts. Other phones play the same when the killer's `st` animation turns to / from `drive`
+  (`main.car_remote`), and the cabin shows through the open door. `car_pass.mp3` (`NFCar.whoosh`,
+  trimmed so its peak is 1.2 s in) plays when the car is about to go past a survivor at over 6 m/s —
+  on that survivor's phone and at the wheel (`main._car_pass`, once per 5 s). No server change. `tools/drive.tscn`
   tests the whole loop (wheels, steering wheel, hands, speedometer, the seat, hooking from the
   seat); `tools/shot19.tscn` photographs the driver's seat through Forward+.
 - Every `prop_bake.py` output now carries its own command line in `asset.extras.bake`.
