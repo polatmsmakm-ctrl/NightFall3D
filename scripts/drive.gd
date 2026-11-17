@@ -381,7 +381,7 @@ func _hands() -> void:
 ## Upper arm and forearm from the shoulder to the glove on the wheel, the elbow dropped and out.
 func _arms() -> void:
 	if hand_root == null: return
-	for g in gloves: (g as Node3D).visible = hand_root.visible and seated() > 0.75
+	for g in gloves: g.visible = hand_root.visible and seated() > 0.75
 	if not hand_root.visible: return
 	for i in arms.size():
 		var a: Array = arms[i]
