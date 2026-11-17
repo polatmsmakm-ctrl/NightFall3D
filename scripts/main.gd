@@ -1446,8 +1446,8 @@ func _update_ctx() -> void:
 			for i in world.hook_points.size():
 				if rules.hook_user(i) == "" and _near(pos, world.hook_points[i], 3.2):
 					ctx.interact = {"kind": "hook", "label": "علّق", "i": i}
-			if not ctx.has("interact") and car and _near(pos, car.position, 3.6): # throw them in the back
-				ctx.interact = {"kind": "car_in", "label": "حطّه بالسيارة"}
+			if not ctx.has("interact") and car and _car_near(pos) > -2: # throw them in the back
+				ctx.interact = {"kind": "car_in", "label": "حطّه بالسيارة", "p": _car_near(pos)}
 			return
 		for n in rules.s:
 			if rules.s[n].hp == "down" and _near(pos, _pos_of(n), 2.7): ctx.interact = {"kind": "pickup", "label": "احمل", "n": n}
@@ -1462,8 +1462,8 @@ func _update_ctx() -> void:
 			for w in world.window_points:
 				if _near(pos, w[0], 1.7): ctx.interact = {"kind": "vault", "label": "اقفز", "c": w[0], "n": w[1]}
 		if not ctx.has("interact"): _door_ctx(pos)
-		if not ctx.has("interact") and car and _near(pos, car.position, 3.6):
-			ctx.interact = {"kind": "car_in", "label": "اركب"}
+		if not ctx.has("interact") and car and _car_near(pos) > -2:
+			ctx.interact = {"kind": "car_in", "label": "اركب", "p": _car_near(pos)}
 
 ## A doorway within reach becomes the interact button.
 func _door_ctx(pos: Vector3) -> void:
@@ -1527,7 +1527,9 @@ func _press(id: String, touch: int) -> void:
 				"hook": _ev({"k": "hook", "i": c.i})
 				"search": _ev({"k": "search", "i": c.i})
 				"vault": _start_vault(c)
-				"car_in": _enter_car()
+				"car_in":
+					if int(c.get("p", -1)) >= 0: world.take_parked(int(c.p)) # a parked car: the two swap
+					_enter_car()
 				"car_out": _exit_car()
 				"car_hook": # the hook first, while the server still has me at the car, then out
 					_ev({"k": "hook", "i": c.i})
@@ -1726,6 +1728,8 @@ func _process(dt: float) -> void:
 		r.node.visible = st != "escaped" and not (rules.s.has(n) and rules.s[n].locker >= 0)
 		if r.role == "killer" and car and (r.anim == "drive") != car_remote: # he got in / out: the door opens and shuts here too
 			car_remote = r.anim == "drive"
+			if car_remote and Vector2(car.position.x - r.pos.x, car.position.z - r.pos.z).length() > 2.5:
+				world.take_parked(world.nearest_parked(r.pos, 3.0)) # she took a parked car: the same swap here
 			car.begin("in" if car_remote else "out")
 		if r.role == "killer" and car: car.set_radio(r.lit) # his `f` is the radio switch, in the car or out of it
 		if r.role == "killer" and car and r.anim == "drive": # at the wheel: the car follows him, she sits in it
@@ -2001,6 +2005,16 @@ func _sit_driver() -> void:
 	rig.play("drive")
 	var gp := car.grips()
 	rig.reach(gp[0], gp[1], gp[2], gp[3])
+
+## The car I am standing by: -1 the driving car, 0.. a parked car (world.parked), -2 none.
+func _car_near(pos: Vector3) -> int:
+	var d_car := 99.0
+	if _near(pos, car.position, 3.6): d_car = Vector2(pos.x - car.position.x, pos.z - car.position.z).length()
+	var i := world.nearest_parked(pos, 3.6)
+	if i >= 0:
+		var q := world.parked_at(i)
+		if Vector2(pos.x - q.x, pos.z - q.z).length() < d_car: return i
+	return -1 if d_car < 99.0 else -2
 
 ## Where the camera is while he climbs in or out: outside the open driver's door.
 func _door_eye() -> Vector3:

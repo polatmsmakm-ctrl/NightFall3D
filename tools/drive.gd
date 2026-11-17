@@ -215,12 +215,37 @@ func _ready() -> void:
 	await frames(60)
 	m.stick_vec = Vector2.ZERO
 	check(car.position.distance_to(parked) < 0.2, "the car stays put once he is out")
+	# any parked car: the market's and the random ones
+	var w: NightWorld = m.world
+	print("   forest: %d parked cars to take" % w.parked.size())
+	check(w.parked.size() >= 3, "the map's parked cars can be taken (%d)" % w.parked.size())
+	var pi := 0
+	var p_at: Vector3 = w.parked_at(pi)
+	var p_yaw: float = w.parked_yaw(pi)
+	var old_at: Vector3 = car.global_position
+	var side := Basis(Vector3.UP, p_yaw) * Vector3(2.4, 0, 0)
+	m.body.position = p_at + side + Vector3(0, 0.4, 0)
+	m.body.velocity = Vector3.ZERO
+	await frames(6)
+	var cc: Dictionary = m.ctx.get("interact", {})
+	check(cc.get("kind", "") == "car_in" and int(cc.get("p", -9)) == pi, "next to a parked car: «اركب» (%s, %s)" % [cc.get("kind", "-"), cc.get("p", "-")])
+	m._press("interact", 5)
+	await frames(4)
+	check(m.driving and Vector2(car.global_position.x - p_at.x, car.global_position.z - p_at.z).length() < 0.3, "she is in that car, in its spot")
+	check(absf(wrapf(car.rotation.y - p_yaw, -PI, PI)) < 0.05, "facing the way it was parked")
+	check(w.parked_at(pi).distance_to(old_at) < 0.3, "and the car she left stands where she parked it")
+	for i in 150:
+		await frames(1)
+		if car.seated() >= 1.0: break
+	m._press("interact", 5)
+	await frames(60)
 	m.queue_free()
 	await frames(5)
 	# ---------------- the garage: from the roof down the ramp ----------------
 	m = await boot("garage", players)
 	car = m.car
 	check(car.position.y > NightWorld.GAR_ROOF - 0.5, "garage: the car is on the roof (y %.1f)" % car.position.y)
+	check(m.world.parked.size() > 50, "garage: every bay's car can be taken (%d)" % m.world.parked.size())
 	for sd in [1.0, -1.0]: # the side of the car that has roof under it (the other may be the edge)
 		m.body.position = car.position + car.global_basis.x * 2.4 * sd + Vector3(0, 0.3, 0)
 		m.body.velocity = Vector3.ZERO
@@ -287,6 +312,15 @@ func _ready() -> void:
 	k.lit = false
 	for i in 10: await tree.process_frame
 	check(car.radio.stream_paused, "and stops when his switch says off")
+	# she takes a parked car: on my phone the same two cars swap
+	var w2: NightWorld = m.world
+	var q_at: Vector3 = w2.parked_at(1)
+	var was: Vector3 = car.global_position
+	k.pos = q_at
+	k.yaw = w2.parked_yaw(1)
+	k.anim = "drive"
+	for i in 6: await tree.process_frame
+	check(w2.parked_at(1).distance_to(was) < 0.3 and Vector2(car.global_position.x - q_at.x, car.global_position.z - q_at.z).length() < 0.6, "she took a parked car: the same swap on my phone")
 	m.queue_free()
 	await frames(5)
 	print("drive check: ", "FAILED %d" % bad if bad else "all good")

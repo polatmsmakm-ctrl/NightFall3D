@@ -48,6 +48,12 @@ var tent_models := 0          # bedouin tents drawn with the owner's crimson ten
 var car_models := 0           # cars drawn with the owner's Land Cruiser (the garage counts as one MultiMesh)
 const CAR_SCALE := 0.9        # 1.8 x 4.3 m, the size of the old car boxes and their collision
 var drive_car: NFCar          # the one car the killer can drive (placed at the end of build())
+## Every parked car on the map (market, the random ones, fareej driveways, the car park's bays):
+## the killer can take any of them. There is still only one NFCar: getting into a parked car swaps
+## the two (`take_parked`), so the driving car takes that spot and the parked one takes its place.
+## Each entry: {"node": StaticBody3D} or {"mm": MultiMesh, "mi": index, "hull": CollisionShape3D,
+## "at": Vector3, "yaw": float} for the car park, where the bays are one MultiMesh.
+var parked := []
 var beach_palms := 0          # palms placed on the beach map
 var beach_props := 0          # wet-sand patches and shells
 var _models := {}             # name -> PackedScene or null
@@ -1330,6 +1336,7 @@ func _car(at: Vector3, yaw: float, col: Color, parent: Node3D = null) -> void:
 			body.add_child(wh)
 	if _swap_model(body, "car", 0.0, CAR_SCALE): car_models += 1
 	(parent if parent else self).add_child(body)
+	if parent == null: parked.append({"node": body}) # (a fareej driveway car is walled in: it stays put)
 
 func _lamp_post(at: Vector3, yaw: float) -> void:
 	_blob(at, 0.9)
@@ -3022,6 +3029,48 @@ func _build_garage_roof(w: float) -> void:
 ## The killer's car: on the garage it waits on the roof at the top of the ramp, everywhere else
 ## it is parked a few metres from where the killer starts, nose toward the middle of the map.
 ## Every phone runs the same search over the same seeded map, so they all put it in the same spot.
+var gar_hulls := []
+
+## Where parked car i stands, and which way it faces.
+func parked_at(i: int) -> Vector3:
+	var e: Dictionary = parked[i]
+	return (e.node as Node3D).global_position if e.has("node") else e.at
+
+func parked_yaw(i: int) -> float:
+	var e: Dictionary = parked[i]
+	return (e.node as Node3D).global_rotation.y if e.has("node") else e.yaw
+
+## The parked car nearest to p within r metres (and 3 m up or down), or -1.
+func nearest_parked(p: Vector3, r: float) -> int:
+	var best := -1
+	var bd := r
+	for i in parked.size():
+		var q := parked_at(i)
+		if absf(q.y - p.y) > 3.0: continue
+		var d := Vector2(q.x - p.x, q.z - p.z).length()
+		if d < bd:
+			bd = d
+			best = i
+	return best
+
+## The killer takes parked car i: the driving car moves into its spot and the parked car into the
+## driving car's (so a car is left wherever she last parked). Every phone runs the same swap.
+func take_parked(i: int) -> void:
+	if drive_car == null or i < 0 or i >= parked.size(): return
+	var to := parked_at(i)
+	var to_yaw := parked_yaw(i)
+	var from := drive_car.global_position
+	var from_yaw := drive_car.rotation.y
+	var e: Dictionary = parked[i]
+	if e.has("node"):
+		(e.node as Node3D).global_transform = Transform3D(Basis(Vector3.UP, from_yaw), from)
+	else:
+		(e.mm as MultiMesh).set_instance_transform(int(e.mi), Transform3D(Basis(Vector3.UP, from_yaw).scaled(Vector3.ONE * CAR_SCALE), from))
+		(e.hull as CollisionShape3D).transform = Transform3D(Basis(Vector3.UP, from_yaw), from + Vector3(0, 0.8, 0))
+		e.at = from
+		e.yaw = from_yaw
+	drive_car.put(to, to_yaw)
+
 func _place_drive_car() -> void:
 	var cands: Array = []
 	if map_id == "garage":
@@ -3237,6 +3286,7 @@ func _build_garage_props() -> void:
 		cs.shape = bs
 		cs.transform = Transform3D(b3, at + Vector3(0, 0.8, 0))
 		hulls.add_child(cs)
+		gar_hulls.append(cs)
 	add_child(hulls)
 	var model_mesh := _car_mesh()
 	if model_mesh: # the owner's Land Cruiser in every bay: one MultiMesh instead of the three box ones
@@ -3252,6 +3302,8 @@ func _build_garage_props() -> void:
 		cmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(cmi)
 		car_models += 1
+		for i in spots.size(): # every bay's car can be taken
+			parked.append({"mm": car_mm, "mi": i, "hull": gar_hulls[i], "at": spots[i][0], "yaw": float(spots[i][1])})
 		return
 	for mm in [body_mm, cabin_mm, wheel_mm]:
 		var mi := MultiMeshInstance3D.new()

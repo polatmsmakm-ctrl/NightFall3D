@@ -526,6 +526,17 @@ func top() -> float:
 func eye() -> Vector3:
 	return (model.global_transform * inside.transform) * EYE # moves with the body: lean, bob, vibration
 
+## Taken from a parked car's spot (NightWorld.take_parked): there, standing still.
+func put(at: Vector3, yaw: float) -> void:
+	global_position = at + Vector3(0, 0.05, 0)
+	rotation = Vector3(0, yaw, 0)
+	velocity = Vector3.ZERO
+	speed = 0.0
+	steer = 0.0
+	bob = 0.0
+	bob_v = 0.0
+	if radio_on: set_radio(false) # a different car: its radio starts off
+
 ## Where it is facing (flat).
 func forward() -> Vector3:
 	return Vector3(sin(rotation.y), 0.0, cos(rotation.y))

@@ -537,6 +537,15 @@ objectives and out of the lagoon. Every phone runs the same search, so they all 
   - **Two gears** (`NFCar.gear`, `GEAR_TOP` 11 / 19.5 m/s = 40 / 70 km/h): a «غيار 1 / 2» button
     beside the speedometer (icon `shift`), pull a little softer in second, engine pitch drops on the
     shift up; the speedometer reads 0-80 with the red band from 70 and shows 1 / 2 / R.
+- **Every parked car can be taken** (the market's, the random ones, the car park's ~87 bays):
+  `world.parked` lists them, the interact button is «اركب» next to any of them (`main._car_near`:
+  -1 the driving car, 0.. a parked one), and `world.take_parked(i)` **swaps** the one `NFCar` with
+  that parked car (`NFCar.put`): the driving car takes its spot, the parked car (its `_car` body, or
+  its MultiMesh instance and hull box in the car park) takes the driving car's, so a car is left
+  wherever she last got out. No server change: other phones see her `st` turn to `drive` at a spot
+  away from their NFCar and run the same swap with `nearest_parked`. The fareej driveway cars are
+  left out (walled yards, the gate too narrow to turn out of), and the Empty Quarter has only its
+  half-buried wrecks. Switching cars turns the radio off.
 - Every `prop_bake.py` output now carries its own command line in `asset.extras.bake`.
 
 ## The high-end pass (Forward+, `scripts/look_hd.gd`, `NFLook`)
