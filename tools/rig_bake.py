@@ -613,5 +613,8 @@ def run(P, T, F, images, faces, tex_side, pos, ix, hair_lum=70.0):
         log('   fringe: %d of %d dark sculpt vertices are hair (the rest: brows, lashes, eyes)' % (int(hair_only.sum()), int(dark.sum())))
         sculpt.dark = hair_only
         sculpt.neck = neck
-    pics = bake(V2, N2, UV, F2, tan, sculpt, side, tex_side, hair_v[vmap] if FRINGE else None)
+    # which texels look for hair: by hair proper around them, not by anything dark (the lashes would
+    # send the eyelids looking for the fringe and paint dark wedges over the eyes)
+    hair_h = hair_only[near].mean(1)
+    pics = bake(V2, N2, UV, F2, tan, sculpt, side, tex_side, hair_h[vmap] if FRINGE else None)
     return V2, UV, F2, N2, tan, pics, hair_v[vmap]

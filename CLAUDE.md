@@ -342,8 +342,13 @@ The owner's Midnight Sentinel sculpt (1.9 M triangles, three 2048 maps: colour, 
 normal; 802 texels per metre on average, 831 on the face) replaced the nurse «الممرضة» in the
 `survivor6` slot (same id: server, menus, the camp cast and the tests are unchanged). Made with
 `python3 tools/rig_character.py sculpt.glb assets/chars/survivor6.glb --faces 30000 --tex 2048
---arms 0.235,0.43,0.60 --chest 0.12 --hair 85 --hair-density 0.85 --fringe --bake --external`
-and `... survivor6_hi.glb --faces 100000 --tex 4096 ...` (same switches). Three switches are new:
+--face-faces 9000 --arms 0.235,0.43,0.60 --chest 0.12 --hair 85 --hair-density 0.85 --fringe --bake --external`
+and `... survivor6_hi.glb --faces 100000 --tex 4096 --face-faces 40000 ...` (same switches; 39k and
+122k triangles in all). Four switches are new:
+- `--face-faces N`: the front of the face (skin, brows, lashes, eyes: everything there but the hair)
+  gets its own budget. Sharing the head's with the hair, her face came out at about a tenth of the
+  sculpt's triangles: lips, eyelids and brows lost their shape and the owner saw a different face in
+  the game. The close-up keeps all 21.8k of the sculpt's face triangles, the round model 9k.
 - `--external`: the maps are written **beside** the GLB as lossless PNGs
   (`survivor6[_hi]_col / _mr / _nrm.png`, no JPEG step) and the GLB points at them by `uri`, so
   Godot's glTF importer loads the textures it imported itself. Each PNG has a **committed
@@ -358,7 +363,10 @@ and `... survivor6_hi.glb --faces 100000 --tex 4096 ...` (same switches). Three 
   its vertices few, so by vertex distance the dense forehead always won), a texel on a hair face
   takes the nearest hair triangle, and on the head the thin edge of a hair mass does too when hair
   is within 8 mm of the nearest surface. Skin is never forced (that put skin into the irises and
-  the collar buckle). Without it the fringe came out streaked with forehead skin.
+  the collar buckle). "Hair" here is **hair proper** — the big dark masses (`hair_only`, connected
+  components over 2% of the dark vertices) — never the brows, lashes or irises: counting those made
+  the brows thick and brown and put dark wedges of fringe over the eyelids. Without it the fringe
+  came out streaked with forehead skin.
 `character_rig.gd` now sets every character material to anisotropic filtering (glTF materials
 default to plain trilinear; the level, 16x on «فائق», comes from the viewport). `tools/tex.tscn`
 checks what the engine really imported: sizes 2048 / 4096, BC7 not DXT1, mipmaps, the ASTC copy
