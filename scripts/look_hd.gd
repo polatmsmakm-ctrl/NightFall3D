@@ -8,7 +8,7 @@ class_name NFLook
 ## rate cannot keep up, so the heavy ones go first):
 ##   0  glow only
 ##   1  + ambient occlusion, volumetric fog, shadows from the torch and the headlights
-##   2  + bounced light (SSIL), reflections in the car park (SDFGI is off: it broke on the iPhone)
+##   2  + reflections in the car park (SSIL and SDFGI are off: the desert broke on the iPhone)
 
 static func hd() -> bool:
 	return RenderingServer.get_current_rendering_method() == "forward_plus"
@@ -28,7 +28,9 @@ static func apply(env: Environment, kind: String) -> void:
 	env.ssao_sharpness = 0.98
 	env.ssao_light_affect = 0.2 # at night most light is ambient; let the occlusion bite a little into the rest
 	# light bouncing off nearby surfaces: a lamp warms the wall beside it, a torch the floor
-	env.ssil_enabled = fx >= 2
+	# OFF on the phone, like SDFGI below: the Empty Quarter's dunes came out in black blocks on the
+	# iPhone and this half-size pass was one of the suspects; SSAO stays.
+	env.ssil_enabled = false
 	env.ssil_radius = 6.0
 	env.ssil_intensity = 0.85
 	env.ssil_sharpness = 0.98
@@ -78,11 +80,15 @@ static func apply(env: Environment, kind: String) -> void:
 	env.ssr_fade_out = 2.0
 	env.ssr_depth_tolerance = 0.3
 
-## A key light gets soft, sharper-edged shadows (the moon, the sun, the camp's key light).
-static func soft_sun(l: DirectionalLight3D, angle_deg := 0.6) -> void:
+## The moon and the sun under Forward+. The soft (PCSS) shadow this used to turn on broke on the
+## iPhone: black squares with hatching all over the Empty Quarter's dunes — shadow acne the
+## software renderer in CI never showed. Now it keeps hard shadows and pushes them further off the
+## surface instead (more normal bias, a little more depth bias), which is what acne needs.
+static func soft_sun(l: DirectionalLight3D, _angle_deg := 0.6) -> void:
 	if l == null or not hd(): return
-	l.light_angular_distance = angle_deg
-	l.shadow_blur = 1.2
+	l.light_angular_distance = 0.0
+	l.shadow_bias = 0.12
+	l.shadow_normal_bias = 2.2
 
 ## A torch, the headlights, the camp fire: real shadows from a moving light.
 static func shadows_on(l: Light3D, need_fx := 1) -> void:

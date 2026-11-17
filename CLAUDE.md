@@ -444,12 +444,14 @@ The owner asked for a high-end look. The project now runs **Forward+ on the phon
 - `NFLook.apply(env, kind)` on every environment: the maps (`world.look_kind()`: night / fog /
   day / garage), the camp ("camp") and the results stage ("stage"). By «جودة المؤثرات»:
   0 glow; 1 + SSAO, **volumetric fog** (beams from lamps, torches, headlights), torch and headlight
-  shadows; 2 + SSIL bounce light, SSR in the car park. **SDFGI is off everywhere**: on the
-  owner's iPhone (Metal) it drew the Empty Quarter's sand as moving black blocks, although the
-  lavapipe screenshots were clean — so a clean CI shot does not prove an effect works on the phone. The governor drops effects first when the
+  shadows; 2 + SSR in the car park. **SDFGI and SSIL are off everywhere**, and the moon/sun have
+  **no soft (PCSS) shadow**: on the owner's iPhone (Metal) the Empty Quarter's dunes came out as
+  black squares with hatching that moved with the camera (shadow acne), although the lavapipe
+  screenshots were clean. `soft_sun()` now gives hard shadows with more bias (0.12 / normal 2.2).
+  A clean CI shot does not prove an effect works on the phone — ask the owner for a recording. The governor drops effects first when the
   frame rate falls, so the heavy ones go first. `Gfx.apply()` sets their quality (half-size
   SSAO/SSIL, SDFGI 16 rays / 15 frames, fog volume 64 or 48).
-- `NFLook.soft_sun` (moon / sun / camp moon: angular size -> soft PCSS shadows),
+- `NFLook.soft_sun` (moon / sun / camp moon: hard shadows, extra bias against acne),
   `shadows_on` (my torch, the car's headlights, the camp key light; also a 3.5 fog beam),
   `halo` (every map lamp through `world._amb_light`, the camp fire: a glow in the fog).
 - **Skin**: `NFLook.skin(model, file)` turns on subsurface scattering, masked by
