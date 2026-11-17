@@ -464,7 +464,7 @@ objectives and out of the lagoon. Every phone runs the same search, so they all 
 - **Getting in and out, and the car's sounds** (the owner's three clips): `car_drive.glb` has the
   driver's door as its own node `door_l` on its front hinge (`prop_bake.py --box door_l,0.78,0.55,-0.07,
   1.2,1.42,0.85,0.98,1.1,0.85 --box door_l,0.6,1.42,-0.05,1.2,1.66,0.83,0.98,1.1,0.85`: two boxes,
-  because the window frame leans in). `NFCar` wraps it in a `door_hinge` node and drives it with an
+  because the window frame leans in; a `--box` piece gets at least `--box-faces` 3500 triangles). The sculpt is a shell, so the door's inside is its back faces drawn again dark (`door_card`). `NFCar` wraps it in a `door_hinge` node and drives it with an
   **AnimationPlayer** (`door_anim`, clips `get_in` / `get_out` built in `_door_clips()`: a value track
   on the door's yaw, and on `get_in` a method key that calls `_turn_key`). `NFCar.begin("in")`: the
   door swings open, the camera glides from outside the door into the seat, the door shuts by 1.5 s,

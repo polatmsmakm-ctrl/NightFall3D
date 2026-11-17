@@ -222,6 +222,7 @@ def main():
     ap.add_argument('--reglow', action='store_true', help='only recompute the glow map of an existing OUT (src is ignored)')
     ap.add_argument('--split', default=None, metavar='X,Y', help='gate leaves: |x| < X and y < Y, in metres')
     ap.add_argument('--box', action='append', default=[], metavar='NAME,X0,Y0,Z0,X1,Y1,Z1,HX,HY,HZ', help='cut a box-shaped piece out, its node on the hinge (repeat a NAME to add another box to it)')
+    ap.add_argument('--box-faces', type=int, default=3500, help='at least this many faces for a --box piece (a door is a small part of a car\'s area, but it is seen up close)')
     ap.add_argument('--part', action='append', default=[], metavar='NAME,CX,CY,CZ,R,AX,AY,AZ,T', help='cut a disc-shaped piece out on its own node')
     ap.add_argument('--wheels', default=None, metavar='YF,ZF,YR,ZR,R,XIN', help='a car: cut the four wheels out, each on its own axle node')
     a = ap.parse_args()
@@ -265,11 +266,13 @@ def main():
         part[sel] = len(names) - 1
         origins[nm] = [float(x) for x in cen]
         print('   %s: %d faces' % (nm, int(sel.sum())), flush=True)
+    box_names = set()
     for spec in a.box:
         bits = spec.split(',')
         nm, v = bits[0], np.array([float(x) for x in bits[1:]])
         lo, hi, hinge = v[0:3], v[3:6], v[6:9]
         sel = np.all((c >= lo) & (c <= hi), axis=1) & (part == 0)
+        box_names.add(nm)
         if nm not in names: names.append(nm)   # a second box with the same name adds to that piece
         part[sel] = names.index(nm)
         origins[nm] = [float(x) for x in hinge]
@@ -281,7 +284,7 @@ def main():
     base = 0
     for k, nm in enumerate(names):
         G0 = Fw[part == k]
-        target = max(int(a.faces * share[k]), 200)
+        target = max(int(a.faces * share[k]), a.box_faces if nm in box_names else 200)
         V, G = rb.simplify(Pw, G0, np.zeros(len(G0), np.uint8), [target], np.ones(len(Pw), np.float32),
                            np.zeros(len(Pw), np.uint8), maxlen=1e9)
         print('   %s: %d -> %d faces' % (nm, len(G0), len(G)), flush=True)

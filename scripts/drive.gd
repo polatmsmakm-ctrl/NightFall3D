@@ -129,6 +129,19 @@ func setup(ps: PackedScene, scale_k: float, cabin_ps: PackedScene = null, dust_c
 			door_node.reparent(door_root, false)
 			door_node.transform = Transform3D()
 			door_root.position = door_hinge
+			# the sculpt is a shell seen from outside: the door's inside is its back faces, drawn
+			# again as a dark trim panel so the open door is not see-through from the front
+			var mi: MeshInstance3D = door_node as MeshInstance3D if door_node is MeshInstance3D else door_node.find_child("*", true, false) as MeshInstance3D
+			if mi:
+				var card := MeshInstance3D.new()
+				card.name = "door_card"
+				card.mesh = mi.mesh
+				var trim := StandardMaterial3D.new()
+				trim.albedo_color = Color(0.12, 0.1, 0.09)
+				trim.roughness = 0.8
+				trim.cull_mode = BaseMaterial3D.CULL_FRONT
+				card.material_override = trim
+				mi.add_child(card)
 	else: # no model file: a plain dark box, so the round still works
 		var mi := MeshInstance3D.new()
 		var bm := BoxMesh.new()

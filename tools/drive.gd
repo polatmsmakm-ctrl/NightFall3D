@@ -47,6 +47,7 @@ func _ready() -> void:
 	await frames(3)
 	check(m.driving and m.car_inside and car.inside.visible and m.arm.spring_length < 0.1, "in the driver's seat, the cabin around him")
 	check(car.door_node != null, "the driver's door is its own piece")
+	check(car.door_node.find_child("door_card", true, false) != null, "with a dark inside panel")
 	check(car.door_anim.is_playing() and car.door_anim.current_animation == "get_in", "the AnimationPlayer plays get_in")
 	await frames(20)
 	check(car.door_open > 0.5 and car.door_node.basis.get_rotation_quaternion().get_angle() > 0.5, "the door swings open as he gets in (%.2f)" % car.door_open)
