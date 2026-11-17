@@ -264,13 +264,13 @@ func reach(left: Vector3, right: Vector3, left_pole: Vector3, right_pole: Vector
 		reach_mod = NFReach.new()
 		reach_mod.name = "Reach"
 		skeleton.add_child(reach_mod)
-	reach_mod.active = true
+	reach_mod.engaged = true
 	reach_mod.targets = [left, right]
 	reach_mod.poles = [left_pole, right_pole]
 	reach_mod.hide_head = hide_head
 
 func reach_clear() -> void:
-	if reach_mod: reach_mod.active = false
+	if reach_mod: reach_mod.engaged = false
 
 ## Is this clip actually available on this character? (false until the GLB is dropped in)
 func has(anim: String) -> bool:

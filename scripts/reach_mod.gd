@@ -5,7 +5,7 @@ class_name NFReach
 ## the wheel) and a pole for each elbow (down and out). It also hides the head (scaled to nothing)
 ## for the driver's own view from the seat, where the camera sits inside it.
 
-var active := false
+var engaged := false
 var targets := [Vector3.ZERO, Vector3.ZERO]  # world: left hand, right hand (the wrist joint)
 var poles := [Vector3.ZERO, Vector3.ZERO]    # world: where each elbow should point
 var hide_head := false
@@ -20,7 +20,7 @@ func _bones_of(sk: Skeleton3D) -> void:
 
 func _process_modification() -> void:
 	var sk := get_skeleton()
-	if sk == null or not active: return
+	if sk == null or not engaged: return
 	if _bones.is_empty(): _bones_of(sk)
 	var inv := sk.global_transform.affine_inverse()
 	for i in 2:
