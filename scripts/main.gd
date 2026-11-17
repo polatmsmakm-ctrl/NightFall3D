@@ -978,6 +978,9 @@ func _buttons() -> Array:
 			"light": on = battery > 0.0
 			"sig": on = my_state in ["ok", "hurt", "down", "hooked"]
 		out.append([NFControls.center_of(e, rect), float(e.r), label, id, on, icon])
+	if driving and car: # the gearbox, beside the speedometer: first (40 km/h) or second (70 km/h)
+		var vs := get_viewport().get_visible_rect().size
+		out.append([Vector2(vs.x / 2.0 + 190.0, vs.y - 104.0), 44.0, "غيار %d" % car.gear, "gear", true, "shift"])
 	return out
 
 ## The three quick messages, stacked above the signal button. Each: rect, index.
@@ -1184,22 +1187,22 @@ func _draw_speedo(c: Vector2) -> void:
 	var sweep := deg_to_rad(270.0)
 	ui.draw_circle(c, r + 10.0, Color(0.03, 0.025, 0.025, 0.72))
 	ui.draw_arc(c, r + 10.0, 0.0, TAU, 64, Color(0.45, 0.08, 0.06, 0.9), 3.0, true)
-	ui.draw_arc(c, r - 4.0, a0 + sweep * (50.0 / 60.0), a0 + sweep, 24, Color(0.85, 0.12, 0.08, 0.85), 7.0, true)
-	for v in range(0, 61, 5):
-		var ang := a0 + sweep * v / 60.0
+	ui.draw_arc(c, r - 4.0, a0 + sweep * (70.0 / 80.0), a0 + sweep, 24, Color(0.85, 0.12, 0.08, 0.85), 7.0, true)
+	for v in range(0, 81, 5):
+		var ang := a0 + sweep * v / 80.0
 		var dir := Vector2(cos(ang), sin(ang))
 		var big := v % 10 == 0
 		ui.draw_line(c + dir * (r - (14.0 if big else 8.0)), c + dir * r, Color(0.92, 0.88, 0.82, 0.95 if big else 0.6), 3.0 if big else 1.5, true)
 		if v % 20 == 0:
 			_text(c + dir * (r - 30.0) + Vector2(0, 7), str(v), 15, Color(0.92, 0.88, 0.82))
-	var na := a0 + sweep * clampf(speedo_kmh, 0.0, 60.0) / 60.0
+	var na := a0 + sweep * clampf(speedo_kmh, 0.0, 80.0) / 80.0
 	var nd := Vector2(cos(na), sin(na))
 	ui.draw_line(c - nd * 10.0, c + nd * (r - 6.0), Color(1.0, 0.25, 0.15), 4.0, true)
 	ui.draw_circle(c, 9.0, Color(0.15, 0.03, 0.03))
 	ui.draw_arc(c, 9.0, 0.0, TAU, 24, Color(1.0, 0.3, 0.2), 2.0, true)
 	_text(c + Vector2(0, 48), "%d" % roundi(speedo_kmh), 30, Color(1, 0.95, 0.88))
 	_text(c + Vector2(0, 70), "كم/س", 13, Color(0.8, 0.75, 0.7))
-	var gear := "R" if car.speed < -0.3 else "D"
+	var gear := "R" if car.speed < -0.3 else str(car.gear)
 	_text(c + Vector2(r + 34.0, 10), gear, 26, Color(1.0, 0.35, 0.25) if gear == "R" else Color(0.5, 1.0, 0.6))
 
 func _draw_moon(c: Vector2) -> void:
@@ -1480,6 +1483,11 @@ func _press(id: String, touch: int) -> void:
 		"crouch":
 			crouch = not crouch
 			if crouch: sprint = false
+		"gear":
+			if driving and car:
+				car.gear = 2 if car.gear == 1 else 1
+				_flash("الغيار الثاني — لين 70 كم/س" if car.gear == 2 else "الغيار الأول — لين 40 كم/س")
+				NFHaptics.pulse("hook")
 		"next":
 			var alive := _others_alive()
 			if alive.size() > 0: spectating = alive[(alive.find(spectating) + 1) % alive.size()]
@@ -1698,7 +1706,7 @@ func _process(dt: float) -> void:
 			face = _yaw_of(rules.killer) + PI / 2.0
 		elif st == "hooked":
 			target = world.hook_points[rules.s[n].hook_i] + Vector3(0, 0, 0.9)
-		elif anim == "drive": anim = "idle" # hidden in the car anyway
+		elif anim == "drive": pass # seated at the wheel (placed below, once the car has moved)
 		elif st == "dead" or (st == "down" and anim != "crawl"): anim = "dying"
 		elif st == "hurt" and anim == "idle": anim = "injured"
 		r.node.position = r.node.position.lerp(target, w)
@@ -1719,12 +1727,18 @@ func _process(dt: float) -> void:
 		if r.role == "killer" and car and (r.anim == "drive") != car_remote: # he got in / out: the door opens and shuts here too
 			car_remote = r.anim == "drive"
 			car.begin("in" if car_remote else "out")
-		if r.role == "killer" and car and r.anim == "drive": # he is at the wheel: the car follows him, he is out of sight
+		if r.role == "killer" and car: car.set_radio(r.lit) # his `f` is the radio switch, in the car or out of it
+		if r.role == "killer" and car and r.anim == "drive": # at the wheel: the car follows him, she sits in it
 			car.driven = true
-			car.set_radio(r.lit) # his `f` is the radio switch
 			car.follow(r.pos, r.yaw, dt)
-			r.node.visible = false
-			r.node.position = r.pos
+			r.node.visible = car.seated() > 0.55
+			r.node.position = car.driver_spot()
+			r.node.scale = Vector3.ONE * NFCar.VICTIM_SCALE
+			r.rig.rotation = Vector3(0, car.rotation.y, 0)
+			var gp := car.grips()
+			r.rig.reach(gp[0], gp[1], gp[2], gp[3])
+		elif r.role == "killer":
+			r.rig.reach_clear()
 		if r.torch: r.torch.visible = r.lit and st in ["ok", "hurt"]
 		# footsteps are 3D and depend on the ground; the killer also gets scratch marks and the detection indicator
 		var moving: bool = r.node.visible and anim in ["run", "walk", "injured", "carry"]
@@ -1780,7 +1794,10 @@ func _process(dt: float) -> void:
 	# survivors feel the killer coming: heartbeat inside the terror radius, heavy breathing when he is very close
 	danger = 0.0
 	var kdist := 999.0
-	if my_role == "survivor" and rules.killer != "" and remotes.has(rules.killer) and my_state in ["ok", "hurt", "down", "hooked"]:
+	# while she drives, none of the "she is close" sounds: no heartbeat, breathing or chase music on
+	# anyone's phone (the engine and the radio are what give the car away). On foot, all of it as before.
+	var k_driving: bool = driving or (car_remote and my_role != "killer")
+	if my_role == "survivor" and rules.killer != "" and remotes.has(rules.killer) and my_state in ["ok", "hurt", "down", "hooked"] and not k_driving:
 		kdist = body.position.distance_to(kpos)
 		danger = clampf(1.0 - kdist / TERROR_RADIUS, 0.0, 1.0)
 	if grade: # the screen tightens and reddens as he closes in
@@ -1805,7 +1822,9 @@ func _process(dt: float) -> void:
 	los_t -= dt
 	if los_t <= 0.0:
 		los_t = 0.2
-		if my_role == "killer":
+		if k_driving:
+			pass
+		elif my_role == "killer":
 			var look := Vector3(-sin(yaw), 0, -cos(yaw))
 			for n in remotes:
 				var r = remotes[n]
@@ -1814,7 +1833,7 @@ func _process(dt: float) -> void:
 				if to.length() < 24.0 and look.dot(to.normalized()) > 0.35 and _line_of_sight(r.node.position): chase_hold = 6.0
 		elif my_state in ["ok", "hurt"] and me_locker() < 0 and kdist < 18.0 and _line_of_sight(kpos):
 			chase_hold = 6.0
-	chase_hold = maxf(chase_hold - dt, 0.0)
+	chase_hold = 0.0 if k_driving else maxf(chase_hold - dt, 0.0)
 	var chasing := chase_hold > 0.0 and not rules.over
 	if chasing and not chase_music.playing: chase_music.play()
 	chase_music.volume_db = lerpf(chase_music.volume_db, -6.0 if chasing else -60.0, 1.0 - exp(-2.5 * dt))
@@ -1907,8 +1926,8 @@ func _physics_process(delta: float) -> void:
 		if f >= 1.0: vault = {}
 	else:
 		pinned = false
-	if my_state != "carried" and my_state != "hooked": rig.position.y = 0.0
-	rig.scale = Vector3.ONE * (NFCar.VICTIM_SCALE if (my_state == "carried" and _in_car(rules.killer)) else 1.0)
+	if my_state != "carried" and my_state != "hooked" and not driving: rig.position.y = 0.0
+	rig.scale = Vector3.ONE * (NFCar.VICTIM_SCALE if ((my_state == "carried" and _in_car(rules.killer)) or driving) else 1.0)
 	if last_state == "hooked" and my_state != "hooked": rig.rotation = Vector3.ZERO
 	if last_locker >= 0 and locker < 0 and my_state in ["ok", "hurt"]: # stepped out of a locker
 		var lp: Array = world.locker_points[last_locker]
@@ -1943,7 +1962,7 @@ func _physics_process(delta: float) -> void:
 			send_t = 1.0 / 15.0
 			var p := body.position
 			Net.send({"t": "st", "p": [snappedf(p.x, 0.01), snappedf(p.y, 0.01), snappedf(p.z, 0.01), snappedf(rig.rotation.y, 0.01)], "a": "drive" if driving else rig.current,
-					"f": 1 if (light_on or (driving and car.radio_on)) else 0}) # the killer has no torch: f is his radio
+					"f": 1 if (light_on or (my_role == "killer" and car != null and car.radio_on)) else 0}) # the killer has no torch: f is his radio
 
 # ---------------- the killer's car ----------------
 func _enter_car() -> void:
@@ -1971,6 +1990,17 @@ func _exit_car() -> void:
 	car_leaving = NFCar.SEQ_OUT.out
 	car.begin("out")
 
+## My own body at the wheel: in the seat, hands on the rim (NFReach); from the seat the head is
+## hidden, since the camera is in it. Shown once she is in, until she is on her way out.
+func _sit_driver() -> void:
+	rig.visible = car.seated() > 0.55 and (car_leaving <= 0.0 or car_leaving > 0.2)
+	rig.scale = Vector3.ONE * NFCar.VICTIM_SCALE
+	rig.position = car.driver_spot() - body.global_position
+	rig.rotation = Vector3(0, car.rotation.y, 0)
+	rig.play("drive")
+	var gp := car.grips()
+	rig.reach(gp[0], gp[1], gp[2], gp[3], car_inside)
+
 ## Where the camera is while he climbs in or out: outside the open driver's door.
 func _door_eye() -> Vector3:
 	return car.global_transform * Vector3(1.55, 1.7, 0.3)
@@ -1979,6 +2009,11 @@ func _door_eye() -> Vector3:
 func _leave_car() -> void:
 	if not driving: return
 	car_leaving = 0.0
+	rig.reach_clear() # her own body back to first person: hidden, full size
+	rig.visible = false
+	rig.position = Vector3.ZERO
+	rig.scale = Vector3.ONE
+	rig.play("idle")
 	var spot := car.position + Vector3(0, 2.4, 0) # nowhere else: climb out onto the roof
 	var space := world.get_world_3d().direct_space_state
 	var cap := CapsuleShape3D.new()
@@ -2036,6 +2071,7 @@ func _drive(delta: float) -> void:
 	body.velocity = car.velocity
 	rig.rotation.y = car.rotation.y # what the others get as my yaw: the car's heading
 	speedo_kmh = lerpf(speedo_kmh, absf(car.speed) * 3.6, 1.0 - exp(-10.0 * delta)) # the needle, eased
+	_sit_driver()
 	if car_inside:
 		# climbing in: from outside the open door to the seat; getting out: the other way
 		var k := smoothstep(0.2, 0.85, car.seated())
@@ -2111,7 +2147,7 @@ func _move(delta: float) -> void:
 	if Dev.unlocked and Dev.speed > 1.0: speed *= Dev.speed
 	var dir := Basis(Vector3.UP, yaw) * Vector3(move.x, 0, move.y)
 	var target := dir.normalized() * speed * clampf(move.length() * 1.3, 0.0, 1.0) if move.length() > 0.05 else Vector3.ZERO
-	if my_role == "killer": rig.rotation.y = yaw + PI # first person: the body faces where I look
+	if my_role == "killer" and not driving: rig.rotation.y = yaw + PI # first person: the body faces where I look
 	if attack_t > 0.75: # short lunge at the start of the swing
 		target = Basis(Vector3.UP, rig.rotation.y) * Vector3(0, 0, 1) * 6.4
 	elif attack_t > 0.0:

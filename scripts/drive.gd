@@ -23,8 +23,14 @@ const CARGO := Vector3(0.0, 0.62, -1.3) # (old) the load floor behind the seats
 ## A carried survivor rides in the passenger seat (right-hand side; the car is left-hand drive),
 ## slumped (CharacterRig "slump") at 0.82 of their size: our characters are 1.9 m tall and the car
 ## is 0.9 of a real one, and at that scale head and feet stay between the floor and the roof.
-const SEAT_HIPS := Vector3(-0.42, 1.0, -0.30)
-const VICTIM_SCALE := 0.82
+const SEAT_HIPS := Vector3(-0.42, 0.95, -0.30)
+const DRIVER_HIPS := Vector3(0.42, 0.95, -0.22)  # the killer in the driver's seat, sitting forward a little
+## Characters are 1.9 m tall and the cabin's headliner is at 1.645 m: seated, a character is at most
+## 0.81 m from the hips to the top of the head, so at 0.72 with the hips at 0.95 m the head is at
+## 1.53 m (and the feet on the floor at 0.5). The same scale for the victim and the driver.
+const VICTIM_SCALE := 0.72
+## Two gears: first tops out at 40 km/h, second at 70 km/h (the button by the speedometer).
+const GEAR_TOP := [11.0, 19.5]
 const HIPS_Y := 1.06                    # the Mixamo hips height every character shares, standing
 # the steering wheel cut out of the cabin (cabin.glb node `steer`): its axis in cabin space
 const STEER_AXIS := Vector3(0.004, -0.39, 0.921)
@@ -42,7 +48,8 @@ var lights: SpotLight3D
 var tail: OmniLight3D
 var engine: AudioStreamPlayer3D
 var radio: AudioStreamPlayer3D # the owner's song (assets/sfx/radio.mp3), from the dashboard
-var radio_on := false     # the switch; it only plays while someone is at the wheel
+var radio_on := false     # the switch; it keeps playing after he gets out if he left it on
+var gear := 1             # 1 or 2
 var _radio_started := false
 var inside: Node3D        # the cabin + headliner + pillars, only shown to the killer while he drives
 var _last := Vector3.ZERO # remote phones work the speed out from how far it moved
@@ -72,6 +79,7 @@ var door_open := 0.0      # 0 shut .. 1 wide open, eased toward the getting-in /
 ## so it costs nothing on the network.
 const SEQ_IN := {"open": 0.45, "shut": 1.2, "closed": 1.5, "done": 1.8}
 const SEQ_OUT := {"open": 0.45, "out": 0.5, "shut": 0.9, "done": 1.25}
+const DOOR_SILL := 0.3    # the bottom of the door's window, in the door's own space (hinge at 1.1 m)
 const DOOR_SWING := -1.15 # rad: the back edge of the door swings out (+x), on its front hinge
 var door_anim: AnimationPlayer
 var door_root: Node3D     # sits on the hinge and leans with the body; `door_node` turns inside it
@@ -135,7 +143,19 @@ func setup(ps: PackedScene, scale_k: float, cabin_ps: PackedScene = null, dust_c
 			if mi:
 				var card := MeshInstance3D.new()
 				card.name = "door_card"
-				card.mesh = mi.mesh
+				# only the panel under the window: the glass, its frame and the mirror drawn dark from
+				# inside blocked the side window
+				var arr := mi.mesh.surface_get_arrays(0)
+				var vs: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+				var ix: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+				var keep := PackedInt32Array()
+				for t in range(0, ix.size(), 3):
+					if vs[ix[t]].y < DOOR_SILL and vs[ix[t + 1]].y < DOOR_SILL and vs[ix[t + 2]].y < DOOR_SILL:
+						keep.append(ix[t]); keep.append(ix[t + 1]); keep.append(ix[t + 2])
+				arr[Mesh.ARRAY_INDEX] = keep
+				var panel := ArrayMesh.new()
+				if keep.size() > 0: panel.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+				card.mesh = panel
 				var trim := StandardMaterial3D.new()
 				trim.albedo_color = Color(0.12, 0.1, 0.09)
 				trim.roughness = 0.8
@@ -475,11 +495,32 @@ var show_cabin := false   # this phone is driving and looking from the seat
 func show_inside(on: bool) -> void:
 	show_cabin = on
 	inside.visible = on or door_open > 0.02
-	if hand_root: hand_root.visible = on
+	if hand_root: hand_root.visible = false # her own arms are on the wheel now (NFReach)
 
 ## Where a carried survivor's rig stands so their hips land on the passenger seat.
 func seat_spot() -> Vector3:
-	return (model.global_transform * inside.transform) * (SEAT_HIPS - Vector3(0, HIPS_Y * VICTIM_SCALE, 0))
+	return (model.global_transform * inside.transform) * SEAT_HIPS - Vector3(0, HIPS_Y * VICTIM_SCALE, 0)
+
+## Where the killer's own rig stands so her hips land on the driver's seat.
+func driver_spot() -> Vector3:
+	return (model.global_transform * inside.transform) * DRIVER_HIPS - Vector3(0, HIPS_Y * VICTIM_SCALE, 0)
+
+## The driver's hands: [left wrist, right wrist, left elbow pole, right elbow pole], in the world.
+## The grips are the two points on the rim at ten to two (they turn with the wheel); the wrist sits
+## a few centimetres back from the rim toward her. Facing the car's front, her left is +x.
+func grips() -> Array:
+	var xf := model.global_transform * inside.transform
+	var out := [xf * Vector3(0.62, 1.25, 0.2), xf * Vector3(0.22, 1.25, 0.2)]
+	for h in hands:
+		var g: Node3D = h[0]
+		var at: Vector3 = g.global_position + (xf.basis * Vector3(0, -0.02, -0.06))
+		out[0 if float(h[1]) > 0.0 else 1] = at
+	out.append(xf * Vector3(0.42 + 0.45, 0.8, -0.35))
+	out.append(xf * Vector3(0.42 - 0.45, 0.8, -0.35))
+	return out
+
+func top() -> float:
+	return GEAR_TOP[clampi(gear, 1, 2) - 1]
 
 ## Where the driver's eyes are, in the world (follows the car's tilt).
 func eye() -> Vector3:
@@ -495,8 +536,8 @@ func drive(throttle: float, turn: float, dt: float) -> void:
 	if throttle > 0.05:
 		if speed < -0.3: speed = move_toward(speed, 0.0, BRAKE * dt)
 		else: # strong off the line, easing off as it nears top speed
-			var pull := ACCEL * lerpf(1.35, 0.55, clampf(speed / MAX_FWD, 0.0, 1.0))
-			speed = move_toward(speed, MAX_FWD * throttle, pull * dt)
+			var pull := ACCEL * lerpf(1.35, 0.55, clampf(speed / top(), 0.0, 1.0)) * (1.0 if gear == 1 else 0.85)
+			speed = move_toward(speed, top() * throttle, pull * dt)
 	elif throttle < -0.05:
 		if speed > 0.3: speed = move_toward(speed, 0.0, BRAKE * dt)
 		else: speed = move_toward(speed, -MAX_BACK * -throttle, ACCEL * 0.7 * dt)
@@ -616,7 +657,7 @@ func _effects(dt: float) -> void:
 	tail.light_energy = lerpf(tail.light_energy, (0.45 + (0.55 if speed < -0.3 or (driven and absf(speed) < 0.4) else 0.0)) * on, 1.0 - exp(-8.0 * dt))
 	tail.visible = tail.light_energy > 0.05
 	if radio:
-		var want := radio_on and driven
+		var want := radio_on # left on, it keeps playing in the parked car
 		if want and not _radio_started:
 			radio.play()
 			_radio_started = true
@@ -629,4 +670,4 @@ func _effects(dt: float) -> void:
 		if engine_gain > 0.001 and not engine.playing: engine.play()
 		elif engine_gain <= 0.001 and engine.playing: engine.stop()
 		engine.volume_db = linear_to_db(maxf(engine_gain, 0.0001))
-		engine.pitch_scale = 0.85 + clampf(absf(speed) / MAX_FWD, 0.0, 1.0) * 0.6
+		engine.pitch_scale = 0.85 + clampf(absf(speed) / top(), 0.0, 1.0) * 0.6 # drops when he shifts up

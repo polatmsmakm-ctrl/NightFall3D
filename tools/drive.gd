@@ -62,6 +62,30 @@ func _ready() -> void:
 	check(car.engine != null and car.starter != null and car.passer != null, "the three car sounds are loaded")
 	await frames(150)
 	check(car.engine.playing and car.engine_gain > 0.3, "the engine loop comes up under the starter (%.2f)" % car.engine_gain)
+	# her own body at the wheel, hands on the rim
+	check(m.rig.visible and m.rig.current == "drive", "she sits at the wheel herself (%s)" % m.rig.current)
+	var sk: Skeleton3D = m.rig.skeleton
+	var gp: Array = car.grips()
+	var miss := 0.0
+	for side in [["Left", 0], ["Right", 1]]:
+		var hb := sk.find_bone("mixamorig_%sHand" % side[0])
+		var hw: Vector3 = sk.global_transform * sk.get_bone_global_pose(hb).origin
+		miss = maxf(miss, hw.distance_to(gp[side[1]]))
+	print("   hands to the rim: %.3f m" % miss)
+	check(miss < 0.08, "both hands on the steering wheel (%.3f m off)" % miss)
+	var hy: float = (sk.global_transform * sk.get_bone_global_pose(sk.find_bone("mixamorig_Head")).origin).y - car.global_position.y
+	check(hy < 1.6, "her head under the roof (%.2f m)" % hy)
+	check(not car.hand_root.visible, "the old gloves and sleeves are gone")
+	# second gear
+	var labels := {}
+	for bt in m._buttons(): labels[bt[3]] = bt[2]
+	check(labels.get("gear", "") == "غيار 1", "a gear button by the speedometer (%s)" % labels.get("gear", "-"))
+	m._press("gear", 5)
+	check(car.gear == 2 and car.top() > 19.0, "second gear: up to %.0f km/h" % (car.top() * 3.6))
+	m._press("gear", 5)
+	check(car.gear == 1 and car.top() < 12.0, "and back to first")
+	m.car_look = 0.0
+	await frames(2)
 	check(m.main_cam.global_position.distance_to(car.eye()) < 0.35, "the camera is at the driver's eyes (%.2f m off)" % m.main_cam.global_position.distance_to(car.eye()))
 	m._press("attack", 5)
 	await frames(2)
@@ -135,7 +159,8 @@ func _ready() -> void:
 	await frames(80)
 	check(car.door_open < 0.05, "and shuts behind him")
 	check(not m.driving and m.arm.spring_length < 0.5 and not car.inside.visible, "out, first person again, cabin hidden")
-	check(car.radio_on and car.radio.stream_paused, "the radio stays switched on but goes quiet when he gets out")
+	check(car.radio_on and not car.radio.stream_paused, "left on, the radio keeps playing after he gets out")
+	check(not m.rig.visible and is_equal_approx(m.rig.scale.x, 1.0), "out: her body back to first person (hidden, full size)")
 	check(absf(m.cam_pivot.position.y - 1.6) < 0.01, "the camera is back at his own eyes")
 	check(flat(m.body.position, car.position) > 1.4, "standing beside it, not inside it (%.1f m)" % flat(m.body.position, car.position))
 	check(not m.cshape.disabled, "the killer's body is solid again")
@@ -158,6 +183,14 @@ func _ready() -> void:
 	var seat: Vector3 = car.seat_spot()
 	check(d.node.position.distance_to(seat) < 0.5, "the survivor sits in the passenger seat (%.2f m off)" % d.node.position.distance_to(seat))
 	check(d.rig.current == "slump" and absf(d.node.scale.x - NFCar.VICTIM_SCALE) < 0.01, "slumped, at %.2f of their size (%s)" % [d.node.scale.x, d.rig.current])
+	var dsk: Skeleton3D = d.rig.skeleton
+	var top_y := -99.0
+	for mi in d.rig.model.find_children("*", "MeshInstance3D", true, false):
+		var ab: AABB = (mi as MeshInstance3D).global_transform * (mi as MeshInstance3D).get_aabb()
+		top_y = maxf(top_y, ab.end.y)
+	var dh: float = (dsk.global_transform * dsk.get_bone_global_pose(dsk.find_bone("mixamorig_Head")).origin).y - car.global_position.y
+	print("   victim's head joint %.2f m above the car's floor line (headliner 1.645)" % dh)
+	check(dh < 1.45, "the victim's head is inside the car (%.2f m)" % dh)
 	check(d.rig.has("slump"), "the slump pose is built on the rig")
 	var hk: Vector3 = m.world.hook_points[0]
 	car.position = hk + Vector3(3.0, 0.3, 0)
@@ -210,7 +243,11 @@ func _ready() -> void:
 	check(car.driven and car.position.distance_to(to) < 0.6, "the car follows the killer's position")
 	await frames(40)
 	check(car.running and car.door_anim.assigned_animation == "get_in", "his door opened and shut (AnimationPlayer) and the engine started on my phone too")
-	check(not k.node.visible, "the killer is out of sight while he drives")
+	for i in 60: await tree.process_frame
+	check(k.node.visible and k.rig.current == "drive" and k.node.position.distance_to(car.driver_spot()) < 0.05, "the killer sits at the wheel on my phone (%s)" % k.rig.current)
+	m.body.position = car.position + car.global_basis.x * 3.0
+	for i in 20: await tree.process_frame
+	check(m.danger == 0.0 and not m.heart.playing, "no heartbeat while she drives, even right next to me")
 	check(car.lights.light_energy > 2.0, "headlights on while someone drives")
 	check(not car.radio_on, "radio off while his f is 0")
 	k.lit = true
@@ -232,7 +269,10 @@ func _ready() -> void:
 	check(car.door_open > 0.1 and not car.running, "he gets out: his door opens on my phone, engine off")
 	for i in 20: await tree.process_frame
 	check(not car.driven and k.node.visible, "he got out: lights off, he is back")
-	check(car.radio.stream_paused, "and the radio stops with him out of the car")
+	check(car.radio_on and not car.radio.stream_paused, "he left it on: the radio keeps playing from the parked car")
+	k.lit = false
+	for i in 10: await tree.process_frame
+	check(car.radio.stream_paused, "and stops when his switch says off")
 	m.queue_free()
 	await frames(5)
 	print("drive check: ", "FAILED %d" % bad if bad else "all good")

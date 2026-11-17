@@ -506,6 +506,27 @@ objectives and out of the lagoon. Every phone runs the same search, so they all 
   on that survivor's phone and at the wheel (`main._car_pass`, once per 5 s). No server change. `tools/drive.tscn`
   tests the whole loop (wheels, steering wheel, hands, speedometer, the seat, hooking from the
   seat); `tools/shot19.tscn` photographs the driver's seat through Forward+.
+- **Second pass on the owner's phone feedback**:
+  - **She drives herself**: the killer's own rig sits in the driver's seat (`NFCar.driver_spot()`,
+    `DRIVER_HIPS`, the `drive` pose posed in code like `slump`) on every phone, and
+    **`scripts/reach_mod.gd` (`NFReach`, a `SkeletonModifier3D`)** is a two-bone IK that puts both
+    wrists on the rim at ten to two (`NFCar.grips()`: the old glove points, which turn with the
+    wheel; elbows toward poles down and out) after the animation. From the seat her head is scaled
+    to nothing (`hide_head`), so the camera is not inside it. The old capsule gloves and sleeves
+    are hidden. `CharacterRig.reach()` / `reach_clear()`.
+  - **The victim fits**: seated, every character is at most 0.81 m from hips to head top
+    (measured offline, `_hi` models too); at the old 0.82 scale with the hips at 1.0 m the head
+    reached 1.66 m, through the 1.645 m headliner and the roof. Now `VICTIM_SCALE` 0.72 and the
+    seat hips at 0.95 m (head 1.53 m, feet on the 0.5 m floor), the same scale for the driver.
+  - **The door's inside panel** (`door_card`) is only the part under the window (`DOOR_SILL`): the
+    dark back faces of the glass, its frame and the mirror blocked the side window from the seat.
+  - **No heartbeat, breathing or chase music while she drives** (`k_driving` in `main`), on any
+    phone; on foot all of it as before. The engine and the radio give the car away instead.
+  - **The radio stays on** after she gets out if she left it on: it plays from the parked car, and
+    her `st` `f` flag is the radio switch whether or not she is at the wheel.
+  - **Two gears** (`NFCar.gear`, `GEAR_TOP` 11 / 19.5 m/s = 40 / 70 km/h): a «غيار 1 / 2» button
+    beside the speedometer (icon `shift`), pull a little softer in second, engine pitch drops on the
+    shift up; the speedometer reads 0-80 with the red band from 70 and shows 1 / 2 / R.
 - Every `prop_bake.py` output now carries its own command line in `asset.extras.bake`.
 
 ## The high-end pass (Forward+, `scripts/look_hd.gd`, `NFLook`)

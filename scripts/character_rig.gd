@@ -6,12 +6,12 @@ extends Node3D
 ## the list can name clips the owner has not supplied yet: drop sprint.glb / hit.glb / fall.glb /
 ## standup.glb / cheer.glb in and the game starts using them with no code change.
 const ANIMS := ["idle", "walk", "run", "sprint", "crouchwalk", "hide", "attack", "injured", "dying",
-	"vault", "carry", "carried", "hang", "crawl", "repair", "hit", "fall", "standup", "slump"]
+	"vault", "carry", "carried", "hang", "crawl", "repair", "hit", "fall", "standup", "slump", "drive"]
 const ONCE := ["hit", "fall", "attack", "vault"] # played through once, then back to the state pose
-const LOOPING := ["idle", "walk", "run", "sprint", "crouchwalk", "hide", "injured", "carry", "carried", "hang", "crawl", "repair", "campfire", "wave", "clap", "dance", "cheer", "slump"]
+const LOOPING := ["idle", "walk", "run", "sprint", "crouchwalk", "hide", "injured", "carry", "carried", "hang", "crawl", "repair", "campfire", "wave", "clap", "dance", "cheer", "slump", "drive"]
 ## Campfire emotes. There is no Mixamo clip for these in assets/anims, so they are posed here on the
 ## same skeleton: drop wave.glb / clap.glb / dance.glb in and the real clip is used instead.
-const EMOTES := {"wave": 2.4, "clap": 2.2, "dance": 4.0, "slump": 3.0}
+const EMOTES := {"wave": 2.4, "clap": 2.2, "dance": 4.0, "slump": 3.0, "drive": 3.0}
 const EMOTE_BONES := ["mixamorig_Hips", "mixamorig_Spine", "mixamorig_Spine1", "mixamorig_Spine2",
 	"mixamorig_Neck", "mixamorig_Head",
 	"mixamorig_LeftShoulder", "mixamorig_LeftArm", "mixamorig_LeftForeArm", "mixamorig_LeftHand",
@@ -177,8 +177,9 @@ func _emote_world(a: String, bone: String, ph: float) -> Quaternion:
 		"slump":
 			# knocked out in the car's passenger seat: reclined against the seat back, knees up in
 			# the footwell, hands fallen in the lap, the head dropped onto one shoulder; only the
-			# breath moves. (Checked offline on every character: with the 0.82 scale main gives it
-			# in the car, head and feet stay between the floor and the roof.)
+			# breath moves. (Checked offline on every character: at most 0.81 m from the hips to the
+			# top of the head; at NFCar.VICTIM_SCALE 0.72 with the hips at 0.95 m that is 1.53 m,
+			# under the 1.645 m headliner, and the feet stay on the floor.)
 			var br := sin(ph * TAU)
 			match bone:
 				"mixamorig_Hips": return _w(side, -0.42)
@@ -197,6 +198,25 @@ func _emote_world(a: String, bone: String, ph: float) -> Quaternion:
 				"mixamorig_LeftUpLeg": return _w(KNEE, -1.30) * _w(FWD, 0.14)
 				"mixamorig_RightLeg": return _w(KNEE, 1.75)
 				"mixamorig_LeftLeg": return _w(KNEE, 1.75)
+		"drive":
+			# the killer at the wheel: sitting up against the reclined seat back, the head level, knees
+			# toward the pedals. The arms are only a starting point: NFReach puts the hands on the rim.
+			var br := sin(ph * TAU)
+			match bone:
+				"mixamorig_Hips": return _w(side, -0.22)
+				"mixamorig_Spine": return _w(side, 0.03 + 0.01 * br)
+				"mixamorig_Spine1": return _w(side, 0.03)
+				"mixamorig_Spine2": return _w(side, 0.04)
+				"mixamorig_Neck": return _w(side, 0.06)
+				"mixamorig_Head": return _w(side, 0.06)
+				"mixamorig_RightArm": return _w(UP, 0.45) * _w(R_LIFT, -1.1)
+				"mixamorig_LeftArm": return _w(UP, -0.45) * _w(L_LIFT, -1.1)
+				"mixamorig_RightForeArm": return _w(UP, 0.9)
+				"mixamorig_LeftForeArm": return _w(UP, -0.9)
+				"mixamorig_RightUpLeg": return _w(KNEE, -1.22) * _w(FWD, -0.08)
+				"mixamorig_LeftUpLeg": return _w(KNEE, -1.22) * _w(FWD, 0.08)
+				"mixamorig_RightLeg": return _w(KNEE, 1.15)
+				"mixamorig_LeftLeg": return _w(KNEE, 1.15)
 	return Quaternion.IDENTITY
 
 ## Bake an emote into a looping Animation on this character's skeleton.
@@ -225,7 +245,7 @@ func _emote_anim(a: String, skel_path: String, char_rest: Vector3) -> Animation:
 		for k in steps + 1:
 			out.rotation_track_insert_key(tr, out.length * float(k) / steps, keys[k])
 	# the hop: in hips local space z is the vertical axis and -z is up
-	var dip := {"dance": [3.0, 4.0], "clap": [0.0, 1.0], "wave": [1.2, 3.0], "slump": [0.0, 1.0]}
+	var dip := {"dance": [3.0, 4.0], "clap": [0.0, 1.0], "wave": [1.2, 3.0], "slump": [0.0, 1.0], "drive": [0.0, 1.0]}
 	if float(dip[a][0]) > 0.0:
 		var tr := out.add_track(Animation.TYPE_POSITION_3D)
 		out.track_set_path(tr, NodePath("%s:mixamorig_Hips" % skel_path))
@@ -233,6 +253,24 @@ func _emote_anim(a: String, skel_path: String, char_rest: Vector3) -> Animation:
 			var ph := float(k) / steps
 			out.position_track_insert_key(tr, out.length * ph, char_rest + Vector3(0, 0, -float(dip[a][0]) * absf(sin(ph * PI * float(dip[a][1])))))
 	return out
+
+var reach_mod: NFReach
+
+## Hands to two world points (wrists), elbows toward two poles, after the animation; `hide_head`
+## for the driver's own first-person view from the seat. Called every frame while driving.
+func reach(left: Vector3, right: Vector3, left_pole: Vector3, right_pole: Vector3, hide_head := false) -> void:
+	if skeleton == null: return
+	if reach_mod == null:
+		reach_mod = NFReach.new()
+		reach_mod.name = "Reach"
+		skeleton.add_child(reach_mod)
+	reach_mod.active = true
+	reach_mod.targets = [left, right]
+	reach_mod.poles = [left_pole, right_pole]
+	reach_mod.hide_head = hide_head
+
+func reach_clear() -> void:
+	if reach_mod: reach_mod.active = false
 
 ## Is this clip actually available on this character? (false until the GLB is dropped in)
 func has(anim: String) -> bool:
