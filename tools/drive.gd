@@ -34,6 +34,9 @@ func _ready() -> void:
 	var m = await boot("forest", players)
 	var car: NFCar = m.car
 	check(car != null, "the car is there")
+	if Gfx.strong:
+		check(Gfx.preset == 2 and Gfx.maxed(), "a strong device starts on «فائق»")
+		check(m.hd_chars() and m.rig.model.scene_file_path.ends_with("_hi.glb"), "and plays the round with the close-up model (%s)" % m.rig.model.scene_file_path.get_file())
 	print("   forest car at ", car.position.snappedf(0.1), " yaw ", snappedf(car.rotation.y, 0.01))
 	var home: Vector3 = car.position
 	var home_yaw: float = car.rotation.y

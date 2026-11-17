@@ -203,7 +203,7 @@ func _build_player(char_name: String, at: Vector3) -> void:
 	body.add_child(cshape)
 	rig = CharacterRig.new()
 	body.add_child(rig)
-	rig.setup(char_name)
+	rig.setup(char_name, CharacterRig.ANIMS, hd_chars()) # the 100k close-up model on strong devices
 	body.position = at
 	body.floor_snap_length = 0.5
 	body.floor_max_angle = deg_to_rad(50.0)
@@ -257,11 +257,16 @@ func _make_flashlight() -> SpotLight3D:
 	l.visible = false
 	return l
 
+## Strong devices on «فائق» play the round with every character's close-up model (100k
+## triangles, the 4096 colour map) instead of the 30k one.
+func hd_chars() -> bool:
+	return Gfx.strong and Gfx.effects >= 2 and Gfx.shadows >= 2
+
 func _add_remote(p: Dictionary) -> void:
 	var node := Node3D.new()
 	var r := CharacterRig.new()
 	node.add_child(r)
-	r.setup(str(p.char))
+	r.setup(str(p.char), CharacterRig.ANIMS, hd_chars())
 	node.position = world.spawn_point(str(p.role), int(p.slot))
 	if p.get("dummy", false): # trial-mode practice target
 		var gp: Vector3 = world.gen_points[0]

@@ -472,6 +472,22 @@ The owner asked for a high-end look. The project now runs **Forward+ on the phon
   the car with its lights on); `check.yml` renders it through Mesa's software Vulkan (lavapipe):
   `NF_LOOK="hd lo"` gives the new look and the old one side by side (off by default: ~13 min each).
 
+## Strong devices (`Gfx.strong`)
+The owner and his friends play on the iPhone 18 Pro Max and an M2 iPad Pro. `Gfx.detect_strong()`
+(iPhone16,x = 15 Pro and later, iPad13,x = M1 and later, from `OS.get_model_name()`; `NF_STRONG=1`
+fakes it) makes the phone start on «فائق» once (`tier` in graphics.cfg; afterwards the player's
+choice stands), and while it is on «فائق» (`Gfx.maxed()`):
+- full-resolution high SSAO, volumetric fog 96³, medium subsurface scattering, 16x anisotropic
+  filtering, `mesh_lod_threshold` 0.4, moon/sun **4 shadow cascades out to 130 m**, grass 1.6x
+  thicker and drawn to 62 m, and **every character in the round uses its `_hi` model**
+  (`main.hd_chars()`; the 100k close-up with the 4096 colour map).
+- **120 Hz**: `export_presets.cfg` adds `CADisableMinimumFrameDurationOnPhone` to Info.plist (without
+  it iOS holds every iPhone app at 60), and «تلقائي» follows the screen. The governor now gives up
+  the frame rate first (120 -> 60) and only then the resolution, shadows and effects.
+- The app is still **iPhone only** (`targeted_device_family=0`): on the iPad it runs in the iPhone
+  window. Native iPad (2) needs the 4:3 layout checked first.
+`check.yml` runs `drive` a second time with `NF_STRONG=1`.
+
 ## Lighter nights and «السطوع»
 The owner found the maps too dark. `world._build_environment` now multiplies every night map's
 ambient by 2.0, its fog by 0.65 and its moonlight by 1.4, with exposure 1.32 (the Empty Quarter

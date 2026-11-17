@@ -211,6 +211,7 @@ func configure(id: String, seed := 1, th := "normal") -> void:
 		noise.seed = 1337
 		buildings = FOREST_BUILDINGS.duplicate(true)
 	if theme == "snow": grass_per_chunk = int(grass_per_chunk * 0.5) # snow buries most of it
+	if Gfx.strong and Gfx.effects >= 2: grass_per_chunk = int(grass_per_chunk * 1.6) # thicker on strong devices
 	if id == "garage": # the car park lays out its own floor, so none of the outdoor plan applies
 		_plan_garage(rng)
 		return
@@ -2299,6 +2300,7 @@ func _apply_quality() -> void:
 		if leaves.amount != la: leaves.amount = la
 	var factor: float = [0.4, 0.7, 1.0][fx]
 	var rng: float = [22.0, 30.0, 38.0][fx]
+	if Gfx.maxed(): rng = 62.0 # strong devices: the grass runs out much further away
 	for i in grass_nodes.size():
 		grass_nodes[i].multimesh.visible_instance_count = int(grass_counts[i] * factor)
 		grass_nodes[i].visibility_range_end = rng + GRASS_CHUNK * 0.7
@@ -2306,6 +2308,9 @@ func _apply_quality() -> void:
 		(mi as MultiMeshInstance3D).visible = fx >= 1
 	moon.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL if sh == 0 else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	moon.directional_shadow_max_distance = [30.0, 50.0, 70.0][sh]
+	if Gfx.maxed(): # four cascades: crisp shadows close by and shadows twice as far out
+		moon.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+		moon.directional_shadow_max_distance = 130.0
 
 func _process(_dt: float) -> void:
 	var t := Time.get_ticks_msec() / 1000.0

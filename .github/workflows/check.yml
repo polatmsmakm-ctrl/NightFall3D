@@ -34,6 +34,9 @@ jobs:
             echo "=== $t" | tee -a all.log
             timeout 240 godot --headless --path . res://tools/$t.tscn 2>&1 | tee -a all.log || echo "::warning::$t stopped (timeout or exit $?)"
           done
+          # the same round as a strong iPhone plays it: «فائق», the close-up characters in the round
+          echo "=== drive (strong device)" | tee -a all.log
+          NF_STRONG=1 timeout 240 godot --headless --path . res://tools/drive.tscn 2>&1 | tee -a all.log || echo "::warning::strong drive stopped"
           if grep -E "SCRIPT ERROR|Parse Error|Parser Error|Invalid call|Invalid access|Invalid get|Cannot call|Nonexistent function" all.log; then echo "::error::script errors"; exit 1; fi
       - name: Publish the test log early (the screenshots take a long time)
         if: always()
