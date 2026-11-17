@@ -2,3 +2,6 @@
 build/
 *.import
 server/node_modules/
+
+# the lossless character maps carry their own import settings (high-quality compression)
+!assets/chars/*.png.import

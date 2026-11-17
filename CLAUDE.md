@@ -80,7 +80,7 @@ Owner: Rashid (Arabic UI, plays with friends, installs the IPA with Sideloadly).
   not drag the hair on the shoulder down with it. Her two files were made with
   `python3 tools/rig_character.py sculpt.glb assets/chars/killer.glb --faces 30000 --tex 1024 --facing keep --arms 0.235,0.50,0.745 --chest 0.12 --bake`
   and `... killer_hi.glb --faces 70000 --tex 2048 ...` (same switches).
-- `assets/chars` — the owner's 5 characters (SF3D meshes rigged to the Mixamo skeleton). `assets/sfx` — the owner's sounds (mp3) plus synthesized ones (wav).
+- `assets/chars` — the owner's characters (SF3D meshes rigged to the Mixamo skeleton). `assets/sfx` — the owner's sounds (mp3) plus synthesized ones (wav).
 - `tools/*.gd|tscn` — headless tests (not exported).
 
 ## Protocol (JSON over WebSocket)
@@ -336,6 +336,31 @@ the first time a Godot build is at hand.**
   so there is a second way with no server: `Net.secret_code(name)` — six digits from the friend's
   username — shows on the owner's phone when he presses «افتح السرية», and the friend types it into
   «كود الشخصية السرية» on his own friends page (`Net.redeem`). Tied to the username.
+
+## «حارسة الليل» (survivor6) — the first character with lossless maps
+The owner's Midnight Sentinel sculpt (1.9 M triangles, three 2048 maps: colour, metal-rough,
+normal; 802 texels per metre on average, 831 on the face) replaced the nurse «الممرضة» in the
+`survivor6` slot (same id: server, menus, the camp cast and the tests are unchanged). Made with
+`python3 tools/rig_character.py sculpt.glb assets/chars/survivor6.glb --faces 30000 --tex 2048
+--arms 0.235,0.43,0.60 --chest 0.12 --hair 85 --hair-density 0.85 --fringe --bake --external`
+and `... survivor6_hi.glb --faces 100000 --tex 4096 ...` (same switches). Three switches are new:
+- `--external`: the maps are written **beside** the GLB as lossless PNGs
+  (`survivor6[_hi]_col / _mr / _nrm.png`, no JPEG step) and the GLB points at them by `uri`, so
+  Godot's glTF importer loads the textures it imported itself. Each PNG has a **committed
+  `.import`** (`.gitignore` lets `assets/chars/*.png.import` through) with `compress/high_quality=true`
+  — **ASTC 4x4 on the iPhone, BC7 on desktop** instead of the default ETC2 / DXT1 — mipmaps, no size
+  limit, and the normal map flagged as one. Every other character still takes Godot's defaults.
+- `--hair-density 0.85`: her curls carry highlights, so the hair gets 0.85 of the body's texels
+  (default 0.32). The close-up has 1418 texels per metre on the body, ~2980 on the face and ~1200
+  on the hair, all above the sculpt's own 802: the bake loses nothing the source had.
+- `--fringe`: hair hanging over the face keeps its strands through the collapse, and the bake
+  looks for hair on hair and skin on skin (`Sculpt.sample(want)`); without it the strands over her
+  forehead came out streaked with forehead skin.
+`character_rig.gd` now sets every character material to anisotropic filtering (glTF materials
+default to plain trilinear; the level, 16x on «فائق», comes from the viewport). `tools/tex.tscn`
+checks what the engine really imported: sizes 2048 / 4096, BC7 not DXT1, mipmaps, the ASTC copy
+in `.godot/imported`, anisotropic filtering. `check.yml` photographs her pose sheet through
+Forward+ (`tools/shot14.tscn`, `NF_SHEET` picks another character).
 
 ## The start screen (the camp), second pass
 - **Logo and opening shot**: `assets/ui/logo.png` (the owner's NightFall wordmark, cut out of

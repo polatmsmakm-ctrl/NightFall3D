@@ -407,6 +407,26 @@ def shrink_images(j, blob, side, T, F):
     return out
 
 
+HAIR_DENSITY = 0.32  # --hair-density
+FRINGE = False       # --fringe
+EXTERNAL = None  # --external: the output path; the maps are written beside it as lossless PNGs
+
+
+def write_import(png, normal=False):
+    """The .import Godot uses for one of these maps: VRAM-compressed at high quality (ASTC 4x4 on
+    the iPhone, BC7 on desktop, instead of ETC2 / DXT1), full mipmaps, never shrunk; the normal map
+    is flagged as one so it is compressed as a normal map."""
+    with open(png + '.import', 'w') as fh:
+        fh.write('[remap]\n\nimporter="texture"\ntype="CompressedTexture2D"\n\n[params]\n\n'
+                 'compress/mode=2\ncompress/high_quality=true\ncompress/lossy_quality=1.0\n'
+                 'compress/hdr_compression=1\ncompress/normal_map=%d\ncompress/channel_pack=0\n'
+                 'mipmaps/generate=true\nmipmaps/limit=-1\nroughness/mode=0\nroughness/src_normal=""\n'
+                 'process/fix_alpha_border=true\nprocess/premult_alpha=false\n'
+                 'process/normal_map_invert_y=false\nprocess/hdr_as_srgb=false\n'
+                 'process/hdr_clamp_exposure=false\nprocess/size_limit=0\ndetect_3d/compress_to=0\n'
+                 % (1 if normal else 2))
+
+
 # ------------------------------------------------------------------ the whole job
 def build(src, out_path, donor_path, faces, tex_side, facing='auto', arms=None, bake=False, chest=None, hair_lum=70.0):
     sj, sb = load(src)
@@ -441,6 +461,9 @@ def build(src, out_path, donor_path, faces, tex_side, facing='auto', arms=None, 
         import sys
         sys.path.insert(0, HERE)
         import rig_bake
+        rig_bake.LOSSLESS = EXTERNAL is not None
+        rig_bake.HAIR_DENSITY = HAIR_DENSITY
+        rig_bake.FRINGE = FRINGE
         P, T, F, N, TAN, pics, hair = rig_bake.run(P, T, F, rig_bake.source_images(sj, sb), faces, tex_side, pos, ix, hair_lum)
     else:
         P, T, F, N = decimate(P, T, F, faces, pos, ix)
@@ -475,7 +498,14 @@ def build(src, out_path, donor_path, faces, tex_side, facing='auto', arms=None, 
     if pics is None:
         pics = shrink_images(sj, sb, tex_side, T0, F0)
     out['images'] = []
-    for raw in pics:
+    for k, raw in enumerate(pics):
+        if EXTERNAL: # a PNG beside the GLB, with its own .import: Godot loads the texture it imported
+            name = '%s_%s.png' % (os.path.splitext(os.path.basename(EXTERNAL))[0], ('col', 'mr', 'nrm')[k] if len(pics) == 3 else k)
+            with open(os.path.join(os.path.dirname(os.path.abspath(EXTERNAL)), name), 'wb') as fh:
+                fh.write(raw)
+            write_import(os.path.join(os.path.dirname(os.path.abspath(EXTERNAL)), name), normal=(k == 2 and len(pics) == 3))
+            out['images'].append({'uri': name})
+            continue
         while len(blob) % 4:
             blob.append(0)
         views.append({'buffer': 0, 'byteOffset': len(blob), 'byteLength': len(raw)})
@@ -557,9 +587,22 @@ if __name__ == '__main__':
     ap.add_argument('--hair', type=float, default=70.0, metavar='0-255',
                     help="bake path: how dark (brightest colour channel) counts as hair; 70 for black hair, "
                          "about 120 for brown")
+    ap.add_argument('--hair-density', type=float, default=0.32,
+                    help='bake path: texels per metre on the hair against the body (0.32: hair is mostly one '
+                         'colour; raise it for curls with highlights)')
+    ap.add_argument('--fringe', action='store_true',
+                    help='bake path: hair hanging in front of the face keeps its strands, and texels look for hair on hair and skin on skin (otherwise strands are '
+                         'pinched like the rest of the hair and the bake paints the skin behind onto them)')
+    ap.add_argument('--external', action='store_true',
+                    help="bake path: write the maps as lossless PNGs beside the GLB (<out>_col/_mr/_nrm.png) "
+                         "with .import files that ask Godot for high-quality compression (ASTC 4x4 on iOS)")
     ap.add_argument('--bake', action='store_true',
                     help="no pymeshlab: collapse with tools/simplify.cpp, make a new atlas and bake the "
                          "sculpt's maps onto it (tools/rig_bake.py). For sculpts cut into thousands of UV islands")
     a = ap.parse_args()
     arms = tuple(float(v) for v in a.arms.split(',')) if a.arms else None
+    HAIR_DENSITY = a.hair_density
+    FRINGE = a.fringe
+    if a.external:
+        EXTERNAL = a.out
     build(a.src, a.out, a.donor, a.faces, a.tex, a.facing, arms, a.bake, a.chest, a.hair)

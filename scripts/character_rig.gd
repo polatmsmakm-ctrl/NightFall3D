@@ -32,6 +32,14 @@ func setup(char_name: String, anims: Array = ANIMS, close_up := false) -> void:
 	model = (load(body_path) as PackedScene).instantiate()
 	add_child(model)
 	NFLook.skin(model, body_path.get_file().get_basename()) # skin that lets light through, on Forward+
+	# anisotropic filtering on the character's maps: Godot's glTF materials default to plain trilinear,
+	# which smears the face, the fishnet and the buckles as soon as they are seen at an angle
+	# (the level comes from Gfx: the viewport is set to 16x on «فائق», 4x below it)
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
+		var mesh := (mi as MeshInstance3D).mesh
+		for s in (mesh.get_surface_count() if mesh else 0):
+			var mat := (mi as MeshInstance3D).get_active_material(s) as BaseMaterial3D
+			if mat: mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	skeleton = model.find_children("*", "Skeleton3D", true, false)[0]
 	player.name = "Anim"
 	model.add_child(player)

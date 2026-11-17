@@ -23,6 +23,11 @@ import numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
+LOSSLESS = False   # set by rig_character.py --external: the maps come out as PNG
+FRINGE = False     # rig_character.py --fringe: hair hanging over the face is kept, not pinched
+HAIR_DENSITY = 0.32  # texels per metre on hair, against the body (rig_character.py --hair-density)
+
+
 def log(*a):
     print(*a, flush=True)
 
@@ -349,13 +354,19 @@ class Sculpt:
         self.vf = -np.ones((len(self.Pw), 8), np.int64)
         self.vf[cs[keep], rank[keep]] = order[keep] // 3
         self.col, self.mr, self.nrm = images             # float32 arrays, 0..255 (mr / nrm may be None)
+        self.dark = None                                   # hair per welded vertex, set by run() with --fringe
 
-    def sample(self, p, n):
-        """For points p with surface normals n: colour, metallic-roughness and world normal there."""
+    def sample(self, p, n, want=None):
+        """For points p with surface normals n: colour, metallic-roughness and world normal there.
+        `want` (bool per point, with self.dark set): look for hair on hair and skin on skin, so a strand
+        lying a few millimetres over the forehead is not painted with the forehead."""
         M = len(p)
-        _, near = self.tree.query(p, k=4, workers=-1)
+        kk = 4 if want is None or self.dark is None else 10
+        _, near = self.tree.query(p, k=kk, workers=-1)
         facing = (self.Nw[near] * n[:, None, :]).sum(-1) > 0.0
-        key = np.arange(4)[None, :] + np.where(facing, 0, 10)      # the nearest that faces the same way
+        key = np.arange(kk)[None, :] + np.where(facing, 0, 10)     # the nearest that faces the same way
+        if kk > 4:
+            key = key + np.where(self.dark[near] == want[:, None], 0, 30)
         pick = np.take_along_axis(near, np.argsort(key, axis=1)[:, :2], axis=1)
         cand = self.vf[pick].reshape(M, 16)
         ok = cand >= 0
@@ -404,7 +415,7 @@ def grow(px, covered, steps):
     return px, covered
 
 
-def bake(V, N, T, F, tan, sculpt, side, out_side):
+def bake(V, N, T, F, tan, sculpt, side, out_side, hair=None):
     """Rasterise the new atlas and fill it from the sculpt. Returns [colour, metal-rough, normal] as JPEG bytes."""
     import cv2
     from PIL import Image
@@ -437,7 +448,10 @@ def bake(V, N, T, F, tan, sculpt, side, out_side):
         p = (V[ff] * bb).sum(1)
         n = (N[ff] * bb).sum(1)
         n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-20)
-        c_, m_, w_, d_ = sculpt.sample(p, n)
+        want = None
+        if hair is not None:
+            want = (hair[ff] * bb[..., 0]).sum(1) > 0.5
+        c_, m_, w_, d_ = sculpt.sample(p, n, want)
         far.append(d_)
         # the sculpt's normal, written in the frame the engine will rebuild at this texel
         t = (tan[ff, :3] * bb).sum(1)
@@ -476,7 +490,8 @@ def bake(V, N, T, F, tan, sculpt, side, out_side):
                 a /= np.maximum(np.linalg.norm(a, axis=2, keepdims=True), 1e-6)
                 pic = Image.fromarray(np.clip(a * 127.5 + 127.5 + 0.5, 0, 255).astype(np.uint8))
         buf = io.BytesIO()
-        pic.save(buf, format='JPEG', quality=90, optimize=True)
+        if LOSSLESS: pic.save(buf, format='PNG', optimize=True)   # --external: no JPEG step at all
+        else: pic.save(buf, format='JPEG', quality=90, optimize=True)
         out.append(buf.getvalue())
     return out
 
@@ -528,8 +543,17 @@ def run(P, T, F, images, faces, tex_side, pos, ix, hair_lum=70.0):
     weight = np.ones(len(Pw), np.float32)
     weight[dark] = 0.25                  # hair: a soft mass, not the place for triangles
     weight[(lum >= hair_lum) & (Pw[:, 1] > neck) & (np.abs(Pw[:, 0]) < reach)] = 7.0  # the face
+    soft = dark
+    if FRINGE:
+        # strands over the forehead and the cheeks: pinched shut, the texels on them land on the skin
+        # behind and the fringe comes out as white streaks. Keep them as real geometry instead.
+        head = pos[ix['Head']]
+        fringe = dark & (Pw[:, 1] > neck) & (np.abs(Pw[:, 0]) < 0.12) & (Pw[:, 2] > head[2] + 0.03)
+        weight[fringe] = 4.0
+        soft = dark & ~fringe
+        log('   fringe: %d sculpt vertices of hair over the face kept as strands' % int(fringe.sum()))
     log('   collapsing %d faces to %d (body %d, head %d, hands %d, feet %d)' % ((len(Fw), faces) + tuple(targets)))
-    V, G = simplify(Pw, Fw, region, targets, weight, dark)
+    V, G = simplify(Pw, Fw, region, targets, weight, soft)
     log('   mesh: %d faces, %d vertices' % (len(G), len(V)))
     # hair and skin on the small mesh, from the sculpt around each vertex
     _, near = sculpt.tree.query(V, k=12, workers=-1)
@@ -539,11 +563,13 @@ def run(P, T, F, images, faces, tex_side, pos, ix, hair_lum=70.0):
     fy = V[G][:, :, 1].mean(1)
     fx = np.abs(V[G][:, :, 0]).mean(1)
     density = np.ones(len(G))
-    density[fh > 0.6] = 0.32                 # hair is one dark colour: it needs few texels
+    density[fh > 0.6] = HAIR_DENSITY         # hair is mostly one dark colour: it needs fewer texels
     density[(fh < 0.4) & (fy > neck) & (fx < reach)] = 2.1  # the face gets the most
     side = max(tex_side, 2048)                               # bake large, shrink after: free supersampling
     vmap, UV, F2 = unwrap(V, G, side, density, pad=2 * side // 1024, cell=2 * side // 1024)
     V2, N2 = V[vmap], Nv[vmap]
     tan = tangents(V2, N2, UV, F2)
-    pics = bake(V2, N2, UV, F2, tan, sculpt, side, tex_side)
+    if FRINGE:
+        sculpt.dark = dark
+    pics = bake(V2, N2, UV, F2, tan, sculpt, side, tex_side, hair_v[vmap] if FRINGE else None)
     return V2, UV, F2, N2, tan, pics, hair_v[vmap]
