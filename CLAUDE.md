@@ -459,9 +459,10 @@ The owner asked for a high-end look. The project now runs **Forward+ on the phon
   through `application/config/project_settings_override`) and the next launch runs the old Mobile
   renderer, where none of the above runs and the game looks as it did. «عالي (فخم)» deletes it.
 - **Sharper bakes** (same switches as before, only resolution): killer and survivors 4/5/7 at
-  2048 in the round and 4096 / 100k triangles for `_hi`; the cabin 60k / 4096; the gate 4096 (on all
-  of these only the colour map stays at 4096: `tools/glb_texsize.py --max 2048 --keep-color` halved
-  the normal and metal-rough maps, or the IPA passed 500 MB, which is too big to send in chat); the
+  2048 in the round and 4096 / 100k triangles for `_hi`; the cabin 60k / 4096; the gate 4096 (every map
+  at full size: the IPA is ~525 MB, too big to send in chat, so the owner downloads it from the
+  GitHub release. `tools/glb_texsize.py --max 2048 --keep-color` halves the normal and metal-rough
+  maps and brings it to ~400 MB if it ever has to be smaller); the
   gallows, campfire and fortress wall at 2048. Survivors 1/2/3/6/8, the car, the tent and the
   generator keep their old files: their sculpts (or their exact bake switches) are not here.
 - `tools/shot18.tscn` photographs the camp, the stand and every map (a survivor at a generator,
