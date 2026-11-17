@@ -8,7 +8,7 @@ class_name NFLook
 ## rate cannot keep up, so the heavy ones go first):
 ##   0  glow only
 ##   1  + ambient occlusion, volumetric fog, shadows from the torch and the headlights
-##   2  + bounced light (SSIL), global illumination over the map (SDFGI), reflections in the car park
+##   2  + bounced light (SSIL), reflections in the car park (SDFGI is off: it broke on the iPhone)
 
 static func hd() -> bool:
 	return RenderingServer.get_current_rendering_method() == "forward_plus"
@@ -35,9 +35,10 @@ static func apply(env: Environment, kind: String) -> void:
 	env.ssil_normal_rejection = 1.0
 	# global illumination over the whole map, worked out live (the maps change every round, so it
 	# cannot be baked)
-	# (daylight and the strip-lit car park only: on the moonlit maps it washed the white walls out,
-	# and the lamps' bounce there comes from SSIL instead)
-	env.sdfgi_enabled = fx >= 2 and kind in ["day", "garage"]
+	# OFF: on the iPhone (Metal) it drew the Empty Quarter's sand as black blocks that moved with the
+	# camera (the owner's screen recording, 17 Nov 2026), although lavapipe drew it cleanly. The
+	# settings below stay so it can be tried again on a later Godot; SSIL carries the bounce light.
+	env.sdfgi_enabled = false
 	env.sdfgi_use_occlusion = true
 	env.sdfgi_read_sky_light = kind == "day"
 	env.sdfgi_bounce_feedback = 0.45
