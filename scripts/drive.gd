@@ -227,8 +227,8 @@ func _hands() -> void:
 	glove.albedo_color = Color(0.07, 0.055, 0.055)
 	glove.roughness = 0.55
 	var sleeve := StandardMaterial3D.new()
-	sleeve.albedo_color = Color(0.3, 0.035, 0.045)
-	sleeve.roughness = 0.9
+	sleeve.albedo_color = Color(0.11, 0.018, 0.022) # her robe: a dark, dried crimson
+	sleeve.roughness = 0.92
 	var n := STEER_AXIS.normalized()
 	var up := (Vector3.UP - n * n.y).normalized()
 	var lx := (Vector3.RIGHT - n * n.x).normalized()   # +x: the driver's left
@@ -255,7 +255,7 @@ func _hands() -> void:
 		steer_node.add_child(knuckle)
 		hands.append([g, side])
 		var arm := []
-		for r in [0.05, 0.042]:
+		for r in [0.043, 0.036]:
 			var mi := MeshInstance3D.new()
 			var c2 := CapsuleMesh.new()
 			c2.radius = r
