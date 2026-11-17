@@ -94,6 +94,7 @@ func _ready() -> void:
 	await frames(150)
 	var sp: float = car.speed
 	check(sp > 6.0 or flat(car.position, start) > 12.0, "gas: %.1f m/s, %.1f m" % [sp, flat(car.position, start)])
+	check(absf(car.spin) > 0.01, "the wheels turn while it drives (%.2f rad)" % car.spin)
 	for i in car.get_slide_collision_count(): # what it is pushing against, if anything
 		var col := car.get_slide_collision(i)
 		print("   touching ", (col.get_collider() as Node).get_path() if col.get_collider() is Node else "?", " normal ", col.get_normal().snappedf(0.01))
@@ -115,6 +116,35 @@ func _ready() -> void:
 	check(absf(m.cam_pivot.position.y - 1.6) < 0.01, "the camera is back at his own eyes")
 	check(flat(m.body.position, car.position) > 1.4, "standing beside it, not inside it (%.1f m)" % flat(m.body.position, car.position))
 	check(not m.cshape.disabled, "the killer's body is solid again")
+	# the wheels roll and steer (car_drive.glb has them on their own axles)
+	check(car.wheels.size() == 4, "the car has four wheels on axles (%d)" % car.wheels.size())
+	# carry a downed survivor to the car, drive to a hook, hang them from the driver's seat
+	m.rules.s["D"].hp = "down"
+	d.pos = m.body.position + Vector3(1.0, 0, 0)
+	d.node.position = d.pos
+	await frames(4)
+	m._ev({"k": "pickup", "n": "D"})
+	await frames(4)
+	check(m.rules.carrying == "D", "picked the survivor up")
+	m.body.position = car.position + car.global_basis.x * 2.4 + Vector3(0, 0.3, 0)
+	await frames(6)
+	check(m.ctx.get("interact", {}).get("kind", "") == "car_in" and m.ctx.interact.label == "حطّه بالسيارة", "carrying, next to the car: «حطّه بالسيارة»")
+	m._press("interact", 5)
+	await frames(30)
+	check(m.driving and m.rules.carrying == "D", "in the car with the survivor")
+	var cargo: Vector3 = car.model.global_transform * NFCar.CARGO
+	check(d.node.position.distance_to(cargo) < 0.8, "the survivor lies in the back (%.2f m off)" % d.node.position.distance_to(cargo))
+	var hk: Vector3 = m.world.hook_points[0]
+	car.position = hk + Vector3(3.0, 0.3, 0)
+	await frames(10)
+	check(m.ctx.get("interact", {}).get("kind", "") == "car_hook", "pulled up at a hook: «انزل وعلّق» (%s)" % m.ctx.get("interact", {}).get("kind", ""))
+	m._press("interact", 5)
+	await frames(10)
+	check(m.rules.hp("D") == "hooked" and not m.driving and m.rules.carrying == "", "hung on the hook straight from the car: %s" % m.rules.hp("D"))
+	car.position = home
+	car.rotation.y = home_yaw
+	m.body.position = car.position + car.global_basis.x * 2.4 + Vector3(0, 0.3, 0)
+	await frames(6)
 	var parked: Vector3 = car.position
 	m.stick_vec = Vector2(0, -1)
 	await frames(60)

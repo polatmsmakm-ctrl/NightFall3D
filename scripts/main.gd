@@ -1401,12 +1401,19 @@ func _update_ctx() -> void:
 				if world.is_outside_gate(i, pos): _ev({"k": "escape"})
 		if rules.hatch >= 0 and _near(pos, world.hatch_points[rules.hatch], 1.5): _ev({"k": "escape", "h": true})
 	elif driving:
-		if rules.stun <= 0.0: ctx.interact = {"kind": "car_out", "label": "انزل"}
+		if rules.stun <= 0.0:
+			ctx.interact = {"kind": "car_out", "label": "انزل"}
+			if rules.carrying != "": # a survivor in the back: pull up at a hook and hang them straight away
+				for i in world.hook_points.size():
+					if rules.hook_user(i) == "" and _near(pos, world.hook_points[i], 4.0):
+						ctx.interact = {"kind": "car_hook", "label": "انزل وعلّق", "i": i}
 	elif rules.stun <= 0.0:
 		if rules.carrying != "":
 			for i in world.hook_points.size():
 				if rules.hook_user(i) == "" and _near(pos, world.hook_points[i], 3.2):
 					ctx.interact = {"kind": "hook", "label": "علّق", "i": i}
+			if not ctx.has("interact") and car and _near(pos, car.position, 3.6): # throw them in the back
+				ctx.interact = {"kind": "car_in", "label": "حطّه بالسيارة"}
 			return
 		for n in rules.s:
 			if rules.s[n].hp == "down" and _near(pos, _pos_of(n), 2.7): ctx.interact = {"kind": "pickup", "label": "احمل", "n": n}
@@ -1483,6 +1490,9 @@ func _press(id: String, touch: int) -> void:
 				"vault": _start_vault(c)
 				"car_in": _enter_car()
 				"car_out": _exit_car()
+				"car_hook": # the hook first, while the server still has me at the car, then out
+					_ev({"k": "hook", "i": c.i})
+					_exit_car()
 				_:
 					hold = {"btn": id, "kind": c.kind, "touch": touch, "t": 0.0, "need": float(c.get("need", -1.0)), "i": int(c.get("i", -1)), "n": str(c.get("n", ""))}
 					if c.kind == "rep":
@@ -1597,8 +1607,16 @@ func _yaw_of(n: String) -> float:
 
 ## Where a carried survivor sits: lying across the killer's arms, just in front of his chest.
 func _carry_spot() -> Vector3:
+	if _in_car(rules.killer): # lying in the back of his car
+		return car.model.global_transform * NFCar.CARGO
 	var ky := _yaw_of(rules.killer)
 	return _pos_of(rules.killer) + Basis(Vector3.UP, ky) * Vector3(0, 0, 0.5)
+
+## Is this player at the wheel of the car (me, or a remote killer whose `st` says "drive")?
+func _in_car(n: String) -> bool:
+	if car == null or n == "": return false
+	if n == my_name: return driving
+	return remotes.has(n) and remotes[n].anim == "drive"
 
 # ---------------- per-frame ----------------
 func _process(dt: float) -> void:
@@ -1639,7 +1657,9 @@ func _process(dt: float) -> void:
 		var target: Vector3 = r.pos
 		var lift := 0.0
 		var face: float = r.yaw
-		if st == "carried":
+		if st == "carried" and _in_car(rules.killer):
+			target = _carry_spot(); anim = "dying"; face = car.rotation.y # lying in the back of the car
+		elif st == "carried":
 			target = _carry_spot(); lift = 0.12; anim = "carried"
 			face = _yaw_of(rules.killer) + PI / 2.0
 		elif st == "hooked":
@@ -1820,6 +1840,11 @@ func _physics_process(delta: float) -> void:
 	if spectating != "":
 		body.position = _pos_of(spectating)
 		rig.visible = false
+	elif my_state == "carried" and _in_car(rules.killer): # thrown in the back of his car
+		body.position = _carry_spot()
+		rig.position.y = 0.0
+		rig.rotation.y = car.rotation.y
+		rig.play("dying")
 	elif my_state == "carried":
 		body.position = _carry_spot()
 		rig.position.y = 0.12
@@ -1884,7 +1909,7 @@ func _physics_process(delta: float) -> void:
 
 # ---------------- the killer's car ----------------
 func _enter_car() -> void:
-	if car == null or driving or rules.carrying != "" or my_role != "killer": return
+	if car == null or driving or my_role != "killer": return
 	_end_hold()
 	attack_t = 0.0
 	vault = {}

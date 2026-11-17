@@ -3071,7 +3071,7 @@ func _place_drive_car() -> void:
 	drive_car.position = pick[0] + Vector3(0, 0.05, 0)
 	drive_car.rotation.y = pick[1]
 	add_child(drive_car)
-	drive_car.setup(_model("car"), CAR_SCALE, _model("cabin"))
+	drive_car.setup(_model("car_drive") if _model("car_drive") else _model("car"), CAR_SCALE, _model("cabin")) # the detailed one, wheels on axles
 
 ## Nothing solid in a car-sized box over this spot. The box starts 0.35 m above the ground, so
 ## ground that rises more than that under the car (a dune, a kerb, a step) counts as in the way.

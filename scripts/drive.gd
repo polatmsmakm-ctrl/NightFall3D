@@ -19,6 +19,9 @@ const LIGHT_ENERGY := 15.0
 # its floor on the body's floor, its dashboard against the bottom of the windscreen
 const CABIN_AT := Vector3(0.0, 0.5, 0.15)
 const EYE := Vector3(0.42, 1.5, -0.3) # the driver's eyes: left-hand seat, under the 1.68 m roof
+const CARGO := Vector3(0.0, 0.62, -1.3) # where a carried survivor lies: the load floor behind the seats
+const WHEEL_R := 0.41                   # tyre radius in the model's metres (x CAR_SCALE in the game)
+const STEER_MAX := 0.55                 # how far the front wheels turn, radians
 
 var speed := 0.0          # along the car's own +z (its front); negative in reverse
 var steer := 0.0
@@ -33,6 +36,13 @@ var radio_on := false     # the switch; it only plays while someone is at the wh
 var _radio_started := false
 var inside: Node3D        # the cabin + headliner + pillars, only shown to the killer while he drives
 var _last := Vector3.ZERO # remote phones work the speed out from how far it moved
+var _last_yaw := 0.0
+var _scale := 1.0
+var wheels := []          # [node, front?] — the four wheels of car_drive.glb, turned every frame
+var spin := 0.0           # how far the wheels have rolled (radians)
+var frame_node: Node3D    # the body, leaned in turns and dipped under braking
+var lean := Vector2.ZERO  # x: roll, y: pitch (radians), eased
+var _prev_speed := 0.0
 
 func setup(ps: PackedScene, scale_k: float, cabin_ps: PackedScene = null) -> void:
 	floor_snap_length = 0.7
@@ -59,10 +69,15 @@ func setup(ps: PackedScene, scale_k: float, cabin_ps: PackedScene = null) -> voi
 	add_child(cab)
 	model = Node3D.new()
 	add_child(model)
+	_scale = scale_k
 	if ps:
 		var n := ps.instantiate() as Node3D
 		n.scale = Vector3.ONE * scale_k
 		model.add_child(n)
+		for nm in ["wheel_fl", "wheel_fr", "wheel_rl", "wheel_rr"]: # car_drive.glb: wheels on their own axles
+			var w := n.find_child(nm, true, false) as Node3D
+			if w: wheels.append([w, nm.begins_with("wheel_f")])
+		frame_node = n.find_child("frame", true, false) as Node3D
 	else: # no model file: a plain dark box, so the round still works
 		var mi := MeshInstance3D.new()
 		var bm := BoxMesh.new()
@@ -177,8 +192,8 @@ func drive(throttle: float, turn: float, dt: float) -> void:
 	else:
 		speed = move_toward(speed, 0.0, COAST * dt)
 	steer = move_toward(steer, clampf(turn, -1.0, 1.0), 4.0 * dt)
-	# a car turns only while it rolls, and the other way round in reverse
-	var k := clampf(absf(speed) / 4.0, 0.0, 1.0) * signf(speed)
+	# a car turns only while it rolls, the other way round in reverse, and less sharply flat out
+	var k := clampf(absf(speed) / 4.0, 0.0, 1.0) * signf(speed) * lerpf(1.0, 0.62, clampf(absf(speed) / MAX_FWD, 0.0, 1.0))
 	rotation.y = wrapf(rotation.y - steer * TURN * k * dt, -PI, PI)
 	var fall := velocity.y
 	var f := forward()
@@ -207,16 +222,25 @@ func follow(at: Vector3, yaw: float, dt: float) -> void:
 	var w := 1.0 - exp(-12.0 * dt)
 	position = position.lerp(at, w)
 	rotation.y = lerp_angle(rotation.y, yaw, w)
-	var moved := Vector2(position.x - _last.x, position.z - _last.z).length()
-	speed = lerpf(speed, moved / maxf(dt, 0.001), 1.0 - exp(-6.0 * dt))
+	var step := Vector2(position.x - _last.x, position.z - _last.z)
+	var fwd := forward()
+	var sgn := 1.0 if step.dot(Vector2(fwd.x, fwd.z)) >= 0.0 else -1.0
+	speed = lerpf(speed, sgn * step.length() / maxf(dt, 0.001), 1.0 - exp(-6.0 * dt))
+	# the steering the driver must have used, from how fast it turned
+	var yaw_rate := wrapf(rotation.y - _last_yaw, -PI, PI) / maxf(dt, 0.001)
+	var kk := clampf(absf(speed) / 4.0, 0.15, 1.0) * (1.0 if speed >= 0.0 else -1.0)
+	steer = lerpf(steer, clampf(-yaw_rate / (TURN * kk), -1.0, 1.0), 1.0 - exp(-8.0 * dt))
 	_last = position
+	_last_yaw = rotation.y
 	_tilt(_ground_normal(), dt)
 	_effects(dt)
 
 ## Nobody in it: lights off, engine off, and it sits where it was left.
 func park(dt: float) -> void:
 	speed = 0.0
+	steer = move_toward(steer, 0.0, 2.0 * dt)
 	_last = position
+	_last_yaw = rotation.y
 	_effects(dt)
 
 func _tilt(n: Vector3, dt: float) -> void:
@@ -232,7 +256,28 @@ func _ground_normal() -> Vector3:
 	var hit := space.intersect_ray(q)
 	return hit.normal if not hit.is_empty() else Vector3.UP
 
+## Wheels roll with the speed and the front pair steers; the body leans out of a turn, dips its
+## nose when braking and squats when pulling away (only the body: the wheels stay on the ground).
+func _animate(dt: float) -> void:
+	spin = wrapf(spin + speed / (WHEEL_R * _scale) * dt, -TAU, TAU)
+	for e in wheels:
+		var w: Node3D = e[0]
+		var a := steer * -STEER_MAX if e[1] else 0.0 # stick right = turn right = wheels toward -x
+		w.basis = Basis(Vector3.UP, a) * Basis(Vector3.RIGHT, spin)
+	var accel := (speed - _prev_speed) / maxf(dt, 0.001)
+	_prev_speed = speed
+	var want := Vector2(steer * clampf(absf(speed) / MAX_FWD, 0.0, 1.0) * 0.055,
+		clampf(-accel * 0.006, -0.05, 0.05))
+	lean = lean.lerp(want, 1.0 - exp(-5.0 * dt))
+	var tilt := Transform3D(Basis(Vector3.FORWARD, lean.x) * Basis(Vector3.RIGHT, lean.y), Vector3.ZERO)
+	var pivot := Transform3D(Basis(), Vector3(0, 0.8, 0))
+	var t := pivot * tilt * pivot.affine_inverse()
+	if frame_node:
+		frame_node.transform = t
+		inside.transform = t
+
 func _effects(dt: float) -> void:
+	_animate(dt)
 	var on := 1.0 if driven else 0.0
 	lights.light_energy = lerpf(lights.light_energy, LIGHT_ENERGY * on, 1.0 - exp(-6.0 * dt))
 	lights.visible = lights.light_energy > 0.05

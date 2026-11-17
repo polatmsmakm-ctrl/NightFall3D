@@ -13,6 +13,13 @@ normal baked from the full sculpt. On top of that:
     material's emission texture;
   * `--split X,Y`: faces with |x| < X and y < Y become two extra meshes, `leaf_l` and `leaf_r`
     (x < 0 / x > 0), next to `frame`. The exit gate uses it: its two leaves slide apart.
+  * `--wheels YF,ZF,YR,ZR,R,XIN`: a car's four wheels become their own meshes, `wheel_fl`,
+    `wheel_fr`, `wheel_rl`, `wheel_rr` (front = +z, left = +x, the driver's side of a car facing
+    +z), each with its node on the axle (y, z of the front/rear centre, x at the middle of the
+    tyre) so the game can spin and steer it. A face is a wheel's when it lies further out than
+    XIN and within R of that axle. The rest stays `frame`.
+
+Every bake writes its own command line into the GLB (asset.extras.bake), so it can be repeated.
 
 Every mesh lands as its own node under one root, with one shared material.
 Needs numpy, scipy, opencv, pillow and a C++ compiler.
@@ -80,7 +87,11 @@ def write_glb(path, parts, pics, emissive):
         return len(accs) - 1
 
     meshes, nodes = [], []
-    for name, (V, N, TAN, T, F) in parts:
+    for part in parts:
+        name, (V, N, TAN, T, F) = part[0], part[1]
+        origin = part[2] if len(part) > 2 else None
+        if origin is not None:
+            V = V - np.asarray(origin)
         p = put(V.astype('<f4').tobytes(), len(V), 5126, 'VEC3', 34962, V.min(0).tolist(), V.max(0).tolist())
         n = put(N.astype('<f4').tobytes(), len(N), 5126, 'VEC3', 34962)
         t = put(TAN.astype('<f4').tobytes(), len(TAN), 5126, 'VEC4', 34962)
@@ -89,6 +100,8 @@ def write_glb(path, parts, pics, emissive):
         meshes.append({'name': name, 'primitives': [{'attributes': {'POSITION': p, 'NORMAL': n, 'TANGENT': t, 'TEXCOORD_0': u},
                                                       'indices': i, 'material': 0}]})
         nodes.append({'name': name, 'mesh': len(meshes) - 1})
+        if origin is not None:
+            nodes[-1]['translation'] = [float(v) for v in origin]
     images = []
     for pic in pics:
         while len(blob) % 4:
@@ -103,7 +116,8 @@ def write_glb(path, parts, pics, emissive):
         mat['emissiveTexture'] = {'index': 3}
         mat['emissiveFactor'] = [1.0, 1.0, 1.0]
     nodes.append({'name': 'prop', 'children': list(range(len(parts)))})
-    out = {'asset': {'version': '2.0', 'generator': 'NightFall tools/prop_bake.py'},
+    out = {'asset': {'version': '2.0', 'generator': 'NightFall tools/prop_bake.py',
+                     'extras': {'bake': ' '.join(sys.argv[1:])}},
            'scene': 0, 'scenes': [{'nodes': [len(nodes) - 1]}], 'nodes': nodes, 'meshes': meshes,
            'materials': [mat], 'samplers': [{}], 'textures': [{'source': k, 'sampler': 0} for k in range(len(images))],
            'images': images, 'bufferViews': views, 'accessors': accs, 'buffers': [{'byteLength': len(blob)}]}
@@ -200,6 +214,7 @@ def main():
     ap.add_argument('--emit-box', default=None, metavar='X0,Y0,Z0,X1,Y1,Z1', help='with --reglow: bright texels inside this box (metres) glow')
     ap.add_argument('--reglow', action='store_true', help='only recompute the glow map of an existing OUT (src is ignored)')
     ap.add_argument('--split', default=None, metavar='X,Y', help='gate leaves: |x| < X and y < Y, in metres')
+    ap.add_argument('--wheels', default=None, metavar='YF,ZF,YR,ZR,R,XIN', help='a car: cut the four wheels out, each on its own axle node')
     a = ap.parse_args()
     if a.reglow:
         return reglow(a)
@@ -220,6 +235,18 @@ def main():
         part[inner & (c[:, 0] < 0)] = 1
         part[inner & (c[:, 0] >= 0)] = 2
         names = ['frame', 'leaf_l', 'leaf_r']
+    origins = {}
+    if a.wheels:
+        yf, zf, yr, zr, wr, xin = (float(v) for v in a.wheels.split(','))
+        names = ['frame']
+        for tag, (wy, wz) in (('f', (yf, zf)), ('r', (yr, zr))):
+            for side, sg in (('l', 1.0), ('r', -1.0)):
+                sel = (c[:, 0] * sg > xin) & (np.hypot(c[:, 1] - wy, c[:, 2] - wz) < wr) & (part == 0)
+                names.append('wheel_%s%s' % (tag, side))
+                part[sel] = len(names) - 1
+                xs = c[sel, 0]
+                origins[names[-1]] = [float((xs.min() + xs.max()) / 2.0) if len(xs) else sg * 0.8, wy, wz]
+                print('   %s: %d faces, axle at x %.2f' % (names[-1], int(sel.sum()), origins[names[-1]][0]), flush=True)
     area = np.linalg.norm(np.cross(Pw[Fw[:, 1]] - Pw[Fw[:, 0]], Pw[Fw[:, 2]] - Pw[Fw[:, 0]]), axis=1)
     share = np.array([area[part == k].sum() for k in range(len(names))])
     share = share / share.sum()
@@ -261,7 +288,7 @@ def main():
     for k, nm in enumerate(names):
         fk = F2[fid == k]
         used, local = np.unique(fk.reshape(-1), return_inverse=True)
-        parts.append((nm, (V2[used], N2[used], TAN[used], UV[used], local.reshape(-1, 3))))
+        parts.append((nm, (V2[used], N2[used], TAN[used], UV[used], local.reshape(-1, 3)), origins.get(nm)))
     write_glb(a.out, parts, pics, emissive)
     print('wrote %s: %.2f MB, %d faces' % (a.out, os.path.getsize(a.out) / 1e6, len(F2)), flush=True)
 
