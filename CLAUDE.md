@@ -430,13 +430,21 @@ objectives and out of the lagoon. Every phone runs the same search, so they all 
   rad) and leans the body (`frame` and the cabin, not the wheels) out of turns and on the brakes;
   other phones get the speed sign and the steering from how the car moves and turns. Steering is
   gentler flat out. The parked cars keep `car.glb` (one mesh: the garage draws it as a MultiMesh).
-- **Carrying in the car**: the killer can get in while carrying («حطّه بالسيارة»); the survivor lies in
-  the back (`NFCar.CARGO`, the `dying` pose) on every phone, through `main._in_car()` /
-  `_carry_spot()`. Near a free hook (4 m) the button is «انزل وعلّق» (`car_hook`): it sends `hook`
+- **Carrying in the car**: the killer can get in while carrying («حطّه بالسيارة»); the survivor rides
+  **slumped in the passenger seat** on every phone (`NFCar.seat_spot()`, hips at `SEAT_HIPS`, the
+  `slump` pose posed in code in `character_rig.gd` like the emotes, at `VICTIM_SCALE` 0.82: our
+  characters are 1.9 m and the car is 0.9 of a real one, and at that scale head and feet stay
+  between the floor and the 1.68 m roof — measured offline on every character), through
+  `main._in_car()` / `_carry_spot()`; the node or rig scale goes back to 1 outside the car. Near a free hook (4 m) the button is «انزل وعلّق» (`car_hook`): it sends `hook`
   first, while the server still has the killer at the car (its reach is 4.5 m), then gets out.
   No server change. A pallet stun while carrying still drops them, as on foot.
 - **The cabin**: `assets/props/cabin.glb` (120k, 4096, the owner's Mud-Caked Toyota Cabin, baked with
-  `prop_bake.py --faces 120000 --tex 4096 --width 1.5 --yaw 180`; left-hand drive) sits in the body at
+  `prop_bake.py --faces 120000 --tex 4096 --width 1.5 --yaw 180 --part
+  steer,0.394,0.48,0.079,0.25,0.004,-0.39,0.921,0.07`: the **steering wheel is its own node `steer`**
+  on its column axis `NFCar.STEER_AXIS`, turned `STEER_TURNS` 2.3 rad at full lock; left-hand
+  drive). The model has **no seats**: `NFCar._seats()` builds both front seats (cushion, reclined
+  back, headrest). `_hands()` puts the killer's gloves on the rim at ten to two (they ride with
+  the wheel) and `_arms()` re-aims the crimson sleeves from the shoulders every frame. sits in the body at
   `NFCar.CABIN_AT` (floor 0.5 m, dashboard against the windscreen). The killer drives **from the
   seat** by default (`NFCar.EYE`, 1.5 m up under the 1.68 m roof): the body's own faces point
   outward and are culled from inside, so the windows are clear and the bonnet stays in view;
@@ -448,8 +456,14 @@ objectives and out of the lagoon. Every phone runs the same search, so they all 
   is «الراديو» / «سكّر الراديو» (green ring while it plays); off by default, and off pauses it.
   It plays only while someone is at the wheel. **No server change**: the killer has no torch, so
   his `st` `f` flag carries the radio switch and every phone plays it from the car.
+- **Feel**: a stronger pull off the line that tapers near top speed; the body sits on a damped spring
+  (`bob`) kicked by bumps, shivers with the engine, and the driver's eye (`eye()`) rides with all of
+  it and with the lean; dust (`_puffs`, the map's colour, not in the car park) off the rear when
+  over 2.5 m/s, exhaust smoke while it runs. **Speedometer** (`main._draw_speedo`): a 0-60 km/h
+  dial bottom centre while driving, red band at 50, eased needle, figures and D / R.
 - Silent until `assets/sfx/engine.mp3` exists (looped, pitch follows speed). `tools/drive.tscn`
-  tests the whole loop (wheels, carrying, hooking from the seat); shot17 photographs it.
+  tests the whole loop (wheels, steering wheel, hands, speedometer, the seat, hooking from the
+  seat); `tools/shot19.tscn` photographs the driver's seat through Forward+.
 - Every `prop_bake.py` output now carries its own command line in `asset.extras.bake`.
 
 ## The high-end pass (Forward+, `scripts/look_hd.gd`, `NFLook`)
@@ -491,13 +505,15 @@ The owner and his friends play on the iPhone 18 Pro Max and an M2 iPad Pro. `Gfx
 (iPhone16,x = 15 Pro and later, iPad13,x = M1 and later, from `OS.get_model_name()`; `NF_STRONG=1`
 fakes it) makes the phone start on «فائق» once (`tier` in graphics.cfg; afterwards the player's
 choice stands), and while it is on «فائق» (`Gfx.maxed()`):
-- full-resolution high SSAO, volumetric fog 96³, medium subsurface scattering, 16x anisotropic
-  filtering, `mesh_lod_threshold` 0.4, moon/sun **4 shadow cascades out to 130 m**, grass 1.6x
-  thicker and drawn to 62 m, and **every character in the round uses its `_hi` model**
+- high SSAO, medium subsurface scattering, 16x anisotropic filtering, moon/sun **4 shadow
+  cascades**, grass 1.6x thicker and drawn to 62 m, and **every character in the round uses its `_hi` model**
   (`main.hd_chars()`; the 100k close-up with the 4096 colour map).
-- **120 Hz**: `export_presets.cfg` adds `CADisableMinimumFrameDurationOnPhone` to Info.plist (without
-  it iOS holds every iPhone app at 60), and «تلقائي» follows the screen. The governor now gives up
-  the frame rate first (120 -> 60) and only then the resolution, shadows and effects.
+- **A locked 60** (the owner's choice: "really smooth, always, on ultra"): strong devices start on
+  «فائق» at 60 fps with MSAA 2x (`TIER` 2 re-applies this once). The 120 Hz Info.plist key was
+  taken out again, so iOS paces the app at an even 60. Below 100% the picture is upscaled with FSR.
+  On «فائق»: SSAO high at half resolution, volumetric fog 64³, 4 shadow cascades to 100 m,
+  `mesh_lod_threshold` 0.7. The governor gives up the resolution first (to 85%, FSR), then shadows,
+  then effects — and now brings them back again after a long smooth stretch (`_step_up`).
 - The app is still **iPhone only** (`targeted_device_family=0`): on the iPad it runs in the iPhone
   window. Native iPad (2) needs the 4:3 layout checked first.
 `check.yml` runs `drive` a second time with `NF_STRONG=1`.
