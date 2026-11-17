@@ -2310,7 +2310,7 @@ func _apply_quality() -> void:
 	moon.directional_shadow_max_distance = [30.0, 50.0, 70.0][sh]
 	if Gfx.maxed(): # four cascades: crisp shadows close by and shadows twice as far out
 		moon.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
-		moon.directional_shadow_max_distance = 130.0
+		moon.directional_shadow_max_distance = 100.0 # the fog swallows anything further
 
 func _process(_dt: float) -> void:
 	var t := Time.get_ticks_msec() / 1000.0
@@ -3071,7 +3071,10 @@ func _place_drive_car() -> void:
 	drive_car.position = pick[0] + Vector3(0, 0.05, 0)
 	drive_car.rotation.y = pick[1]
 	add_child(drive_car)
-	drive_car.setup(_model("car_drive") if _model("car_drive") else _model("car"), CAR_SCALE, _model("cabin")) # the detailed one, wheels on axles
+	var dust_col: Color = {"rubkhali": Color(0.78, 0.64, 0.45), "beach": Color(0.8, 0.72, 0.58),
+		"forest": Color(0.36, 0.3, 0.24)}.get(map_id, Color(0.6, 0.54, 0.46))
+	drive_car.setup(_model("car_drive") if _model("car_drive") else _model("car"), CAR_SCALE, _model("cabin"),
+		dust_col, map_id != "garage") # the detailed one, wheels on axles; no dust off the car park's concrete
 
 ## Nothing solid in a car-sized box over this spot. The box starts 0.35 m above the ground, so
 ## ground that rises more than that under the car (a dune, a kerb, a step) counts as in the way.

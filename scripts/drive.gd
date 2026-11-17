@@ -19,7 +19,17 @@ const LIGHT_ENERGY := 15.0
 # its floor on the body's floor, its dashboard against the bottom of the windscreen
 const CABIN_AT := Vector3(0.0, 0.5, 0.15)
 const EYE := Vector3(0.42, 1.5, -0.3) # the driver's eyes: left-hand seat, under the 1.68 m roof
-const CARGO := Vector3(0.0, 0.62, -1.3) # where a carried survivor lies: the load floor behind the seats
+const CARGO := Vector3(0.0, 0.62, -1.3) # (old) the load floor behind the seats
+## A carried survivor rides in the passenger seat (right-hand side; the car is left-hand drive),
+## slumped (CharacterRig "slump") at 0.82 of their size: our characters are 1.9 m tall and the car
+## is 0.9 of a real one, and at that scale head and feet stay between the floor and the roof.
+const SEAT_HIPS := Vector3(-0.42, 1.0, -0.30)
+const VICTIM_SCALE := 0.82
+const HIPS_Y := 1.06                    # the Mixamo hips height every character shares, standing
+# the steering wheel cut out of the cabin (cabin.glb node `steer`): its axis in cabin space
+const STEER_AXIS := Vector3(0.004, -0.39, 0.921)
+const STEER_TURNS := 2.3                # radians of wheel for full lock
+const STEER_RIM := 0.205
 const WHEEL_R := 0.41                   # tyre radius in the model's metres (x CAR_SCALE in the game)
 const STEER_MAX := 0.55                 # how far the front wheels turn, radians
 
@@ -43,8 +53,19 @@ var spin := 0.0           # how far the wheels have rolled (radians)
 var frame_node: Node3D    # the body, leaned in turns and dipped under braking
 var lean := Vector2.ZERO  # x: roll, y: pitch (radians), eased
 var _prev_speed := 0.0
+var steer_node: Node3D    # the steering wheel, turned with the steering; the hands ride on it
+var hands := []           # [glove, side] on the wheel rim
+var arms := []            # [upper arm, forearm, shoulder, side]
+var bob := 0.0            # suspension: how far the body sits from rest (m), a damped spring
+var bob_v := 0.0
+var _prev_vy := 0.0
+var _t := 0.0
+var dust: GPUParticles3D
+var smoke: GPUParticles3D
+var dust_on := true       # off in the car park: concrete does not throw dust
+var driver_local := false # this phone is driving it (is_on_floor() only means something here)
 
-func setup(ps: PackedScene, scale_k: float, cabin_ps: PackedScene = null) -> void:
+func setup(ps: PackedScene, scale_k: float, cabin_ps: PackedScene = null, dust_col := Color(0.62, 0.55, 0.45), dusty := true) -> void:
 	floor_snap_length = 0.7
 	floor_max_angle = deg_to_rad(42.0)
 	floor_constant_speed = true
@@ -92,7 +113,13 @@ func setup(ps: PackedScene, scale_k: float, cabin_ps: PackedScene = null) -> voi
 		var cab_m := cabin_ps.instantiate() as Node3D
 		cab_m.position = CABIN_AT
 		inside.add_child(cab_m)
+		steer_node = cab_m.find_child("steer", true, false) as Node3D
 	_trim()
+	_seats()
+	_hands()
+	dust_on = dusty
+	dust = _puffs(dust_col, 48, 1.3, 0.55, Vector3(0, 0.25, -2.2))
+	smoke = _puffs(Color(0.32, 0.32, 0.33, 0.5), 14, 0.9, 0.18, Vector3(-0.55, 0.42, -2.25))
 	lights = SpotLight3D.new() # one beam for both headlamps: the mobile renderer counts lights
 	lights.position = Vector3(0, 1.0, 2.25)
 	lights.rotation = Vector3(-0.08, PI, 0) # a spot light shines down its -z; the car's front is +z
@@ -170,12 +197,166 @@ func _trim() -> void:
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		inside.add_child(mi)
 
+## The two front seats (the cabin model has none): cushion, reclined back, headrest. Everyone sees
+## them; the passenger seat is where a carried survivor slumps.
+func _seats() -> void:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color(0.16, 0.12, 0.1)
+	m.roughness = 0.72
+	for sx in [0.42, -0.42]:
+		var seat := Node3D.new()
+		seat.position = Vector3(sx, 0.0, 0.0)
+		model.add_child(seat)
+		for e in [[Vector3(0.5, 0.14, 0.52), Vector3(0, 0.86, -0.2), 0.08],      # cushion, nose up a touch
+				[Vector3(0.5, 0.72, 0.13), Vector3(0, 1.22, -0.56), -0.38],    # back, reclined
+				[Vector3(0.3, 0.17, 0.1), Vector3(0, 1.66, -0.72), -0.38]]:    # headrest
+			var mi := MeshInstance3D.new()
+			var bm := BoxMesh.new()
+			bm.size = e[0]
+			bm.material = m
+			mi.mesh = bm
+			mi.position = e[1]
+			mi.rotation.x = e[2]
+			seat.add_child(mi)
+
+## The killer's hands on the wheel: gloves on the rim at ten to two, riding with the wheel, and the
+## sleeves back to the shoulders (re-aimed every frame in _arms). Only the driver sees them.
+func _hands() -> void:
+	if steer_node == null: return
+	var glove := StandardMaterial3D.new()
+	glove.albedo_color = Color(0.07, 0.055, 0.055)
+	glove.roughness = 0.55
+	var sleeve := StandardMaterial3D.new()
+	sleeve.albedo_color = Color(0.3, 0.035, 0.045)
+	sleeve.roughness = 0.9
+	var n := STEER_AXIS.normalized()
+	var up := (Vector3.UP - n * n.y).normalized()
+	var lx := (Vector3.RIGHT - n * n.x).normalized()   # +x: the driver's left
+	for side in [1.0, -1.0]:
+		var dir: Vector3 = (up * cos(1.05) + lx * side * sin(1.05)).normalized()
+		var at: Vector3 = dir * STEER_RIM
+		var g := MeshInstance3D.new()
+		var cm := CapsuleMesh.new()
+		cm.radius = 0.034
+		cm.height = 0.12
+		cm.material = glove
+		g.mesh = cm
+		var tang := n.cross(dir).normalized()       # the fist closes round the rim
+		g.basis = Basis(tang.cross(n).normalized(), tang, n) # capsule's own y along the rim
+		g.position = at - n * 0.02
+		steer_node.add_child(g)
+		var knuckle := MeshInstance3D.new()
+		var km := BoxMesh.new()
+		km.size = Vector3(0.075, 0.045, 0.085)
+		km.material = glove
+		knuckle.mesh = km
+		knuckle.position = at - n * 0.055
+		knuckle.basis = g.basis
+		steer_node.add_child(knuckle)
+		hands.append([g, side])
+		var arm := []
+		for r in [0.05, 0.042]:
+			var mi := MeshInstance3D.new()
+			var c2 := CapsuleMesh.new()
+			c2.radius = r
+			c2.height = 0.3
+			c2.material = sleeve
+			mi.mesh = c2
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			inside.add_child(mi)
+			arm.append(mi)
+		arm.append(Vector3(0.42 + 0.2 * side, 1.3, -0.44)) # the shoulder, in car space
+		arm.append(side)
+		arms.append(arm)
+
+## Upper arm and forearm from the shoulder to the glove on the wheel, the elbow dropped and out.
+func _arms() -> void:
+	if not inside.visible: return
+	for i in arms.size():
+		var a: Array = arms[i]
+		var g: Node3D = hands[i][0]
+		var wrist: Vector3 = inside.to_local(g.global_position) + Vector3(0, -0.01, -0.07)
+		var sh: Vector3 = a[2]
+		var elbow: Vector3 = (sh + wrist) * 0.5 + Vector3(0.09 * float(a[3]), -0.13, 0.0)
+		_bone(a[0], sh, elbow)
+		_bone(a[1], elbow, wrist)
+
+func _bone(mi: MeshInstance3D, from: Vector3, to: Vector3) -> void:
+	var d := to - from
+	var l := d.length()
+	if l < 0.01: return
+	(mi.mesh as CapsuleMesh).height = maxf(l + 0.06, 2.0 * (mi.mesh as CapsuleMesh).radius + 0.01)
+	var y := d / l
+	var x := y.cross(Vector3.FORWARD if absf(y.z) < 0.9 else Vector3.RIGHT).normalized()
+	mi.transform = Transform3D(Basis(x, y, x.cross(y)), (from + to) * 0.5)
+
+## Dust off the back wheels, smoke out of the exhaust: soft camera-facing puffs.
+func _puffs(col: Color, amount: int, life: float, size: float, at: Vector3) -> GPUParticles3D:
+	var p := GPUParticles3D.new()
+	p.amount = amount
+	p.lifetime = life
+	p.emitting = false
+	p.position = at
+	p.local_coords = false
+	var pm := ParticleProcessMaterial.new()
+	pm.direction = Vector3(0, 0.5, -1)
+	pm.spread = 35.0
+	pm.initial_velocity_min = 0.6
+	pm.initial_velocity_max = 1.6
+	pm.gravity = Vector3(0, 0.25, 0)
+	pm.damping_min = 1.0
+	pm.damping_max = 2.0
+	pm.scale_min = 0.6
+	pm.scale_max = 1.4
+	var grow := Curve.new()
+	grow.add_point(Vector2(0, 0.4))
+	grow.add_point(Vector2(1, 1.6))
+	var gc := CurveTexture.new()
+	gc.curve = grow
+	pm.scale_curve = gc
+	var fade := Gradient.new()
+	fade.set_color(0, Color(col.r, col.g, col.b, col.a * 0.55))
+	fade.set_color(1, Color(col.r, col.g, col.b, 0.0))
+	var ft := GradientTexture1D.new()
+	ft.gradient = fade
+	pm.color_ramp = ft
+	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	pm.emission_box_extents = Vector3(0.7, 0.05, 0.1) if amount > 20 else Vector3(0.03, 0.03, 0.03)
+	p.process_material = pm
+	var q := QuadMesh.new()
+	q.size = Vector2(size, size)
+	var m := StandardMaterial3D.new()
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	m.vertex_color_use_as_albedo = true
+	var g := Gradient.new() # a soft round puff
+	g.set_color(0, Color(1, 1, 1, 1))
+	g.set_color(1, Color(1, 1, 1, 0))
+	var gt := GradientTexture2D.new()
+	gt.gradient = g
+	gt.fill = GradientTexture2D.FILL_RADIAL
+	gt.fill_from = Vector2(0.5, 0.5)
+	gt.fill_to = Vector2(0.5, 0.0)
+	gt.width = 64
+	gt.height = 64
+	m.albedo_texture = gt
+	q.material = m
+	p.draw_pass_1 = q
+	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(p)
+	return p
+
 func show_inside(on: bool) -> void:
 	inside.visible = on
 
+## Where a carried survivor's rig stands so their hips land on the passenger seat.
+func seat_spot() -> Vector3:
+	return (model.global_transform * inside.transform) * (SEAT_HIPS - Vector3(0, HIPS_Y * VICTIM_SCALE, 0))
+
 ## Where the driver's eyes are, in the world (follows the car's tilt).
 func eye() -> Vector3:
-	return model.global_transform * EYE
+	return (model.global_transform * inside.transform) * EYE # moves with the body: lean, bob, vibration
 
 ## Where it is facing (flat).
 func forward() -> Vector3:
@@ -183,9 +364,12 @@ func forward() -> Vector3:
 
 ## The driver's phone: throttle -1..1 (stick up = forward), turn -1..1 (right = +1).
 func drive(throttle: float, turn: float, dt: float) -> void:
+	driver_local = true
 	if throttle > 0.05:
 		if speed < -0.3: speed = move_toward(speed, 0.0, BRAKE * dt)
-		else: speed = move_toward(speed, MAX_FWD * throttle, ACCEL * dt)
+		else: # strong off the line, easing off as it nears top speed
+			var pull := ACCEL * lerpf(1.35, 0.55, clampf(speed / MAX_FWD, 0.0, 1.0))
+			speed = move_toward(speed, MAX_FWD * throttle, pull * dt)
 	elif throttle < -0.05:
 		if speed > 0.3: speed = move_toward(speed, 0.0, BRAKE * dt)
 		else: speed = move_toward(speed, -MAX_BACK * -throttle, ACCEL * 0.7 * dt)
@@ -219,6 +403,7 @@ func drive(throttle: float, turn: float, dt: float) -> void:
 
 ## Everyone else's phone: ease toward what the killer reported.
 func follow(at: Vector3, yaw: float, dt: float) -> void:
+	driver_local = false
 	var w := 1.0 - exp(-12.0 * dt)
 	position = position.lerp(at, w)
 	rotation.y = lerp_angle(rotation.y, yaw, w)
@@ -269,12 +454,29 @@ func _animate(dt: float) -> void:
 	var want := Vector2(steer * clampf(absf(speed) / MAX_FWD, 0.0, 1.0) * 0.055,
 		clampf(-accel * 0.006, -0.05, 0.05))
 	lean = lean.lerp(want, 1.0 - exp(-5.0 * dt))
-	var tilt := Transform3D(Basis(Vector3.FORWARD, lean.x) * Basis(Vector3.RIGHT, lean.y), Vector3.ZERO)
+	# suspension: a bump (the car's vertical speed changing) kicks a damped spring under the body
+	var vy := velocity.y if driven else 0.0
+	bob_v += clampf(-(vy - _prev_vy) * 0.35, -0.6, 0.6)
+	_prev_vy = vy
+	bob_v += (-140.0 * bob - 14.0 * bob_v) * dt
+	bob = clampf(bob + bob_v * dt, -0.06, 0.06)
+	# the engine: a fine shiver at idle, a rougher one at speed
+	_t += dt
+	var shake := 0.0
+	if driven: shake = (0.0012 + 0.0022 * clampf(absf(speed) / MAX_FWD, 0.0, 1.0)) * sin(_t * 61.0) * sin(_t * 17.0)
+	var tilt := Transform3D(Basis(Vector3.FORWARD, lean.x) * Basis(Vector3.RIGHT, lean.y + shake * 2.0), Vector3(0, bob + shake, 0))
 	var pivot := Transform3D(Basis(), Vector3(0, 0.8, 0))
 	var t := pivot * tilt * pivot.affine_inverse()
 	if frame_node:
 		frame_node.transform = t
 		inside.transform = t
+	if steer_node: # the steering wheel follows the front wheels, the gloves with it
+		steer_node.basis = Basis(STEER_AXIS.normalized(), steer * STEER_TURNS)
+	_arms()
+	if dust:
+		dust.emitting = dust_on and driven and absf(speed) > 2.5 and (is_on_floor() or not driver_local)
+		dust.amount_ratio = clampf(absf(speed) / MAX_FWD, 0.25, 1.0)
+		smoke.emitting = driven
 
 func _effects(dt: float) -> void:
 	_animate(dt)

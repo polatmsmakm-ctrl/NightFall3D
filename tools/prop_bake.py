@@ -19,6 +19,10 @@ normal baked from the full sculpt. On top of that:
     tyre) so the game can spin and steer it. A face is a wheel's when it lies further out than
     XIN and within R of that axle. The rest stays `frame`.
 
+  * `--part NAME,CX,CY,CZ,R,AX,AY,AZ,T`: the faces within R of the centre and within T of the plane
+    through it across the axis A become their own mesh NAME, its node on the centre (the cabin's
+    steering wheel: the game turns it about A). Can be given more than once.
+
 Every bake writes its own command line into the GLB (asset.extras.bake), so it can be repeated.
 
 Every mesh lands as its own node under one root, with one shared material.
@@ -214,6 +218,7 @@ def main():
     ap.add_argument('--emit-box', default=None, metavar='X0,Y0,Z0,X1,Y1,Z1', help='with --reglow: bright texels inside this box (metres) glow')
     ap.add_argument('--reglow', action='store_true', help='only recompute the glow map of an existing OUT (src is ignored)')
     ap.add_argument('--split', default=None, metavar='X,Y', help='gate leaves: |x| < X and y < Y, in metres')
+    ap.add_argument('--part', action='append', default=[], metavar='NAME,CX,CY,CZ,R,AX,AY,AZ,T', help='cut a disc-shaped piece out on its own node')
     ap.add_argument('--wheels', default=None, metavar='YF,ZF,YR,ZR,R,XIN', help='a car: cut the four wheels out, each on its own axle node')
     a = ap.parse_args()
     if a.reglow:
@@ -247,6 +252,15 @@ def main():
                 xs = c[sel, 0]
                 origins[names[-1]] = [float((xs.min() + xs.max()) / 2.0) if len(xs) else sg * 0.8, wy, wz]
                 print('   %s: %d faces, axle at x %.2f' % (names[-1], int(sel.sum()), origins[names[-1]][0]), flush=True)
+    for spec in a.part:
+        bits = spec.split(',')
+        nm, v = bits[0], np.array([float(x) for x in bits[1:]])
+        cen, rad, ax, th = v[0:3], v[3], v[4:7] / np.linalg.norm(v[4:7]), v[7]
+        sel = (np.linalg.norm(c - cen, axis=1) < rad) & (np.abs((c - cen) @ ax) < th) & (part == 0)
+        names.append(nm)
+        part[sel] = len(names) - 1
+        origins[nm] = [float(x) for x in cen]
+        print('   %s: %d faces' % (nm, int(sel.sum())), flush=True)
     area = np.linalg.norm(np.cross(Pw[Fw[:, 1]] - Pw[Fw[:, 0]], Pw[Fw[:, 2]] - Pw[Fw[:, 0]]), axis=1)
     share = np.array([area[part == k].sum() for k in range(len(names))])
     share = share / share.sum()

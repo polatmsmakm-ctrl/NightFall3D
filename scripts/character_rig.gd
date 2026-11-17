@@ -6,12 +6,12 @@ extends Node3D
 ## the list can name clips the owner has not supplied yet: drop sprint.glb / hit.glb / fall.glb /
 ## standup.glb / cheer.glb in and the game starts using them with no code change.
 const ANIMS := ["idle", "walk", "run", "sprint", "crouchwalk", "hide", "attack", "injured", "dying",
-	"vault", "carry", "carried", "hang", "crawl", "repair", "hit", "fall", "standup"]
+	"vault", "carry", "carried", "hang", "crawl", "repair", "hit", "fall", "standup", "slump"]
 const ONCE := ["hit", "fall", "attack", "vault"] # played through once, then back to the state pose
-const LOOPING := ["idle", "walk", "run", "sprint", "crouchwalk", "hide", "injured", "carry", "carried", "hang", "crawl", "repair", "campfire", "wave", "clap", "dance", "cheer"]
+const LOOPING := ["idle", "walk", "run", "sprint", "crouchwalk", "hide", "injured", "carry", "carried", "hang", "crawl", "repair", "campfire", "wave", "clap", "dance", "cheer", "slump"]
 ## Campfire emotes. There is no Mixamo clip for these in assets/anims, so they are posed here on the
 ## same skeleton: drop wave.glb / clap.glb / dance.glb in and the real clip is used instead.
-const EMOTES := {"wave": 2.4, "clap": 2.2, "dance": 4.0}
+const EMOTES := {"wave": 2.4, "clap": 2.2, "dance": 4.0, "slump": 3.0}
 const EMOTE_BONES := ["mixamorig_Hips", "mixamorig_Spine", "mixamorig_Spine1", "mixamorig_Spine2",
 	"mixamorig_Neck", "mixamorig_Head",
 	"mixamorig_LeftShoulder", "mixamorig_LeftArm", "mixamorig_LeftForeArm", "mixamorig_LeftHand",
@@ -166,6 +166,29 @@ func _emote_world(a: String, bone: String, ph: float) -> Quaternion:
 				"mixamorig_LeftUpLeg": return _w(KNEE, -0.34 * maxf(-step, 0.0))
 				"mixamorig_RightLeg": return _w(KNEE, 0.62 * maxf(step, 0.0))
 				"mixamorig_LeftLeg": return _w(KNEE, 0.62 * maxf(-step, 0.0))
+		"slump":
+			# knocked out in the car's passenger seat: reclined against the seat back, knees up in
+			# the footwell, hands fallen in the lap, the head dropped onto one shoulder; only the
+			# breath moves. (Checked offline on every character: with the 0.82 scale main gives it
+			# in the car, head and feet stay between the floor and the roof.)
+			var br := sin(ph * TAU)
+			match bone:
+				"mixamorig_Hips": return _w(side, -0.42)
+				"mixamorig_Spine": return _w(side, -0.04 + 0.02 * br)
+				"mixamorig_Spine1": return _w(side, 0.02)
+				"mixamorig_Spine2": return _w(side, 0.06) * _w(FWD, 0.06)
+				"mixamorig_Neck": return _w(side, 0.40) * _w(FWD, 0.18)
+				"mixamorig_Head": return _w(side, 0.50) * _w(FWD, 0.50)
+				"mixamorig_RightShoulder": return _w(R_LIFT, -0.10)
+				"mixamorig_LeftShoulder": return _w(L_LIFT, -0.10)
+				"mixamorig_RightArm": return _w(UP, 0.45) * _w(R_LIFT, -1.25)
+				"mixamorig_LeftArm": return _w(UP, -0.45) * _w(L_LIFT, -1.25)
+				"mixamorig_RightForeArm": return _w(UP, 0.80)
+				"mixamorig_LeftForeArm": return _w(UP, -0.80)
+				"mixamorig_RightUpLeg": return _w(KNEE, -1.30) * _w(FWD, -0.14)
+				"mixamorig_LeftUpLeg": return _w(KNEE, -1.30) * _w(FWD, 0.14)
+				"mixamorig_RightLeg": return _w(KNEE, 1.75)
+				"mixamorig_LeftLeg": return _w(KNEE, 1.75)
 	return Quaternion.IDENTITY
 
 ## Bake an emote into a looping Animation on this character's skeleton.
@@ -194,7 +217,7 @@ func _emote_anim(a: String, skel_path: String, char_rest: Vector3) -> Animation:
 		for k in steps + 1:
 			out.rotation_track_insert_key(tr, out.length * float(k) / steps, keys[k])
 	# the hop: in hips local space z is the vertical axis and -z is up
-	var dip := {"dance": [3.0, 4.0], "clap": [0.0, 1.0], "wave": [1.2, 3.0]}
+	var dip := {"dance": [3.0, 4.0], "clap": [0.0, 1.0], "wave": [1.2, 3.0], "slump": [0.0, 1.0]}
 	if float(dip[a][0]) > 0.0:
 		var tr := out.add_track(Animation.TYPE_POSITION_3D)
 		out.track_set_path(tr, NodePath("%s:mixamorig_Hips" % skel_path))

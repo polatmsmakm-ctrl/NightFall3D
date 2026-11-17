@@ -26,6 +26,7 @@ var effects := 1
 ## A phone or tablet with a recent Apple chip (iPhone 15 Pro and later, any M-chip iPad): it starts on
 ## «فائق» and «فائق» draws more there (see apply(), world._apply_quality, main's rigs).
 var strong := false
+const TIER := 2 # raise it to re-apply the strong-device defaults once on every phone
 var brightness := 1.0 # «السطوع»: multiplies the exposure of the maps and the camp (0.6 .. 1.6)
 signal look_changed
 
@@ -107,6 +108,10 @@ func apply() -> void:
 	Engine.max_fps = target_fps()
 	vp.msaa_3d = [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X][aa]
 	vp.scaling_3d_scale = render_scale()
+	# below 100% the picture is rebuilt with AMD FSR (sharper than plain stretching), so the governor
+	# can take the resolution down a little without it looking soft
+	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if render_scale() < 0.999 else Viewport.SCALING_3D_MODE_BILINEAR
+	vp.fsr_sharpness = 0.35
 	var s := eff_shadows()
 	RenderingServer.directional_shadow_atlas_set_size([1024, 2048, 4096][s], true)
 	RenderingServer.directional_soft_shadow_filter_set_quality(
@@ -116,20 +121,20 @@ func apply() -> void:
 		vp.positional_shadow_atlas_size = [1024, 2048, 4096][s]
 		RenderingServer.positional_soft_shadow_filter_set_quality(
 			[RenderingServer.SHADOW_QUALITY_HARD, RenderingServer.SHADOW_QUALITY_SOFT_LOW, RenderingServer.SHADOW_QUALITY_SOFT_MEDIUM][s])
-		if maxed(): # full-resolution, high-quality occlusion
-			RenderingServer.environment_set_ssao_quality(RenderingServer.ENV_SSAO_QUALITY_HIGH, false, 0.5, 2, 50.0, 300.0)
+		if maxed(): # high-quality occlusion at half resolution: full resolution cost a lot and showed little
+			RenderingServer.environment_set_ssao_quality(RenderingServer.ENV_SSAO_QUALITY_HIGH, true, 0.5, 2, 50.0, 300.0)
 		else:
 			RenderingServer.environment_set_ssao_quality(RenderingServer.ENV_SSAO_QUALITY_MEDIUM if fx >= 2 else RenderingServer.ENV_SSAO_QUALITY_LOW,
 				true, 0.5, 2, 50.0, 300.0)
 		RenderingServer.environment_set_ssil_quality(RenderingServer.ENV_SSIL_QUALITY_LOW, true, 0.5, 2, 50.0, 300.0)
 		RenderingServer.environment_set_sdfgi_ray_count(RenderingServer.ENV_SDFGI_RAY_COUNT_16)
 		RenderingServer.environment_set_sdfgi_frames_to_converge(RenderingServer.ENV_SDFGI_CONVERGE_IN_15_FRAMES)
-		RenderingServer.environment_set_volumetric_fog_volume_size(96 if maxed() else (64 if fx >= 2 else 48), 96 if maxed() else (64 if fx >= 2 else 40))
+		RenderingServer.environment_set_volumetric_fog_volume_size(64 if fx >= 2 else 48, 64 if fx >= 2 else 40) # 96³ was 3.4x the work
 		RenderingServer.environment_set_volumetric_fog_filter_active(true)
 		RenderingServer.sub_surface_scattering_set_quality(RenderingServer.SUB_SURFACE_SCATTERING_QUALITY_MEDIUM if maxed() else RenderingServer.SUB_SURFACE_SCATTERING_QUALITY_LOW)
 	# sharper ground at a glancing angle, and models keep their full detail further away
 	vp.anisotropic_filtering_level = Viewport.ANISOTROPY_16X if maxed() else Viewport.ANISOTROPY_4X
-	vp.mesh_lod_threshold = 0.4 if maxed() else 1.0
+	vp.mesh_lod_threshold = 0.7 if maxed() else 1.0
 	changed.emit()
 
 func _reset_runtime() -> void:
@@ -139,13 +144,15 @@ func _reset_runtime() -> void:
 func _load() -> void:
 	var c := ConfigFile.new()
 	var ok := c.load(PATH) == OK
-	if strong and (not ok or not c.get_value("g", "tier", false)):
-		# once per phone: a strong device starts on «فائق»; after that the player's own choice stands
+	if strong and (not ok or c.get_value("g", "tier", 0) is bool or int(c.get_value("g", "tier", 0)) < TIER):
+		# once per phone (and again whenever TIER goes up): a strong device starts on «فائق» at a
+		# locked, smooth 60 — the owner asked for 60 every time on ultra, not 120 with dips.
+		# MSAA 2x rather than 4x: Forward+ resolves it in a separate pass on Metal, and on a
+		# 460 ppi screen 2x already hides the edges. After that the player's own choice stands.
 		preset = 2
-		shadows = PRESETS[2][0]; aa = PRESETS[2][1]; scale_idx = PRESETS[2][2]; effects = PRESETS[2][3]
-		if ok:
-			fps_idx = clampi(c.get_value("g", "fps", fps_idx), 0, 3)
-			brightness = clampf(float(c.get_value("g", "bright", brightness)), 0.6, 1.6)
+		shadows = PRESETS[2][0]; aa = 1; scale_idx = PRESETS[2][2]; effects = PRESETS[2][3]
+		fps_idx = 2
+		if ok: brightness = clampf(float(c.get_value("g", "bright", brightness)), 0.6, 1.6)
 		_save()
 		return
 	if not ok: return
@@ -163,7 +170,7 @@ func _save() -> void:
 	c.set_value("g", "shadows", shadows); c.set_value("g", "aa", aa)
 	c.set_value("g", "scale", scale_idx); c.set_value("g", "effects", effects)
 	c.set_value("g", "bright", brightness)
-	c.set_value("g", "tier", strong)
+	c.set_value("g", "tier", TIER if strong else 0)
 	c.save(PATH)
 
 # ---------- adaptive governor ----------
@@ -197,10 +204,16 @@ func _step_down() -> void:
 	else: return
 	apply()
 
+## Back up, in the reverse order: the effects and shadows it gave away come back too (they used
+## to stay off for the rest of the session), then the resolution.
+var _ups := 0
 func _step_up() -> void:
-	if dyn_scale < 1.0:
-		dyn_scale = minf(dyn_scale + 0.05, 1.0)
-		apply()
+	_ups += 1
+	if rt_effects < effects and _ups >= 2: rt_effects += 1; _ups = 0
+	elif rt_shadows < shadows and _ups >= 2: rt_shadows += 1; _ups = 0
+	elif dyn_scale < 1.0 and rt_effects >= effects and rt_shadows >= shadows: dyn_scale = minf(dyn_scale + 0.05, 1.0)
+	else: return
+	apply()
 
 # ---------- UI ----------
 func in_ui(pos: Vector2) -> bool:

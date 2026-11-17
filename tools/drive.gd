@@ -95,6 +95,7 @@ func _ready() -> void:
 	var sp: float = car.speed
 	check(sp > 6.0 or flat(car.position, start) > 12.0, "gas: %.1f m/s, %.1f m" % [sp, flat(car.position, start)])
 	check(absf(car.spin) > 0.01, "the wheels turn while it drives (%.2f rad)" % car.spin)
+	check(car.steer_node != null and car.hands.size() == 2 and car.arms.size() == 2, "a steering wheel with two gloved hands on it")
 	for i in car.get_slide_collision_count(): # what it is pushing against, if anything
 		var col := car.get_slide_collision(i)
 		print("   touching ", (col.get_collider() as Node).get_path() if col.get_collider() is Node else "?", " normal ", col.get_normal().snappedf(0.01))
@@ -103,6 +104,10 @@ func _ready() -> void:
 	m.stick_vec = Vector2(1, -1)
 	await frames(60)
 	check(absf(wrapf(car.rotation.y - y0, -PI, PI)) > 0.4, "steering turns it (%.2f rad)" % wrapf(car.rotation.y - y0, -PI, PI))
+	if car.steer_node:
+		var turned := car.steer_node.basis.get_rotation_quaternion().get_angle()
+		check(turned > 1.0, "the steering wheel turns with it (%.2f rad)" % turned)
+	check(m.speedo_kmh > 1.0, "the speedometer reads %.0f km/h" % m.speedo_kmh)
 	m.stick_vec = Vector2(0, 1)
 	await frames(120)
 	check(car.speed < 0.5, "pulling back brakes, then reverses (%.1f)" % car.speed)
@@ -132,8 +137,10 @@ func _ready() -> void:
 	m._press("interact", 5)
 	await frames(30)
 	check(m.driving and m.rules.carrying == "D", "in the car with the survivor")
-	var cargo: Vector3 = car.model.global_transform * NFCar.CARGO
-	check(d.node.position.distance_to(cargo) < 0.8, "the survivor lies in the back (%.2f m off)" % d.node.position.distance_to(cargo))
+	var seat: Vector3 = car.seat_spot()
+	check(d.node.position.distance_to(seat) < 0.5, "the survivor sits in the passenger seat (%.2f m off)" % d.node.position.distance_to(seat))
+	check(d.rig.current == "slump" and absf(d.node.scale.x - NFCar.VICTIM_SCALE) < 0.01, "slumped, at %.2f of their size (%s)" % [d.node.scale.x, d.rig.current])
+	check(d.rig.has("slump"), "the slump pose is built on the rig")
 	var hk: Vector3 = m.world.hook_points[0]
 	car.position = hk + Vector3(3.0, 0.3, 0)
 	await frames(10)

@@ -1043,6 +1043,7 @@ func _draw_ui() -> void:
 			ui.draw_arc(b[0], b[1] + 5.0, -PI / 2.0, -PI / 2.0 + TAU * (1.0 - attack_cd / 2.4), 40, Color(1, 1, 1, 0.7), 4.0)
 	# team status bar along the top, then the objective (or the falling-moon ring) under it
 	_draw_team(s)
+	if driving and car: _draw_speedo(Vector2(mid.x, s.y - 112.0))
 	var doom_up: bool = rules.powered and rules.doom >= 0.0
 	var top := Vector2(mid.x, 96)
 	if doom_up:
@@ -1171,6 +1172,33 @@ func _draw_team(s: Vector2) -> void:
 		ui.draw_string(Net.font, c + Vector2(-step / 2.0, 36.0), short, HORIZONTAL_ALIGNMENT_CENTER, step, 14, Color(col, 0.9))
 
 ## The falling moon: a red ring that fills over the two minutes and beats in the last thirty seconds.
+## The car's speedometer, bottom centre while I drive: a 270-degree dial to 60 km/h with a red
+## band at the top, an eased needle, the speed in figures and the gear (D / R).
+var speedo_kmh := 0.0
+func _draw_speedo(c: Vector2) -> void:
+	var r := 84.0
+	var a0 := deg_to_rad(135.0)
+	var sweep := deg_to_rad(270.0)
+	ui.draw_circle(c, r + 10.0, Color(0.03, 0.025, 0.025, 0.72))
+	ui.draw_arc(c, r + 10.0, 0.0, TAU, 64, Color(0.45, 0.08, 0.06, 0.9), 3.0, true)
+	ui.draw_arc(c, r - 4.0, a0 + sweep * (50.0 / 60.0), a0 + sweep, 24, Color(0.85, 0.12, 0.08, 0.85), 7.0, true)
+	for v in range(0, 61, 5):
+		var ang := a0 + sweep * v / 60.0
+		var dir := Vector2(cos(ang), sin(ang))
+		var big := v % 10 == 0
+		ui.draw_line(c + dir * (r - (14.0 if big else 8.0)), c + dir * r, Color(0.92, 0.88, 0.82, 0.95 if big else 0.6), 3.0 if big else 1.5, true)
+		if v % 20 == 0:
+			_text(c + dir * (r - 30.0) + Vector2(0, 7), str(v), 15, Color(0.92, 0.88, 0.82))
+	var na := a0 + sweep * clampf(speedo_kmh, 0.0, 60.0) / 60.0
+	var nd := Vector2(cos(na), sin(na))
+	ui.draw_line(c - nd * 10.0, c + nd * (r - 6.0), Color(1.0, 0.25, 0.15), 4.0, true)
+	ui.draw_circle(c, 9.0, Color(0.15, 0.03, 0.03))
+	ui.draw_arc(c, 9.0, 0.0, TAU, 24, Color(1.0, 0.3, 0.2), 2.0, true)
+	_text(c + Vector2(0, 48), "%d" % roundi(speedo_kmh), 30, Color(1, 0.95, 0.88))
+	_text(c + Vector2(0, 70), "كم/س", 13, Color(0.8, 0.75, 0.7))
+	var gear := "R" if car.speed < -0.3 else "D"
+	_text(c + Vector2(r + 34.0, 10), gear, 26, Color(1.0, 0.35, 0.25) if gear == "R" else Color(0.5, 1.0, 0.6))
+
 func _draw_moon(c: Vector2) -> void:
 	var left: float = maxf(rules.doom, 0.0)
 	var f: float = clampf(1.0 - left / Rules.DOOM_TIME, 0.0, 1.0)
@@ -1607,8 +1635,8 @@ func _yaw_of(n: String) -> float:
 
 ## Where a carried survivor sits: lying across the killer's arms, just in front of his chest.
 func _carry_spot() -> Vector3:
-	if _in_car(rules.killer): # lying in the back of his car
-		return car.model.global_transform * NFCar.CARGO
+	if _in_car(rules.killer): # slumped in his passenger seat
+		return car.seat_spot()
 	var ky := _yaw_of(rules.killer)
 	return _pos_of(rules.killer) + Basis(Vector3.UP, ky) * Vector3(0, 0, 0.5)
 
@@ -1657,8 +1685,10 @@ func _process(dt: float) -> void:
 		var target: Vector3 = r.pos
 		var lift := 0.0
 		var face: float = r.yaw
-		if st == "carried" and _in_car(rules.killer):
-			target = _carry_spot(); anim = "dying"; face = car.rotation.y # lying in the back of the car
+		var seated: bool = st == "carried" and _in_car(rules.killer)
+		r.node.scale = Vector3.ONE * (NFCar.VICTIM_SCALE if seated else 1.0)
+		if seated: # in his passenger seat, slumped, every part of them inside the car
+			target = _carry_spot(); anim = "slump"; face = car.rotation.y
 		elif st == "carried":
 			target = _carry_spot(); lift = 0.12; anim = "carried"
 			face = _yaw_of(rules.killer) + PI / 2.0
@@ -1840,11 +1870,11 @@ func _physics_process(delta: float) -> void:
 	if spectating != "":
 		body.position = _pos_of(spectating)
 		rig.visible = false
-	elif my_state == "carried" and _in_car(rules.killer): # thrown in the back of his car
+	elif my_state == "carried" and _in_car(rules.killer): # thrown into his passenger seat
 		body.position = _carry_spot()
 		rig.position.y = 0.0
 		rig.rotation.y = car.rotation.y
-		rig.play("dying")
+		rig.play("slump")
 	elif my_state == "carried":
 		body.position = _carry_spot()
 		rig.position.y = 0.12
@@ -1871,6 +1901,7 @@ func _physics_process(delta: float) -> void:
 	else:
 		pinned = false
 	if my_state != "carried" and my_state != "hooked": rig.position.y = 0.0
+	rig.scale = Vector3.ONE * (NFCar.VICTIM_SCALE if (my_state == "carried" and _in_car(rules.killer)) else 1.0)
 	if last_state == "hooked" and my_state != "hooked": rig.rotation = Vector3.ZERO
 	if last_locker >= 0 and locker < 0 and my_state in ["ok", "hurt"]: # stepped out of a locker
 		var lp: Array = world.locker_points[last_locker]
@@ -1983,6 +2014,7 @@ func _drive(delta: float) -> void:
 	body.position = car.position
 	body.velocity = car.velocity
 	rig.rotation.y = car.rotation.y # what the others get as my yaw: the car's heading
+	speedo_kmh = lerpf(speedo_kmh, absf(car.speed) * 3.6, 1.0 - exp(-10.0 * delta)) # the needle, eased
 	if car_inside: cam_pivot.position = car.eye() - body.global_position
 	if car.bump > 0.0: # crashed into something
 		_shake(0.25 + car.bump * 0.7)
