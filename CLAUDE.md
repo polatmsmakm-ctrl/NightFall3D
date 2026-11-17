@@ -354,8 +354,11 @@ and `... survivor6_hi.glb --faces 100000 --tex 4096 ...` (same switches). Three 
   (default 0.32). The close-up has 1418 texels per metre on the body, ~2980 on the face and ~1200
   on the hair, all above the sculpt's own 802: the bake loses nothing the source had.
 - `--fringe`: hair hanging over the face keeps its strands through the collapse, and the bake
-  looks for hair on hair and skin on skin (`Sculpt.sample(want)`); without it the strands over her
-  forehead came out streaked with forehead skin.
+  takes **hair on hair** (`Sculpt.sample(want)`): hair has its own KD-tree (its triangles are big and
+  its vertices few, so by vertex distance the dense forehead always won), a texel on a hair face
+  takes the nearest hair triangle, and on the head the thin edge of a hair mass does too when hair
+  is within 8 mm of the nearest surface. Skin is never forced (that put skin into the irises and
+  the collar buckle). Without it the fringe came out streaked with forehead skin.
 `character_rig.gd` now sets every character material to anisotropic filtering (glTF materials
 default to plain trilinear; the level, 16x on «فائق», comes from the viewport). `tools/tex.tscn`
 checks what the engine really imported: sizes 2048 / 4096, BC7 not DXT1, mipmaps, the ASTC copy

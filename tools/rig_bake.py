@@ -355,25 +355,42 @@ class Sculpt:
         self.vf[cs[keep], rank[keep]] = order[keep] // 3
         self.col, self.mr, self.nrm = images             # float32 arrays, 0..255 (mr / nrm may be None)
         self.dark = None                                   # hair per welded vertex, set by run() with --fringe
+        self.neck = 1e9                                    # above this, hair wins a near tie (--fringe)
 
     def sample(self, p, n, want=None):
         """For points p with surface normals n: colour, metallic-roughness and world normal there.
-        `want` (bool per point, with self.dark set): look for hair on hair and skin on skin, so a strand
-        lying a few millimetres over the forehead is not painted with the forehead."""
+        `want` (bool per point, with self.dark set, --fringe): look for hair on hair and skin on skin,
+        so a strand lying a few millimetres over the forehead is not painted with the forehead."""
         M = len(p)
-        kk = 4 if want is None or self.dark is None else 10
-        _, near = self.tree.query(p, k=kk, workers=-1)
+        _, near = self.tree.query(p, k=4, workers=-1)
         facing = (self.Nw[near] * n[:, None, :]).sum(-1) > 0.0
-        key = np.arange(kk)[None, :] + np.where(facing, 0, 10)     # the nearest that faces the same way
-        if kk > 4:
-            key = key + np.where(self.dark[near] == want[:, None], 0, 30)
+        key = np.arange(4)[None, :] + np.where(facing, 0, 10)      # the nearest that faces the same way
         pick = np.take_along_axis(near, np.argsort(key, axis=1)[:, :2], axis=1)
-        cand = self.vf[pick].reshape(M, 16)
+        if want is not None and self.dark is not None:
+            # hair has its own index: its triangles are large and its vertices few, so by vertex
+            # distance alone the dense skin of the forehead always wins, even under a strand
+            if not hasattr(self, 'tree_dark'):
+                from scipy.spatial import cKDTree
+                self.dark_ix = np.nonzero(self.dark)[0]
+                self.tree_dark = cKDTree(self.Pw[self.dark_ix])
+            _, hn = self.tree_dark.query(p, k=2, workers=-1)
+            pick = np.concatenate([pick, self.dark_ix[hn]], axis=1)
+        cand = self.vf[pick].reshape(M, -1)
         ok = cand >= 0
         fc = np.maximum(cand, 0)
-        tri = self.Pw[self.Fw[fc]]                                  # (M, 16, 3, 3)
+        tri = self.Pw[self.Fw[fc]]                                  # (M, C, 3, 3)
         d2, bary = closest_on_triangles(p, tri[:, :, 0], tri[:, :, 1], tri[:, :, 2])
         d2 = np.where(ok, d2, np.inf)
+        if want is not None and self.dark is not None:
+            hair_tri = self.dark[self.Fw[fc]].sum(-1) >= 2          # a triangle of hair
+            d_any = np.sqrt(d2.min(1))
+            d_hair = np.sqrt(np.where(hair_tri, d2, np.inf).min(1))
+            # hair on hair only: a texel of a hair face takes the nearest hair, and on the head the
+            # edge of a hair mass (some hair around it) does too when hair is within 8 mm of the
+            # nearest surface. Skin is never forced: eyes, brows and buckles are dark details on skin.
+            w = (want > 0.5) | ((want > 0.15) & (p[:, 1] > self.neck) & (d_hair <= d_any + 0.008))
+            w &= np.isfinite(d_hair)
+            d2 = np.where(w[:, None] & ~hair_tri, d2 + 1.0, d2)
         k = d2.argmin(1)
         r = np.arange(M)
         f, b = fc[r, k], bary[r, k]
@@ -450,7 +467,7 @@ def bake(V, N, T, F, tan, sculpt, side, out_side, hair=None):
         n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-20)
         want = None
         if hair is not None:
-            want = (hair[ff] * bb[..., 0]).sum(1) > 0.5
+            want = (hair[ff] * bb[..., 0]).sum(1)          # how much hair is around this texel, 0..1
         c_, m_, w_, d_ = sculpt.sample(p, n, want)
         far.append(d_)
         # the sculpt's normal, written in the frame the engine will rebuild at this texel
@@ -571,5 +588,6 @@ def run(P, T, F, images, faces, tex_side, pos, ix, hair_lum=70.0):
     tan = tangents(V2, N2, UV, F2)
     if FRINGE:
         sculpt.dark = dark
+        sculpt.neck = neck
     pics = bake(V2, N2, UV, F2, tan, sculpt, side, tex_side, hair_v[vmap] if FRINGE else None)
     return V2, UV, F2, N2, tan, pics, hair_v[vmap]
