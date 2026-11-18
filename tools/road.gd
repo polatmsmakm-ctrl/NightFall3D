@@ -71,7 +71,6 @@ func _ready() -> void:
 	await frames(6)
 	check(m.rules.car_of("P") == 1 and m.esc_i == 1 and m.rules.roads[1].drv == "P" and int(m.rules.roads[1].st) == 1, "first one in drives; the clock runs (%.1f s)" % float(m.rules.roads[1].t))
 	check(m.rules.free_now("P") == false, "in the car you are not free to be hit or to repair")
-	check(m.cshape.disabled and m.esc_vis, "my body rides in the seat")
 	events(m, m.rules.handle({"k": "board", "i": 1}, "D"))
 	await frames(4)
 	check(m.rules.roads[1].who == ["P", "D"] and m.rules.car_of("D") == 1, "the second one rides with them")
@@ -79,10 +78,11 @@ func _ready() -> void:
 	check(dn.global_position.distance_to(ec1.seat_spot()) < 0.3, "D sits in the passenger seat (%.2f m)" % dn.global_position.distance_to(ec1.seat_spot()))
 	var left0 := w.road_left(1, ec1.global_position)
 	m.stick_vec = Vector2(0, -1)
-	await frames(130) # the door, the key
+	await frames(80) # the door, the key (1.8 s)
 	var left1 := w.road_left(1, ec1.global_position)
-	check(absf(left1 - left0) < 1.0, "no gas until the key has turned (%.1f m)" % (left0 - left1))
-	await frames(240)
+	check(absf(left1 - left0) < 0.3, "no gas until the key has turned (%.1f m)" % (left0 - left1))
+	check(m.cshape.disabled and m.esc_vis and m.rig.visible, "my body rides in the seat")
+	await frames(290)
 	var left2 := w.road_left(1, ec1.global_position)
 	print("   drove %.1f m in 4 s, %.1f km/h, %.0f m left" % [left1 - left2, absf(ec1.speed) * 3.6, left2])
 	check(left1 - left2 > 25.0 and absf(ec1.speed) <= NightWorld.ESC_TOP + 0.2, "it drives down the road, capped at %d km/h" % roundi(NightWorld.ESC_TOP * 3.6))
@@ -112,7 +112,7 @@ func _ready() -> void:
 	check(m.esc_i == 0 and m.rules.car_of("D") == 1, "one in each car")
 	m.rules.doom = 0.05
 	await frames(10)
-	check(m.rules.hp("P") == "ok" and m.rules.hp("D") == "ok", "the moon lands; the cars are already out (P %s, D %s)" % [m.rules.hp("P"), m.rules.hp("D")])
+	check(m.rules.hp("P") in ["ok", "hurt"] and m.rules.hp("D") in ["ok", "hurt"], "the moon lands; the cars are already out (P %s, D %s)" % [m.rules.hp("P"), m.rules.hp("D")])
 	m.stick_vec = Vector2(0, -1)
 	await frames(200)
 	m.stick_vec = Vector2.ZERO

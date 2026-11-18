@@ -47,10 +47,11 @@ func _ready() -> void:
 			check(img.has_mipmaps(), "%s has mipmaps" % slot[0])
 			if slot[2] != "_mr.png": # metallic-roughness stays at normal quality on purpose (memory)
 				check(img.get_format() != Image.FORMAT_DXT1 and img.get_format() != Image.FORMAT_ETC2_RGB8, "%s is not the low-quality compression" % slot[0])
-			var astc := false
+			var mobile := false # the iPhone's copy: ASTC at high quality, ETC2 for metallic-roughness (normal quality)
+			var want := ".astc.ctex" if slot[2] != "_mr.png" else ".etc2.ctex"
 			for f in imported:
-				if (f as String).begins_with(file + slot[2] + "-") and (f as String).ends_with(".astc.ctex"): astc = true
-			check(astc, "%s has its ASTC copy for the iPhone" % slot[0])
+				if (f as String).begins_with(file + slot[2] + "-") and (f as String).ends_with(want): mobile = true
+			check(mobile, "%s has its %s copy for the iPhone" % [slot[0], "ASTC" if slot[2] != "_mr.png" else "ETC2"])
 		check(mat.texture_filter == BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC, "anisotropic filtering")
 		check(rig.has("idle") and rig.skeleton != null, "rigged, plays idle")
 		rig.queue_free()

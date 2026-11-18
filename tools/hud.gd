@@ -48,6 +48,7 @@ func _ready() -> void:
 	# ---------- event feed ----------
 	m.feed.clear()
 	m.rules.s["D"].hp = "down"
+	m.rules.s["D"].t = Rules.BLEED_TIME # (left at 0 it bleeds out on the next tick)
 	await frames(3)
 	check(m.feed.size() >= 1 and str(m.feed[0].t).contains("طاح"), "the feed: D went down (%s)" % (m.feed[0].t if m.feed.size() else "-"))
 	m._on_event({"k": "hooked", "n": "D", "s": "hooked"})
