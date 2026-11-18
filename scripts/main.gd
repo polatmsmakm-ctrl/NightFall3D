@@ -1095,7 +1095,7 @@ func _buttons() -> Array:
 	var c = ctx.get("interact")
 	var lay := NFControls.layout("killer" if my_role == "killer" else "survivor")
 	for id in lay:
-		if esc_i >= 0 and id != "sig": continue # in an escape car: the stick drives (or nothing), signals still go
+		if esc_i >= 0 and (id != "sig" or rules.roads[esc_i].drv == my_name): continue # in an escape car: the driver's hands are on the wheel (the speedometer sits there); the others can still signal
 		var e: Dictionary = lay[id]
 		var label := NFControls.label_of(id)
 		var icon := NFControls.icon_of(id)

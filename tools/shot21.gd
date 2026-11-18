@@ -45,9 +45,7 @@ func _ready() -> void:
 	await frames(4)
 	for e in m.rules.handle({"k": "board", "i": 0}, "سارة"): m._on_event(e)
 	m.stick_vec = Vector2(0, -1)
-	await frames(260)
-	m.stick_vec = Vector2(0.25, -1)
-	await frames(40)
+	await frames(200)
 	# her car close behind, lights on
 	var kr = m.remotes["القاتلة"] # as if her phone said she is at the wheel, just behind
 	kr.anim = "drive"
@@ -59,6 +57,8 @@ func _ready() -> void:
 	# the last stretch: the gate ahead
 	var out: Vector3 = (w.road_end(0) - w.gate_points[0][0]).normalized()
 	ec.global_position = w.road_end(0) - out * 45.0 + Vector3(0, 0.1, 0)
+	ec.rotation.y = float(w.gate_points[0][1]) + PI
+	m.yaw = ec.rotation.y + PI
 	kr.anim = "idle"
 	kr.pos = w.gate_points[1][0]
 	await frames(30)
