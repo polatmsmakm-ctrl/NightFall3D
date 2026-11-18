@@ -569,7 +569,8 @@ func drive(throttle: float, turn: float, dt: float) -> void:
 	if throttle > 0.05:
 		if speed < -0.3: speed = move_toward(speed, 0.0, BRAKE * dt)
 		else: # strong off the line, easing off as it nears top speed
-			var pull := ACCEL * lerpf(1.35, 0.55, clampf(speed / top(), 0.0, 1.0)) * [1.0, 0.85, 0.72][clampi(gear, 1, 3) - 1] # each gear up pulls a little softer
+			var soft: float = [1.0, 0.85, 0.72][clampi(gear, 1, 3) - 1] # each gear up pulls a little softer
+			var pull := ACCEL * lerpf(1.35, 0.55, clampf(speed / top(), 0.0, 1.0)) * soft
 			speed = move_toward(speed, top() * throttle, pull * dt)
 	elif throttle < -0.05:
 		if speed > 0.3: speed = move_toward(speed, 0.0, BRAKE * dt)
