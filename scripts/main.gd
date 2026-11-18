@@ -1123,7 +1123,7 @@ func _buttons() -> Array:
 			"light": on = battery > 0.0
 			"sig": on = my_state in ["ok", "hurt", "down", "hooked"]
 		out.append([NFControls.center_of(e, rect), float(e.r) * Gfx.btn_scale, label, id, on, icon])
-	if driving and car: # the gearbox, beside the speedometer: first (40 km/h) or second (70 km/h)
+	if driving and car: # the gearbox, beside the speedometer: first (40 km/h), second (70) or third (90)
 		var vs := get_viewport().get_visible_rect().size
 		out.append([Vector2(vs.x / 2.0 + 190.0, vs.y - 104.0), 44.0, "غيار %d" % car.gear, "gear", true, "shift"])
 	return out
@@ -1345,15 +1345,15 @@ func _draw_speedo(c: Vector2, cr: NFCar) -> void:
 	var sweep := deg_to_rad(270.0)
 	ui.draw_circle(c, r + 10.0, Color(0.03, 0.025, 0.025, 0.72))
 	ui.draw_arc(c, r + 10.0, 0.0, TAU, 64, Color(0.45, 0.08, 0.06, 0.9), 3.0, true)
-	ui.draw_arc(c, r - 4.0, a0 + sweep * (70.0 / 80.0), a0 + sweep, 24, Color(0.85, 0.12, 0.08, 0.85), 7.0, true)
-	for v in range(0, 81, 5):
-		var ang := a0 + sweep * v / 80.0
+	ui.draw_arc(c, r - 4.0, a0 + sweep * (90.0 / 100.0), a0 + sweep, 24, Color(0.85, 0.12, 0.08, 0.85), 7.0, true)
+	for v in range(0, 101, 5):
+		var ang := a0 + sweep * v / 100.0
 		var dir := Vector2(cos(ang), sin(ang))
 		var big := v % 10 == 0
 		ui.draw_line(c + dir * (r - (14.0 if big else 8.0)), c + dir * r, Color(0.92, 0.88, 0.82, 0.95 if big else 0.6), 3.0 if big else 1.5, true)
 		if v % 20 == 0:
 			_text(c + dir * (r - 30.0) + Vector2(0, 7), str(v), 15, Color(0.92, 0.88, 0.82))
-	var na := a0 + sweep * clampf(speedo_kmh, 0.0, 80.0) / 80.0
+	var na := a0 + sweep * clampf(speedo_kmh, 0.0, 100.0) / 100.0
 	var nd := Vector2(cos(na), sin(na))
 	ui.draw_line(c - nd * 10.0, c + nd * (r - 6.0), Color(1.0, 0.25, 0.15), 4.0, true)
 	ui.draw_circle(c, 9.0, Color(0.15, 0.03, 0.03))
@@ -1659,8 +1659,8 @@ func _press(id: String, touch: int) -> void:
 			if crouch: sprint = false
 		"gear":
 			if driving and car:
-				car.gear = 2 if car.gear == 1 else 1
-				_flash("الغيار الثاني — لين 70 كم/س" if car.gear == 2 else "الغيار الأول — لين 40 كم/س")
+				car.gear = car.gear % NFCar.GEAR_TOP.size() + 1 # 1 -> 2 -> 3 -> back to 1
+				_flash(["الغيار الأول — لين 40 كم/س", "الغيار الثاني — لين 70 كم/س", "الغيار الثالث — لين 90 كم/س"][car.gear - 1])
 				NFHaptics.pulse("hook")
 		"next":
 			var alive := _others_alive()

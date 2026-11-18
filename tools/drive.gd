@@ -90,6 +90,8 @@ func _ready() -> void:
 	m._press("gear", 5)
 	check(car.gear == 2 and car.top() > 19.0, "second gear: up to %.0f km/h" % (car.top() * 3.6))
 	m._press("gear", 5)
+	check(car.gear == 3 and absf(car.top() * 3.6 - 90.0) < 0.5, "third gear: up to %.0f km/h" % (car.top() * 3.6))
+	m._press("gear", 5)
 	check(car.gear == 1 and car.top() < 12.0, "and back to first")
 	m.car_look = 0.0
 	await frames(2)

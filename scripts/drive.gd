@@ -29,8 +29,8 @@ const DRIVER_HIPS := Vector3(0.42, 0.95, -0.08)  # the killer in the driver's se
 ## 0.81 m from the hips to the top of the head, so at 0.72 with the hips at 0.95 m the head is at
 ## 1.53 m (and the feet on the floor at 0.5). The same scale for the victim and the driver.
 const VICTIM_SCALE := 0.72
-## Two gears: first tops out at 40 km/h, second at 70 km/h (the button by the speedometer).
-const GEAR_TOP := [11.0, 19.5]
+## Three gears: first tops out at 40 km/h, second at 70, third at 90 (the button by the speedometer).
+const GEAR_TOP := [11.0, 19.5, 25.0]
 const HIPS_Y := 1.06                    # the Mixamo hips height every character shares, standing
 # the steering wheel cut out of the cabin (cabin.glb node `steer`): its axis in cabin space
 const STEER_AXIS := Vector3(0.004, -0.39, 0.921)
@@ -49,7 +49,7 @@ var tail: OmniLight3D
 var engine: AudioStreamPlayer3D
 var radio: AudioStreamPlayer3D # the owner's song (assets/sfx/radio.mp3), from the dashboard
 var radio_on := false     # the switch; it keeps playing after he gets out if he left it on
-var gear := 1             # 1 or 2
+var gear := 1             # 1, 2 or 3
 var limit := 0.0          # a top speed of its own (the survivors' escape cars); 0: the gearbox decides
 var _radio_started := false
 var inside: Node3D        # the cabin + headliner + pillars, only shown to the killer while he drives
@@ -541,7 +541,7 @@ func grips() -> Array:
 
 func top() -> float:
 	if limit > 0.0: return limit
-	return GEAR_TOP[clampi(gear, 1, 2) - 1]
+	return GEAR_TOP[clampi(gear, 1, GEAR_TOP.size()) - 1]
 
 ## Where the driver's eyes are, in the world (follows the car's tilt).
 func eye() -> Vector3:
@@ -569,7 +569,7 @@ func drive(throttle: float, turn: float, dt: float) -> void:
 	if throttle > 0.05:
 		if speed < -0.3: speed = move_toward(speed, 0.0, BRAKE * dt)
 		else: # strong off the line, easing off as it nears top speed
-			var pull := ACCEL * lerpf(1.35, 0.55, clampf(speed / top(), 0.0, 1.0)) * (1.0 if gear == 1 else 0.85)
+			var pull := ACCEL * lerpf(1.35, 0.55, clampf(speed / top(), 0.0, 1.0)) * [1.0, 0.85, 0.72][clampi(gear, 1, 3) - 1] # each gear up pulls a little softer
 			speed = move_toward(speed, top() * throttle, pull * dt)
 	elif throttle < -0.05:
 		if speed > 0.3: speed = move_toward(speed, 0.0, BRAKE * dt)

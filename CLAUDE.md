@@ -535,9 +535,10 @@ objectives and out of the lagoon. Every phone runs the same search, so they all 
     phone; on foot all of it as before. The engine and the radio give the car away instead.
   - **The radio stays on** after she gets out if she left it on: it plays from the parked car, and
     her `st` `f` flag is the radio switch whether or not she is at the wheel.
-  - **Two gears** (`NFCar.gear`, `GEAR_TOP` 11 / 19.5 m/s = 40 / 70 km/h): a «غيار 1 / 2» button
-    beside the speedometer (icon `shift`), pull a little softer in second, engine pitch drops on the
-    shift up; the speedometer reads 0-80 with the red band from 70 and shows 1 / 2 / R.
+  - **Three gears** (`NFCar.gear`, `GEAR_TOP` 11 / 19.5 / 25 m/s = 40 / 70 / 90 km/h; the third at the
+    owner's request): a «غيار 1 / 2 / 3» button beside the speedometer (icon `shift`, 1 -> 2 -> 3 -> 1),
+    each gear up pulls a little softer (1.0 / 0.85 / 0.72), engine pitch drops on the shift up; the
+    speedometer reads 0-100 with the red band from 90 and shows 1 / 2 / 3 / R.
 - **Every parked car can be taken** (the market's, the random ones, the car park's ~87 bays):
   `world.parked` lists them, the interact button is «اركب» next to any of them (`main._car_near`:
   -1 the driving car, 0.. a parked one), and `world.take_parked(i)` **swaps** the one `NFCar` with
