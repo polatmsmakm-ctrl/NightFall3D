@@ -16,6 +16,7 @@ const DOOM_TIME := 120.0 # once the gates have power the moon falls: this long t
 const MASH_STEP := 0.03 # each tap on "free yourself"
 const MASH_DECAY := 0.1 # lost per second, so you have to keep hammering the button
 const RESCUE_TIME := 2.0 # seconds to lift someone off a hook; two of you halve it
+const ROAD_TIME := 120.0 # from the first one getting into a gate's escape car to the last gate, 600 m on
 const LIVE := ["ok", "hurt", "down", "carried", "hooked"]
 # one random event per round, picked from the seed so every client agrees
 const EVENT_LEN := [20.0, 40.0, 5.0] # 0 blackout, 1 heavy fog, 2 alarm
@@ -23,6 +24,9 @@ const ADHAN_LEN := 55.0              # the length of assets/sfx/adhan.mp3
 
 var gens: Array = [] # {p, done, reps}
 var gates: Array = [] # {open}
+# the escape car behind each gate: st 0 waiting, 1 on the road, 2 caught (rammed or out of time),
+# 3 through the last gate. The first one in drives; who lists everyone in it, driver first.
+var roads: Array = [] # {st, drv, who, t, why}
 var pallets: Array = [] # 0 standing, 1 dropped, 2 broken
 var s := {} # survivor name -> {hp, hooks, hook_i, t, heal, locker, item}
 var roles := {}
@@ -57,13 +61,15 @@ func setup(n_gens: int, n_gates: int, n_pallets: int, hatches: int, players: Arr
 	ev_at = 60.0 + float((absi(seed) / 3) % 121)
 	adhan_at = 40.0 + float((absi(seed) / 379) % 151)
 	for i in n_gens: gens.append({"p": 0.0, "done": false, "reps": {}})
-	for i in n_gates: gates.append({"open": false})
+	for i in n_gates:
+		gates.append({"open": false})
+		roads.append({"st": 0, "drv": "", "who": [], "t": ROAD_TIME, "why": ""})
 	for i in n_pallets: pallets.append(0)
 	for pl in players:
 		roles[str(pl.name)] = str(pl.role)
 		score[str(pl.name)] = 0.0
 		if str(pl.role) == "killer": killer = str(pl.name)
-		else: s[str(pl.name)] = {"hp": "ok", "hooks": 0, "hook_i": -1, "t": 0.0, "heal": 0.0, "locker": -1, "item": true, "esc": 0.0, "resc": 0.0}
+		else: s[str(pl.name)] = {"hp": "ok", "hooks": 0, "hook_i": -1, "t": 0.0, "heal": 0.0, "locker": -1, "item": true, "esc": 0.0, "resc": 0.0, "car": -1}
 
 func add(name: String, pts: float) -> void:
 	if score.has(name): score[name] += pts
@@ -77,9 +83,38 @@ func done_count() -> int:
 func hp(name: String) -> String:
 	return s[name].hp if s.has(name) else ""
 
-## Standing, free to act.
+## Standing, free to act (not hiding, not in an escape car).
 func free_now(name: String) -> bool:
-	return s.has(name) and s[name].hp in ["ok", "hurt"] and s[name].locker < 0
+	return s.has(name) and s[name].hp in ["ok", "hurt"] and s[name].locker < 0 and int(s[name].get("car", -1)) < 0
+
+## The escape car this survivor is riding in, -1 none.
+func car_of(name: String) -> int:
+	return int(s[name].get("car", -1)) if s.has(name) else -1
+
+## Everyone in the car is out: through the last gate.
+func _arrive(i: int) -> Dictionary:
+	var r: Dictionary = roads[i]
+	r.st = 3
+	for n in r.who:
+		if not s.has(n): continue
+		if s[n].hp in ["ok", "hurt"]:
+			s[n].hp = "escaped"
+			add(n, 200.0)
+		s[n].car = -1
+	return {"k": "arrive", "i": i, "who": r.who.duplicate()}
+
+## The car stops dead and everyone in it is thrown out onto the road, down: the killer's to hang.
+func _caught(i: int, why: String) -> Dictionary:
+	var r: Dictionary = roads[i]
+	r.st = 2
+	r.why = why
+	for n in r.who:
+		if not s.has(n): continue
+		s[n].car = -1
+		if s[n].hp in ["ok", "hurt"]:
+			_down(n)
+			add(killer, 60.0)
+	return {"k": "caught", "i": i, "why": why, "who": r.who.duplicate()}
 
 func locker_user(i: int) -> String:
 	for n in s:
@@ -126,6 +161,21 @@ func handle(d: Dictionary, from: String) -> Array:
 				else:
 					gens[i].p = maxf(gens[i].p - 0.08, 0.0)
 					out.append({"k": "boom", "i": i})
+		"board": # into the escape car past a gate: the first one in drives, the rest ride with them
+			if powered and i >= 0 and i < roads.size() and free_now(from) and int(roads[i].st) <= 1:
+				var r: Dictionary = roads[i]
+				if r.st == 0:
+					r.st = 1; r.t = ROAD_TIME; r.drv = from
+				r.who.append(from)
+				s[from].car = i
+				_drop(from)
+				out.append({"k": "board", "i": i, "n": from, "drv": r.drv == from})
+		"arrive": # the driver has reached the last gate: everyone in the car is out
+			if i >= 0 and i < roads.size() and int(roads[i].st) == 1 and roads[i].drv == from:
+				out.append(_arrive(i))
+		"ram": # the killer's car hit the escape car
+			if is_killer and i >= 0 and i < roads.size() and int(roads[i].st) == 1:
+				out.append(_caught(i, "ram"))
 		"escape":
 			if free_now(from) and (powered or (hatch >= 0 and d.get("h", false))):
 				s[from].hp = "escaped"
@@ -168,7 +218,7 @@ func handle(d: Dictionary, from: String) -> Array:
 			if d.get("on", false) and free_now(from):
 				if n == from:
 					if s[n].hp == "hurt" and s[n].item: healers[from] = n
-				elif s.has(n) and s[n].hp in ["hurt", "down"] and s[n].locker < 0: healers[from] = n
+				elif s.has(n) and s[n].hp in ["hurt", "down"] and s[n].locker < 0 and car_of(n) < 0: healers[from] = n
 			else: healers.erase(from)
 		"locker":
 			if d.get("on", false):
@@ -228,10 +278,15 @@ func tick(dt: float) -> Array:
 		for g in gates: g.open = true
 	if powered and doom > 0.0:
 		doom = maxf(doom - dt, 0.0)
-		if doom <= 0.0: # the moon lands: nobody left inside survives
+		if doom <= 0.0: # the moon lands: nobody left inside survives (the escape cars are already out)
 			for n in s:
-				if s[n].hp in LIVE: s[n].hp = "dead"
+				if s[n].hp in LIVE and car_of(n) < 0: s[n].hp = "dead"
 			_drop_all()
+	for i in roads.size(): # the road clock: out of time, the car stops where it is
+		var r: Dictionary = roads[i]
+		if int(r.st) != 1: continue
+		r.t = maxf(float(r.t) - dt, 0.0)
+		if r.t <= 0.0: out.append(_caught(i, "time"))
 	for n in s:
 		var p: Dictionary = s[n]
 		if p.hp == "hooked": p.esc = maxf(p.esc - MASH_DECAY * dt, 0.0)
@@ -322,8 +377,10 @@ func snapshot() -> Dictionary:
 	for n in s:
 		var p: Dictionary = s[n]
 		var hands := hands_on(n)
-		ss[n] = [p.hp, p.hooks, p.hook_i, ceili(p.t), snappedf(p.heal, 0.001), p.locker, p.item, snappedf(p.esc, 0.001), snappedf(p.resc, 0.001), hands]
-	return {"k": "gs", "g": gp, "d": gd, "to": to, "pw": powered, "s": ss, "pl": pallets, "kc": carrying, "ks": snappedf(stun, 0.01), "kp": snappedf(power_cd, 0.1), "ov": over, "hx": hatch, "sc": sc, "dm": snappedf(doom, 0.1),
+		ss[n] = [p.hp, p.hooks, p.hook_i, ceili(p.t), snappedf(p.heal, 0.001), p.locker, p.item, snappedf(p.esc, 0.001), snappedf(p.resc, 0.001), hands, int(p.get("car", -1))]
+	var rd := []
+	for r in roads: rd.append([r.st, r.drv, r.who, snappedf(float(r.t), 0.1), r.why])
+	return {"rd": rd, "k": "gs", "g": gp, "d": gd, "to": to, "pw": powered, "s": ss, "pl": pallets, "kc": carrying, "ks": snappedf(stun, 0.01), "kp": snappedf(power_cd, 0.1), "ov": over, "hx": hatch, "sc": sc, "dm": snappedf(doom, 0.1),
 		"dr": doors, "ek": ev_kind if ev_fired else -1, "et": snappedf(ev_t, 0.1), "en": ev_n, "ad": adhan}
 
 func apply(v: Dictionary) -> void:
@@ -335,7 +392,11 @@ func apply(v: Dictionary) -> void:
 	for n in v.s:
 		var a: Array = v.s[n]
 		s[n] = {"hp": str(a[0]), "hooks": int(a[1]), "hook_i": int(a[2]), "t": float(a[3]), "heal": float(a[4]), "locker": int(a[5]), "item": bool(a[6]),
-			"esc": float(a[7]) if a.size() > 7 else 0.0, "resc": float(a[8]) if a.size() > 8 else 0.0, "hands": int(a[9]) if a.size() > 9 else 0}
+			"esc": float(a[7]) if a.size() > 7 else 0.0, "resc": float(a[8]) if a.size() > 8 else 0.0, "hands": int(a[9]) if a.size() > 9 else 0, "car": int(a[10]) if a.size() > 10 else -1}
+	if v.has("rd"):
+		for i in mini(roads.size(), v.rd.size()):
+			var e: Array = v.rd[i]
+			roads[i] = {"st": int(e[0]), "drv": str(e[1]), "who": (e[2] as Array).duplicate(), "t": float(e[3]), "why": str(e[4]) if e.size() > 4 else ""}
 	carrying = str(v.kc)
 	stun = float(v.ks)
 	power_cd = float(v.kp)

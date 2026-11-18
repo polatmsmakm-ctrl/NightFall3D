@@ -143,6 +143,13 @@ var car_remote := false   # the killer on another phone is at the wheel (to open
 var pass_cd := 0.0        # the pass-by sound waits this long before it can play again
 var car_inside := true        # driving from the seat (true) or from the chase camera behind
 var escape_banner := 0.0
+# the road chase: past a gate, one shared escape car to the last gate 600 m on
+var esc_i := -1            # the escape car I am in (Rules.car_of), -1 none
+var esc_seen := []         # per road: the last state seen, so every phone starts / stops its car once
+var esc_vis := true        # my own body shows in the car (driver and front passenger; the back seats are hidden)
+var esc_arrived := false   # the "arrive" input has gone out for the car I drive
+var esc_ram_cd := 0.0      # the killer's car: seconds before it can catch another escape car
+var esc_warn := 0.0        # in an escape car: the "she is right behind you" buzz waits this long
 
 func _ready() -> void:
 	lobby_scene = NFLobby.new() # the campfire start screen (scripts/lobby.gd)
@@ -204,6 +211,11 @@ func _start(c: Dictionary) -> void:
 		for v in world.hook_points: lay.h.append(xz.call(v))
 		for v in world.pallet_points: lay.p.append(xz.call(v[0]))
 		for v in world.door_points: lay.d.append(xz.call(v[0]))
+		lay.c = [] # where each gate's escape car waits, and the last gate at the end of its road
+		lay.e = []
+		for i in world.gate_points.size():
+			lay.c.append(xz.call(world.esc_start(i)))
+			lay.e.append(xz.call(world.road_end(i)))
 		Net.send({"t": "layout", "d": lay})
 	started = true
 
@@ -635,6 +647,24 @@ func _on_event(e: Dictionary) -> void:
 			if my_role == "killer":
 				boost_t = 3.5
 				_flash("اندفاع!")
+		"board":
+			var who := str(e.n)
+			if bool(e.get("drv", false)):
+				_feed("%s ركب سيارة الهروب ويسوق" % who, "car", Color(0.5, 0.95, 1.0))
+				if my_role == "killer": _flash("ركبوا سيارة الهروب! الحقهم بسيارتك")
+			else: _feed("%s ركب معهم" % who, "car", Color(0.5, 0.95, 1.0))
+		"arrive":
+			NFHaptics.pulse("escape")
+			_feed("وصلوا البوابة الأخيرة! (%s)" % "، ".join(PackedStringArray(e.get("who", []))), "out", Color(0.5, 1.0, 0.6))
+			if my_role == "killer": _flash("فلتوا منك — وصلوا البوابة الأخيرة")
+		"caught":
+			var why := str(e.get("why", ""))
+			var mine: bool = my_name in (e.get("who", []) as Array)
+			_feed("خلص وقت سيارة الهروب — طاحوا" if why == "time" else "القاتلة صدمت سيارة الهروب!", "car", Color(1.0, 0.4, 0.3))
+			if mine:
+				_flash("خلص الوقت! وقفت السيارة وطحتوا" if why == "time" else "صدمتكم! طحتوا من السيارة")
+				NFHaptics.pulse("impact")
+			elif my_role == "killer": _flash("مسكتهم! علّقهم على الخطاطيف اللي على الطريق" if why == "ram" else "خلص وقتهم — طاحوا على الطريق، علّقهم")
 		"door":
 			world.set_door(int(e.i), bool(e.on))
 			var at: Vector3 = world.door_points[int(e.i)][0]
@@ -707,10 +737,18 @@ func _draw_hit(mid: Vector2) -> void:
 	ui.draw_colored_polygon(PackedVector2Array([tip + d * 16.0, tip - sd * 12.0, tip + sd * 12.0]), Color(1, 0.15, 0.1, 0.9 * k))
 
 func _draw_gate(mid: Vector2) -> void:
-	if my_role != "survivor" or not rules.powered or my_state not in ["ok", "hurt"] or spectating != "" or world == null: return
+	if my_role != "survivor" or not rules.powered or my_state not in ["ok", "hurt"] or spectating != "" or world == null or esc_i >= 0: return
 	var best := Vector3.INF
 	var bd := INF
-	for g in world.gate_points:
+	var on_road := world.road_at(body.position)
+	var word := "البوابة %d م"
+	if on_road >= 0: # past the gate: the arrow shows the escape car, while it is still waiting
+		if on_road >= world.esc_cars.size() or int(rules.roads[on_road].st) > 1: return
+		best = (world.esc_cars[on_road] as NFCar).global_position
+		bd = Vector2(best.x - body.position.x, best.z - body.position.z).length()
+		word = "السيارة %d م"
+		if bd < 4.0: return
+	for g in ([] if on_road >= 0 else world.gate_points):
 		var p: Vector3 = g[0]
 		var dd := Vector2(p.x - body.position.x, p.z - body.position.z).length()
 		if dd < bd:
@@ -723,11 +761,11 @@ func _draw_gate(mid: Vector2) -> void:
 	var col := Color(0.45, 1.0, 0.55, beat)
 	ui.draw_circle(at, 23.0, Color(0.03, 0.06, 0.04, 0.8), true, -1.0, true)
 	ui.draw_arc(at, 23.0, 0, TAU, 40, col, 2.5, true)
-	NFIcons.draw(ui, "out", at, 26.0, col)
+	NFIcons.draw(ui, "car" if on_road >= 0 else "out", at, 26.0, col)
 	var tip := at + d * 33.0
 	var sd := Vector2(-d.y, d.x)
 	ui.draw_colored_polygon(PackedVector2Array([tip + d * 13.0, tip - sd * 9.0, tip + sd * 9.0]), col)
-	_text(at + Vector2(0, 42.0), "البوابة %d م" % roundi(bd), 18, col, 200.0)
+	_text(at + Vector2(0, 42.0), word % roundi(bd), 18, col, 200.0)
 
 func _flash(t: String) -> void:
 	flash = t
@@ -1021,6 +1059,7 @@ func _camera_feel(delta: float) -> void:
 				var k := 1.0 - exp(-1.8 * delta)
 				yaw = lerp_angle(yaw, 0.0, k)   # a hooked character always faces +z
 				pitch = lerpf(pitch, 0.1, k)
+	if esc_i >= 0: extra = 4.2 # in an escape car: the camera rides behind it
 	if my_role != "killer":
 		cam_extra = lerpf(cam_extra, extra, 1.0 - exp(-2.2 * delta))
 		arm.spring_length = 3.4 + cam_extra
@@ -1055,6 +1094,7 @@ func _buttons() -> Array:
 	var c = ctx.get("interact")
 	var lay := NFControls.layout("killer" if my_role == "killer" else "survivor")
 	for id in lay:
+		if esc_i >= 0 and id != "sig": continue # in an escape car: the stick drives (or nothing), signals still go
 		var e: Dictionary = lay[id]
 		var label := NFControls.label_of(id)
 		var icon := NFControls.icon_of(id)
@@ -1156,10 +1196,14 @@ func _draw_ui() -> void:
 			ui.draw_arc(b[0], b[1] + 5.0, -PI / 2.0, -PI / 2.0 + TAU * (1.0 - attack_cd / 2.4), 40, Color(1, 1, 1, 0.7), 4.0)
 	# team status bar along the top, then the objective (or the falling-moon ring) under it
 	_draw_team(s)
-	if driving and car: _draw_speedo(Vector2(mid.x, s.y - 112.0))
+	if driving and car: _draw_speedo(Vector2(mid.x, s.y - 112.0), car)
+	elif esc_i >= 0 and rules.roads[esc_i].drv == my_name: _draw_speedo(Vector2(mid.x, s.y - 112.0), world.esc_cars[esc_i])
 	var doom_up: bool = rules.powered and rules.doom >= 0.0
 	var top := Vector2(mid.x, 96)
-	if doom_up:
+	var road := _road_view()
+	if road >= 0:
+		_draw_road(road, mid)
+	elif doom_up:
 		_draw_moon(Vector2(mid.x, 120.0))
 		var falling := "تنزل الشمس" if world.map_id == "rubkhali" else "ينزل القمر"
 		if my_role == "killer": _text(Vector2(mid.x, 214), "امنعهم من الهرب قبل لا %s" % falling, 22, Color(1, 0.5, 0.4))
@@ -1282,6 +1326,9 @@ func _draw_team(s: Vector2) -> void:
 			var full: float = Rules.HOOK_TIME[clampi(int(p.hooks) - 1, 0, Rules.HOOK_TIME.size() - 1)]
 			ui.draw_arc(c, 17.5, -PI / 2.0, -PI / 2.0 + TAU * clampf(float(p.t) / full, 0.0, 1.0), 30, Color(1, 0.25, 0.22), 3.5)
 			_text(c + Vector2(0.0, 2.0), "%d" % int(p.t), 17, Color(1, 0.75, 0.6), 44.0)
+		if int(p.get("car", -1)) >= 0 and st in ["ok", "hurt"]: # in an escape car
+			ui.draw_circle(c + Vector2(-14.0, 14.0), 9.5, Color(0.04, 0.035, 0.045, 0.95))
+			NFIcons.draw(ui, "car", c + Vector2(-14.0, 14.0), 14.0, Color(0.5, 0.95, 1.0))
 		for k in int(p.hooks): # a red pip for every hook survived
 			ui.draw_circle(c + Vector2(-15.0 + k * 7.0, 15.5), 2.6, Color(1, 0.3, 0.25))
 		var short := nm.substr(0, 7) if nm.length() > 7 else nm
@@ -1291,7 +1338,7 @@ func _draw_team(s: Vector2) -> void:
 ## The car's speedometer, bottom centre while I drive: a 270-degree dial to 60 km/h with a red
 ## band at the top, an eased needle, the speed in figures and the gear (D / R).
 var speedo_kmh := 0.0
-func _draw_speedo(c: Vector2) -> void:
+func _draw_speedo(c: Vector2, cr: NFCar) -> void:
 	var r := 84.0
 	var a0 := deg_to_rad(135.0)
 	var sweep := deg_to_rad(270.0)
@@ -1312,7 +1359,7 @@ func _draw_speedo(c: Vector2) -> void:
 	ui.draw_arc(c, 9.0, 0.0, TAU, 24, Color(1.0, 0.3, 0.2), 2.0, true)
 	_text(c + Vector2(0, 48), "%d" % roundi(speedo_kmh), 30, Color(1, 0.95, 0.88))
 	_text(c + Vector2(0, 70), "كم/س", 13, Color(0.8, 0.75, 0.7))
-	var gear := "R" if car.speed < -0.3 else str(car.gear)
+	var gear := "R" if cr.speed < -0.3 else str(cr.gear)
 	_text(c + Vector2(r + 34.0, 10), gear, 26, Color(1.0, 0.35, 0.25) if gear == "R" else Color(0.5, 1.0, 0.6))
 
 func _draw_moon(c: Vector2) -> void:
@@ -1388,8 +1435,9 @@ func _map_text(pos: Vector2, t: String, size: int, col: Color) -> void:
 	minimap.draw_string(Net.font, pos, t, HORIZONTAL_ALIGNMENT_LEFT, -1, size, col)
 
 func _draw_map(o: Vector2, side: float, big: bool) -> void:
-	var k := side / (NightWorld.SIZE + NightWorld.ROAD_LEN * 2.0 + 8.0) if big else side / NightWorld.SIZE
+	var k := side / (NightWorld.SIZE + NightWorld.MAP_ROAD * 2.0 + 8.0) if big else side / NightWorld.SIZE
 	var c := o + Vector2(side, side) / 2.0
+	var inside := func(v: Vector2) -> Vector2: return v.clamp(o + Vector2(5, 5), o + Vector2(side - 5.0, side - 5.0)) # out on a road: on the edge
 	var u := 1.0 if not big else 2.2 # marker scale
 	minimap.draw_rect(Rect2(o, Vector2(side, side)), Color(0.02, 0.03, 0.05, 0.9 if big else 0.6))
 	minimap.draw_rect(Rect2(o, Vector2(side, side)), Color(1, 1, 1, 0.5), false, 2.0)
@@ -1402,7 +1450,7 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 		var p: Vector3 = world.gate_points[i][0]
 		var out_dir := signf(p.z)
 		var open: bool = rules.gates[i].open
-		if big: minimap.draw_rect(Rect2(c + Vector2(-4.5, minf(p.z, p.z + out_dir * NightWorld.ROAD_LEN)) * k, Vector2(9.0, NightWorld.ROAD_LEN) * k), Color(0.3, 0.3, 0.3) if not open else Color(0.25, 0.5, 0.3))
+		if big: minimap.draw_rect(Rect2(c + Vector2(-NightWorld.LANE_W / 2.0, minf(p.z, p.z + out_dir * NightWorld.MAP_ROAD)) * k, Vector2(NightWorld.LANE_W, NightWorld.MAP_ROAD) * k), Color(0.3, 0.3, 0.3) if not open else Color(0.25, 0.5, 0.3))
 		minimap.draw_rect(Rect2(c + Vector2(p.x, p.z) * k - Vector2(7, 3) * u, Vector2(14, 6) * u), Color(0.4, 1, 0.5) if open else Color(1, 0.3, 0.25))
 		if p.y > 1.0: _roof_badge(c + Vector2(p.x, p.z) * k + Vector2(0, 9) * u, u)
 	minimap.draw_rect(Rect2(c - Vector2(wl, wl), Vector2(wl, wl) * 2.0), Color(0.85, 0.85, 0.8, 0.8), false, 2.0 * u)
@@ -1433,6 +1481,7 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 		minimap.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		if big: _map_text(c + Vector2(mk.pos.x + 8.0, mk.pos.z + 3.0) * k, "السوق", 16, Color(1, 0.7, 0.7))
 	for i in world.hook_points.size():
+		if i >= world.road_hook0: break # the ones along the roads are off the map
 		var hp: Vector3 = world.hook_points[i]
 		var used := rules.hook_user(i) != ""
 		var hc := c + Vector2(hp.x, hp.z) * k
@@ -1455,7 +1504,7 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 		var hp2: Vector3 = world.hatch_points[rules.hatch]
 		minimap.draw_circle(c + Vector2(hp2.x, hp2.z) * k, 5.0 * u, Color(0.5, 1, 0.7))
 	if car and my_role == "killer": # the killer always knows where he left his car
-		var cp := c + Vector2(car.position.x, car.position.z) * k
+		var cp: Vector2 = inside.call(c + Vector2(car.position.x, car.position.z) * k)
 		var cf := Vector2(sin(car.rotation.y), cos(car.rotation.y))
 		var cs := Vector2(-cf.y, cf.x)
 		minimap.draw_colored_polygon(PackedVector2Array([cp + (cf * 5.0 + cs * 2.6) * u, cp + (cf * 5.0 - cs * 2.6) * u,
@@ -1467,9 +1516,10 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 		var r = remotes[n]
 		if my_role == "survivor" and r.role == "survivor" and r.node.visible:
 			var p: Vector3 = r.node.position
-			minimap.draw_circle(c + Vector2(p.x, p.z) * k, 3.5 * u, Color(0.4, 0.8, 1))
-			if big: _map_text(c + Vector2(p.x, p.z) * k + Vector2(8, 5), n, 15, Color(0.6, 0.85, 1))
-	var me := c + Vector2(body.position.x, body.position.z) * k
+			var rp: Vector2 = inside.call(c + Vector2(p.x, p.z) * k)
+			minimap.draw_circle(rp, 3.5 * u, Color(0.4, 0.8, 1))
+			if big: _map_text(rp + Vector2(8, 5), n, 15, Color(0.6, 0.85, 1))
+	var me: Vector2 = inside.call(c + Vector2(body.position.x, body.position.z) * k)
 	var f := Vector2(-sin(yaw), -cos(yaw))
 	var sd := Vector2(-f.y, f.x)
 	minimap.draw_colored_polygon(PackedVector2Array([me + f * 8.0 * u, me - f * 4.0 * u + sd * 5.0 * u, me - f * 4.0 * u - sd * 5.0 * u]),
@@ -1512,14 +1562,20 @@ func _update_ctx() -> void:
 			return
 		if my_state == "hooked" and me.hooks == 1: # first hook only: hammer the button to pull yourself off
 			ctx.interact = {"kind": "struggle", "label": "فك نفسك"}
-		if not (my_state in ["ok", "hurt"]): return
+		if not (my_state in ["ok", "hurt"]) or esc_i >= 0: return
 		for n in rules.s:
 			var p: Dictionary = rules.s[n]
 			if n == my_name: continue
 			if p.hp == "hooked" and _near(pos, world.hook_points[p.hook_i], 2.9):
 				ctx.interact = {"kind": "rescue", "label": "أنقذ", "n": n, "need": -1.0}
-			if p.hp in ["hurt", "down"] and p.locker < 0 and _near(pos, _pos_of(n), 2.6):
+			if p.hp in ["hurt", "down"] and p.locker < 0 and rules.car_of(n) < 0 and _near(pos, _pos_of(n), 2.6):
 				ctx.heal = {"kind": "heal", "n": n, "need": -1.0}
+		if not ctx.has("interact") and rules.powered: # the escape car past the gate: first one in drives
+			for i in mini(world.esc_cars.size(), rules.roads.size()):
+				var ec: NFCar = world.esc_cars[i]
+				var est := int(rules.roads[i].st)
+				if est <= 1 and absf(ec.speed) < 3.0 and _near(pos, ec.global_position, 3.8):
+					ctx.interact = {"kind": "board", "label": "اركب وسوق" if est == 0 else "اركب معهم", "i": i}
 		if not ctx.has("interact"):
 			for i in world.locker_points.size():
 				if _near(pos, world.locker_points[i][0], 1.9) and rules.locker_user(i) == "":
@@ -1588,6 +1644,7 @@ func _door_ctx(pos: Vector3) -> void:
 ## The round camera's field of view for what I am doing now, plus «مجال الرؤية».
 func _base_fov() -> float:
 	if driving: return (78.0 if car_inside else 74.0) + Gfx.fov_add
+	if esc_i >= 0: return 74.0 + Gfx.fov_add
 	return (80.0 if my_role == "killer" else 70.0) + Gfx.fov_add
 
 func _press(id: String, touch: int) -> void:
@@ -1639,6 +1696,7 @@ func _press(id: String, touch: int) -> void:
 				"locker_out": _ev({"k": "locker", "i": c.i, "on": false})
 				"pallet": _ev({"k": "pallet", "i": c.i})
 				"door": _ev({"k": "door", "i": c.i, "on": c.get("on", true)})
+				"board": _ev({"k": "board", "i": c.i})
 				"pickup": _ev({"k": "pickup", "n": c.n})
 				"hook": _ev({"k": "hook", "i": c.i})
 				"search": _ev({"k": "search", "i": c.i})
@@ -1811,6 +1869,7 @@ func _process(dt: float) -> void:
 	if car and not driving and not (rules.killer != "" and remotes.has(rules.killer) and remotes[rules.killer].anim == "drive"):
 		car.driven = false # nobody at the wheel: lights off, it stays where it was left
 		car.park(dt)
+	_esc_cars(dt)
 	for n in remotes:
 		var r = remotes[n]
 		var st: String = rules.hp(n)
@@ -1828,6 +1887,7 @@ func _process(dt: float) -> void:
 		elif st == "hooked":
 			target = world.hook_points[rules.s[n].hook_i] + Vector3(0, 0, 0.9)
 		elif anim == "drive": pass # seated at the wheel (placed below, once the car has moved)
+		elif anim in ["edrive", "eride"]: anim = "drive" # in an escape car (placed below)
 		elif st == "dead" or (st == "down" and anim != "crawl"): anim = "dying"
 		elif st == "hurt" and anim == "idle": anim = "injured"
 		r.node.position = r.node.position.lerp(target, w)
@@ -1862,6 +1922,21 @@ func _process(dt: float) -> void:
 			r.rig.reach(gp[0], gp[1], gp[2], gp[3])
 		elif r.role == "killer":
 			r.rig.reach_clear()
+		var rc := rules.car_of(n)
+		if r.role == "survivor" and rc >= 0 and rc < world.esc_cars.size(): # in an escape car: at the wheel or beside it
+			var ec: NFCar = world.esc_cars[rc]
+			var seat: int = (rules.roads[rc].who as Array).find(n)
+			r.node.visible = seat >= 0 and seat <= 1 and ec.seated() > 0.4 # the back seats are not drawn
+			r.node.scale = Vector3.ONE * NFCar.VICTIM_SCALE
+			r.node.position = ec.driver_spot() if seat <= 0 else ec.seat_spot()
+			r.rig.position = Vector3.ZERO
+			r.rig.rotation = Vector3(0, ec.rotation.y, 0)
+			r.rig.play("drive")
+			if seat == 0:
+				var eg := ec.grips()
+				r.rig.reach(eg[0], eg[1], eg[2], eg[3])
+			else: r.rig.reach_clear()
+		elif r.role == "survivor": r.rig.reach_clear()
 		if r.torch: r.torch.visible = r.lit and st in ["ok", "hurt"]
 		# footsteps are 3D and depend on the ground; the killer also gets scratch marks and the detection indicator
 		var moving: bool = r.node.visible and anim in ["run", "walk", "injured", "carry"]
@@ -1912,8 +1987,9 @@ func _process(dt: float) -> void:
 		for g in world.gate_points: _sfx("gate", g[0] + Vector3(0, 3, 0), 8.0)
 		_sfx("gate", null, -12.0)
 		doom_music.play()
-		_flash("البوابات انفتحت — الشمس نازلة عليكم! عندكم دقيقتين" if world.map_id == "rubkhali"
-			else "البوابات انفتحت — القمر نازل عليكم! عندكم دقيقتين")
+		if my_role == "survivor": # past each gate an escape car waits; the last gate is 600 m down the road
+			_flash("البوابات انفتحت — اركبوا سيارة الهروب ورا البوابة، والبوابة الأخيرة بعد 600 م")
+		else: _flash("البوابات انفتحت — بيهربون بالسيارة ورا البوابة، الحقهم بسيارتك")
 	# survivors feel the killer coming: heartbeat inside the terror radius, heavy breathing when he is very close
 	danger = 0.0
 	var kdist := 999.0
@@ -2008,6 +2084,12 @@ func _physics_process(delta: float) -> void:
 	else: spectating = ""
 	var me: Dictionary = rules.s.get(my_name, {})
 	var locker: int = me.locker if not me.is_empty() else -1
+	var was_in := esc_i
+	esc_i = rules.car_of(my_name) if my_role == "survivor" else -1
+	if esc_i >= world.esc_cars.size(): esc_i = -1
+	if esc_i != was_in:
+		if was_in >= 0: _esc_leave(was_in)
+		if esc_i >= 0: _esc_enter(esc_i)
 	_update_ctx()
 	_update_hold(delta)
 	attack_t = maxf(attack_t - delta, 0.0)
@@ -2033,6 +2115,8 @@ func _physics_process(delta: float) -> void:
 		if last_state != "hooked": hook_cam = 2.6
 		body.position = world.hook_points[me.hook_i] + Vector3(0, 0, 0.9)
 		_hook_pose(rig, delta)
+	elif esc_i >= 0:
+		_esc_ride(delta)
 	elif locker >= 0:
 		body.position = world.locker_points[locker][0]
 	elif driving:
@@ -2049,14 +2133,14 @@ func _physics_process(delta: float) -> void:
 		if f >= 1.0: vault = {}
 	else:
 		pinned = false
-	if my_state != "carried" and my_state != "hooked" and not driving: rig.position.y = 0.0
-	rig.scale = Vector3.ONE * (NFCar.VICTIM_SCALE if ((my_state == "carried" and _in_car(rules.killer)) or driving) else 1.0)
+	if my_state != "carried" and my_state != "hooked" and not driving and esc_i < 0: rig.position.y = 0.0
+	rig.scale = Vector3.ONE * (NFCar.VICTIM_SCALE if ((my_state == "carried" and _in_car(rules.killer)) or driving or esc_i >= 0) else 1.0)
 	if last_state == "hooked" and my_state != "hooked": rig.rotation = Vector3.ZERO
 	if last_locker >= 0 and locker < 0 and my_state in ["ok", "hurt"]: # stepped out of a locker
 		var lp: Array = world.locker_points[last_locker]
 		body.position = lp[0] + Basis(Vector3.UP, lp[1]) * Vector3(0, 0, 1.1)
 	last_locker = locker
-	if my_role == "survivor": rig.visible = locker < 0 and my_state != "escaped" and spectating == ""
+	if my_role == "survivor": rig.visible = locker < 0 and my_state != "escaped" and spectating == "" and (esc_i < 0 or esc_vis)
 	cshape.disabled = pinned or my_state in ["dead", "escaped"]
 	if pinned:
 		body.velocity = Vector3.ZERO
@@ -2084,7 +2168,7 @@ func _physics_process(delta: float) -> void:
 		if send_t <= 0.0:
 			send_t = 1.0 / 15.0
 			var p := body.position
-			Net.send({"t": "st", "p": [snappedf(p.x, 0.01), snappedf(p.y, 0.01), snappedf(p.z, 0.01), snappedf(rig.rotation.y, 0.01)], "a": "drive" if driving else rig.current,
+			Net.send({"t": "st", "p": [snappedf(p.x, 0.01), snappedf(p.y, 0.01), snappedf(p.z, 0.01), snappedf(rig.rotation.y, 0.01)], "a": "drive" if driving else (("edrive" if rules.roads[esc_i].drv == my_name else "eride") if esc_i >= 0 else rig.current),
 					"f": 1 if (light_on or (my_role == "killer" and car != null and car.radio_on)) else 0}) # the killer has no torch: f is his radio
 
 # ---------------- the killer's car ----------------
@@ -2230,6 +2314,18 @@ func _drive(delta: float) -> void:
 	for n in ram_cd.keys():
 		ram_cd[n] -= delta
 		if ram_cd[n] <= 0.0: ram_cd.erase(n)
+	esc_ram_cd = maxf(esc_ram_cd - delta, 0.0)
+	if esc_ram_cd <= 0.0 and not rules.over and car.seated() >= 1.0: # her car into an escape car: caught
+		var inv0 := car.global_transform.affine_inverse()
+		for i in mini(world.esc_cars.size(), rules.roads.size()):
+			if int(rules.roads[i].st) != 1: continue
+			var ep: Vector3 = inv0 * (world.esc_cars[i] as NFCar).global_position
+			if absf(ep.x) < 2.7 and absf(ep.z) < 5.3 and absf(ep.y) < 3.0:
+				esc_ram_cd = 2.0
+				_ev({"k": "ram", "i": i})
+				_shake(0.7)
+				NFHaptics.pulse("hit")
+				break
 	if absf(car.speed) < NFCar.RAM_SPEED or rules.stun > 0.0 or rules.over: return
 	var inv := car.global_transform.affine_inverse()
 	for n in remotes:
@@ -2265,6 +2361,182 @@ func _car_pass(dt: float) -> void:
 			car.whoosh()
 			pass_cd = 5.0
 			return
+
+# ---------------- the road chase: the survivors' escape car ----------------
+## Every phone runs every escape car the same way: the door and the key when the first one gets
+## in, then it follows whoever drives it, and it stops dead when it is caught.
+func _esc_cars(dt: float) -> void:
+	if world.esc_cars.is_empty() or rules.roads.is_empty(): return
+	while esc_seen.size() < world.esc_cars.size(): esc_seen.append(0)
+	esc_warn = maxf(esc_warn - dt, 0.0)
+	for i in mini(world.esc_cars.size(), rules.roads.size()):
+		var ec: NFCar = world.esc_cars[i]
+		var rd: Dictionary = rules.roads[i]
+		var st := int(rd.st)
+		if st != int(esc_seen[i]):
+			if st == 1: ec.begin("in") # the door, the key, the engine
+			elif st == 2 and int(esc_seen[i]) == 1: # caught: a dead stop, the door flies open, out they go
+				ec.speed = 0.0
+				ec.velocity = Vector3.ZERO
+				ec.begin("out")
+				if body.position.distance_to(ec.global_position) < 40.0: _shake(0.8)
+			esc_seen[i] = st
+		var drv := str(rd.drv)
+		if st == 1 and drv == my_name and esc_i == i: continue # I drive it (_esc_ride)
+		if st == 1 and remotes.has(drv) and remotes[drv].anim == "edrive":
+			ec.driven = true
+			ec.follow(remotes[drv].pos, remotes[drv].yaw, dt)
+		else:
+			ec.driven = st == 1
+			ec.park(dt)
+
+## Into an escape car: no torch, nothing held, the camera well back behind the car.
+func _esc_enter(i: int) -> void:
+	var ec: NFCar = world.esc_cars[i]
+	_end_hold()
+	vault = {}
+	crouch = false
+	sprint = false
+	light_on = false
+	sig_open = false
+	esc_arrived = false
+	body.velocity = Vector3.ZERO
+	arm.add_excluded_object(ec.get_rid())
+	arm.position.y = 1.1
+	main_cam.fov = _base_fov()
+	yaw = ec.rotation.y + PI
+	pitch = -0.24
+	car_look = 1.0
+	NFHaptics.pulse("hook")
+	if rules.roads[i].drv == my_name: _flash("أنت السايق — دوس للبوابة الأخيرة، %d م وعندكم دقيقتين" % roundi(NightWorld.ROAD_LEN))
+	else: _flash("ركبت معهم — %s يسوق" % str(rules.roads[i].drv))
+
+## Out of it: through the last gate (escaped), or thrown onto the road beside it when caught.
+func _esc_leave(i: int) -> void:
+	var ec: NFCar = world.esc_cars[i]
+	arm.remove_excluded_object(ec.get_rid())
+	arm.position.y = 0.3
+	main_cam.fov = _base_fov()
+	rig.reach_clear()
+	rig.position = Vector3.ZERO
+	rig.rotation = Vector3(0, ec.rotation.y, 0)
+	rig.scale = Vector3.ONE
+	rig.play("dying")
+	esc_vis = true
+	if my_state != "down": return
+	var g: Array = world.gate_points[i]
+	var gp: Vector3 = g[0]
+	var side := Basis(Vector3.UP, float(g[1])) * Vector3(1, 0, 0)
+	var k: int = maxi((rules.roads[i].who as Array).find(my_name), 0)
+	var lat := (ec.global_position - gp).dot(side)
+	var p: Vector3 = ec.global_position + side * (-2.4 if lat > 0.0 else 2.4) + ec.forward() * (1.2 - k * 1.4)
+	var lat2 := clampf((p - gp).dot(side), -NightWorld.LANE_W / 2.0 + 0.8, NightWorld.LANE_W / 2.0 - 0.8)
+	p += side * (lat2 - (p - gp).dot(side))
+	body.position = Vector3(p.x, gp.y + 0.1, p.z)
+	body.velocity = Vector3.ZERO
+	_shake(0.9)
+
+## In an escape car: the driver drives it (the stick as in the killer's car: up is the gas), the
+## rest ride along; the camera sits behind it and swings back there after a look round. At the
+## last gate the driver's phone tells the rules, and everyone in the car is out.
+func _esc_ride(delta: float) -> void:
+	var ec: NFCar = world.esc_cars[esc_i]
+	var rd: Dictionary = rules.roads[esc_i]
+	var seat: int = (rd.who as Array).find(my_name)
+	if rd.drv == my_name and int(rd.st) == 1:
+		var move := stick_vec
+		if move == Vector2.ZERO:
+			move = Vector2(float(Input.is_key_pressed(KEY_D)) - float(Input.is_key_pressed(KEY_A)),
+				float(Input.is_key_pressed(KEY_S)) - float(Input.is_key_pressed(KEY_W)))
+		if rules.over or ec.seated() < 1.0: move = Vector2.ZERO # not until the key has turned
+		ec.driven = true
+		ec.drive(-move.y, move.x, delta)
+		speedo_kmh = lerpf(speedo_kmh, absf(ec.speed) * 3.6, 1.0 - exp(-10.0 * delta))
+		if ec.bump > 0.0: # into a barrier or the wall
+			_shake(0.25 + ec.bump * 0.7)
+			NFHaptics.pulse_scaled("hit", ec.bump)
+			ec.bump = 0.0
+		if not esc_arrived and world.road_left(esc_i, ec.global_position) < 6.0:
+			esc_arrived = true
+			_ev({"k": "arrive", "i": esc_i})
+	body.position = ec.global_position
+	body.velocity = Vector3.ZERO
+	esc_vis = seat >= 0 and seat <= 1 and ec.seated() > 0.4
+	rig.position = (ec.driver_spot() if seat <= 0 else ec.seat_spot()) - body.global_position
+	rig.rotation = Vector3(0, ec.rotation.y, 0)
+	rig.play("drive")
+	if seat == 0:
+		var gp := ec.grips()
+		rig.reach(gp[0], gp[1], gp[2], gp[3])
+	else: rig.reach_clear()
+	# she is right behind: a buzz, so the driver feels it without looking back
+	if car and car.driven and esc_warn <= 0.0 and car.global_position.distance_to(ec.global_position) < 22.0:
+		esc_warn = 1.2
+		NFHaptics.pulse("beat")
+	car_look += delta
+	if look_id >= 0: car_look = 0.0
+	if car_look > 0.9:
+		var k := 1.0 - exp(-2.5 * delta)
+		yaw = lerp_angle(yaw, ec.rotation.y + PI, k)
+		pitch = lerpf(pitch, -0.24, k)
+
+## The road to show on the HUD: the car I am in, the road I am standing on, the car of the one I
+## watch; for the killer, an escape car on its way.
+func _road_view() -> int:
+	if world == null or rules.roads.is_empty() or world.esc_cars.is_empty(): return -1
+	if my_role == "survivor":
+		if esc_i >= 0: return esc_i
+		if spectating != "": return rules.car_of(spectating)
+		if my_state in ["ok", "hurt", "down", "carried", "hooked"]: return world.road_at(body.position)
+		return -1
+	for i in rules.roads.size():
+		if int(rules.roads[i].st) == 1: return i
+	return -1
+
+## The road panel, where the moon ring sits otherwise: the metres left to the last gate in big
+## figures, the road's clock, and a strip from gate to gate with the car (and her, if she is on it).
+func _draw_road(i: int, mid: Vector2) -> void:
+	var rd: Dictionary = rules.roads[i]
+	var st := int(rd.st)
+	var ec: NFCar = world.esc_cars[i]
+	var in_car := st == 1 or esc_i == i or my_role == "killer"
+	var at: Vector3 = ec.global_position if in_car else body.position
+	if spectating != "" and not in_car: at = _pos_of(spectating)
+	var left := world.road_left(i, at)
+	var c := Vector2(mid.x, 112.0)
+	var box := Rect2(c - Vector2(230.0, 54.0), Vector2(460.0, 128.0))
+	ui.draw_rect(box, Color(0.02, 0.03, 0.03, 0.74))
+	var col := Color(0.55, 1.0, 0.62)
+	var t: float = float(rd.t)
+	var urgent: bool = st == 1 and t < 30.0
+	if urgent: col = Color(1.0, 0.45 + 0.25 * sin(Time.get_ticks_msec() / 160.0), 0.3)
+	ui.draw_rect(box, Color(col, 0.75), false, 2.0)
+	if my_role == "killer":
+		_text(c + Vector2(0, -28), "سيارة الهروب — باقي لهم", 18, Color(1, 0.6, 0.5))
+	else:
+		_text(c + Vector2(0, -28), "للبوابة الأخيرة", 18, Color(0.85, 1, 0.88))
+	_text(c + Vector2(0, 20), "%d م" % roundi(left), 50, col)
+	var clock := "%d:%02d" % [int(ceil(t)) / 60, int(ceil(t)) % 60]
+	match st:
+		0: _text(c + Vector2(0, 50), "السيارة تنتظر — أول واحد يركب يسوق", 17, Color(0.85, 0.95, 0.9))
+		1: _text(c + Vector2(0, 50), "الوقت %s" % clock, 24, col)
+		2: _text(c + Vector2(0, 50), "انمسكت السيارة" if str(rd.why) == "ram" else "خلص الوقت", 22, Color(1, 0.4, 0.3))
+		3: _text(c + Vector2(0, 50), "وصلوا!", 22, Color(0.5, 1, 0.6))
+	# the strip: gate on the right (Arabic reads that way), the last gate on the left
+	var a := Vector2(c.x + 200.0, c.y + 64.0)
+	var b := Vector2(c.x - 200.0, c.y + 64.0)
+	ui.draw_line(a, b, Color(1, 1, 1, 0.25), 6.0, true)
+	var f := clampf(1.0 - left / NightWorld.ROAD_LEN, 0.0, 1.0)
+	ui.draw_line(a, a.lerp(b, f), col, 6.0, true)
+	ui.draw_circle(b, 7.0, Color(0.5, 1, 0.6))
+	NFIcons.draw(ui, "car", a.lerp(b, f) + Vector2(0, -2), 22.0, Color(0.5, 0.95, 1.0))
+	if car and rules.killer != "": # her, when she is on the same road
+		var kp: Vector3 = car.global_position if (driving or car_remote) else _pos_of(rules.killer)
+		if world.road_at(kp) == i:
+			var kf := clampf(1.0 - world.road_left(i, kp) / NightWorld.ROAD_LEN, 0.0, 1.0)
+			ui.draw_circle(a.lerp(b, kf), 7.0, Color(1.0, 0.25, 0.2))
+			if my_role == "survivor" and in_car and kf > f - 0.06 and kf <= f + 0.01:
+				_text(c + Vector2(0, 104), "القاتلة وراكم!", 24, Color(1, 0.35, 0.3))
 
 func _move(delta: float) -> void:
 	var frozen: bool = rules.over or my_state in ["dead", "escaped"] or not hold.is_empty() or (my_role == "killer" and rules.stun > 0.0)

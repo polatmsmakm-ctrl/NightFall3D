@@ -50,6 +50,7 @@ var engine: AudioStreamPlayer3D
 var radio: AudioStreamPlayer3D # the owner's song (assets/sfx/radio.mp3), from the dashboard
 var radio_on := false     # the switch; it keeps playing after he gets out if he left it on
 var gear := 1             # 1 or 2
+var limit := 0.0          # a top speed of its own (the survivors' escape cars); 0: the gearbox decides
 var _radio_started := false
 var inside: Node3D        # the cabin + headliner + pillars, only shown to the killer while he drives
 var _last := Vector3.ZERO # remote phones work the speed out from how far it moved
@@ -539,6 +540,7 @@ func grips() -> Array:
 	return out
 
 func top() -> float:
+	if limit > 0.0: return limit
 	return GEAR_TOP[clampi(gear, 1, 2) - 1]
 
 ## Where the driver's eyes are, in the world (follows the car's tilt).

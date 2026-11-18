@@ -71,8 +71,16 @@ func _ready():
 	var gz: float = NightWorld.WALL - 5.0
 	await put(m, Vector3(0, w.height(0, gz), gz)); m.yaw = PI; m.stick_vec = Vector2(0, -1); await frames(120)
 	print("S past gate, not out yet: ", m.rules.hp("P"), " z=", snappedf(m.body.position.z, 0.1), " floor=", m.body.is_on_floor())
-	await frames(1000)
-	print("S end of road z=", snappedf(m.body.position.z, 0.1), " banner=", snappedf(m.escape_banner, 0.1), " spectating=", m.spectating)
+	m.stick_vec = Vector2.ZERO # the escape car waits past the gate; the last gate is 600 m on
+	var ec: NFCar = w.esc_cars[1]
+	await put(m, ec.global_position + Vector3(2.2, 0, 0))
+	print("S at the escape car ctx=", m.ctx.get("interact", {}).get("kind", ""))
+	m._press("interact", 5); await frames(140)
+	print("S in the car=", m.esc_i, " driver=", m.rules.roads[1].drv)
+	var out: Vector3 = (w.road_end(1) - w.gate_points[1][0]).normalized()
+	ec.global_position = w.road_end(1) - out * 30.0 + Vector3(0, 0.1, 0)
+	m.stick_vec = Vector2(0, -1); await frames(300); m.stick_vec = Vector2.ZERO
+	print("S end of road by car: left=", snappedf(w.road_left(1, ec.global_position), 0.1), " banner=", snappedf(m.escape_banner, 0.1), " spectating=", m.spectating)
 	await frames(300)
 	for i in 5: await tree.process_frame
 	print("S escaped=", m.rules.hp("P"), " over=", m.rules.over, " (dummy ", m.rules.hp("D"), ")")

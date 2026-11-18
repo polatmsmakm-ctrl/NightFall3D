@@ -10,7 +10,12 @@ const TREE_CHUNK := 50.0
 const GRASS_CHUNK := 20.0
 const GRASS_PER_CHUNK := 700
 const WALL := HALF - 8.0 # perimeter wall line; the exit gates are set into it
-const ROAD_LEN := 60.0 # the escape road behind each gate; you are out when you reach its end
+const ROAD_LEN := 600.0 # the escape road behind each gate, from the gate to the last gate at its end
+const LANE_W := 12.0    # wide enough for two cars: hers can come up beside theirs
+const MAP_ROAD := 60.0  # how much of each road the big map draws past the gate
+const ESC_AT := 16.0    # the survivors' escape car waits this far past the gate
+const ESC_TOP := 14.0   # its top speed (50 km/h): the killer's second gear is 19.5, so she can catch it
+const ROAD_HOOKS := 9   # hooks along each road, one every 60 m (after the map's own, so those keep their numbers)
 
 # each: x, z, yaw, width, depth, wall height
 const FOREST_BUILDINGS := [
@@ -48,6 +53,8 @@ var tent_models := 0          # bedouin tents drawn with the owner's crimson ten
 var car_models := 0           # cars drawn with the owner's Land Cruiser (the garage counts as one MultiMesh)
 const CAR_SCALE := 0.9        # 1.8 x 4.3 m, the size of the old car boxes and their collision
 var drive_car: NFCar          # the one car the killer can drive (placed at the end of build())
+var esc_cars := []            # the survivors' escape car behind each gate (NFCar, same order as gate_points)
+var road_hook0 := 0           # hook_points from here on stand along the escape roads
 ## Every parked car on the map (market, the random ones, fareej driveways, the car park's bays):
 ## the killer can take any of them. There is still only one NFCar: getting into a parked car swaps
 ## the two (`take_parked`), so the driving car takes that spot and the parked one takes its place.
@@ -220,6 +227,7 @@ func configure(id: String, seed := 1, th := "normal") -> void:
 	if Gfx.strong and Gfx.effects >= 2: grass_per_chunk = int(grass_per_chunk * 1.6) # thicker on strong devices
 	if id == "garage": # the car park lays out its own floor, so none of the outdoor plan applies
 		_plan_garage(rng)
+		_plan_road()
 		return
 	sites.append([0.0, 0.0, _raw_h(0.0, 0.0), 6.0])
 	for b in buildings:
@@ -264,7 +272,19 @@ func configure(id: String, seed := 1, th := "normal") -> void:
 		var hp := _random_site(rng, 3.0, 30.0, 100.0)
 		sites.append([hp.x, hp.y, _raw_h(hp.x, hp.y), 2.2])
 		hatch_points.append(Vector3(hp.x, _raw_h(hp.x, hp.y), hp.y))
+	_plan_road()
 	_plan_trees()
+
+## The hooks along each escape road: one every 60 m on alternating sides of the lane, so a car
+## the killer stops can be emptied onto the nearest one.
+func _plan_road() -> void:
+	road_hook0 = hook_points.size()
+	for g in gate_points:
+		var gp: Vector3 = g[0]
+		var b := Basis(Vector3.UP, float(g[1]))
+		for k in range(1, ROAD_HOOKS + 1):
+			var p: Vector3 = gp + b * Vector3((LANE_W / 2.0 - 1.6) * (1.0 if k % 2 == 1 else -1.0), 0.0, -60.0 * k)
+			hook_points.append(Vector3(p.x, gp.y, p.z))
 
 func _plan_trees() -> void:
 	var rng := RandomNumberGenerator.new()
@@ -371,6 +391,7 @@ func build() -> void:
 	await get_tree().physics_frame # the colliders have to be in the physics space before the
 	await get_tree().physics_frame # killer's car looks for a clear spot among them
 	_place_drive_car()
+	_place_escape_cars()
 	_sharpen() # last, so the killer's car and its cabin are included
 	for l in find_children("*", "OmniLight3D", true, false): # far lights cost nothing
 		l.distance_fade_enabled = true
@@ -1062,38 +1083,72 @@ func _build_objectives() -> void:
 			body.add_child(tl)
 		add_child(body)
 		gate_nodes.append({"doors": doors, "light": light, "mat": sign_mat, "state": 0, "open_w": open_w})
-		# the escape road: a long walled lane behind the gate (local -z is "out")
+		# the escape road: a 600 m walled lane behind the gate (local -z is "out"), the escape car
+		# waiting at its start, hooks and crash barriers along it, and the last gate at its end
 		var road_mat := _flat(Color(0.07, 0.065, 0.06), 0.8)
-		var lane_w := 9.0
-		var z_mid := -(8.0 + ROAD_LEN) / 2.0
-		_box(body, Vector3(lane_w, 1.0, ROAD_LEN + 8.0), Vector3(0, gy - 0.48, z_mid - 0.5), road_mat)
-		for sx in [-1.0, 1.0]:
-			_box(body, Vector3(0.6, 9.0, ROAD_LEN + 2.0), Vector3(sx * (lane_w / 2.0 + 0.3), gy + 3.5, -(ROAD_LEN + 2.0) / 2.0 - 0.7), _mat.concrete)
-		_box(body, Vector3(lane_w + 1.2, 9.0, 0.6), Vector3(0, gy + 3.5, -ROAD_LEN - 4.0), _mat.concrete) # dead end behind the finish
-		for i in int(ROAD_LEN / 12.0): # lamps down the lane, alternating sides, dimmer the further you go
-			var lz := -8.0 - i * 12.0
+		var lane_w := LANE_W
+		var road_far := ROAD_LEN + 8.5
+		var z0 := 0.5
+		while z0 < road_far: # in 50 m pieces: each light only has to reach the pieces near it, and culling works
+			var z1 := minf(z0 + 50.0, road_far)
+			_box(body, Vector3(lane_w, 1.0, z1 - z0), Vector3(0, gy - 0.48, -(z0 + z1) / 2.0), road_mat)
+			for sx in [-1.0, 1.0]:
+				_box(body, Vector3(0.6, 9.0, z1 - z0), Vector3(sx * (lane_w / 2.0 + 0.3), gy + 3.5, -(z0 + z1) / 2.0), _mat.concrete)
+			z0 = z1
+		_box(body, Vector3(lane_w + 1.2, 9.0, 0.6), Vector3(0, gy + 3.5, -ROAD_LEN - 6.0), _mat.concrete) # dead end behind the last gate
+		for i in int(ROAD_LEN / 40.0): # lamps down the lane, alternating sides
+			var lz := -8.0 - i * 40.0
 			var sx := -1.0 if i % 2 == 0 else 1.0
 			_mesh_box(body, Vector3(0.12, 4.0, 0.12), Vector3(sx * (lane_w / 2.0 - 0.3), gy + 2.0, lz), _mat.metal)
 			_mesh_box(body, Vector3(0.3, 0.12, 0.3), Vector3(sx * (lane_w / 2.0 - 0.5), gy + 4.0, lz), _flat(Color(1.0, 0.85, 0.55), 0.5, 0.0, 3.0))
 			var ll := OmniLight3D.new()
 			ll.position = Vector3(sx * (lane_w / 2.0 - 0.9), gy + 3.6, lz)
 			ll.light_color = Color(1.0, 0.82, 0.55)
-			ll.light_energy = 1.6
-			ll.omni_range = 9.0
+			ll.light_energy = 2.0
+			ll.omni_range = 16.0
 			body.add_child(ll)
 			_amb_light(ll)
-		for i in 9: # dashed centre line
-			_mesh_box(body, Vector3(0.16, 0.02, 2.4), Vector3(0, gy + 0.03, -5.0 - i * 6.5), _flat(Color(0.7, 0.65, 0.3)))
-		# the finish: a bright arch you run into
+		# dashed centre line: one MultiMesh for the whole road
+		var dash := BoxMesh.new()
+		dash.size = Vector3(0.16, 0.02, 2.4)
+		dash.material = _flat(Color(0.7, 0.65, 0.3))
+		var dmm := MultiMesh.new()
+		dmm.transform_format = MultiMesh.TRANSFORM_3D
+		dmm.mesh = dash
+		var n_dash := int((ROAD_LEN - 6.0) / 6.5)
+		dmm.instance_count = n_dash
+		for k in n_dash: dmm.set_instance_transform(k, Transform3D(Basis(), Vector3(0, gy + 0.03, -5.0 - k * 6.5)))
+		var dmi := MultiMeshInstance3D.new()
+		dmi.multimesh = dmm
+		dmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		body.add_child(dmi)
+		# crash barriers half across the lane, between the hooks, first one side then the other:
+		# the car has to weave, so a driver who looks back at the killer hits one
+		var reflector := _flat(Color(1.0, 0.2, 0.12), 0.4, 0.0, 2.5)
+		for k in range(1, ROAD_HOOKS):
+			var bz := -30.0 - 60.0 * k
+			var bx := (lane_w / 2.0 - 2.7) * (1.0 if k % 2 == 1 else -1.0)
+			_box(body, Vector3(5.4, 1.1, 0.7), Vector3(bx, gy + 0.55, bz), _mat.concrete)
+			_mesh_box(body, Vector3(5.0, 0.14, 0.05), Vector3(bx, gy + 0.85, bz + 0.37), reflector)
+		# how far is left, every 100 m on the wall
+		for left in [500, 400, 300, 200, 100]:
+			var mz := -(ROAD_LEN - float(left))
+			_mesh_box(body, Vector3(2.6, 1.0, 0.08), Vector3(-(lane_w / 2.0 - 0.1), gy + 4.4, mz), _flat(Color(0.05, 0.12, 0.07), 0.7))
+			_sign_text(body, "%d م" % left, Vector3(-(lane_w / 2.0 - 0.1), gy + 4.4, mz + 0.06), 70, Color(0.65, 1.0, 0.72))
+		# the last gate: two towers and a lit header; through it, you are out
 		var finish := _flat(Color(0.8, 1.0, 0.85), 0.5, 0.0, 4.0)
-		_mesh_box(body, Vector3(lane_w, 0.5, 0.3), Vector3(0, gy + 4.6, -ROAD_LEN), finish)
-		for sx in [-1.0, 1.0]: _mesh_box(body, Vector3(0.4, 4.8, 0.3), Vector3(sx * (lane_w / 2.0 - 0.2), gy + 2.4, -ROAD_LEN), finish)
-		_sign_text(body, "الخروج", Vector3(0, gy + 5.6, -ROAD_LEN + 0.1), 110, Color(0.6, 1.0, 0.7))
+		var fz := -ROAD_LEN
+		for sx in [-1.0, 1.0]:
+			_box(body, Vector3(1.6, 8.0, 1.6), Vector3(sx * (lane_w / 2.0 - 0.8), gy + 4.0, fz), _mat.concrete)
+			_mesh_box(body, Vector3(0.25, 6.6, 0.25), Vector3(sx * (lane_w / 2.0 - 1.75), gy + 3.3, fz + 0.85), finish)
+		_mesh_box(body, Vector3(lane_w, 1.2, 1.6), Vector3(0, gy + 7.4, fz), _mat.concrete)
+		_mesh_box(body, Vector3(lane_w - 3.4, 0.3, 0.2), Vector3(0, gy + 6.55, fz + 0.85), finish)
+		_sign_text(body, "البوابة الأخيرة", Vector3(0, gy + 7.4, fz + 0.85), 120, Color(0.6, 1.0, 0.7))
 		var fl := OmniLight3D.new()
-		fl.position = Vector3(0, gy + 3.0, -ROAD_LEN + 1.5)
+		fl.position = Vector3(0, gy + 4.0, fz + 3.0)
 		fl.light_color = Color(0.7, 1.0, 0.8)
-		fl.light_energy = 5.0
-		fl.omni_range = 18.0
+		fl.light_energy = 6.0
+		fl.omni_range = 26.0
 		body.add_child(fl)
 
 ## The owner's fortress wall along the whole perimeter, inside face toward the map: one MultiMesh
@@ -1159,7 +1214,48 @@ func is_outside_gate(i: int, pos: Vector3) -> bool:
 	var rel := pos - gp
 	var out_d := rel.dot(outward)
 	var lateral := absf(rel.dot(outward.cross(Vector3.UP)))
-	return out_d > ROAD_LEN - 1.5 and lateral < 5.5
+	return out_d > ROAD_LEN - 1.5 and lateral < LANE_W / 2.0 + 0.5
+
+## How far along gate i's road a point is (0 at the gate, ROAD_LEN at the last gate).
+func road_d(i: int, pos: Vector3) -> float:
+	var gp: Vector3 = gate_points[i][0]
+	return (pos - gp).dot(Basis(Vector3.UP, float(gate_points[i][1])) * Vector3(0, 0, -1))
+
+## The metres left to the last gate.
+func road_left(i: int, pos: Vector3) -> float:
+	return maxf(ROAD_LEN - road_d(i, pos), 0.0)
+
+## The road (past the gate, between its walls) this point is on, -1 none.
+func road_at(pos: Vector3) -> int:
+	for i in gate_points.size():
+		var gp: Vector3 = gate_points[i][0]
+		var out := Basis(Vector3.UP, float(gate_points[i][1])) * Vector3(0, 0, -1)
+		var rel := pos - gp
+		if rel.dot(out) > 1.0 and absf(rel.dot(out.cross(Vector3.UP))) < LANE_W / 2.0 + 1.0 and absf(rel.y) < 5.0: return i
+	return -1
+
+## Where gate i's escape car waits, and where its road ends (the last gate).
+func esc_start(i: int) -> Vector3:
+	var g: Array = gate_points[i]
+	var at: Vector3 = (g[0] as Vector3) + Basis(Vector3.UP, float(g[1])) * Vector3(0, 0, -ESC_AT)
+	return Vector3(at.x, (g[0] as Vector3).y, at.z)
+
+func road_end(i: int) -> Vector3:
+	var g: Array = gate_points[i]
+	return (g[0] as Vector3) + Basis(Vector3.UP, float(g[1])) * Vector3(0, 0, -ROAD_LEN)
+
+## One escape car waiting just past each gate, its nose down the road: the survivors' way out.
+func _place_escape_cars() -> void:
+	var ps := _model("car_drive") if _model("car_drive") else _model("car")
+	for gi in gate_points.size():
+		var c := NFCar.new()
+		c.name = "EscapeCar%d" % gi
+		c.position = esc_start(gi) + Vector3(0, 0.05, 0)
+		c.rotation.y = float(gate_points[gi][1]) + PI
+		add_child(c)
+		c.setup(ps, CAR_SCALE, null, Color(0.5, 0.48, 0.45), false) # no cabin: they drive it from behind
+		c.limit = ESC_TOP
+		esc_cars.append(c)
 
 func set_gen_done(i: int) -> void:
 	if i >= gen_nodes.size(): return

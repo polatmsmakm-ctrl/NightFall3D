@@ -88,8 +88,8 @@ Owner: Rashid (Arabic UI, plays with friends, installs the IPA with Sideloadly).
 `ev` input `door` (`{k:"door", i, on}` → the server checks you are next to it and sends `{k:"door", i, on, by}` to the room).
 `emote` (`{t:"emote", k:0..2}` → the server sends `{t:"emote", n, k}` to the rest of the room; campfire only).
 `sig` (quick signal: `{t:"sig", k:0..2, p:[x,z]}` → the server relays `{t:"sig", n, k, p}` **to the sender's own side only**, so a survivor signal never reaches the killer).
-Inputs (`d.k`): rep, skill, escape, hit, pickup, hook, rescue, struggle, heal, locker, search, pallet, break, power, door. Snapshot key `gs`.
-Snapshot also carries `dr` (door states), `ek`/`et`/`en` (the round's event, seconds left, the survivor the alarm gives away) and `ad` (the call to prayer: 0 not yet, 1 playing, 2 done). The clients send the doorway positions in `layout.d`.
+Inputs (`d.k`): rep, skill, escape, hit, pickup, hook, rescue, struggle, heal, locker, search, pallet, break, power, door, board, arrive, ram. Snapshot key `gs`.
+Snapshot also carries `dr` (door states), `ek`/`et`/`en` (the round's event, seconds left, the survivor the alarm gives away) and `ad` (the call to prayer: 0 not yet, 1 playing, 2 done). The clients send the doorway positions in `layout.d`, each gate's escape-car spot in `layout.c` and its road's end (the last gate) in `layout.e`; `layout.h` now holds the 9 map hooks plus 9 along each road (the server takes up to 48). Snapshot `rd` is one row per road: `[state, driver, riders, seconds left, why]`, and each survivor row carries the car they are in at index 10.
 
 ## Testing without a device
 ```
@@ -106,6 +106,7 @@ godot --headless --path . res://tools/win.tscn      # group rescue, camp by time
 godot --headless --path . res://tools/garage.tscn   # the car park: modules, objectives, walking, blackout
 godot --headless --path . res://tools/look.tscn     # ground shading, contact shadows, grade pass, drop-in clips/models
 godot --headless --path . res://tools/beach.tscn    # the beach: sand, lagoon, palms, wading
+godot --headless --path . res://tools/road.tscn     # the road chase: board, drive, ride, arrive, rammed, out of time, the moon
 NF_SHOTS=/tmp/shots godot --headless --path . res://tools/mapshot.tscn  # the six map previews (needs a display)
 node server/test.js                                # room code, join by code, theme, emote and signal relay
 NF_URL=ws://127.0.0.1:8099 godot --headless --path . res://tools/online.tscn   # needs server + a bot
@@ -158,7 +159,7 @@ NF_SHOTS=/tmp/shots LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a godot --rendering-driver
 - **Results**: `NFResults`. Only the animations already in `assets/anims` are used — escaped players stand in `idle` (there is no cheer clip; drop one in and it can be used), dead players lie on the last frame of `dying`.
 
 ## Maps
-Every map keeps the same skeleton: perimeter wall, two gates with a long escape road, the market, 7 generators,
+Every map keeps the same skeleton: perimeter wall, two gates each with a 600 m escape road (see «The road chase»), the market, 7 generators,
 9 hooks, 10 lockers, 9 pallets, 5 hatches, all seeded from the host's seed so every client builds the same layout.
 - `forest` — hills, pine forest, shacks.
 - `village` — a grid of abandoned houses.
@@ -660,3 +661,37 @@ from the agent's machine).
   skeleton as the others, drop them in `assets/anims`, and they replace the hand-made ones with no code change.
 - Desert animals have no leg animation (single merged mesh, so they bob and sway instead).
 - Team-bar portraits are drawn avatars in each character's colour, not renders of the models.
+
+## The road chase (the owner: "they reach the first gate, get into the car, 600 m to the second gate")
+- **The road**: `NightWorld.ROAD_LEN` is 600 m behind each gate (it was 60), `LANE_W` 12 m so her car
+  can come up beside theirs, built in 50 m pieces (each light only reaches its neighbours, culling
+  works) with 9 m walls, a lamp every 40 m, the centre dashes as one MultiMesh, a crash barrier half
+  across the lane every 60 m between the hooks (first one side, then the other: the car has to weave),
+  «500 م … 100 م» on the wall, and **the last gate** («البوابة الأخيرة») at the end. On the car park the
+  roof gate's road runs out at roof height. `road_d / road_left / road_at / esc_start / road_end`.
+- **Hooks all along it**: 9 per road, one every 60 m on alternating sides (`_plan_road`, appended after
+  the map's own so those keep their numbers; `road_hook0` is where they start). The map does not draw them.
+- **One shared escape car per gate** (`world.esc_cars`, an `NFCar` from `car_drive.glb` with no cabin,
+  `limit` = `ESC_TOP` 14 m/s = 50 km/h; her second gear is 19.5, so she can catch it), 16 m past the
+  gate, nose down the road. Once the gates have power the interact button next to it is «اركب وسوق»
+  (first one in drives) or «اركب معهم». The door and the key play on every phone, no gas until the
+  key has turned. The driver uses the stick like her car; everyone in it gets the chase camera; the
+  driver and the front passenger are drawn in the seats (`drive` pose, the driver's hands on the rim
+  through `NFReach`), the back seats are not drawn. `st` animation `edrive` / `eride`: other phones
+  move the car with the driver's position (`NFCar.follow`).
+- **Rules** (both files): `roads[i]` = `{st 0 waiting / 1 on the road / 2 caught / 3 out, drv, who, t,
+  why}`, a survivor's `car`. `board` starts the clock (`ROAD_TIME` 120 s); riders are not `free_now`
+  (no hits, heals, repairs) and **the moon does not kill them**. The driver's phone sends `arrive` at
+  the last gate (server: within 14 m of `layout.e`) and everyone in the car is `escaped` (+200).
+  The killer's phone sends `ram` when her car touches theirs (server: within 8 m of the car); `ram`
+  or the clock reaching 0 is `caught`: the car stops dead, the door opens, and everyone in it is
+  **down** on the road beside it (`main._esc_leave`), for her to carry to the road hooks. On foot,
+  reaching the last gate still counts (`escape`, server: within 10 m of a road end).
+- **HUD** (`main._draw_road`, in place of the moon ring while you are in the car, on the road, or
+  watching someone in it; for the killer while a car is on its way): the metres left in big figures,
+  «للبوابة الأخيرة», the road's clock (red in the last 30 s), a strip from gate to gate with the car and
+  her red dot, «القاتلة وراكم!» when she is right behind, a buzz when she is within 22 m, and the
+  speedometer for the driver. The gate arrow turns into «السيارة %d م» once you are past the gate. The
+  feed reports boarding, arriving and being caught; the team bar puts a car badge on whoever is in one.
+- `tools/road.tscn` tests it; `tools/shot21.tscn` photographs the car waiting, driving with her behind,
+  and the last gate (both in check.yml).

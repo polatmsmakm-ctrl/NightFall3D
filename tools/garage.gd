@@ -51,7 +51,7 @@ func _ready() -> void:
 	var all := []     # everything on the floor
 	var roof := []    # and everything up on the roof
 	for p in w.gen_points: (roof if p.y > 1.0 else all).append(p)
-	for p in w.hook_points: (roof if p.y > 1.0 else all).append(p)
+	for p in w.hook_points.slice(0, w.road_hook0): (roof if p.y > 1.0 else all).append(p) # not the ones along the roads
 	for p in w.hatch_points: all.append(p)
 	for e in w.pallet_points: all.append(e[0])
 	for e in w.locker_points: all.append(e[0])
@@ -95,7 +95,7 @@ func _ready() -> void:
 	await frames(3)
 	var roof_marks := 0
 	for p in w.gen_points: if p.y > 1.0: roof_marks += 1
-	for p in w.hook_points: if p.y > 1.0: roof_marks += 1
+	for p in w.hook_points.slice(0, w.road_hook0): if p.y > 1.0: roof_marks += 1
 	for g in w.gate_points: if (g[0] as Vector3).y > 1.0: roof_marks += 1
 	print("on the map: the ramp is drawn, and ", roof_marks, " things carry the roof badge (gate, generator, hook)")
 	print("standing on the roof the map says so: ", m.body.position.y > 3.0)
