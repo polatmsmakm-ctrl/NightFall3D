@@ -1,7 +1,7 @@
 shader_type spatial;
 render_mode cull_disabled;
 // Date-palm fronds: a curved ribbon cut into feathery leaflets, lit on both sides.
-uniform sampler2D noise_tex : repeat_enable, filter_linear_mipmap;
+uniform sampler2D noise_tex : repeat_enable, filter_linear_mipmap_anisotropic;
 
 void vertex() {
 	vec3 wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;

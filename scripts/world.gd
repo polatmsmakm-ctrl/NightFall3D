@@ -371,6 +371,7 @@ func build() -> void:
 	await get_tree().physics_frame # the colliders have to be in the physics space before the
 	await get_tree().physics_frame # killer's car looks for a clear spot among them
 	_place_drive_car()
+	_sharpen() # last, so the killer's car and its cabin are included
 	for l in find_children("*", "OmniLight3D", true, false): # far lights cost nothing
 		l.distance_fade_enabled = true
 		l.distance_fade_begin = 45.0
@@ -399,6 +400,35 @@ func _grad(a: Color, b: Color) -> Gradient:
 ## A procedural PBR surface: large-scale colour and shape from one noise, plus a fine detail
 ## normal on a second UV so a wall still has grain when your face is against it. The detail
 ## layer is the cheapest way to get close-up quality without real texture files.
+## Anisotropic filtering on every textured material of the map (the procedural surfaces, the
+## owner's models, the car-park pieces, the MultiMeshes): plain trilinear smears the ground, walls
+## and floors into mush at a glancing angle. The 4x / 16x level comes from Gfx (the viewport).
+var aniso_mats := 0
+func _sharpen() -> void:
+	var seen := {}
+	for n in find_children("*", "GeometryInstance3D", true, false):
+		if n is MeshInstance3D:
+			var mi := n as MeshInstance3D
+			if mi.material_override: _aniso(mi.material_override, seen)
+			if mi.mesh:
+				for k in mi.mesh.get_surface_count():
+					_aniso(mi.get_active_material(k), seen)
+		elif n is MultiMeshInstance3D:
+			var mm := (n as MultiMeshInstance3D).multimesh
+			if (n as MultiMeshInstance3D).material_override: _aniso((n as MultiMeshInstance3D).material_override, seen)
+			if mm and mm.mesh:
+				for k in mm.mesh.get_surface_count(): _aniso(mm.mesh.surface_get_material(k), seen)
+
+func _aniso(m: Material, seen: Dictionary) -> void:
+	if m == null or seen.has(m): return
+	seen[m] = true
+	if m is BaseMaterial3D:
+		var b := m as BaseMaterial3D
+		if b.albedo_texture or b.normal_texture:
+			b.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+			aniso_mats += 1
+	if m.next_pass: _aniso(m.next_pass, seen)
+
 func _pbr(c1: Color, c2: Color, freq: float, uv: Vector3, rough: float, metal := 0.0) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_texture = _noise_tex(freq, 512, false, _grad(c1, c2))

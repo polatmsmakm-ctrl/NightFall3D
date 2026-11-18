@@ -128,6 +128,16 @@ var driving := false          # I am the killer and I am at the wheel
 var car_look := 0.0           # seconds since I last dragged the camera while driving
 var ram_cd := {}              # survivor -> seconds before the car can hit them again
 var car_told := false         # the "your car is here" line has been shown
+var pop := {}             # button id -> seconds left of its press dip
+# the event feed (top right): who went down, got hooked, was saved, got out; generators; the gates
+const FEED_LIFE := 6.0
+var feed := []            # newest first: {"t": text, "i": icon, "c": colour, "life": seconds}
+var feed_hp := {}         # name -> last state seen (the feed reports the changes)
+var feed_gens := -1
+var feed_pw := false
+# where the last hit came from (a red arc on the ring toward it), and the gate arrow once they open
+var hit_t := 0.0
+var hit_from := Vector3.ZERO
 var car_leaving := 0.0     # seconds until he is out (the door opens first)
 var car_remote := false   # the killer on another phone is at the wheel (to open the door when that changes)
 var pass_cd := 0.0        # the pass-by sound waits this long before it can play again
@@ -234,7 +244,7 @@ func _build_player(char_name: String, at: Vector3) -> void:
 	if my_role == "killer": # first person
 		arm.spring_length = 0.0
 		arm.position.y = 0.2
-		cam.fov = 80.0
+		cam.fov = 80.0 + Gfx.fov_add
 		cam.near = 0.1
 		rig.visible = false
 		lamp.position = Vector3(0, 0.3, -0.5)
@@ -242,7 +252,7 @@ func _build_player(char_name: String, at: Vector3) -> void:
 	else: # third person
 		arm.spring_length = 3.4
 		arm.position.y = 0.3
-		cam.fov = 70.0
+		cam.fov = 70.0 + Gfx.fov_add
 		lamp.position = Vector3(0.6, 0.9, 1.6)
 		lamp.light_energy = 0.45; lamp.omni_range = 7.0 # just enough to read your own character; the flashlight does the rest
 		flash_light = _make_flashlight()
@@ -595,6 +605,8 @@ func _on_event(e: Dictionary) -> void:
 			_voice_hit(str(e.n))
 			_hit_anim(str(e.n)) # a real flinch, if hit.glb has been dropped in
 			if str(e.n) == my_name:
+				hit_t = 1.6 # the red arc points back at her
+				hit_from = car.global_position if (car and (driving or car_remote)) else _pos_of(rules.killer)
 				boost_t = 2.0
 				_shake(0.5 if str(e.s) == "hurt" else 0.85)
 				NFHaptics.pulse("hit")
@@ -605,12 +617,16 @@ func _on_event(e: Dictionary) -> void:
 			NFHaptics.pulse("hook")
 			if str(e.n) == my_name: _sfx("rope", null, 0.0)
 			_flash("%s %s" % [str(e.n), "انعلّق على الخطاف" if str(e.s) == "hooked" else "مات"])
+			if str(e.s) == "hooked": _feed("%s على الخطاف" % str(e.n), "hook", Color(1.0, 0.35, 0.3))
 		"rescued":
 			NFHaptics.pulse("tick")
 			if str(e.by) == str(e.n): _flash("%s فك نفسه من الخطاف!" % str(e.n))
 			elif int(e.get("hands", 1)) > 1: _flash("أنقذوا %s سوا!" % str(e.n))
 			else: _flash("%s أنقذ %s" % [str(e.by), str(e.n)])
-		"grabbed": _flash("القاتل طلّع %s من الخزانة" % str(e.n))
+			_feed("%s فك نفسه" % str(e.n) if str(e.by) == str(e.n) else "%s أنقذ %s" % [str(e.by), str(e.n)], "rescue", Color(0.45, 1.0, 0.55))
+		"grabbed":
+			_flash("القاتل طلّع %s من الخزانة" % str(e.n))
+			_feed("القاتل طلّع %s من الخزانة" % str(e.n), "search", Color(1.0, 0.55, 0.35))
 		"empty":
 			if my_role == "killer": _flash("الخزانة فاضية")
 		"stun":
@@ -626,6 +642,92 @@ func _on_event(e: Dictionary) -> void:
 			if str(e.get("by", "")) != my_name and far > 6.0 and far < 60.0:
 				NFHaptics.pulse("tick")
 				_add_sig("", 3, at) # you hear it swing from a long way off
+
+## One line on the event feed.
+func _feed(t: String, icon: String, col: Color) -> void:
+	feed.push_front({"t": t, "i": icon, "c": col, "life": FEED_LIFE})
+	if feed.size() > 5: feed.resize(5)
+
+## The feed's other half: what changes in the round's state rather than arriving as an event
+## (the same on every phone, offline and online, since both read the same snapshot).
+func _feed_watch(dt: float) -> void:
+	for f in feed: f.life = float(f.life) - dt
+	feed = feed.filter(func(f: Dictionary) -> bool: return float(f.life) > 0.0)
+	if not started or rules == null: return
+	for n in rules.s:
+		var hp: String = rules.s[n].hp
+		var was: String = feed_hp.get(n, hp)
+		if hp != was:
+			match hp:
+				"down": _feed("%s طاح" % n, "down", Color(1.0, 0.62, 0.3))
+				"escaped": _feed("%s هرب!" % n, "out", Color(0.5, 0.85, 1.0))
+				"dead": _feed("%s مات" % n, "skull", Color(0.75, 0.75, 0.78))
+		feed_hp[n] = hp
+	var dc := rules.done_count()
+	if feed_gens >= 0 and dc > feed_gens:
+		_feed("اشتغل مولد — %d من %d" % [mini(dc, Rules.NEED), Rules.NEED], "wrench", Color(1.0, 0.88, 0.4))
+	feed_gens = dc
+	if rules.powered and not feed_pw: _feed("البوابات اشتغلت — اهربوا!", "door", Color(0.45, 1.0, 0.55))
+	feed_pw = rules.powered
+
+func _draw_feed(s: Vector2) -> void:
+	var y := 84.0
+	for f in feed:
+		var life: float = f.life
+		var a := clampf(life / 0.6, 0.0, 1.0) # fades out at the end
+		var slide := clampf((life - (FEED_LIFE - 0.25)) / 0.25, 0.0, 1.0) * 60.0 # slides in from the edge
+		var t: String = f.t
+		var fs := 19
+		var tw := Net.font.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		var right := s.x - 14.0 + slide
+		var box := Rect2(Vector2(right - tw - 58.0, y), Vector2(tw + 58.0, 34.0))
+		var col: Color = f.c
+		ui.draw_rect(box, Color(0.03, 0.025, 0.035, 0.72 * a))
+		ui.draw_rect(Rect2(Vector2(box.end.x - 4.0, y), Vector2(4.0, 34.0)), Color(col, 0.9 * a)) # a strip of its colour
+		NFIcons.draw(ui, str(f.i), Vector2(box.end.x - 24.0, y + 17.0), 22.0, Color(col, a))
+		ui.draw_string(Net.font, Vector2(box.position.x + 10.0, y + 24.0), t, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1, 0.96, 0.92, a))
+		y += 40.0
+
+## Where on the ring around the middle of the screen a point in the world lies (0 = straight ahead).
+func _ring_dir(p: Vector3) -> Vector2:
+	var to: Vector3 = p - body.position
+	var a := -PI / 2.0 + wrapf(atan2(to.x, -to.z) + yaw, -PI, PI)
+	return Vector2(cos(a), sin(a))
+
+func _draw_hit(mid: Vector2) -> void:
+	if hit_t <= 0.0: return
+	var d := _ring_dir(hit_from)
+	var a := atan2(d.y, d.x)
+	var k := clampf(hit_t / 1.6, 0.0, 1.0)
+	var rad := minf(mid.y * 0.7, 250.0)
+	for w in [[26.0, 0.18], [14.0, 0.45], [6.0, 0.9]]: # a soft red blade with a bright edge
+		ui.draw_arc(mid, rad, a - 0.42, a + 0.42, 24, Color(0.95, 0.08, 0.05, float(w[1]) * k), float(w[0]), true)
+	var tip := mid + d * (rad + 20.0)
+	var sd := Vector2(-d.y, d.x)
+	ui.draw_colored_polygon(PackedVector2Array([tip + d * 16.0, tip - sd * 12.0, tip + sd * 12.0]), Color(1, 0.15, 0.1, 0.9 * k))
+
+func _draw_gate(mid: Vector2) -> void:
+	if my_role != "survivor" or not rules.powered or my_state not in ["ok", "hurt"] or spectating != "" or world == null: return
+	var best := Vector3.INF
+	var bd := INF
+	for g in world.gate_points:
+		var p: Vector3 = g[0]
+		var dd := Vector2(p.x - body.position.x, p.z - body.position.z).length()
+		if dd < bd:
+			bd = dd
+			best = p
+	if best == Vector3.INF or bd < 7.0: return
+	var d := _ring_dir(best)
+	var at := mid + d * minf(mid.y * 0.8, 300.0)
+	var beat := 0.75 + 0.25 * sin(Time.get_ticks_msec() / 1000.0 * 4.0)
+	var col := Color(0.45, 1.0, 0.55, beat)
+	ui.draw_circle(at, 23.0, Color(0.03, 0.06, 0.04, 0.8), true, -1.0, true)
+	ui.draw_arc(at, 23.0, 0, TAU, 40, col, 2.5, true)
+	NFIcons.draw(ui, "out", at, 26.0, col)
+	var tip := at + d * 33.0
+	var sd := Vector2(-d.y, d.x)
+	ui.draw_colored_polygon(PackedVector2Array([tip + d * 13.0, tip - sd * 9.0, tip + sd * 9.0]), col)
+	_text(at + Vector2(0, 42.0), "البوابة %d م" % roundi(bd), 18, col, 200.0)
 
 func _flash(t: String) -> void:
 	flash = t
@@ -658,6 +760,8 @@ func _build_grade() -> void:
 	grade.visible = Gfx.eff_effects() >= 1 # the governor can drop it mid-round
 	Gfx.changed.connect(func() -> void:
 		if grade: grade.visible = Gfx.eff_effects() >= 1)
+	Gfx.look_changed.connect(func() -> void: # «مجال الرؤية» dragged in the settings: the camera follows live
+		if main_cam and scare_t <= 0.0 and slowmo <= 0.0: main_cam.fov = _base_fov())
 
 func _build_ui() -> void:
 	_build_grade()
@@ -923,10 +1027,10 @@ func _camera_feel(delta: float) -> void:
 	if slowmo > 0.0: # getting out: a brief slow pull back
 		slowmo = maxf(slowmo - delta, 0.0)
 		Engine.time_scale = lerpf(1.0, 0.45, clampf(slowmo / 0.25, 0.0, 1.0))
-		if main_cam: main_cam.fov = lerpf(70.0, 84.0, clampf(slowmo / 1.1, 0.0, 1.0))
+		if main_cam: main_cam.fov = lerpf(70.0, 84.0, clampf(slowmo / 1.1, 0.0, 1.0)) + Gfx.fov_add
 		if slowmo <= 0.0:
 			Engine.time_scale = 1.0
-			if main_cam: main_cam.fov = 70.0 if my_role != "killer" else 80.0
+			if main_cam: main_cam.fov = _base_fov()
 	cam_pivot.rotation = Vector3(pitch + tip, yaw, roll)
 
 ## Screen margins (left, right) in UI units to stay clear of the notch / Dynamic Island.
@@ -977,7 +1081,7 @@ func _buttons() -> Array:
 			"item": on = ctx.has("item")
 			"light": on = battery > 0.0
 			"sig": on = my_state in ["ok", "hurt", "down", "hooked"]
-		out.append([NFControls.center_of(e, rect), float(e.r), label, id, on, icon])
+		out.append([NFControls.center_of(e, rect), float(e.r) * Gfx.btn_scale, label, id, on, icon])
 	if driving and car: # the gearbox, beside the speedometer: first (40 km/h) or second (70 km/h)
 		var vs := get_viewport().get_visible_rect().size
 		out.append([Vector2(vs.x / 2.0 + 190.0, vs.y - 104.0), 44.0, "غيار %d" % car.gear, "gear", true, "shift"])
@@ -1025,16 +1129,19 @@ func _draw_ui() -> void:
 	if stick_id >= 0:
 		ui.draw_circle(stick_origin, 70, Color(1, 1, 1, 0.12))
 		ui.draw_circle(stick_origin + stick_vec * 70, 32, Color(1, 1, 1, 0.35))
+	var ba := Gfx.btn_alpha # «وضوح الأزرار»
 	for b in _buttons():
 		var id: String = b[3]
-		var r: float = b[1]
 		var live: bool = b[4]
+		var pk: float = clampf(float(pop.get(id, 0.0)) / 0.16, 0.0, 1.0)
+		var r: float = b[1] * (1.0 - 0.09 * sin(pk * PI)) # pressed: it dips and springs back
 		var on: bool = (id == "crouch" and crouch) or (id == "sprint" and sprint) or (id == "light" and light_on) or (id == "sig" and sig_open) or (not hold.is_empty() and hold.btn == id)
 		# dark scratched plate with a dry-blood ring; it lights up red while held
-		ui.draw_circle(b[0], r, Color(0.42, 0.04, 0.05, 0.55) if on else Color(0.05, 0.045, 0.055, 0.5 if live else 0.3))
-		ui.draw_arc(b[0], r, 0, TAU, 44, Color(1, 0.25, 0.22, 0.95) if on else Color(0.72, 0.16, 0.16, 0.85 if live else 0.3), 2.5)
-		ui.draw_arc(b[0], r - 4.0, 0.2, 1.1, 10, Color(1, 1, 1, 0.12 if live else 0.05), 1.5)
-		var icol := Color(1, 1, 1, 1.0 if live else 0.38)
+		ui.draw_circle(b[0], r, Color(0.42, 0.04, 0.05, 0.55 * ba) if on else Color(0.05, 0.045, 0.055, (0.5 if live else 0.3) * ba), true, -1.0, true)
+		ui.draw_circle(b[0], r * (1.0 + 0.35 * sin(pk * PI)), Color(1, 0.3, 0.25, 0.22 * sin(pk * PI) * ba), false, 3.0, true) # the press ripple
+		ui.draw_arc(b[0], r, 0, TAU, 64, Color(1, 0.25, 0.22, 0.95 * ba) if on else Color(0.72, 0.16, 0.16, (0.85 if live else 0.3) * ba), 2.5, true)
+		ui.draw_arc(b[0], r - 4.0, 0.2, 1.1, 14, Color(1, 1, 1, (0.12 if live else 0.05) * ba), 1.5, true)
+		var icol := Color(1, 1, 1, (1.0 if live else 0.38) * maxf(ba, 0.6))
 		NFIcons.draw(ui, str(b[5]), b[0] - Vector2(0, r * 0.2), r * 0.82, icol)
 		ui.draw_string(Net.font, b[0] + Vector2(-r, r * 0.76), b[2], HORIZONTAL_ALIGNMENT_CENTER, r * 2.0,
 			int(clampf(r * 0.33, 13.0, 19.0)), icol)
@@ -1127,6 +1234,9 @@ func _draw_ui() -> void:
 		_text(mid + Vector2(0, 118), "اضغط الشاشة لما المؤشر بالأخضر", 20)
 	if flash_t > 0.0: _text(Vector2(mid.x, s.y * 0.37), flash, 30, Color(1, 0.85, 0.5))
 	_draw_sigs(mid)
+	_draw_gate(mid)
+	_draw_hit(mid)
+	_draw_feed(s)
 	if my_role == "killer" and rules.ev_kind == 2 and rules.ev_t > 0.0 and remotes.has(rules.ev_n):
 		var to: Vector3 = remotes[rules.ev_n].node.position - body.position
 		var a := -PI / 2.0 + wrapf(atan2(to.x, -to.z) + yaw, -PI, PI)
@@ -1475,7 +1585,13 @@ func _door_ctx(pos: Vector3) -> void:
 		return
 
 # ---------------- actions ----------------
+## The round camera's field of view for what I am doing now, plus «مجال الرؤية».
+func _base_fov() -> float:
+	if driving: return (78.0 if car_inside else 74.0) + Gfx.fov_add
+	return (80.0 if my_role == "killer" else 70.0) + Gfx.fov_add
+
 func _press(id: String, touch: int) -> void:
+	pop[id] = 0.16 # the button gives a little under the thumb
 	match id:
 		"sprint":
 			sprint = not sprint
@@ -1626,11 +1742,11 @@ func _input(e: InputEvent) -> void:
 			stick_vec = ((e.position - stick_origin) / 70.0).limit_length(1.0)
 			if stick_vec.length() < 0.12: stick_vec = Vector2.ZERO # dead zone
 		elif e.index == look_id:
-			yaw -= e.relative.x * 0.006
-			pitch = clampf(pitch - e.relative.y * 0.004, -0.9, 0.5)
+			yaw -= e.relative.x * 0.006 * Gfx.look_sens
+			pitch = clampf(pitch - e.relative.y * 0.004 * Gfx.look_sens, -0.9, 0.5)
 	elif e is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		yaw -= e.relative.x * 0.003
-		pitch = clampf(pitch - e.relative.y * 0.003, -0.9, 0.5)
+		yaw -= e.relative.x * 0.003 * Gfx.look_sens
+		pitch = clampf(pitch - e.relative.y * 0.003 * Gfx.look_sens, -0.9, 0.5)
 
 func me_locker() -> int:
 	return rules.s[my_name].locker if rules.s.has(my_name) else -1
@@ -1668,6 +1784,9 @@ func _process(dt: float) -> void:
 			loading.progress(float(world.build_step) / float(NightWorld.BUILD_STEPS))
 			if world.ready_done and loading.shown > 0.9: loading.finish()
 	flash_t = maxf(flash_t - dt, 0.0)
+	for k in pop.keys(): pop[k] = maxf(float(pop[k]) - dt, 0.0)
+	hit_t = maxf(hit_t - dt, 0.0)
+	_feed_watch(dt)
 	if scare_t > 0.0: # short close-up of the killer's face, then back to my own camera
 		scare_t -= dt
 		if scare_t <= 0.0: _end_scare()
@@ -2059,7 +2178,7 @@ func _leave_car() -> void:
 	cam_pivot.position = Vector3(0, 1.6, 0)
 	arm.spring_length = 0.0 # back to first person
 	arm.position.y = 0.2
-	main_cam.fov = 80.0
+	main_cam.fov = 80.0 + Gfx.fov_add
 	yaw = car.rotation.y + PI
 
 ## In the driver's seat looking out over the bonnet, or behind the car.
@@ -2068,7 +2187,7 @@ func _car_view(seat: bool) -> void:
 	car.show_inside(seat)
 	arm.spring_length = 0.0 if seat else 6.8
 	arm.position.y = 0.0 if seat else 1.0
-	main_cam.fov = 78.0 if seat else 74.0
+	main_cam.fov = (78.0 if seat else 74.0) + Gfx.fov_add
 	if not seat: cam_pivot.position = Vector3(0, 1.6, 0)
 
 ## At the wheel: the stick is the pedal and the steering (up = gas, down = brake and reverse,

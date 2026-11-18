@@ -252,6 +252,7 @@ func _refresh() -> void:
 		"settings": _page_settings()
 		"chars": _page_chars()
 		"dev": _page_dev()
+		"help": _page_help()
 	_sync_lobby()
 
 # ---------- the campfire scene follows the menu ----------
@@ -431,9 +432,69 @@ func _page_main() -> void:
 	_button("الأصدقاء (%d)" % Net.friends.size(), func(): open("friends"), null, true, "chat")
 	_button("النمط التجريبي (بدون نت)", func(): chars_from = "offline"; open("offline"), null, true, "star")
 	_button("الصوت والإعدادات", func(): Gfx.open_settings(), null, true, "gear")
+	_button("طريقة اللعب", func(): open("help"), null, true, "note")
 	_button("الاسم والسيرفر", func():
 		typed["name"] = Net.username; typed["url"] = Net.url; open("settings"), null, true, "gear")
 	_emote_row()
+
+## «طريقة اللعب»: a short guide, one drawn icon and two lines per thing to know, a tab per side.
+var help_tab := "survivor"
+const HELP := {
+	"survivor": [
+		["wrench", "صلّح المولدات", "5 مولدات تشغّل البوابات. انتبه لاختبار المهارة: الغلطة تفجّر المولد والقاتل يسمعها."],
+		["out", "اهرب من البوابة", "لما تشتغل البوابات يطلع لك سهم أخضر لأقرب بوابة. اطلع قبل لا ينزل القمر (دقيقتين)."],
+		["rescue", "أنقذ ربعك", "المعلّق على الخطاف شيلوه سوا: كل واحد يمسك معاك يسرّع الإنقاذ."],
+		["heart", "انتبه لنبضك", "دقات القلب والحواف الحمراء تعني القاتل قريب. القوس الأحمر يوريك من وين انضربت."],
+		["search", "تخبّى", "الخزانات تخبيك، بس القاتل يقدر يفتّشها ويطلّعك."],
+		["plank", "الطبليات والشبابيك", "طيّح الطبلية على القاتل وهو وراك يندهش، واقفز من الشبابيك عشان تبعد."],
+		["chat", "الإشارات", "زر الإشارة يرسل لربعك بس: تعال هني، القاتل هني، قاعد أصلّح."],
+		["hand", "الفتحة", "إذا بقيت آخر واحد، دوّر الفتحة واهرب منها."],
+	],
+	"killer": [
+		["attack", "اضرب", "الضربة الأولى تجرح والثانية تطيّح. بعد كل ضربة لازم تنتظر شوي."],
+		["carry", "شيل وعلّق", "شيل الطايح وودّه لأقرب خطاف. إذا انضربت بطبلية يطيح منك."],
+		["power", "الاندفاع", "زر القوة يسرّعك فترة قصيرة، وبعدها يحتاج وقت يرجع."],
+		["car", "السيارة", "اركب أي سيارة واقفة. دوّس الناجين، وحط الطايح بالكرسي اللي جنبك وودّه للخطاف. فيها غيارين وراديو."],
+		["search", "فتّش الخزانات", "الناجين يتخبّون فيها: افتحها وطلّعهم."],
+		["plank", "اكسر الطبليات", "الطبلية الطايحة تسد الطريق: اكسرها."],
+		["door", "الأبواب", "سكّر الأبواب وراك. اللي بعيد يسمع صوتها."],
+	],
+}
+
+func _page_help() -> void:
+	_label("طريقة اللعب", 30, Color(0.95, 0.25, 0.22))
+	var tabs := _row()
+	for t in [["survivor", "الناجين", "rescue"], ["killer", "القاتل", "attack"]]:
+		var b := _button(str(t[1]), func(): help_tab = str(t[0]); _refresh(), tabs, true, str(t[2]))
+		if help_tab == str(t[0]): b.modulate = Color(1, 0.75, 0.55)
+	for it in HELP[help_tab]:
+		_tip(str(it[0]), str(it[1]), str(it[2]))
+	_button("رجوع", func(): open("main"), null, true, "exit")
+
+func _tip(icon: String, title: String, text: String) -> void:
+	var h := _row()
+	h.add_theme_constant_override("separation", 14)
+	var pic := Control.new()
+	pic.custom_minimum_size = Vector2(56, 56)
+	pic.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	pic.draw.connect(func() -> void:
+		pic.draw_circle(Vector2(28, 28), 27.0, Color(0.06, 0.05, 0.06, 0.85), true, -1.0, true)
+		pic.draw_arc(Vector2(28, 28), 27.0, 0, TAU, 48, Color(0.72, 0.16, 0.16, 0.9), 2.0, true)
+		NFIcons.draw(pic, icon, Vector2(28, 28), 34.0, Color(1, 0.93, 0.88)))
+	var v := VBoxContainer.new()
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	v.add_theme_constant_override("separation", 2)
+	var t := Label.new(); t.text = title
+	t.add_theme_font_size_override("font_size", 22)
+	t.add_theme_color_override("font_color", Color(1, 0.85, 0.5))
+	var d := Label.new(); d.text = text
+	d.add_theme_font_size_override("font_size", 17)
+	d.add_theme_color_override("font_color", Color(0.9, 0.88, 0.86))
+	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	d.custom_minimum_size.x = 380
+	v.add_child(t); v.add_child(d)
+	h.add_child(v) # Arabic reads right to left: the icon sits at the right end of the row
+	h.add_child(pic)
 
 func _page_settings() -> void:
 	_label("الاسم")

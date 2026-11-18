@@ -1,6 +1,6 @@
 shader_type spatial;
 render_mode cull_disabled;
-uniform sampler2D noise_tex : repeat_enable, filter_linear_mipmap;
+uniform sampler2D noise_tex : repeat_enable, filter_linear_mipmap_anisotropic;
 uniform vec3 tint : source_color = vec3(1.0);  // snow / halloween themes recolour the leaves
 
 void vertex() {

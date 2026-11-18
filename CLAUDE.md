@@ -431,8 +431,8 @@ nodes. `NightWorld.prop_glow(root, colour, energy, own)` turns the glow on in th
   outside the old 9 x 7 m tent walls, which stay as the collision (open front, vault gap on the
   left, the locker inside); the ember light moved up to 1.6 m. The fires outside the first three
   tents moved out to clear its guy ropes. No glow map: its lanterns are too small to bake one.
-- `assets/props/car.glb` (8k / 2048, the owner's blood-stained Land Cruiser, 2 x 2.3 x 4.8 m, front +z,
-  `prop_bake.py --faces 8000 --tex 2048 --width 2.0 --yaw 90`):
+- `assets/props/car.glb` (12k / 4096, the owner's blood-stained Land Cruiser, 2 x 2.3 x 4.8 m, front +z,
+  `prop_bake.py --faces 12000 --tex 4096 --width 2.0 --yaw 90`, then `glb_external.py`):
   every car in every map. `_car` (market cars, wrecks, fareej driveways) draws it at
   `CAR_SCALE` 0.9 so it matches the old 1.8 x 4.2 m boxes and their collision; the desert's
   `_wreck` draws it at full size, sunk into the sand like before; the garage's ~87 bays are one
@@ -547,6 +547,40 @@ objectives and out of the lagoon. Every phone runs the same search, so they all 
   left out (walled yards, the gate too narrow to turn out of), and the Empty Quarter has only its
   half-buried wrecks. Switching cars turns the radio off.
 - Every `prop_bake.py` output now carries its own command line in `asset.extras.bake`.
+
+## Quality and interface pass (the owner: "enhance it with quality", interface additions)
+- **Every character, the driven car, its cabin and the parked car keep their maps beside the GLB**
+  (`tools/glb_external.py`: the embedded JPEGs moved out byte for byte, so nothing is re-encoded
+  and the repository does not grow; the GLB points at them by `uri`). Their committed `.import`
+  files give colour and normal maps `compress/high_quality=true` — **ASTC 4x4 on the iPhone** in
+  place of ETC2, which was blocky on normal maps and banded on skin — and leave metallic-roughness
+  at normal quality (memory and download size). `.gitignore` lets `assets/chars|props/*.jpg|png.import`
+  through. Run the tool on any new baked model.
+- **Anisotropic filtering on the whole map** (`world._sharpen()`, last in `build()`): every
+  textured material (procedural surfaces, the owner's models, the car-park pieces, MultiMeshes,
+  the killer's car) and the foliage / palm shaders. `aniso_mats` counts them.
+- **Interface edges**: `Gfx.apply()` turns on 2D MSAA (4x on «فائق», 2x from «عالي»), the HUD
+  buttons are drawn anti-aliased with 64-point rings, and each one dips and ripples when pressed
+  (`main.pop`).
+- **The car**: other phones **predict** the driven car between the killer's 15 updates a second
+  (`NFCar.follow`: velocity and turn rate from the last two updates, at most 0.25 s ahead, and a
+  snap when it jumps more than 12 m, e.g. a parked-car swap) instead of easing toward a stale
+  point; **brake lights** (the tail light brightens while it slows hard, worked out from the speed
+  on every phone) and a white **reversing light**.
+- **Event feed** (`main._feed` / `_feed_watch` / `_draw_feed`, top right under the settings): who
+  went down, got hooked, was saved (and by whom), got out or died, the killer pulling someone out
+  of a locker, each generator done («اشتغل مولد — 3 من 5») and the gates opening. Five lines,
+  6 s each, sliding in and fading out. Deaths, escapes, downs, generators and gates come from
+  watching the round's state, the rest from the events, so it is the same offline and online.
+- **Hit direction** (`_draw_hit`): when I am struck, a red blade on the ring points back at where
+  the blow came from (the killer, or the car) for 1.6 s. **Gate arrow** (`_draw_gate`): once the
+  gates have power, survivors who can still run get a green arrow to the nearest gate with its
+  distance.
+- **Controls in the settings panel** («التحكم»): «حساسية الكاميرا» (40-200%, `Gfx.look_sens`),
+  «مجال الرؤية» (-10..+15°, `Gfx.fov_add`, live: `main._base_fov()`), «حجم الأزرار» (80-130%,
+  `Gfx.btn_scale`) and «وضوح الأزرار» (35-100%, `Gfx.btn_alpha`), saved in `graphics.cfg`.
+- **«طريقة اللعب»** (menu page `help`, `GameMenu.HELP`): a tab for the survivors and one for the
+  killer, each tip a drawn icon, a title and a line or two.
 
 ## The high-end pass (Forward+, `scripts/look_hd.gd`, `NFLook`)
 The owner asked for a high-end look. The project now runs **Forward+ on the phone too**

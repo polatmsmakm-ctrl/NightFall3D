@@ -6,7 +6,7 @@ type="CompressedTexture2D"
 [params]
 
 compress/mode=2
-compress/high_quality=true
+compress/high_quality=false
 compress/lossy_quality=1.0
 compress/hdr_compression=1
 compress/normal_map=2

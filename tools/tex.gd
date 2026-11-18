@@ -45,7 +45,8 @@ func _ready() -> void:
 			check(t.resource_path.ends_with(file + slot[2]), "%s comes from the lossless %s%s" % [slot[0], file, slot[2]])
 			check(t.get_width() == side and t.get_height() == side, "%s imported at full size %d" % [slot[0], side])
 			check(img.has_mipmaps(), "%s has mipmaps" % slot[0])
-			check(img.get_format() != Image.FORMAT_DXT1 and img.get_format() != Image.FORMAT_ETC2_RGB8, "%s is not the low-quality compression" % slot[0])
+			if slot[2] != "_mr.png": # metallic-roughness stays at normal quality on purpose (memory)
+				check(img.get_format() != Image.FORMAT_DXT1 and img.get_format() != Image.FORMAT_ETC2_RGB8, "%s is not the low-quality compression" % slot[0])
 			var astc := false
 			for f in imported:
 				if (f as String).begins_with(file + slot[2] + "-") and (f as String).ends_with(".astc.ctex"): astc = true
@@ -53,5 +54,19 @@ func _ready() -> void:
 		check(mat.texture_filter == BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC, "anisotropic filtering")
 		check(rig.has("idle") and rig.skeleton != null, "rigged, plays idle")
 		rig.queue_free()
+	# every other character, the driven car and its cabin: maps moved out beside the GLB
+	# (tools/glb_external.py) with high-quality compression for colour and normal
+	for f in ["killer", "killer_hi", "survivor1", "survivor5_hi", "survivor8_hi"]:
+		var ps: PackedScene = load("res://assets/chars/%s.glb" % f)
+		var mat2: StandardMaterial3D = null
+		var inst := ps.instantiate()
+		for mi in inst.find_children("*", "MeshInstance3D", true, false):
+			if mat2 == null: mat2 = (mi as MeshInstance3D).get_active_material(0) as StandardMaterial3D
+		inst.free()
+		var t2: Texture2D = mat2.albedo_texture if mat2 else null
+		var n2: Texture2D = mat2.normal_texture if mat2 else null
+		check(t2 != null and t2.resource_path.get_file() == f + "_col.jpg", "%s: colour from %s_col.jpg (%s)" % [f, f, t2.resource_path.get_file() if t2 else "-"])
+		if t2: check(t2.get_image().get_format() == Image.FORMAT_BPTC_RGBA, "%s: colour at high quality (%s)" % [f, fmt_name.get(t2.get_image().get_format(), "?")])
+		if n2: check(n2.get_image().get_format() != Image.FORMAT_DXT1, "%s: normal map not low quality (%s)" % [f, fmt_name.get(n2.get_image().get_format(), "?")])
 	print("tex check: ", "FAILED %d" % bad if bad else "all good")
 	get_tree().quit(1 if bad else 0)

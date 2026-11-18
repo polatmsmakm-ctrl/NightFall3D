@@ -54,6 +54,17 @@ var _radio_started := false
 var inside: Node3D        # the cabin + headliner + pillars, only shown to the killer while he drives
 var _last := Vector3.ZERO # remote phones work the speed out from how far it moved
 var _last_yaw := 0.0
+# other phones get the driver's position 15 times a second: they predict where it is between
+# updates from how fast it was going (dead reckoning) instead of easing toward a stale point,
+# which made a fast car stutter and lag behind where it really was
+var _rx_at := Vector3.INF
+var _rx_yaw := 0.0
+var _rx_t := 0.0
+var _rx_v := Vector3.ZERO
+var _rx_w := 0.0
+var braking := 0.0        # 0..1, the brake lights
+var _prev_speed_abs := 0.0
+var reverse_l: OmniLight3D
 var _scale := 1.0
 var wheels := []          # [node, front?] — the four wheels of car_drive.glb, turned every frame
 var spin := 0.0           # how far the wheels have rolled (radians)
@@ -201,7 +212,15 @@ func setup(ps: PackedScene, scale_k: float, cabin_ps: PackedScene = null, dust_c
 	tail.omni_range = 1.7
 	tail.light_energy = 0.0
 	tail.shadow_enabled = false
+	reverse_l = OmniLight3D.new()
+	reverse_l.position = Vector3(0, 0.6, -2.8)
+	reverse_l.light_color = Color(0.95, 0.95, 1.0)
+	reverse_l.omni_range = 2.6
+	reverse_l.light_energy = 0.0
+	reverse_l.shadow_enabled = false
+	reverse_l.visible = false
 	model.add_child(tail)
+	model.add_child(reverse_l)
 	# the owner's sounds: the engine running (a seamless loop), the starter, and a car going past
 	for f in ["engine.ogg", "engine.mp3"]:
 		if engine == null and ResourceLoader.exists("res://assets/sfx/" + f):
@@ -536,6 +555,7 @@ func put(at: Vector3, yaw: float) -> void:
 	bob = 0.0
 	bob_v = 0.0
 	if radio_on: set_radio(false) # a different car: its radio starts off
+	_rx_at = Vector3.INF # other phones: start predicting afresh from here
 
 ## Where it is facing (flat).
 func forward() -> Vector3:
@@ -583,9 +603,26 @@ func drive(throttle: float, turn: float, dt: float) -> void:
 ## Everyone else's phone: ease toward what the killer reported.
 func follow(at: Vector3, yaw: float, dt: float) -> void:
 	driver_local = false
-	var w := 1.0 - exp(-12.0 * dt)
-	position = position.lerp(at, w)
-	rotation.y = lerp_angle(rotation.y, yaw, w)
+	var now := Time.get_ticks_msec() / 1000.0
+	if _rx_at == Vector3.INF or at.distance_to(_rx_at) > 12.0: # first sight, or she took another car: be there
+		_rx_at = at; _rx_yaw = yaw; _rx_t = now; _rx_v = Vector3.ZERO; _rx_w = 0.0
+		position = at
+		rotation.y = yaw
+		_last = position
+		_last_yaw = yaw
+	elif at.distance_squared_to(_rx_at) > 1e-6 or absf(wrapf(yaw - _rx_yaw, -PI, PI)) > 1e-4: # a new update
+		var gap := now - _rx_t
+		if gap > 0.02 and gap < 0.5:
+			_rx_v = _rx_v.lerp((at - _rx_at) / gap, 0.6)
+			_rx_w = lerpf(_rx_w, wrapf(yaw - _rx_yaw, -PI, PI) / gap, 0.6)
+		else:
+			_rx_v = Vector3.ZERO; _rx_w = 0.0
+		_rx_at = at; _rx_yaw = yaw; _rx_t = now
+	var ahead := clampf(now - _rx_t, 0.0, 0.25) # never guess more than a quarter of a second on
+	var goal := _rx_at + Vector3(_rx_v.x, 0.0, _rx_v.z) * ahead
+	var w := 1.0 - exp(-14.0 * dt)
+	position = position.lerp(goal, w)
+	rotation.y = lerp_angle(rotation.y, _rx_yaw + _rx_w * ahead, w)
 	var step := Vector2(position.x - _last.x, position.z - _last.z)
 	var fwd := forward()
 	var sgn := 1.0 if step.dot(Vector2(fwd.x, fwd.z)) >= 0.0 else -1.0
@@ -665,8 +702,15 @@ func _effects(dt: float) -> void:
 	var on := 1.0 if driven else 0.0
 	lights.light_energy = lerpf(lights.light_energy, LIGHT_ENERGY * on, 1.0 - exp(-6.0 * dt))
 	lights.visible = lights.light_energy > 0.05
-	tail.light_energy = lerpf(tail.light_energy, (0.45 + (0.55 if speed < -0.3 or (driven and absf(speed) < 0.4) else 0.0)) * on, 1.0 - exp(-8.0 * dt))
+	# brake lights: bright while it slows down hard (on every phone: worked out from the speed)
+	var slowing := clampf((_prev_speed_abs - absf(speed)) / maxf(dt, 0.001) / 6.0, 0.0, 1.0)
+	_prev_speed_abs = absf(speed)
+	braking = lerpf(braking, maxf(slowing, 1.0 if (driven and absf(speed) < 0.4) else 0.0), 1.0 - exp(-10.0 * dt))
+	tail.light_energy = lerpf(tail.light_energy, (0.45 + 1.1 * braking) * on, 1.0 - exp(-12.0 * dt))
 	tail.visible = tail.light_energy > 0.05
+	if reverse_l: # the white reversing light
+		reverse_l.light_energy = lerpf(reverse_l.light_energy, (0.9 if speed < -0.3 else 0.0) * on, 1.0 - exp(-10.0 * dt))
+		reverse_l.visible = reverse_l.light_energy > 0.05
 	if radio:
 		var want := radio_on # left on, it keeps playing in the parked car
 		if want and not _radio_started:

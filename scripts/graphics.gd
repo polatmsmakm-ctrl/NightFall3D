@@ -28,6 +28,11 @@ var effects := 1
 var strong := false
 const TIER := 2 # raise it to re-apply the strong-device defaults once on every phone
 var brightness := 1.0 # «السطوع»: multiplies the exposure of the maps and the camp (0.6 .. 1.6)
+# the controls rows in the settings panel (saved with the rest in graphics.cfg)
+var look_sens := 1.0   # «حساسية الكاميرا»: how far a drag turns the camera (0.4 .. 2.0)
+var fov_add := 0.0     # «مجال الرؤية»: degrees added to every round camera (-10 .. +15)
+var btn_scale := 1.0   # «حجم الأزرار»: the round's touch buttons (0.8 .. 1.3)
+var btn_alpha := 1.0   # «وضوح الأزرار»: how solid they are drawn (0.35 .. 1.0)
 signal look_changed
 
 # runtime-only reductions made by the governor (not saved)
@@ -107,6 +112,9 @@ func apply() -> void:
 	var vp := get_viewport()
 	Engine.max_fps = target_fps()
 	vp.msaa_3d = [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X][aa]
+	# the interface too: round buttons, rings, the map and the drawn icons get smooth edges (cheap
+	# on the iPhone's tile-based GPU; text is already anti-aliased by the font)
+	vp.msaa_2d = Viewport.MSAA_4X if maxed() else (Viewport.MSAA_2X if preset >= 1 else Viewport.MSAA_DISABLED)
 	vp.scaling_3d_scale = render_scale()
 	# below 100% the picture is rebuilt with AMD FSR (sharper than plain stretching), so the governor
 	# can take the resolution down a little without it looking soft
@@ -152,7 +160,9 @@ func _load() -> void:
 		preset = 2
 		shadows = PRESETS[2][0]; aa = 1; scale_idx = PRESETS[2][2]; effects = PRESETS[2][3]
 		fps_idx = 2
-		if ok: brightness = clampf(float(c.get_value("g", "bright", brightness)), 0.6, 1.6)
+		if ok:
+			brightness = clampf(float(c.get_value("g", "bright", brightness)), 0.6, 1.6)
+			_load_controls(c)
 		_save()
 		return
 	if not ok: return
@@ -163,6 +173,13 @@ func _load() -> void:
 	scale_idx = clampi(c.get_value("g", "scale", scale_idx), 0, 2)
 	effects = clampi(c.get_value("g", "effects", effects), 0, 2)
 	brightness = clampf(float(c.get_value("g", "bright", brightness)), 0.6, 1.6)
+	_load_controls(c)
+
+func _load_controls(c: ConfigFile) -> void:
+	look_sens = clampf(float(c.get_value("g", "sens", look_sens)), 0.4, 2.0)
+	fov_add = clampf(float(c.get_value("g", "fov", fov_add)), -10.0, 15.0)
+	btn_scale = clampf(float(c.get_value("g", "btn", btn_scale)), 0.8, 1.3)
+	btn_alpha = clampf(float(c.get_value("g", "btn_a", btn_alpha)), 0.35, 1.0)
 
 func _save() -> void:
 	var c := ConfigFile.new()
@@ -170,6 +187,8 @@ func _save() -> void:
 	c.set_value("g", "shadows", shadows); c.set_value("g", "aa", aa)
 	c.set_value("g", "scale", scale_idx); c.set_value("g", "effects", effects)
 	c.set_value("g", "bright", brightness)
+	c.set_value("g", "sens", look_sens); c.set_value("g", "fov", fov_add)
+	c.set_value("g", "btn", btn_scale); c.set_value("g", "btn_a", btn_alpha)
 	c.set_value("g", "tier", TIER if strong else 0)
 	c.save(PATH)
 
@@ -270,6 +289,16 @@ func _build_ui() -> void:
 	_vol_rows.append(_vol_row(v, "sfx", "صوت اللعب"))
 	for r in _vol_rows: r.visible = false
 	_bright_row(v)
+	var ct := Label.new(); ct.text = "التحكم"; ct.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ct.modulate = Color(1, 0.75, 0.7); v.add_child(ct)
+	_num_row(v, "_sens", "حساسية الكاميرا", 40.0, 200.0, 5.0, "%d%%", func() -> float: return look_sens * 100.0,
+		func(x: float) -> void: look_sens = x / 100.0)
+	_num_row(v, "_fov", "مجال الرؤية", -10.0, 15.0, 1.0, "%+d°", func() -> float: return fov_add,
+		func(x: float) -> void: fov_add = x)
+	_num_row(v, "_btn", "حجم الأزرار", 80.0, 130.0, 5.0, "%d%%", func() -> float: return btn_scale * 100.0,
+		func(x: float) -> void: btn_scale = x / 100.0)
+	_num_row(v, "_btn_a", "وضوح الأزرار", 35.0, 100.0, 5.0, "%d%%", func() -> float: return btn_alpha * 100.0,
+		func(x: float) -> void: btn_alpha = x / 100.0)
 	_row(v, "fps", "الإطارات", ["تلقائي", "30", "60", "120"])
 	_row(v, "preset", "الجرافيكس", ["متوسط", "عالي", "فائق"])
 	_row(v, "shadows", "الظلال", ["منخفض", "متوسط", "عالي"])
@@ -347,6 +376,30 @@ func _bright_row(parent: Control) -> void:
 	s.drag_ended.connect(func(_c: bool) -> void: _save())
 	_vol["_bright"] = [s, pct]
 
+## A slider row for the controls: live while dragging (look_changed tells the round), saved on release.
+var _nums := {}
+func _num_row(parent: Control, key: String, label: String, lo: float, hi: float, step: float, fmt: String, get_v: Callable, set_v: Callable) -> void:
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 10)
+	parent.add_child(h)
+	var l := Label.new(); l.text = label; l.custom_minimum_size.x = 150; h.add_child(l)
+	var sl := HSlider.new()
+	sl.min_value = lo; sl.max_value = hi; sl.step = step
+	sl.custom_minimum_size = Vector2(220, 44)
+	sl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	h.add_child(sl)
+	var pct := Label.new()
+	pct.custom_minimum_size.x = 64
+	pct.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	h.add_child(pct)
+	sl.value_changed.connect(func(val: float) -> void:
+		set_v.call(val)
+		pct.text = fmt % roundi(val)
+		look_changed.emit())
+	sl.drag_ended.connect(func(_c: bool) -> void: _save())
+	_nums[key] = [sl, pct, get_v, fmt]
+
 func _row(parent: Control, key: String, label: String, items: Array) -> void:
 	var h := HBoxContainer.new(); parent.add_child(h)
 	var l := Label.new(); l.text = label; l.size_flags_horizontal = Control.SIZE_EXPAND_FILL; h.add_child(l)
@@ -357,6 +410,10 @@ func _row(parent: Control, key: String, label: String, items: Array) -> void:
 	_opts[key] = o
 
 func _refresh() -> void:
+	for key in _nums:
+		var val: float = (_nums[key][2] as Callable).call()
+		_nums[key][0].set_value_no_signal(val)
+		_nums[key][1].text = str(_nums[key][3]) % roundi(val)
 	for key in _vol:
 		var val: float = brightness if key == "_bright" else Aud.get_vol(key)
 		_vol[key][0].set_value_no_signal(roundf(val * 100.0))
