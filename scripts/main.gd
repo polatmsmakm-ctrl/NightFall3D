@@ -756,6 +756,7 @@ func _draw_gate(mid: Vector2) -> void:
 			best = p
 	if best == Vector3.INF or bd < 7.0: return
 	var d := _ring_dir(best)
+	if on_road >= 0 and d.y < -0.8: return # straight up the road: it is in plain sight (and the road panel is there)
 	var at := mid + d * minf(mid.y * 0.8, 300.0)
 	var beat := 0.75 + 0.25 * sin(Time.get_ticks_msec() / 1000.0 * 4.0)
 	var col := Color(0.45, 1.0, 0.55, beat)
@@ -2499,9 +2500,9 @@ func _draw_road(i: int, mid: Vector2) -> void:
 	var rd: Dictionary = rules.roads[i]
 	var st := int(rd.st)
 	var ec: NFCar = world.esc_cars[i]
-	var in_car := st == 1 or esc_i == i or my_role == "killer"
-	var at: Vector3 = ec.global_position if in_car else body.position
-	if spectating != "" and not in_car: at = _pos_of(spectating)
+	# the car's distance for whoever is in it (or watches someone in it, or chases it); on foot, my own
+	var in_car := esc_i == i or my_role == "killer" or (spectating != "" and rules.car_of(spectating) == i)
+	var at: Vector3 = ec.global_position if in_car else (_pos_of(spectating) if spectating != "" else body.position)
 	var left := world.road_left(i, at)
 	var c := Vector2(mid.x, 112.0)
 	var box := Rect2(c - Vector2(230.0, 54.0), Vector2(460.0, 128.0))

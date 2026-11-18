@@ -34,10 +34,13 @@ func _ready() -> void:
 	await frames(30)
 	var ec: NFCar = w.esc_cars[0]
 	var b := Basis(Vector3.UP, float(w.gate_points[0][1]))
-	m.body.position = ec.global_position + b * Vector3(2.4, 0.3, 5.0)
+	m.body.position = ec.global_position + b * Vector3(2.6, 0.3, 4.0)
 	m.yaw = float(w.gate_points[0][1]) + 0.5
 	await frames(30)
 	await shot("21_car_waits")
+	m.body.position = ec.global_position + b * Vector3(2.2, 0.3, 0.0)
+	await frames(8)
+	print("ctx by the car: ", m.ctx.get("interact", {}).get("kind", "-"))
 	m._press("interact", 5)
 	await frames(4)
 	for e in m.rules.handle({"k": "board", "i": 0}, "سارة"): m._on_event(e)
