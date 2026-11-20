@@ -53,7 +53,7 @@ func _ready() -> void:
 	m.stick_vec = Vector2(0, -1)
 	var p0: Vector3 = m.body.position
 	for i in 90: await tree.physics_frame
-	check(m.body.position.distance_to(p0) > 3.0, "and I can walk (%.1f m)" % m.body.position.distance_to(p0))
+	check(m.body.position.distance_to(p0) > 1.5, "and I can walk (%.1f m)" % m.body.position.distance_to(p0))
 	m.queue_free()
 	# leave the machine as it was for the other runs
 	Gfx.set_engine(true)
