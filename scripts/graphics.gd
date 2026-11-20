@@ -26,7 +26,15 @@ var effects := 1
 ## A phone or tablet with a recent Apple chip (iPhone 15 Pro and later, any M-chip iPad): it starts on
 ## «فائق» and «فائق» draws more there (see apply(), world._apply_quality, main's rigs).
 var strong := false
+## An older iPhone or iPad (iPhone 15 / 14 Pro and before: A16 and older chips, the iPhone 13 and 14
+## among them). It gets its own start: the lighter Mobile renderer from the second launch, settings
+## that hold 60 there, and a governor that may go further down (resolution to 70%, a steady 30).
+var weak := false
 const TIER := 2 # raise it to re-apply the strong-device defaults once on every phone
+const WEAK_TIER := 1 # the same for the older-phone defaults
+## This launch is the last one on Forward+ before the lighter renderer takes over (the renderer only
+## changes at start-up): its heavy effects stay off meanwhile.
+var _transit := false
 var brightness := 1.0 # «السطوع»: multiplies the exposure of the maps and the camp (0.6 .. 1.6)
 # the controls rows in the settings panel (saved with the rest in graphics.cfg)
 var look_sens := 1.0   # «حساسية الكاميرا»: how far a drag turns the camera (0.4 .. 2.0)
@@ -60,7 +68,9 @@ var last_avg_ms := 0.0
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	strong = detect_strong()
+	weak = detect_weak()
 	_load()
+	_transit = weak and engine_hd() and not engine_next_hd()
 	_build_ui()
 	apply()
 
@@ -73,12 +83,23 @@ static func detect_strong() -> bool:
 	if m.begins_with("iPad"): return m.trim_prefix("iPad").get_slice(",", 0).to_int() >= 13
 	return false
 
+## The older phones and tablets (see weak). NF_WEAK=1 pretends, for the tests.
+static func detect_weak() -> bool:
+	if OS.get_environment("NF_WEAK") == "1": return true
+	if detect_strong(): return false
+	var m := OS.get_model_name()
+	return m.begins_with("iPhone") or m.begins_with("iPad")
+
 ## «فائق» on a strong device: everything below turns up a notch.
 func maxed() -> bool:
 	return strong and eff_effects() >= 2 and eff_shadows() >= 2
 
 func eff_shadows() -> int: return mini(shadows, rt_shadows)
-func eff_effects() -> int: return mini(effects, rt_effects)
+func eff_effects() -> int: return 0 if _transit else mini(effects, rt_effects)
+
+## How far the governor may take the resolution down (FSR rebuilds it): further on an older phone.
+func scale_floor() -> float:
+	return 0.7 if weak else 0.85
 
 func target_fps() -> int:
 	var f: int = FPS_OPTS[fps_idx]
@@ -89,7 +110,7 @@ func target_fps() -> int:
 	return f
 
 func render_scale() -> float:
-	return clampf(SCALE_OPTS[scale_idx] * dyn_scale, 0.85, 1.0)
+	return clampf(SCALE_OPTS[scale_idx] * dyn_scale, scale_floor(), 1.0)
 
 ## true: this launch runs the high-end renderer.
 func engine_hd() -> bool:
@@ -107,6 +128,7 @@ func set_engine(hd: bool) -> void:
 		c.set_value("rendering", "renderer/rendering_method", "mobile")
 		c.set_value("rendering", "renderer/rendering_method.mobile", "mobile")
 		c.save(ENGINE_PATH)
+	_transit = weak and engine_hd() and not engine_next_hd()
 
 func apply() -> void:
 	var vp := get_viewport()
@@ -141,8 +163,9 @@ func apply() -> void:
 		RenderingServer.environment_set_volumetric_fog_filter_active(true)
 		RenderingServer.sub_surface_scattering_set_quality(RenderingServer.SUB_SURFACE_SCATTERING_QUALITY_MEDIUM if maxed() else RenderingServer.SUB_SURFACE_SCATTERING_QUALITY_LOW)
 	# sharper ground at a glancing angle, and models keep their full detail further away
-	vp.anisotropic_filtering_level = Viewport.ANISOTROPY_16X if maxed() else Viewport.ANISOTROPY_4X
-	vp.mesh_lod_threshold = 0.7 if maxed() else 1.0
+	vp.anisotropic_filtering_level = Viewport.ANISOTROPY_16X if maxed() else (Viewport.ANISOTROPY_2X if weak else Viewport.ANISOTROPY_4X)
+	# older phones swap to the simpler level of detail of every model sooner (the GPU's vertex work)
+	vp.mesh_lod_threshold = 0.7 if maxed() else (2.0 if weak else 1.0)
 	changed.emit()
 
 func _reset_runtime() -> void:
@@ -164,6 +187,21 @@ func _load() -> void:
 			brightness = clampf(float(c.get_value("g", "bright", brightness)), 0.6, 1.6)
 			_load_controls(c)
 		_save()
+		return
+	if weak and (not ok or int(c.get_value("g", "weak", 0)) < WEAK_TIER):
+		# once per older phone: the Mobile renderer from the next launch (Forward+ draws its extra
+		# effects with passes these GPUs pay dearly for), moon shadows, MSAA 2x (nearly free on the
+		# Mobile renderer, resolved in the GPU's tile memory), 85% resolution rebuilt with FSR, a
+		# locked 60 (the 13 Pro and 14 Pro would otherwise try for 120 and heat up). The governor
+		# takes it from there; the player's own choices stand afterwards.
+		preset = 1
+		shadows = 1; aa = 1; scale_idx = 0; effects = 1
+		fps_idx = 2
+		if ok:
+			brightness = clampf(float(c.get_value("g", "bright", brightness)), 0.6, 1.6)
+			_load_controls(c)
+		_save()
+		set_engine(false)
 		return
 	if not ok: return
 	fps_idx = clampi(c.get_value("g", "fps", fps_idx), 0, 3)
@@ -190,6 +228,7 @@ func _save() -> void:
 	c.set_value("g", "sens", look_sens); c.set_value("g", "fov", fov_add)
 	c.set_value("g", "btn", btn_scale); c.set_value("g", "btn_a", btn_alpha)
 	c.set_value("g", "tier", TIER if strong else 0)
+	c.set_value("g", "weak", WEAK_TIER if weak else 0)
 	c.save(PATH)
 
 # ---------- adaptive governor ----------
@@ -216,10 +255,13 @@ func _process(dt: float) -> void:
 func _step_down() -> void:
 	# a smooth 60 with everything on beats a stuttering 120: the frame rate gives way first
 	if target_fps() > 60: rt_fps_cap = 60
-	elif render_scale() > 0.851:
-		dyn_scale = maxf(dyn_scale - 0.05, 0.85 / SCALE_OPTS[scale_idx])
+	elif render_scale() > scale_floor() + 0.001:
+		dyn_scale = maxf(dyn_scale - 0.05, scale_floor() / SCALE_OPTS[scale_idx])
 	elif eff_shadows() > 0: rt_shadows = eff_shadows() - 1
 	elif eff_effects() > 0: rt_effects = eff_effects() - 1
+	# an older phone that still cannot hold 60 with all of that given away: a steady 30 is smoother
+	# than 40-something that jumps around. It stays for the session (60 again would only drop back).
+	elif weak and target_fps() > 30: rt_fps_cap = 30
 	else: return
 	apply()
 

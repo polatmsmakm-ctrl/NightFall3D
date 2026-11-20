@@ -636,6 +636,25 @@ choice stands), and while it is on «فائق» (`Gfx.maxed()`):
   window. Native iPad (2) needs the 4:3 layout checked first.
 `check.yml` runs `drive` a second time with `NF_STRONG=1`.
 
+## Older phones (`Gfx.weak`: the owner's friends on the iPhone 13 / 14 / 15)
+Every iPhone or iPad that is not strong (A16 and older: iPhone15,x and below, iPad12,x and below;
+`NF_WEAK=1` fakes it) gets, **once** (`weak` / `WEAK_TIER` in graphics.cfg; the player's own choices
+stand afterwards):
+- **the Mobile renderer from the next launch** (`set_engine(false)`, i.e. «محرك الرسم: خفيف»):
+  Forward+ draws its depth pre-pass, SSAO and volumetric fog in passes these GPUs pay dearly for,
+  and with its effects off it looks nearly the same. The renderer only changes at start-up, so the
+  first launch after the update stays on Forward+ with its effects held off (`_transit`). A player
+  who wants the full look picks «عالي (فخم)» in the settings.
+- «عالي» with moon shadows, MSAA 2x (resolved in tile memory on the Mobile renderer), 85%
+  resolution through FSR, a locked 60 (the 13 Pro and 14 Pro have 120 Hz screens and would heat up).
+- always, whatever the settings: the governor may take the resolution to **70%** (`scale_floor()`,
+  85% elsewhere) and, as its very last step, cap the frame rate at a **steady 30** for the rest of the
+  session; models switch to their simpler level of detail sooner (`mesh_lod_threshold` 2.0),
+  anisotropic filtering 2x, grass 0.75x as thick, every map light fades out from 32 m (45 m
+  elsewhere) and the wall-wash spots from 38 m.
+`tools/weak.tscn` (run with `NF_WEAK=1` in check.yml) checks all of it and plays a short round.
+
+
 ## Lighter nights and «السطوع»
 The owner found the maps too dark. `world._build_environment` now multiplies every night map's
 ambient by 2.0, its fog by 0.65 and its moonlight by 1.4, with exposure 1.32 (the Empty Quarter

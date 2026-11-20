@@ -225,6 +225,7 @@ func configure(id: String, seed := 1, th := "normal") -> void:
 		buildings = FOREST_BUILDINGS.duplicate(true)
 	if theme == "snow": grass_per_chunk = int(grass_per_chunk * 0.5) # snow buries most of it
 	if Gfx.strong and Gfx.effects >= 2: grass_per_chunk = int(grass_per_chunk * 1.6) # thicker on strong devices
+	if Gfx.weak: grass_per_chunk = int(grass_per_chunk * 0.75) # thinner on the older phones (it is drawn in the shadow pass too)
 	if id == "garage": # the car park lays out its own floor, so none of the outdoor plan applies
 		_plan_garage(rng)
 		_plan_road()
@@ -395,7 +396,7 @@ func build() -> void:
 	_sharpen() # last, so the killer's car and its cabin are included
 	for l in find_children("*", "OmniLight3D", true, false): # far lights cost nothing
 		l.distance_fade_enabled = true
-		l.distance_fade_begin = 45.0
+		l.distance_fade_begin = 32.0 if Gfx.weak else 45.0 # an older phone lights fewer pixels
 		l.distance_fade_length = 12.0
 	Gfx.changed.connect(_apply_quality)
 	_apply_quality()
@@ -1989,7 +1990,7 @@ func _warm_spot(parent: Node3D, at: Vector3, target: Vector3, energy: float, rng
 	l.spot_range = rng
 	l.spot_angle = angle
 	l.distance_fade_enabled = true
-	l.distance_fade_begin = 55.0
+	l.distance_fade_begin = 38.0 if Gfx.weak else 55.0
 	l.distance_fade_length = 12.0
 	parent.add_child(l)
 
