@@ -1,0 +1,685 @@
+=== road
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+  ok   hooks: 9 in the map + 18 along the roads
+  ok   an escape car behind each gate
+   car 0 at (0.0, -0.1, -128.0), 16.0 m past the gate, 584 m to go, floor 0.05
+  ok   car 0 waits on the road past its gate
+  ok   and points down the road
+  ok   the last gate is 600 m from the first
+  ok   9 hooks stand on road 0
+   car 1 at (0.0, 0.0, 128.0), 16.0 m past the gate, 584 m to go, floor 0.05
+  ok   car 1 waits on the road past its gate
+  ok   and points down the road
+  ok   the last gate is 600 m from the first
+  ok   9 hooks stand on road 1
+  ok   out only at the last gate
+  ok   no car to board before the gates have power
+  ok   gates open
+  ok   next to it the button is «اركب وسوق»
+  ok   first one in drives; the clock runs (119.9 s)
+  ok   in the car you are not free to be hit or to repair
+  ok   the second one rides with them
+  ok   D sits in the passenger seat (0.00 m)
+  ok   no gas until the key has turned (0.0 m)
+  ok   my body rides in the seat
+   drove 48.7 m in 4 s, 50.4 km/h, 535 m left
+  ok   it drives down the road, capped at 50 km/h
+  ok   the HUD shows this road
+  ok   my position (what the others get) is the car's
+  ok   through the last gate: driver escaped, rider escaped
+  ok   the car is done and I am out of it
+  ok   one in each car
+  ok   the moon lands; the cars are already out (P ok, D hurt)
+  ok   rammed: thrown out, down
+  ok   beside the car, on the road (2.7 m)
+  ok   the car stopped dead
+  ok   a hook within 32 m
+  ok   out of time: the car stops, D is down
+  ok   the killer sees the escape car's road on the HUD
+  ok   her car hits theirs: D down
+  ok   garage car 0 sits on its road (y 0.05)
+  ok   garage car 1 sits on its road (y 4.75)
+ROAD DONE bad=0
+=== hud
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+anisotropic materials on the forest: 22
+  ok   anisotropic filtering across the map's materials (22)
+  ok   2D anti-aliasing for the interface (1)
+  ok   the parked car's colour map is 4096 (4096)
+  ok   at high quality
+  ok   the feed: D went down (D طاح)
+  ok   the feed: hooked, then P saved D (P أنقذ D)
+   feed now: ["البوابات اشتغلت — اهربوا!", "اشتغل مولد — 5 من 5", "P أنقذ D", "D على الخطاف", "D طاح"]
+  ok   the feed: a generator done
+  ok   the feed: the gates are open
+  ok   never more than five lines
+  ok   lines fade away (0 left)
+  ok   struck: the red arc points back at the killer
+  ok   straight ahead is the top of the ring ((0.0, -1.0))
+  ok   the gate arrow shows once the gates have power
+  ok   «حجم الأزرار»: buttons 30% bigger
+  ok   «مجال الرؤية»: +10° live (80.0, was 70.0)
+  ok   «حساسية الكاميرا» 200%: a drag turns twice as far (0.120)
+  ok   a pressed button dips
+  ok   the four control sliders are in the settings panel
+  ok   and they are saved
+  ok   «طريقة اللعب»: the survivors' tips
+  ok   and the killer's tab
+hud check: all good
+=== tex
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+survivor6: survivor6.glb
+  ok   the survivor6 model is loaded
+   triangles: 39000
+  ok   a material
+  ok   albedo map present
+   albedo: survivor6_col.png  2048x2048  BC7 (high quality)  mipmaps true
+  ok   albedo comes from the lossless survivor6_col.png
+  ok   albedo imported at full size 2048
+  ok   albedo has mipmaps
+  ok   albedo is not the low-quality compression
+  ok   albedo has its ASTC copy for the iPhone
+  ok   normal map present
+   normal: survivor6_nrm.png  2048x2048  BC7 (high quality)  mipmaps true
+  ok   normal comes from the lossless survivor6_nrm.png
+  ok   normal imported at full size 2048
+  ok   normal has mipmaps
+  ok   normal is not the low-quality compression
+  ok   normal has its ASTC copy for the iPhone
+  ok   roughness map present
+   roughness: survivor6_mr.png  2048x2048  DXT1 (low)  mipmaps true
+  ok   roughness comes from the lossless survivor6_mr.png
+  ok   roughness imported at full size 2048
+  ok   roughness has mipmaps
+  ok   roughness has its ETC2 copy for the iPhone
+  ok   metallic map present
+   metallic: survivor6_mr.png  2048x2048  DXT1 (low)  mipmaps true
+  ok   metallic comes from the lossless survivor6_mr.png
+  ok   metallic imported at full size 2048
+  ok   metallic has mipmaps
+  ok   metallic has its ETC2 copy for the iPhone
+  ok   anisotropic filtering
+  ok   rigged, plays idle
+survivor6_hi: survivor6_hi.glb
+  ok   the survivor6_hi model is loaded
+   triangles: 121788
+  ok   a material
+  ok   albedo map present
+   albedo: survivor6_hi_col.png  4096x4096  BC7 (high quality)  mipmaps true
+  ok   albedo comes from the lossless survivor6_hi_col.png
+  ok   albedo imported at full size 4096
+  ok   albedo has mipmaps
+  ok   albedo is not the low-quality compression
+  ok   albedo has its ASTC copy for the iPhone
+  ok   normal map present
+   normal: survivor6_hi_nrm.png  4096x4096  BC7 (high quality)  mipmaps true
+  ok   normal comes from the lossless survivor6_hi_nrm.png
+  ok   normal imported at full size 4096
+  ok   normal has mipmaps
+  ok   normal is not the low-quality compression
+  ok   normal has its ASTC copy for the iPhone
+  ok   roughness map present
+   roughness: survivor6_hi_mr.png  4096x4096  DXT1 (low)  mipmaps true
+  ok   roughness comes from the lossless survivor6_hi_mr.png
+  ok   roughness imported at full size 4096
+  ok   roughness has mipmaps
+  ok   roughness has its ETC2 copy for the iPhone
+  ok   metallic map present
+   metallic: survivor6_hi_mr.png  4096x4096  DXT1 (low)  mipmaps true
+  ok   metallic comes from the lossless survivor6_hi_mr.png
+  ok   metallic imported at full size 4096
+  ok   metallic has mipmaps
+  ok   metallic has its ETC2 copy for the iPhone
+  ok   anisotropic filtering
+  ok   rigged, plays idle
+  ok   killer: colour from killer_col.jpg (killer_col.jpg)
+  ok   killer: colour at high quality (BC7 (high quality))
+  ok   killer: normal map not low quality (BC7 (high quality))
+  ok   killer_hi: colour from killer_hi_col.jpg (killer_hi_col.jpg)
+  ok   killer_hi: colour at high quality (BC7 (high quality))
+  ok   killer_hi: normal map not low quality (BC7 (high quality))
+  ok   survivor1: colour from survivor1_col.jpg (survivor1_col.jpg)
+  ok   survivor1: colour at high quality (BC7 (high quality))
+  ok   survivor1: normal map not low quality (BC7 (high quality))
+  ok   survivor5_hi: colour from survivor5_hi_col.jpg (survivor5_hi_col.jpg)
+  ok   survivor5_hi: colour at high quality (BC7 (high quality))
+  ok   survivor5_hi: normal map not low quality (BC7 (high quality))
+  ok   survivor8_hi: colour from survivor8_hi_col.jpg (survivor8_hi_col.jpg)
+  ok   survivor8_hi: colour at high quality (BC7 (high quality))
+  ok   survivor8_hi: normal map not low quality (BC7 (high quality))
+tex check: all good
+=== drive
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+  ok   the car is there
+   forest car at (-46.0, -0.1, 52.0) yaw 3.16
+  ok   next to it the button says اركب
+  ok   in the driver's seat, the cabin around him
+  ok   the driver's door is its own piece
+  ok   with a dark inside panel
+  ok   the AnimationPlayer plays get_in
+  ok   the door swings open as he gets in (0.95)
+  ok   the camera starts outside the door
+  ok   no gas until he is in and the door is shut
+  ok   seated, door shut (-0.00)
+  ok   the key turns: the starter plays
+  ok   the three car sounds are loaded
+  ok   the engine loop comes up under the starter (0.57)
+  ok   from the seat: the gloves on the wheel, her body hidden on my phone
+  ok   behind the car: she sits at the wheel herself (drive)
+   hands to the rim between frames: 0.169 m; the IK ran 288 times, its own miss 0.000 m; shoulder to grip 0.330 m
+  ok   the hand IK runs
+  ok   both hands on the steering wheel (0.000 m off)
+  ok   her head under the roof (1.42 m)
+  ok   a gear button by the speedometer (غيار 1)
+  ok   second gear: up to 70 km/h
+  ok   third gear: up to 90 km/h
+  ok   and back to first
+  ok   the camera is at the driver's eyes (0.00 m off)
+  ok   the attack button switches to the camera behind the car
+  ok   and back into the seat
+  ok   no swing at the wheel
+  ok   the car has the radio song
+  ok   the power button turns the radio on
+  ok   the button now says سكّر الراديو (سكّر الراديو)
+  ok   and off again (paused, not restarted)
+  ok   the killer's own body is out of the way
+  ok   the car hit the survivor: hurt
+  ok   gas: 11.0 m/s, 16.2 m
+  ok   the wheels turn while it drives (-0.78 rad)
+  ok   a steering wheel with two gloved hands on it
+   touching /root/Main/@Node3D@183/Terrain normal (0.02, 1.0, 0.03)
+   touching /root/Main/@Node3D@183/Terrain normal (0.02, 1.0, 0.03)
+  ok   the killer rides with it (what the others are sent)
+  ok   steering turns it (-0.88 rad)
+  ok   the steering wheel turns with it (2.30 rad)
+  ok   the speedometer reads 40 km/h
+  ok   pulling back brakes, then reverses (-4.5)
+  ok   at the wheel the button says انزل
+  ok   getting out: key off, the door opens first
+  ok   and shuts behind him
+  ok   out, first person again, cabin hidden
+  ok   left on, the radio keeps playing after he gets out
+  ok   out: her body back to first person (hidden, full size)
+  ok   the camera is back at his own eyes
+  ok   standing beside it, not inside it (1.9 m)
+  ok   the killer's body is solid again
+  ok   the car has four wheels on axles (4)
+  ok   picked the survivor up
+  ok   carrying, next to the car: «حطّه بالسيارة»
+  ok   in the car with the survivor
+  ok   the survivor sits in the passenger seat (0.01 m off)
+  ok   slumped, at 0.72 of their size (slump)
+   victim's head joint 1.31 m above the car's floor line (headliner 1.645)
+  ok   the victim's head is inside the car (1.31 m)
+  ok   the slump pose is built on the rig
+  ok   pulled up at a hook: «انزل وعلّق» (car_hook)
+  ok   hung on the hook straight from the car: hooked
+  ok   the car stays put once he is out
+   forest: 8 parked cars to take
+  ok   the map's parked cars can be taken (8)
+  ok   next to a parked car: «اركب» (car_in, 0)
+   took parked car 0: 0.56 m from its spot, driving true
+  ok   she is in that car, in its spot (0.56 m)
+  ok   facing the way it was parked
+  ok   and the car she left stands where she parked it
+  ok   garage: the car is on the roof (y 4.8)
+  ok   garage: every bay's car can be taken (83)
+   garage: standing at (83.1, 4.7, 23.0) button car_in
+   garage: car at (85.5, 0.8, -11.4)
+  ok   drove down the ramp to the floor (lowest y 0.8)
+  ok   the car follows the killer's position
+  ok   his door opened and shut (AnimationPlayer) and the engine started on my phone too
+  ok   the killer sits at the wheel on my phone (drive)
+  ok   no heartbeat while she drives, even right next to me
+  ok   headlights on while someone drives
+  ok   radio off while his f is 0
+  ok   his radio plays on my phone, from the car
+  ok   the car flies past me: the pass-by sound
+  ok   he gets out: his door opens on my phone, engine off
+  ok   he got out: lights off, he is back
+  ok   he left it on: the radio keeps playing from the parked car
+  ok   and stops when his switch says off
+  ok   she took a parked car: the same swap on my phone
+drive check: all good
+=== props
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+== forest: models 47, fortress sections 58, campfires 3
+  ok   fortress around the map
+  ok   the gallows sets how high a survivor hangs
+  ok   both gate leaves ride the sliding doors
+  ok   the gate's sign is its own glow map
+  ok   the generator's lamp is its own glow map
+  ok   burning barrels became campfires
+  ok   cars are the Land Cruiser (8)
+  ok   the killer's car is parked
+   killer car at (-46.0, -0.1, 52.0) yaw 3.96
+  ok   near where the killer starts
+  ok   its wheels are on the ground
+  ok   the left leaf slid 3.7 m when the gate opened
+== village: models 47, fortress sections 58, campfires 3
+  ok   fortress around the map
+  ok   the gallows sets how high a survivor hangs
+  ok   both gate leaves ride the sliding doors
+  ok   the gate's sign is its own glow map
+  ok   the generator's lamp is its own glow map
+  ok   burning barrels became campfires
+  ok   cars are the Land Cruiser (8)
+  ok   the killer's car is parked
+   killer car at (-46.0, -0.3, 52.0) yaw 2.36
+  ok   near where the killer starts
+  ok   its wheels are on the ground
+  ok   the left leaf slid 3.7 m when the gate opened
+== fareej: models 55, fortress sections 58, campfires 3
+  ok   fortress around the map
+  ok   the gallows sets how high a survivor hangs
+  ok   both gate leaves ride the sliding doors
+  ok   the gate's sign is its own glow map
+  ok   the generator's lamp is its own glow map
+  ok   burning barrels became campfires
+  ok   cars are the Land Cruiser (16)
+  ok   the killer's car is parked
+   killer car at (-46.0, 0.1, 52.0) yaw 2.36
+  ok   near where the killer starts
+  ok   its wheels are on the ground
+  ok   the left leaf slid 3.7 m when the gate opened
+== rubkhali: models 52, fortress sections 46, campfires 3
+  ok   fortress around the map
+  ok   the gallows sets how high a survivor hangs
+  ok   both gate leaves ride the sliding doors
+  ok   the gate's sign is its own glow map
+  ok   the generator's lamp is its own glow map
+  ok   burning barrels became campfires
+  ok   cars are the Land Cruiser (7)
+  ok   the killer's car is parked
+   killer car at (-46.0, -0.3, 52.0) yaw 2.36
+  ok   near where the killer starts
+  ok   its wheels are on the ground
+  ok   every tent is the crimson tent (6 of 6)
+  ok   the left leaf slid 3.7 m when the gate opened
+== garage: models 37, fortress sections 58, campfires 0
+  ok   fortress around the map
+  ok   the gallows sets how high a survivor hangs
+  ok   both gate leaves ride the sliding doors
+  ok   the gate's sign is its own glow map
+  ok   the generator's lamp is its own glow map
+  ok   cars are the Land Cruiser (1)
+  ok   the killer's car is parked
+   killer car at (85.5, 4.7, 23.0) yaw 3.14
+  ok   on the garage it waits on the roof
+  ok   its wheels are on the ground
+  ok   the left leaf slid 3.7 m when the gate opened
+== beach: models 47, fortress sections 58, campfires 3
+  ok   fortress around the map
+  ok   the gallows sets how high a survivor hangs
+  ok   both gate leaves ride the sliding doors
+  ok   the gate's sign is its own glow map
+  ok   the generator's lamp is its own glow map
+  ok   burning barrels became campfires
+  ok   cars are the Land Cruiser (8)
+  ok   the killer's car is parked
+   killer car at (-52.0, -0.9, 36.0) yaw 2.36
+  ok   near where the killer starts
+  ok   not in the lagoon
+  ok   its wheels are on the ground
+  ok   the left leaf slid 3.7 m when the gate opened
+props check: all good
+=== ui
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+layout survivor: 8 buttons, interact r=50.0 fx=0.803
+default interact centre on 1280x720 = (1028.0, 632.0) (was 1028, 632)
+saved + reloaded: fx=0.5 r=70.0 killer untouched=62.0
+after reset: fx=0.803 r=50.0
+survivor buttons: ["crouch", "heal", "interact", "item", "light", "sig", "sprint", "vault"]
+icons: { "sprint": "shoe", "interact": "hand", "crouch": "crouch", "vault": "jump", "heal": "heal", "item": "item", "light": "light", "sig": "chat" }
+interact at a generator: ["تصليح", "wrench", true]
+panel closed: 0
+panel open: 4 first rect=[P: (740.0, 1038.444), S: (220.0, 48.0)]
+sent: open=false live=1 k=1 from=P
+one message per player: 2 D now says k=2
+after it expires: 1
+team: ["P", "D"] D=hooked t=20 icon=hook
+loading: map=fareej tip len=38 f=0.4 busy=true
+loading freed: true
+results up=true rows=3 xp 350->625 escapes 1->2
+victory shot first: escaped on stage=1 seconds=4.8
+row order (points first): ["P:escaped:275", "D:dead:0", "K:killer:0"]
+xp bar animating: 350.0 -> 625
+xp bar arrived: 625.0
+killer buttons: ["attack", "interact", "power"] (no sig button for the killer)
+killer interact over a downed survivor: ["احمل", "carry"]
+chars page list=8 (killer included in trial) current=survivor1
+after one step: survivor2 card visible=true swipe pad=true
+back: survivor1
+level progress: xp=625 level=2 bar=0.71
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+ERROR: 1 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:795)
+=== smoke
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+S props: hooks=27 lockers=10 pallets=9 windows=9 dummy=hurt
+S walk=1.73 sprint=4.32 anim=sprint
+S ctx near dummy: [&"heal"]
+S healed dummy -> ok hold={  }
+S vault: side now=-1.25 (was +1.2) vaulting=false
+S in locker=0 visible=false ctx=locker_out
+S out locker=-1 dist=1.1
+S pallet ctx=pallet
+S pallet state=1 node down visible=false vault ctx=true
+S blocked by pallet: side=-0.59
+S vaulted pallet: side=1.15
+S self heal -> ok item left=false
+S repairing= reps=[]
+S powered=true hold cleared=true
+S past gate, not out yet: ok z=115.2 floor=true
+S at the escape car ctx=board
+S in the car=1 driver=P
+S end of road by car: left=6.0 banner=2.9 spectating=D
+S escaped=escaped over=true (dummy ok)
+K first person: arm=0.0 rig visible=false dummy=ok
+K hit 1 -> hurt
+K hit 2 -> down
+K ctx=pickup
+K carrying=D dummy=carried
+K at hook ctx=hook dummy follows dist=2.25
+K hooked: hooked hooks=1 t=59.5 at hook dist=0.89
+K power cd=19.9 boost=3.4
+K pallet ctx=break
+K pallet after break=2
+K locker ctx=search
+K hook timer out: dead over=true results=true
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+ERROR: 1 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:795)
+=== map
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+rubkhali built in ms=7076 ready=true
+objectives: gens=7 hooks=27 lockers=10 pallets=9 windows=9 hatches=5 gates=2
+camps: buildings=11 tents=6 wrecks=7 animals=9 palms=85
+dunes: lowest=-4.8 highest=3.6 (wall top is 12)
+ground=sand fog=0.022 storm grains=170
+weather: sun in the sky=1.0 sunlight=(1.0, 0.91, 0.74, 1.0) x2.4 elevation=37.0 deg  ambient=(0.72, 0.6, 0.44, 1.0) x1.5
+the round's dust surge: fog 0.022 -> 0.05 (no lights to put out at noon)
+it passes: fog back to 0.022
+gates powered: sky blood=0.69 sunlight=(1.0, 0.5296, 0.3665, 1.0) x3.19 near=0.6
+the other maps are still night: forest sun=0.0 moonlight=(0.55, 0.65, 0.95, 1.0)
+seeded: same seed same gens=true other seed differs=true
+animal walked=1.44m  with collision=0 (must be 0)
+walked into the tent: local z=-0.72 (front edge is 3.5) surface=indoor
+locker in the tent: ctx=locker_in
+gate at (0.0, 1.49491, -112.0) outside check at road end=true
+picked up -> scare=0.57 camera=killer close-up
+after the scare: scare=0.0 camera back=true
+forest+snow built in ms=7034
+snow: fog=0.012 ambient=(0.23, 0.27, 0.38, 1.0) moon=(0.72, 0.82, 1.0, 1.0) snow caps=11 pumpkins=0 webs=0 flakes/leaves=90 breath=2
+forest+halloween built in ms=7443
+halloween: fog=0.012 ambient=(0.2, 0.11, 0.06, 1.0) moon=(1.0, 0.6, 0.3, 1.0) snow caps=0 pumpkins=21 webs=49 flakes/leaves=25 breath=0
+rubkhali + halloween: pumpkins=21 webs=49 wrecks=7
+emote clips on the preview: ["wave", "dance", "clap"] available=[true, true, true]
+waving: anim=wave length=2.4 tracks=15
+dancing: anim=dance tracks=19
+friend clapping: anim=clap seated cast=1
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+ERROR: 3 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:795)
+=== win
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+1 rescuing: took 2.0s  hands in the event=1
+2 rescuing: took 1.1s  hands in the event=2
+3 rescuing: took 0.7s  hands in the event=3
+the snapshot tells everyone: progress=0.4 hands=2
+one lets go: hands=1
+both let go: progress back to 0.15 (nobody is rescued)
+at 06:00 the camp is dawn  sky day=0.4 warm=0.95 moonlight=1.5 fog=0.03 fire=0.75
+at 12:00 the camp is day  sky day=1.0 warm=0.12 moonlight=2.4 fog=0.012 fire=0.45
+at 18:00 the camp is dusk  sky day=0.3 warm=1.0 moonlight=1.2 fog=0.032 fire=0.9
+at 23:00 the camp is night  sky day=0.0 warm=0.0 moonlight=1.0 fog=0.022 fire=1.0
+a misty night: misty=true fog=0.053
+at the gate: 2 of 4 players (only the ones who got out)
+dead men are not in the shot: true
+the numbers wait: statistics hidden=true buttons hidden=true
+in front of the camera: 2 of 2
+the camera moves round them: 0.95 m
+then the statistics: visible=true gate gone=true buttons back=true camera home=(0.0, 1.6, 7.4)
+xp bar runs after the shot: 400.0 of 400
+nobody escaped: shot skipped=true statistics up=true
+=== camp
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+stands at the fire: survivor5 (last played survivor5)
+friends at the fire: ["بدر"]  stock hidden=true
+blood moon=true hook=true daily={ "text": "اهرب مرة اليوم", "have": 1, "need": 1, "done": true, "whisper": "الكشاف يعميها لحظة — استغلها" }
+card title=ناجي logo=true poster=true
+camp as forest: dressing nodes=0 trees=true
+camp as village: dressing nodes=4 trees=true
+camp as fareej: dressing nodes=10 trees=false
+camp as rubkhali: dressing nodes=8 trees=false
+camp as garage: dressing nodes=22 trees=false
+camp as beach: dressing nodes=9 trees=false
+stalker visible 259/400 ticks, spots used=6
+tap on بدر picks: بدر   tap on empty sky picks: ''
+emote wave: playing=wave length=2.40000009536743
+emote dance: playing=dance length=4.0
+emote clap: playing=clap length=2.20000004768372
+in a room on the beach: camp=beach stalker hidden (a player is the killer)=true
+brightness 140%: camp exposure=1.53999996185303
+camp check done
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+ERROR: 2 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:795)
+=== drive (strong device)
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+  ok   the car is there
+  ok   a strong device starts on «فائق»
+  ok   and plays the round with the close-up model (killer_hi.glb)
+   forest car at (-46.0, -0.1, 52.0) yaw 3.16
+  ok   next to it the button says اركب
+  ok   in the driver's seat, the cabin around him
+  ok   the driver's door is its own piece
+  ok   with a dark inside panel
+  ok   the AnimationPlayer plays get_in
+  ok   the door swings open as he gets in (0.95)
+  ok   the camera starts outside the door
+  ok   no gas until he is in and the door is shut
+  ok   seated, door shut (-0.00)
+  ok   the key turns: the starter plays
+  ok   the three car sounds are loaded
+  ok   the engine loop comes up under the starter (0.57)
+  ok   from the seat: the gloves on the wheel, her body hidden on my phone
+  ok   behind the car: she sits at the wheel herself (drive)
+   hands to the rim between frames: 0.178 m; the IK ran 288 times, its own miss 0.000 m; shoulder to grip 0.333 m
+  ok   the hand IK runs
+  ok   both hands on the steering wheel (0.000 m off)
+  ok   her head under the roof (1.42 m)
+  ok   a gear button by the speedometer (غيار 1)
+  ok   second gear: up to 70 km/h
+  ok   third gear: up to 90 km/h
+  ok   and back to first
+  ok   the camera is at the driver's eyes (0.00 m off)
+  ok   the attack button switches to the camera behind the car
+  ok   and back into the seat
+  ok   no swing at the wheel
+  ok   the car has the radio song
+  ok   the power button turns the radio on
+  ok   the button now says سكّر الراديو (سكّر الراديو)
+  ok   and off again (paused, not restarted)
+  ok   the killer's own body is out of the way
+  ok   the car hit the survivor: hurt
+  ok   gas: 11.0 m/s, 16.2 m
+  ok   the wheels turn while it drives (-0.78 rad)
+  ok   a steering wheel with two gloved hands on it
+   touching /root/Main/@Node3D@183/Terrain normal (0.02, 1.0, 0.03)
+   touching /root/Main/@Node3D@183/Terrain normal (0.02, 1.0, 0.03)
+  ok   the killer rides with it (what the others are sent)
+  ok   steering turns it (-0.88 rad)
+  ok   the steering wheel turns with it (2.30 rad)
+  ok   the speedometer reads 40 km/h
+  ok   pulling back brakes, then reverses (-4.5)
+  ok   at the wheel the button says انزل
+  ok   getting out: key off, the door opens first
+  ok   and shuts behind him
+  ok   out, first person again, cabin hidden
+  ok   left on, the radio keeps playing after he gets out
+  ok   out: her body back to first person (hidden, full size)
+  ok   the camera is back at his own eyes
+  ok   standing beside it, not inside it (1.9 m)
+  ok   the killer's body is solid again
+  ok   the car has four wheels on axles (4)
+  ok   picked the survivor up
+  ok   carrying, next to the car: «حطّه بالسيارة»
+  ok   in the car with the survivor
+  ok   the survivor sits in the passenger seat (0.01 m off)
+  ok   slumped, at 0.72 of their size (slump)
+   victim's head joint 1.31 m above the car's floor line (headliner 1.645)
+  ok   the victim's head is inside the car (1.31 m)
+  ok   the slump pose is built on the rig
+  ok   pulled up at a hook: «انزل وعلّق» (car_hook)
+  ok   hung on the hook straight from the car: hooked
+  ok   the car stays put once he is out
+   forest: 8 parked cars to take
+  ok   the map's parked cars can be taken (8)
+  ok   next to a parked car: «اركب» (car_in, 0)
+   took parked car 0: 0.56 m from its spot, driving true
+  ok   she is in that car, in its spot (0.56 m)
+  ok   facing the way it was parked
+  ok   and the car she left stands where she parked it
+  ok   garage: the car is on the roof (y 4.8)
+  ok   garage: every bay's car can be taken (81)
+   garage: standing at (83.1, 4.7, 23.0) button car_in
+   garage: car at (85.5, 0.8, -11.4)
+  ok   drove down the ramp to the floor (lowest y 0.8)
+  ok   the car follows the killer's position
+  ok   his door opened and shut (AnimationPlayer) and the engine started on my phone too
+  ok   the killer sits at the wheel on my phone (drive)
+  ok   no heartbeat while she drives, even right next to me
+  ok   headlights on while someone drives
+  ok   radio off while his f is 0
+  ok   his radio plays on my phone, from the car
+  ok   the car flies past me: the pass-by sound
+  ok   he gets out: his door opens on my phone, engine off
+  ok   he got out: lights off, he is back
+  ok   he left it on: the radio keeps playing from the parked car
+  ok   and stops when his switch says off
+  ok   she took a parked car: the same swap on my phone
+drive check: all good
+=== weak (older iPhone)
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+  ok   seen as an older phone
+  ok   the next launch runs the Mobile renderer
+  ok   a locked 60 to start with (60)
+  ok   85% resolution (0.85)
+  ok   moon shadows, MSAA 2x, light effects
+  ok   done once: saved, so the player's own choices stand afterwards
+  ok   simpler model detail sooner (lod 2.0)
+   after 20 steps down: scale 0.70, shadows 0, effects 0, fps 30
+  ok   resolution down to 70%
+  ok   shadows and effects given away
+  ok   and a steady 30 as the last step
+  ok   the forest builds
+  ok   every lamp fades out at 32 m (103 of 103)
+  ok   the round uses the light character models
+  ok   and I can walk (2.5 m)
+WEAK DONE bad=0
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+ERROR: 2 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:795)
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+Vulkan 1.4.335 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 21.1.8, 256 bits)
+libpulse.so.0: cannot open shared object file: No such file or directory
+libpulse.so.0: cannot open shared object file: No such file or directory
+ALSA lib confmisc.c:855:(parse_card) [error.core] cannot find card '0'
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_card_inum returned error: No such file or directory
+ALSA lib confmisc.c:422:(snd_func_concat) [error.core] error evaluating strings
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_concat returned error: No such file or directory
+ALSA lib confmisc.c:1342:(snd_func_refer) [error.core] error evaluating name
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_refer returned error: No such file or directory
+ALSA lib conf.c:5734:(snd_config_expand) [error.core] Evaluate error: No such file or directory
+ALSA lib pcm.c:2722:(snd_pcm_open_noupdate) [error.pcm] Unknown PCM default
+ERROR: Condition "status < 0" is true. Returning: ERR_CANT_OPEN
+   at: init_output_device (drivers/alsa/audio_driver_alsa.cpp:90)
+WARNING: All audio drivers failed, falling back to the dummy driver.
+     at: initialize (servers/audio_server.cpp:244)
+
+shot survivor6
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+Vulkan 1.4.335 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 21.1.8, 256 bits)
+libpulse.so.0: cannot open shared object file: No such file or directory
+libpulse.so.0: cannot open shared object file: No such file or directory
+ALSA lib confmisc.c:855:(parse_card) [error.core] cannot find card '0'
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_card_inum returned error: No such file or directory
+ALSA lib confmisc.c:422:(snd_func_concat) [error.core] error evaluating strings
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_concat returned error: No such file or directory
+ALSA lib confmisc.c:1342:(snd_func_refer) [error.core] error evaluating name
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_refer returned error: No such file or directory
+ALSA lib conf.c:5734:(snd_config_expand) [error.core] Evaluate error: No such file or directory
+ALSA lib pcm.c:2722:(snd_pcm_open_noupdate) [error.pcm] Unknown PCM default
+ERROR: Condition "status < 0" is true. Returning: ERR_CANT_OPEN
+   at: init_output_device (drivers/alsa/audio_driver_alsa.cpp:90)
+WARNING: All audio drivers failed, falling back to the dummy driver.
+     at: initialize (servers/audio_server.cpp:244)
+
+shot 20_hud
+shot 20_settings
+shot 20_settings_controls
+shot 20_help_survivor
+shot 20_help_killer
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+Vulkan 1.4.335 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 21.1.8, 256 bits)
+libpulse.so.0: cannot open shared object file: No such file or directory
+libpulse.so.0: cannot open shared object file: No such file or directory
+ALSA lib confmisc.c:855:(parse_card) [error.core] cannot find card '0'
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_card_inum returned error: No such file or directory
+ALSA lib confmisc.c:422:(snd_func_concat) [error.core] error evaluating strings
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_concat returned error: No such file or directory
+ALSA lib confmisc.c:1342:(snd_func_refer) [error.core] error evaluating name
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_refer returned error: No such file or directory
+ALSA lib conf.c:5734:(snd_config_expand) [error.core] Evaluate error: No such file or directory
+ALSA lib pcm.c:2722:(snd_pcm_open_noupdate) [error.pcm] Unknown PCM default
+ERROR: Condition "status < 0" is true. Returning: ERR_CANT_OPEN
+   at: init_output_device (drivers/alsa/audio_driver_alsa.cpp:90)
+WARNING: All audio drivers failed, falling back to the dummy driver.
+     at: initialize (servers/audio_server.cpp:244)
+
+shot 21_car_waits
+ctx by the car: board
+shot 21_driving
+shot 21_last_gate
+shots done
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+Vulkan 1.4.335 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 21.1.8, 256 bits)
+libpulse.so.0: cannot open shared object file: No such file or directory
+libpulse.so.0: cannot open shared object file: No such file or directory
+ALSA lib confmisc.c:855:(parse_card) [error.core] cannot find card '0'
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_card_inum returned error: No such file or directory
+ALSA lib confmisc.c:422:(snd_func_concat) [error.core] error evaluating strings
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_concat returned error: No such file or directory
+ALSA lib confmisc.c:1342:(snd_func_refer) [error.core] error evaluating name
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_refer returned error: No such file or directory
+ALSA lib conf.c:5734:(snd_config_expand) [error.core] Evaluate error: No such file or directory
+ALSA lib pcm.c:2722:(snd_pcm_open_noupdate) [error.pcm] Unknown PCM default
+ERROR: Condition "status < 0" is true. Returning: ERR_CANT_OPEN
+   at: init_output_device (drivers/alsa/audio_driver_alsa.cpp:90)
+WARNING: All audio drivers failed, falling back to the dummy driver.
+     at: initialize (servers/audio_server.cpp:244)
+
+shot 19_drive_straight
+shot 19_drive_turning
+shot 19_passenger
+shot 19_driver_side
+shot 19_outside
+shots done
