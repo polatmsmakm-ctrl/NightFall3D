@@ -271,7 +271,10 @@ Locked by default: fifteen taps on the version text open a page that asks for th
 «زر Vanish بالجولة» (`Dev.vanish_tool`): with it on, the round shows a **«Vanish»** button (survivor
 and killer) that hides me on every other phone — `main.vanished` goes out as `v` in my `st`
 (the server relays it), other phones hide that remote's node and torch, and the computer killer
-ignores me. On a phone that has them, a small panel appears during a round with two switches:
+ignores me. While she is vanished, survivors' phones also drop the heartbeat, breathing and chase
+music. **Every phone matches a remote player's stride to how fast they really move** (`r.spd`, the
+`play(anim, stride)` scale), and my own run/sprint stride may go up with `Dev.speed` (`_fast()`), so
+a faster player runs instead of gliding. On a phone that has them, a small panel appears during a round with two switches:
 see-through outlines of the other players (their own model drawn again with a `no_depth_test` overlay
 material, plus a mast and a name/distance tag), and a movement-speed multiplier. All of it is local:
 nothing is relayed, the server never hears about it, and nothing is drawn on anyone else's phone.

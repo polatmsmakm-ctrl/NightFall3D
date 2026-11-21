@@ -356,7 +356,7 @@ func _add_remote(p: Dictionary) -> void:
 	steps.max_distance = 32.0
 	node.add_child(steps)
 	add_child(node)
-	remotes[str(p.name)] = {"node": node, "rig": r, "pos": node.position, "yaw": 0.0, "anim": "idle", "role": str(p.role), "step": 0.0, "steps": steps, "torch": torch, "lit": false, "bleed": bleed, "v": false}
+	remotes[str(p.name)] = {"node": node, "rig": r, "pos": node.position, "yaw": 0.0, "anim": "idle", "role": str(p.role), "step": 0.0, "steps": steps, "torch": torch, "lit": false, "bleed": bleed, "v": false, "spd": 0.0}
 
 # ---------------- audio ----------------
 func _loop_player(stream_name: String, db: float, autoplay := false, bus := Aud.SFX) -> AudioStreamPlayer:
@@ -2163,13 +2163,23 @@ func _process(dt: float) -> void:
 		elif anim in ["edrive", "eride"]: anim = "drive" # in an escape car (placed below)
 		elif st == "dead" or (st == "down" and anim != "crawl"): anim = "dying"
 		elif st == "hurt" and anim == "idle": anim = "injured"
+		var was: Vector3 = r.node.position
 		r.node.position = r.node.position.lerp(target, w)
+		# how fast they really move here: the legs keep up with it (a faster player — the developer
+		# tools' speed — runs with quicker strides instead of gliding over the ground)
+		var gone := Vector2(r.node.position.x - was.x, r.node.position.z - was.z).length()
+		r.spd = lerpf(float(r.get("spd", 0.0)), gone / maxf(dt, 0.001), 1.0 - exp(-8.0 * dt))
+		var stride := 1.0
+		if NATURAL.has(anim) and float(r.spd) > 0.3:
+			stride = snappedf(clampf(float(r.spd) / float(NATURAL[anim]), 0.75, 2.6), 0.05)
+		elif anim == "carry" and float(r.spd) > 0.3:
+			stride = snappedf(clampf(float(r.spd) / 1.4, 0.8, 2.6), 0.05)
 		if st == "hooked":
 			_hook_pose(r.rig, dt)
 		else:
 			r.rig.position.y = lerpf(r.rig.position.y, lift, w)
 			r.rig.rotation = Vector3(0, lerp_angle(r.rig.rotation.y, face, w), 0)
-			if hit_anim.get(n, 0.0) <= 0.0: r.rig.play(anim)
+			if hit_anim.get(n, 0.0) <= 0.0: r.rig.play(anim, stride)
 		_update_bleed(r.bleed, st == "hooked", dt)
 		# women gasp "oof" now and then while limping around injured
 		if st == "hurt" and r.node.visible and anim in ["walk", "injured", "run"] and not (chars.get(n, "") in MALE):
@@ -2273,7 +2283,9 @@ func _process(dt: float) -> void:
 	# while she drives, none of the "she is close" sounds: no heartbeat, breathing or chase music on
 	# anyone's phone (the engine and the radio are what give the car away). On foot, all of it as before.
 	var k_driving: bool = driving or (car_remote and my_role != "killer")
-	if my_role == "survivor" and rules.killer != "" and remotes.has(rules.killer) and my_state in ["ok", "hurt", "down", "hooked"] and not k_driving:
+	# a vanished killer (the developer tools) gives nothing away either: no heartbeat, no breathing, no chase
+	var k_gone: bool = remotes.has(rules.killer) and bool(remotes[rules.killer].get("v", false))
+	if my_role == "survivor" and rules.killer != "" and remotes.has(rules.killer) and my_state in ["ok", "hurt", "down", "hooked"] and not k_driving and not k_gone:
 		kdist = body.position.distance_to(kpos)
 		danger = clampf(1.0 - kdist / TERROR_RADIUS, 0.0, 1.0)
 	if grade: # the screen tightens and reddens as he closes in
@@ -2692,6 +2704,10 @@ func _perk() -> String:
 	return str(rules.perk.get(my_name, "")) if rules else ""
 
 ## Seconds I am still held by a trap.
+## The developer tools' speed: how much quicker the legs may go so a faster player still looks like running.
+func _fast() -> float:
+	return Dev.speed if (Dev.unlocked and Dev.speed > 1.0) else 1.0
+
 func _held() -> float:
 	return float(rules.s[my_name].get("held", 0.0)) if (rules and rules.s.has(my_name)) else 0.0
 
@@ -3104,9 +3120,9 @@ func _move(delta: float) -> void:
 		if my_role == "killer" and rules.carrying != "":
 			rig.play("carry", clampf(v / 1.4, 0.8, 2.6))
 		elif v > 4.3 and rig.has("sprint"): # the real sprint clip, when there is one
-			rig.play("sprint", clampf(v / NATURAL.sprint, 0.75, 1.5))
+			rig.play("sprint", snappedf(clampf(v / NATURAL.sprint, 0.75, 1.5 * _fast()), 0.05))
 		elif v > 2.6:
-			rig.play("run", clampf(v / NATURAL.run, 0.7, 1.7))
+			rig.play("run", snappedf(clampf(v / NATURAL.run, 0.7, 1.7 * _fast()), 0.05))
 		elif my_state == "hurt": rig.play("injured", clampf(v / NATURAL.injured, 0.6, 1.6))
 		else: rig.play("walk", clampf(v / NATURAL.walk, 0.6, 1.7))
 	else:
