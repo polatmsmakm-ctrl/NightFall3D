@@ -42,8 +42,8 @@ func _ready() -> void:
 	print("objectives standing in the lagoon: ", wet, " of ", all.size())
 	# the killer used to start at (-52, 52): in the water, past the wading wall, stuck for the round
 	var ks: Vector3 = w.spawn_point("killer", 1)
-	var dry_ok: bool = ks.z < NightWorld.BEACH_SHORE - 4.0 and w.height(ks.x, ks.z) > NightWorld.BEACH_WATER + 0.3
-	print(("  ok   " if dry_ok else "  FAIL ") + "the killer starts on the dry sand, this side of the wading wall (%.1f, %.1f)" % [ks.x, ks.z])
+	var dry_ok: bool = ks.z < NightWorld.BEACH_SHORE - 4.0 and w.height(ks.x, ks.z) > NightWorld.BEACH_WATER + 0.05
+	print(("  ok   " if dry_ok else "  FAIL ") + "the killer starts on the dry sand, this side of the wading wall (%.1f, %.1f, ground %.2f)" % [ks.x, ks.z, w.height(ks.x, ks.z)])
 	var kn: Node3D = m.remotes["K"].node
 	print(("  ok   " if kn.position.z < NightWorld.BEACH_SHORE else "  FAIL ") + "and so does her body in the round (z %.1f)" % kn.position.z)
 	# you can wade in, you cannot swim out

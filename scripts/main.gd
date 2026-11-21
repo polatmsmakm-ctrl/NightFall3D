@@ -636,11 +636,14 @@ func _shoot() -> void:
 	var hit := false
 	var to := from + fwd * Rules.GUN_RANGE
 	if rules.killer != "" and (remotes.has(rules.killer) or bot):
-		var kp := _pos_of(rules.killer) + Vector3(0, 1.3, 0)
-		var dv := kp - from
+		var kp := _pos_of(rules.killer) + Vector3(0, 1.0, 0) # her middle: the aim may sit anywhere from knee to head
+		# the aim is the middle of the screen: how far her body is from the camera's own line
+		var co: Vector3 = cam.global_position if cam else from
+		var dv := kp - co
 		var along := dv.dot(fwd)
 		var off := (dv - fwd * along).length()
-		if along > 0.5 and along < Rules.GUN_RANGE and off < 0.9 + along * 0.05:
+		var dist := from.distance_to(kp)
+		if along > 0.5 and dist < Rules.GUN_RANGE and off < 1.1 + along * 0.05:
 			var q := PhysicsRayQueryParameters3D.create(from, kp, 1)
 			q.exclude = [body.get_rid()]
 			if get_world_3d().direct_space_state.intersect_ray(q).is_empty():
@@ -1337,6 +1340,10 @@ func _draw_ui() -> void:
 		ui.draw_rect(Rect2(Vector2.ZERO, s), Color(0.5, 0.0, 0.0, 0.18))
 		_text(Vector2(mid.x, s.y - fbar * 0.38), "آخر واحد طاح — %s" % fin_who, 34, Color(1, 0.35, 0.3))
 		return
+	if rules.gun and my_role == "survivor" and esc_i < 0 and spectating == "" and int(rules.s.get(my_name, {}).get("ammo", 0)) > 0 \
+			and my_state in ["ok", "hurt"]: # «وضع السلاح»: where the shot goes
+		ui.draw_arc(mid, 9.0, 0, TAU, 24, Color(0.6, 0.9, 1.0, 0.7), 1.6, true)
+		ui.draw_circle(mid, 1.8, Color(0.6, 0.9, 1.0, 0.8))
 	# survivors: red edges pulse when the killer is close
 	if rules.powered and rules.doom >= 0.0:
 		var near := 1.0 - rules.doom / Rules.DOOM_TIME

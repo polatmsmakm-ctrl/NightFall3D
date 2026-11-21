@@ -336,7 +336,7 @@ func spawn_point(role: String, slot: int) -> Vector3:
 		p = Vector2(-52.0, 52.0)
 		# the beach's north side is the lagoon: (-52, 52) was in the water past the wading wall
 		# (BEACH_SHORE + 9), and the killer started there with no way out. On the sand instead.
-		if map_id == "beach": p = Vector2(-52.0, BEACH_SHORE - 14.0)
+		if map_id == "beach": p = Vector2(-52.0, BEACH_SHORE - 24.0)
 		var k := 0
 		while (near_tree(p.x, p.y, 2.0) or in_site(p.x, p.y, 1.0)) and k < 40:
 			k += 1

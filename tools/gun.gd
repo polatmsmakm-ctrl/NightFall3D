@@ -50,8 +50,10 @@ func _ready() -> void:
 	var cam: Camera3D = m.get_viewport().get_camera_3d()
 	var fwd := -cam.global_basis.z
 	var kn: Node3D = m.remotes["K"].node
-	kn.position = m.body.position + Vector3(fwd.x, 0, fwd.z).normalized() * 8.0
-	kn.position.y = m.world.height(kn.position.x, kn.position.z)
+	# where the middle of the screen meets her: 8 m past me along the camera's line, feet on the ground
+	var ahead := cam.global_position + fwd * (cam.global_position.distance_to(m.body.position) + 8.0)
+	kn.position = Vector3(ahead.x, m.world.height(ahead.x, ahead.z), ahead.z)
+	print("   aim: camera %s fwd %s, her at %s, me at %s" % [cam.global_position.snappedf(0.1), fwd.snappedf(0.01), kn.position.snappedf(0.1), m.body.position.snappedf(0.1)])
 	m.remotes["K"].pos = kn.position
 	await frames(2)
 	m._press("gun", 5)
