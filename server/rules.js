@@ -9,6 +9,7 @@ const LIVE = ['ok', 'hurt', 'down', 'carried', 'hooked'];
 const EVENT_LEN = [20, 40, 5]; // 0 blackout, 1 heavy fog, 2 alarm
 const ADHAN_LEN = 55;          // the length of assets/sfx/adhan.mp3
 const REACH = 4.5; // generous: positions arrive ~15 times a second
+const CAR_SEATS = 6; // an escape car seats six: every survivor a room can have
 const ROAD_TIME = 120; // from the first one getting into a gate's escape car to the last gate, 600 m on
 // one ability per survivor character (same table and numbers as rules.gd)
 const PERK = { survivor1: 'burst', survivor2: 'fix', survivor3: 'lift', survivor4: 'rise',
@@ -136,7 +137,7 @@ class Rules {
         }
         break;
       case 'board': // into the escape car past a gate: the first one in drives, the rest ride with them
-        if (this.powered && i >= 0 && i < this.roads.length && this.freeNow(from) && this.roads[i].st <= 1 && this.near(from, this.carPos(i), 6)) {
+        if (this.powered && i >= 0 && i < this.roads.length && this.freeNow(from) && this.roads[i].st <= 1 && this.roads[i].who.length < CAR_SEATS && this.near(from, this.carPos(i), 6)) {
           const r = this.roads[i];
           if (r.st === 0) { r.st = 1; r.t = ROAD_TIME; r.drv = from; }
           r.who.push(from);

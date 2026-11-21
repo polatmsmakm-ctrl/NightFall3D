@@ -25,6 +25,10 @@ const CARGO := Vector3(0.0, 0.62, -1.3) # (old) the load floor behind the seats
 ## is 0.9 of a real one, and at that scale head and feet stay between the floor and the roof.
 const SEAT_HIPS := Vector3(-0.42, 0.95, -0.30)
 const DRIVER_HIPS := Vector3(0.42, 0.95, -0.08)  # the killer in the driver's seat, forward on the cushion
+## The survivors' escape car seats six (the most survivors a room has): the two front seats, two in
+## the middle row and two in the third row over the rear axle. Each row: [z of the seat, lift].
+const ROWS := [[0.0, 0.0], [-0.9, 0.03], [-1.72, 0.07]]
+const ROW_HIPS_Z := -0.27 # the hips on a back-row cushion, from the seat's origin
 ## Characters are 1.9 m tall and the cabin's headliner is at 1.645 m: seated, a character is at most
 ## 0.81 m from the hips to the top of the head, so at 0.72 with the hips at 0.95 m the head is at
 ## 1.53 m (and the feet on the floor at 0.5). The same scale for the victim and the driver.
@@ -113,7 +117,10 @@ var smoke: GPUParticles3D
 var dust_on := true       # off in the car park: concrete does not throw dust
 var driver_local := false # this phone is driving it (is_on_floor() only means something here)
 
+var seats := 2 # 6 in the escape cars (no cabin model: they are the survivors')
+
 func setup(ps: PackedScene, scale_k: float, cabin_ps: PackedScene = null, dust_col := Color(0.62, 0.55, 0.45), dusty := true) -> void:
+	seats = 2 if cabin_ps else 6
 	floor_snap_length = 0.7
 	floor_max_angle = deg_to_rad(42.0)
 	floor_constant_speed = true
@@ -368,9 +375,10 @@ func _seats() -> void:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = Color(0.16, 0.12, 0.1)
 	m.roughness = 0.72
-	for sx in [0.42, -0.42]:
+	for k in seats:
+		var row: Array = ROWS[k / 2]
 		var seat := Node3D.new()
-		seat.position = Vector3(sx, 0.0, 0.0)
+		seat.position = Vector3(0.42 if k % 2 == 0 else -0.42, float(row[1]), float(row[0]))
 		model.add_child(seat)
 		for e in [[Vector3(0.5, 0.14, 0.52), Vector3(0, 0.86, -0.2), 0.08],      # cushion, nose up a touch
 				[Vector3(0.5, 0.72, 0.13), Vector3(0, 1.22, -0.56), -0.38],    # back, reclined
@@ -527,6 +535,15 @@ func show_inside(on: bool) -> void:
 ## Where a carried survivor's rig stands so their hips land on the passenger seat.
 func seat_spot() -> Vector3:
 	return (model.global_transform * inside.transform) * SEAT_HIPS - Vector3(0, HIPS_Y * VICTIM_SCALE, 0)
+
+## Seat k of the car (0 the driver, 1 beside them, 2-3 the middle row, 4-5 the third row): where a
+## rig stands, at VICTIM_SCALE, so its hips land on that cushion.
+func seat_at(k: int) -> Vector3:
+	if k <= 0: return driver_spot()
+	if k == 1 or k >= seats: return seat_spot()
+	var row: Array = ROWS[k / 2]
+	var hips := Vector3(0.42 if k % 2 == 0 else -0.42, SEAT_HIPS.y + float(row[1]), float(row[0]) + ROW_HIPS_Z)
+	return (model.global_transform * inside.transform) * hips - Vector3(0, HIPS_Y * VICTIM_SCALE, 0)
 
 ## Where the killer's own rig stands so her hips land on the driver's seat.
 func driver_spot() -> Vector3:

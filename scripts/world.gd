@@ -334,6 +334,9 @@ func spawn_point(role: String, slot: int) -> Vector3:
 	var p := Vector2.ZERO
 	if role == "killer":
 		p = Vector2(-52.0, 52.0)
+		# the beach's north side is the lagoon: (-52, 52) was in the water past the wading wall
+		# (BEACH_SHORE + 9), and the killer started there with no way out. On the sand instead.
+		if map_id == "beach": p = Vector2(-52.0, BEACH_SHORE - 14.0)
 		var k := 0
 		while (near_tree(p.x, p.y, 2.0) or in_site(p.x, p.y, 1.0)) and k < 40:
 			k += 1
@@ -897,6 +900,12 @@ func _build_props() -> void:
 				if ch is CollisionShape3D: ((ch as CollisionShape3D).shape as BoxShape3D).size = Vector3(0.5, 5.2, 0.5)
 			l.position = Vector3(0, 2.9, 0.9)
 			prop_glow(_last_model, Color(1.0, 0.75, 0.45), 2.5)
+		l.distance_fade_enabled = true # a 5 m glow: nobody sees it from further than this
+		l.distance_fade_begin = 40.0
+		l.distance_fade_length = 8.0
+		if hook_points.find(hp) >= road_hook0 and road_hook0 > 0: # the 18 along the roads: only drawn near
+			for gi in body.find_children("*", "GeometryInstance3D", true, false):
+				(gi as GeometryInstance3D).visibility_range_end = 150.0
 		add_child(body)
 	var dark := _flat(Color(0.05, 0.05, 0.05), 0.6, 0.4)
 	for lp in locker_points:
@@ -1157,7 +1166,18 @@ func _build_objectives() -> void:
 		fl.light_color = Color(0.7, 1.0, 0.8)
 		fl.light_energy = 6.0
 		fl.omni_range = 26.0
+		fl.distance_fade_enabled = true
+		fl.distance_fade_begin = 90.0
+		fl.distance_fade_length = 20.0
 		body.add_child(fl)
+		# from inside the map every gate looks straight down its road: 600 m of pieces, lamps,
+		# barriers and signs were all drawn (and their lights counted) whenever a gate was in view.
+		# Past 170 m they are not drawn at all; the fog already hides them there.
+		for gi in body.find_children("*", "GeometryInstance3D", true, false):
+			var g3 := gi as GeometryInstance3D
+			if g3 is MultiMeshInstance3D or g3.position.z > -14.0: continue
+			g3.visibility_range_end = 170.0
+			g3.visibility_range_end_margin = 6.0
 
 ## The owner's fortress wall along the whole perimeter, inside face toward the map: one MultiMesh
 ## per side (so the sides behind you are culled), each section standing on the lowest ground under

@@ -16,6 +16,7 @@ const DOOM_TIME := 120.0 # once the gates have power the moon falls: this long t
 const MASH_STEP := 0.03 # each tap on "free yourself"
 const MASH_DECAY := 0.1 # lost per second, so you have to keep hammering the button
 const RESCUE_TIME := 2.0 # seconds to lift someone off a hook; two of you halve it
+const CAR_SEATS := 6 # an escape car seats six: every survivor a room can have
 const ROAD_TIME := 120.0 # from the first one getting into a gate's escape car to the last gate, 600 m on
 const LIVE := ["ok", "hurt", "down", "carried", "hooked"]
 ## One ability per survivor character. The rules apply the ones that touch the round (fix, lift,
@@ -193,7 +194,7 @@ func handle(d: Dictionary, from: String) -> Array:
 					gens[i].p = maxf(gens[i].p - 0.08, 0.0)
 					out.append({"k": "boom", "i": i})
 		"board": # into the escape car past a gate: the first one in drives, the rest ride with them
-			if powered and i >= 0 and i < roads.size() and free_now(from) and int(roads[i].st) <= 1:
+			if powered and i >= 0 and i < roads.size() and free_now(from) and int(roads[i].st) <= 1 and (roads[i].who as Array).size() < CAR_SEATS:
 				var r: Dictionary = roads[i]
 				if r.st == 0:
 					r.st = 1; r.t = ROAD_TIME; r.drv = from

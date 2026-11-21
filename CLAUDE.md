@@ -698,8 +698,10 @@ from the agent's machine).
   gate, nose down the road. Once the gates have power the interact button next to it is «اركب وسوق»
   (first one in drives) or «اركب معهم». The door and the key play on every phone, no gas until the
   key has turned. The driver uses the stick like her car; everyone in it gets the chase camera; the
-  driver and the front passenger are drawn in the seats (`drive` pose, the driver's hands on the rim
-  through `NFReach`), the back seats are not drawn. `st` animation `edrive` / `eride`: other phones
+  car **seats six** (`NFCar.seats`, `ROWS`: the front pair, a middle row and a third row over the rear
+  axle; `Rules.CAR_SEATS` / `CAR_SEATS` in `rules.js` turn a seventh away and the button hides), and
+  everyone in it is drawn on their own cushion (`NFCar.seat_at(k)`, `drive` pose, the driver's hands
+  on the rim through `NFReach`). The killer's car keeps its two seats. `st` animation `edrive` / `eride`: other phones
   move the car with the driver's position (`NFCar.follow`).
 - **Rules** (both files): `roads[i]` = `{st 0 waiting / 1 on the road / 2 caught / 3 out, drv, who, t,
   why}`, a survivor's `car`. `board` starts the clock (`ROAD_TIME` 120 s); riders are not `free_now`
@@ -759,3 +761,21 @@ from the agent's machine).
   friend sorted by escapes / kills / level (`Net.board`, rows from `Net.fstats`), and my last 8 rounds
   (`Net.history`, 20 kept, with date, map, result and points; `Net.rounds`). See `stats` in Protocol.
 - `tools/extreme.tscn` tests all of it (its own CI step: the bot's chase takes a while).
+
+## The smoothness pass (the owner: "lagging and not stable", stutters and slow from the start of
+## every round on every phone, and black dots)
+- **MSAA always matches the project setting.** Godot compiles its pipelines ahead only for the MSAA
+  level in `project.godot`; the viewport used another one, so everything new on screen compiled
+  again when first drawn. `msaa_3d` is 0 in the project and on Forward+ (edges smoothed after the
+  frame: SMAA on «فائق» / «عالي» AA, FXAA otherwise); the Mobile renderer's `override.cfg` carries
+  `msaa_3d=1` and it uses 2x only when the project says so. 2D MSAA is off (a full-screen resolve).
+- **The governor**: quiet while the map builds (`Gfx.quiet`) and for 5 s after the loading screen,
+  drops effects before resolution, the resolution in one step, and **never steps back up** — going
+  up and down every 20 s rebuilt buffers and recompiled pipelines each time.
+- **In the round**: only my own character is the 100k close-up (others 30k); no subsurface skin
+  pass (`setup(..., sss=false)`, `NFLook.no_skin`; the stand and the victory shot keep it); escape
+  cars hidden until the gates have power; road floor/walls cast no shadow, road pieces and road
+  hooks are not drawn past 170 / 150 m, road lamps have no fog halo or flicker; the bot's navmesh is
+  read under the loading screen.
+- Strong phones start at 90% with FSR (`TIER` 3); SSAO is softer (a suspect for the dark specks).
+- **If the black dots stay**, ask the owner for a screenshot: they were never seen in CI.

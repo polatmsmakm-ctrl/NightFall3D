@@ -76,6 +76,26 @@ func _ready() -> void:
 	check(m.rules.roads[1].who == ["P", "D"] and m.rules.car_of("D") == 1, "the second one rides with them")
 	var dn: Node3D = m.remotes["D"].node
 	check(dn.global_position.distance_to(ec1.seat_spot()) < 0.3, "D sits in the passenger seat (%.2f m)" % dn.global_position.distance_to(ec1.seat_spot()))
+	# six seats: every survivor a room can have, each on their own cushion inside the car
+	check(ec1.seats == 6 and (w.drive_car == null or w.drive_car.seats == 2), "the escape car seats six (the killer's two)")
+	var spots := []
+	var inside_ok := true
+	for k in 6:
+		var sp: Vector3 = ec1.seat_at(k)
+		var lp: Vector3 = ec1.global_transform.affine_inverse() * sp
+		if absf(lp.x) > 0.6 or lp.z > 0.3 or lp.z < -2.1: inside_ok = false
+		for o in spots:
+			if (o as Vector3).distance_to(sp) < 0.6: inside_ok = false
+		spots.append(sp)
+	check(inside_ok, "six seat spots, apart and inside the body (%s)" % str(spots.map(func(v): return ec1.global_transform.affine_inverse() * v)))
+	var r6 := Rules.new()
+	var ppl := [{"name": "K", "role": "killer", "char": "killer"}]
+	for k in 7: ppl.append({"name": "S%d" % k, "role": "survivor", "char": "survivor1"})
+	r6.setup(5, 2, 0, 0, ppl)
+	r6.powered = true
+	r6.roads = [{"st": 0, "drv": "", "who": [], "t": 0.0, "why": "", "flat": false}]
+	for k in 7: r6.handle({"k": "board", "i": 0}, "S%d" % k)
+	check((r6.roads[0].who as Array).size() == 6 and r6.car_of("S6") < 0, "a seventh does not fit (%d in)" % (r6.roads[0].who as Array).size())
 	var left0 := w.road_left(1, ec1.global_position)
 	m.stick_vec = Vector2(0, -1)
 	await frames(80) # the door, the key (1.8 s)

@@ -26,12 +26,17 @@ var current := ""
 ## `close_up` loads <char>_hi.glb when the owner has made one: the same sculpt at four or five
 ## times the detail, for the character select and the results stage where the camera is right in
 ## front of the character. The round itself always uses the small one.
-func setup(char_name: String, anims: Array = ANIMS, close_up := false) -> void:
+func setup(char_name: String, anims: Array = ANIMS, close_up := false, sss := true) -> void:
 	var body_path := "res://assets/chars/%s%s.glb" % [char_name, "_hi" if close_up else ""]
 	if not ResourceLoader.exists(body_path): body_path = "res://assets/chars/%s.glb" % char_name
 	model = (load(body_path) as PackedScene).instantiate()
 	add_child(model)
-	NFLook.skin(model, body_path.get_file().get_basename()) # skin that lets light through, on Forward+
+	# skin that lets light through, on Forward+ — on the stand and in the victory shot only. In the
+	# round (sss = false) it was a full-screen pass every frame, and a separate specular buffer
+	# for everything drawn, for a glow nobody sees at that distance. The materials are shared with
+	# the stand's copy of the model, so it is switched off explicitly.
+	if sss: NFLook.skin(model, body_path.get_file().get_basename())
+	else: NFLook.no_skin(model)
 	# anisotropic filtering on the character's maps: Godot's glTF materials default to plain trilinear,
 	# which smears the face, the fishnet and the buckles as soon as they are seen at an angle
 	# (the level comes from Gfx: the viewport is set to 16x on «فائق», 4x below it)

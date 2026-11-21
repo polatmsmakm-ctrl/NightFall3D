@@ -156,7 +156,7 @@ var fin_done := false
 var bot_baked := false
 var esc_i := -1            # the escape car I am in (Rules.car_of), -1 none
 var esc_seen := []         # per road: the last state seen, so every phone starts / stops its car once
-var esc_vis := true        # my own body shows in the car (driver and front passenger; the back seats are hidden)
+var esc_vis := true        # my own body shows in the car (all six seats are drawn)
 var esc_arrived := false   # the "arrive" input has gone out for the car I drive
 var esc_ram_cd := 0.0      # the killer's car: seconds before it can catch another escape car
 var esc_warn := 0.0        # in an escape car: the "she is right behind you" buzz waits this long
@@ -252,7 +252,7 @@ func _build_player(char_name: String, at: Vector3) -> void:
 	body.add_child(cshape)
 	rig = CharacterRig.new()
 	body.add_child(rig)
-	rig.setup(char_name, CharacterRig.ANIMS, hd_chars()) # the 100k close-up model on strong devices
+	rig.setup(char_name, CharacterRig.ANIMS, hd_chars(), false) # the 100k close-up model on strong devices, no skin pass
 	body.position = at
 	body.floor_snap_length = 0.5
 	body.floor_max_angle = deg_to_rad(50.0)
@@ -317,7 +317,7 @@ func _add_remote(p: Dictionary) -> void:
 	var node := Node3D.new()
 	var r := CharacterRig.new()
 	node.add_child(r)
-	r.setup(str(p.char), CharacterRig.ANIMS, false) # the round model: only my own character gets the close-up one
+	r.setup(str(p.char), CharacterRig.ANIMS, false, false) # the round model: only my own character gets the close-up one
 	node.position = world.spawn_point(str(p.role), int(p.slot))
 	if p.get("dummy", false): # trial-mode practice target
 		var gp: Vector3 = world.gen_points[0]
@@ -1673,7 +1673,7 @@ func _update_ctx() -> void:
 			for i in mini(world.esc_cars.size(), rules.roads.size()):
 				var ec: NFCar = world.esc_cars[i]
 				var est := int(rules.roads[i].st)
-				if est <= 1 and absf(ec.speed) < 3.0 and _near(pos, ec.global_position, 3.8):
+				if est <= 1 and absf(ec.speed) < 3.0 and (rules.roads[i].who as Array).size() < Rules.CAR_SEATS and _near(pos, ec.global_position, 3.8):
 					ctx.interact = {"kind": "board", "label": "اركب وسوق" if est == 0 else "اركب معهم", "i": i}
 		if not ctx.has("interact"):
 			for i in world.locker_points.size():
@@ -1959,7 +1959,10 @@ func _process(dt: float) -> void:
 		if not is_instance_valid(loading): loading = null
 		else:
 			loading.progress(float(world.build_step) / float(NightWorld.BUILD_STEPS))
-			if world.ready_done and loading.shown > 0.9:
+			if world.ready_done and bot and not bot_baked: # her map is read while the tip screen is still up
+				bot_baked = true
+				bot.bake()
+			elif world.ready_done and loading.shown > 0.9:
 				loading.finish()
 				Gfx.quiet(5.0) # the first seconds of play: shaders seen for the first time
 	if bot and not bot_baked and world.ready_done:
@@ -2055,9 +2058,9 @@ func _process(dt: float) -> void:
 		if r.role == "survivor" and rc >= 0 and rc < world.esc_cars.size(): # in an escape car: at the wheel or beside it
 			var ec: NFCar = world.esc_cars[rc]
 			var seat: int = (rules.roads[rc].who as Array).find(n)
-			r.node.visible = seat >= 0 and seat <= 1 and ec.seated() > 0.4 # the back seats are not drawn
+			r.node.visible = seat >= 0 and seat < ec.seats and ec.seated() > 0.4 # six seats: everyone in it shows
 			r.node.scale = Vector3.ONE * NFCar.VICTIM_SCALE
-			r.node.position = ec.driver_spot() if seat <= 0 else ec.seat_spot()
+			r.node.position = ec.seat_at(seat)
 			r.rig.position = Vector3.ZERO
 			r.rig.rotation = Vector3(0, ec.rotation.y, 0)
 			r.rig.play("drive")
@@ -2809,8 +2812,8 @@ func _esc_ride(delta: float) -> void:
 			_ev({"k": "arrive", "i": esc_i})
 	body.position = ec.global_position
 	body.velocity = Vector3.ZERO
-	esc_vis = seat >= 0 and seat <= 1 and ec.seated() > 0.4
-	rig.position = (ec.driver_spot() if seat <= 0 else ec.seat_spot()) - body.global_position
+	esc_vis = seat >= 0 and seat < ec.seats and ec.seated() > 0.4
+	rig.position = ec.seat_at(seat) - body.global_position
 	rig.rotation = Vector3(0, ec.rotation.y, 0)
 	rig.play("drive")
 	if seat == 0:

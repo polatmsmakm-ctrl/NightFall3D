@@ -8,8 +8,8 @@ func _ready() -> void:
 		for i in 5: players.append({"name": "D%d" % i, "role": "survivor", "char": "survivor%d" % (i + 3), "slot": i + 1, "dummy": true})
 		players.append({"name": "K", "role": "killer", "char": "killer", "slot": 6, "bot": true})
 		var m = load("res://scenes/main.tscn").instantiate()
-		tree.root.add_child(m)
-		for i in 5: await tree.process_frame
+		tree.root.add_child.call_deferred(m)
+		for i in 10: await tree.process_frame
 		var t0 := Time.get_ticks_msec()
 		m._start({"map": map, "me": "P", "offline": true, "players": players})
 		var t1 := Time.get_ticks_msec()
@@ -48,6 +48,6 @@ func _ready() -> void:
 		print("  parts (ms/frame): " + s)
 		print("  nodes %d, lights %d" % [Performance.get_monitor(Performance.OBJECT_NODE_COUNT), m.world.find_children("*", "Light3D", true, false).size()])
 		m.queue_free()
-		for i in 5: await tree.process_frame
+		for i in 10: await tree.process_frame
 	print("PROF DONE")
 	tree.quit()

@@ -40,6 +40,12 @@ func _ready() -> void:
 	for p in all: # in the water means north of the shore *and* under the surface
 		if p.z > NightWorld.BEACH_SHORE - 8.0 and w.height(p.x, p.z) < NightWorld.BEACH_WATER: wet += 1
 	print("objectives standing in the lagoon: ", wet, " of ", all.size())
+	# the killer used to start at (-52, 52): in the water, past the wading wall, stuck for the round
+	var ks: Vector3 = w.spawn_point("killer", 1)
+	var dry_ok: bool = ks.z < NightWorld.BEACH_SHORE - 4.0 and w.height(ks.x, ks.z) > NightWorld.BEACH_WATER + 0.3
+	print(("  ok   " if dry_ok else "  FAIL ") + "the killer starts on the dry sand, this side of the wading wall (%.1f, %.1f)" % [ks.x, ks.z])
+	var kn: Node3D = m.remotes["K"].node
+	print(("  ok   " if kn.position.z < NightWorld.BEACH_SHORE else "  FAIL ") + "and so does her body in the round (z %.1f)" % kn.position.z)
 	# you can wade in, you cannot swim out
 	var sp = w.get_world_3d().direct_space_state
 	var hit: Dictionary = sp.intersect_ray(PhysicsRayQueryParameters3D.create(

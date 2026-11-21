@@ -30,7 +30,7 @@ var strong := false
 ## among them). It gets its own start: the lighter Mobile renderer from the second launch, settings
 ## that hold 60 there, and a governor that may go further down (resolution to 70%, a steady 30).
 var weak := false
-const TIER := 2 # raise it to re-apply the strong-device defaults once on every phone
+const TIER := 3 # raise it to re-apply the strong-device defaults once on every phone
 const WEAK_TIER := 1 # the same for the older-phone defaults
 ## This launch is the last one on Forward+ before the lighter renderer takes over (the renderer only
 ## changes at start-up): its heavy effects stay off meanwhile.
@@ -72,6 +72,12 @@ func _ready() -> void:
 	weak = detect_weak()
 	_load()
 	_transit = weak and engine_hd() and not engine_next_hd()
+	# an override written before the Mobile renderer carried its MSAA level: add it, for the next launch
+	if FileAccess.file_exists(ENGINE_PATH):
+		var oc := ConfigFile.new()
+		if oc.load(ENGINE_PATH) == OK and not oc.has_section_key("rendering", "anti_aliasing/quality/msaa_3d"):
+			oc.set_value("rendering", "anti_aliasing/quality/msaa_3d", 1)
+			oc.save(ENGINE_PATH)
 	_build_ui()
 	apply()
 
@@ -128,13 +134,29 @@ func set_engine(hd: bool) -> void:
 		var c := ConfigFile.new()
 		c.set_value("rendering", "renderer/rendering_method", "mobile")
 		c.set_value("rendering", "renderer/rendering_method.mobile", "mobile")
+		# the Mobile renderer keeps its MSAA 2x: the project's level has to say so, or every
+		# pipeline is compiled again the first time it is drawn (a hitch on everything new on screen)
+		c.set_value("rendering", "anti_aliasing/quality/msaa_3d", 1)
 		c.save(ENGINE_PATH)
 	_transit = weak and engine_hd() and not engine_next_hd()
 
 func apply() -> void:
 	var vp := get_viewport()
 	Engine.max_fps = target_fps()
-	vp.msaa_3d = [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X][aa]
+	# Godot compiles its pipelines ahead for the MSAA level in the project settings only: a different
+	# level on the viewport compiles every one of them again the first time it is drawn — the hitches
+	# at the start of every round. So the viewport always uses the project's level:
+	#  * Forward+ (project: none): MSAA multiplied the cost of the depth pass, the occlusion and the
+	#    fog at the iPhone's full resolution, and its resolve under the screen-space effects is a
+	#    suspect for the black dots. Its edges are smoothed after the frame instead (SMAA / FXAA).
+	#  * Mobile (the override file sets 2x): MSAA 2x, resolved in the GPU's tile memory, nearly free.
+	var proj_msaa := int(ProjectSettings.get_setting("rendering/anti_aliasing/quality/msaa_3d", 0))
+	if engine_hd():
+		vp.msaa_3d = Viewport.MSAA_DISABLED
+		vp.screen_space_aa = (Viewport.SCREEN_SPACE_AA_SMAA if (maxed() or aa >= 2) else Viewport.SCREEN_SPACE_AA_FXAA) if aa > 0 else Viewport.SCREEN_SPACE_AA_DISABLED
+	else:
+		vp.msaa_3d = Viewport.MSAA_2X if (aa > 0 and proj_msaa >= 1) else Viewport.MSAA_DISABLED
+		vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED
 	# no MSAA on the 2D layer: it made the whole screen a multisampled target that the 3D picture was
 	# copied into and resolved every frame (at the iPhone's full resolution). The HUD draws its own
 	# smooth edges (anti-aliased lines and rings), the font is anti-aliased already.
@@ -182,8 +204,10 @@ func _load() -> void:
 		# locked, smooth 60 — the owner asked for 60 every time on ultra, not 120 with dips.
 		# MSAA 2x rather than 4x: Forward+ resolves it in a separate pass on Metal, and on a
 		# 460 ppi screen 2x already hides the edges. After that the player's own choice stands.
+		# (TIER 3, after "the game lags" on the 18 Pro Max: 90% of the screen's 2868 x 1320 rebuilt
+		# with FSR — the same picture at 460 ppi for a fifth fewer pixels — and SMAA in place of MSAA.)
 		preset = 2
-		shadows = PRESETS[2][0]; aa = 1; scale_idx = PRESETS[2][2]; effects = PRESETS[2][3]
+		shadows = PRESETS[2][0]; aa = 1; scale_idx = 1; effects = PRESETS[2][3]
 		fps_idx = 2
 		if ok:
 			brightness = clampf(float(c.get_value("g", "bright", brightness)), 0.6, 1.6)
@@ -355,7 +379,7 @@ func _build_ui() -> void:
 	_row(v, "fps", "الإطارات", ["تلقائي", "30", "60", "120"])
 	_row(v, "preset", "الجرافيكس", ["متوسط", "عالي", "فائق"])
 	_row(v, "shadows", "الظلال", ["منخفض", "متوسط", "عالي"])
-	_row(v, "aa", "تنعيم الحواف", ["مغلق", "2x", "4x"])
+	_row(v, "aa", "تنعيم الحواف", ["مغلق", "عادي", "عالي"])
 	_row(v, "scale", "دقة الرسم", ["85%", "90%", "100%"])
 	_row(v, "effects", "جودة المؤثرات", ["منخفض", "متوسط", "عالي"])
 	_row(v, "engine", "محرك الرسم", ["عالي (فخم)", "خفيف (أسرع)"])

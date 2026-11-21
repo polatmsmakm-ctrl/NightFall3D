@@ -21,9 +21,11 @@ static func apply(env: Environment, kind: String) -> void:
 	# ambient occlusion: the dark where things meet the ground and each other
 	env.ssao_enabled = fx >= 1
 	env.ssao_radius = 1.3
-	env.ssao_intensity = 2.4
-	env.ssao_power = 1.7
-	env.ssao_detail = 0.7
+	# (softer than before: at half resolution a strong, detailed occlusion sprinkled dark specks
+	# over grass, fronds and fences — one suspect for the black dots on the owner's screen)
+	env.ssao_intensity = 1.8
+	env.ssao_power = 1.4
+	env.ssao_detail = 0.3
 	env.ssao_horizon = 0.06
 	env.ssao_sharpness = 0.98
 	env.ssao_light_affect = 0.2 # at night most light is ambient; let the occlusion bite a little into the rest
@@ -110,6 +112,14 @@ static var _masks := {}
 ## Skin that lets a little light through (subsurface scattering), only where the character's
 ## colour map is skin: `assets/chars/<file>_skin.png`, a grey mask baked from the colour map by
 ## tools/skin_mask.py. A character without a mask is left alone (clothes would turn waxy).
+static func no_skin(root: Node) -> void:
+	if root == null: return
+	for mi in root.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		for s in (m.mesh.get_surface_count() if m.mesh else 0):
+			var mat := m.get_active_material(s) as StandardMaterial3D
+			if mat and mat.subsurf_scatter_enabled: mat.subsurf_scatter_enabled = false
+
 static func skin(root: Node, file: String) -> void:
 	if root == null or not hd(): return
 	var path := "res://assets/chars/%s_skin.png" % file
