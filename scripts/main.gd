@@ -2489,11 +2489,15 @@ func _car_pass(dt: float) -> void:
 			pass_cd = 5.0
 			return
 
+## Leaving the round in the middle of a slow-motion moment must not leave the whole game slowed.
+func _exit_tree() -> void:
+	Engine.time_scale = 1.0
+
 # ---------------- the final shot ----------------
 ## If nobody is left on their feet (or in an escape car) after `who` went down, slow the world down
 ## and circle them for a moment: everyone's phone, the killer's too. Once per round.
 func _final_check(who: String) -> void:
-	if fin_done or not rules.s.has(who): return
+	if fin_done or rules.over or not rules.s.has(who): return
 	for n in rules.s:
 		if rules.s[n].hp in ["ok", "hurt"] or rules.car_of(n) >= 0: return
 	if rules.s.size() < 2 and not offline: return

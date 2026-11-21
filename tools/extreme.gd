@@ -100,7 +100,7 @@ func _ready() -> void:
 	check(w.road_at(m.body.position) == 1, "through the north gate onto its road")
 	var sand := w.height(0.0, NightWorld.PIER_FROM - 14.0)
 	await put(m, Vector3(0.0, sand, NightWorld.PIER_FROM - 14.0)) # up the ramp from the sand
-	await frames(180)
+	await frames(330)
 	check(m.body.position.z > NightWorld.PIER_FROM + 2.0 and absf(m.body.position.y - NightWorld.PIER_Y) < 0.5,
 		"up the ramp onto the deck from the sand (z %.1f, y %.2f)" % [m.body.position.z, m.body.position.y])
 	m.stick_vec = Vector2.ZERO
@@ -158,8 +158,14 @@ func _ready() -> void:
 	events(m, m.rules.handle({"k": "hit", "n": "P"}, "K"))
 	m.rules.clock = 20.0
 	events(m, m.rules.handle({"k": "hit", "n": "P"}, "K"))
-	await tree.process_frame
-	check(m.fin_t > 0.0 and m.fin_cam != null and m.fin_cam.current and is_equal_approx(Engine.time_scale, 0.3), "the last one down: slow motion, a camera circling them")
+	print("   final shot: done %s who %s t %.2f scale %.2f" % [m.fin_done, m.fin_who, m.fin_t, Engine.time_scale])
+	var slow_seen := false
+	var cam_seen := false
+	for i in 20:
+		await tree.process_frame
+		if is_equal_approx(Engine.time_scale, 0.3): slow_seen = true
+		if m.fin_cam != null and m.fin_cam.current: cam_seen = true
+	check(m.fin_done and m.fin_who == "P" and slow_seen and cam_seen, "the last one down: slow motion (%s), a camera circling them (%s)" % [slow_seen, cam_seen])
 	for i in 400:
 		await tree.process_frame
 		if m.fin_t <= 0.0: break

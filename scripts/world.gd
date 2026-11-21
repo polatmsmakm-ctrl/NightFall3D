@@ -2861,6 +2861,7 @@ func _build_beach() -> void:
 		var p := _free_spot(rng, 2.6)
 		if p == Vector3.INF: continue
 		if p.z > BEACH_SHORE + 2.0: continue
+		if absf(p.x) < PIER_W / 2.0 + 2.0 and p.z > PIER_FROM - 12.0: continue # keep the way onto the pier clear
 		var sc: float = rng.randf_range(0.85, 1.35)
 		palms.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc, sc, sc)),
 			Vector3(p.x, height(p.x, p.z) - 0.1, p.z)))

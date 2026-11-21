@@ -41,7 +41,7 @@ func events(m, out: Array) -> void:
 func _ready() -> void:
 	tree = get_tree()
 	var duo := [{"name": "P", "role": "survivor", "char": "survivor2", "slot": 0},
-		{"name": "D", "role": "survivor", "char": "survivor5", "slot": 1, "dummy": true}]
+		{"name": "D", "role": "survivor", "char": "survivor1", "slot": 1, "dummy": true}]
 	# ---------------- the road itself ----------------
 	var m = await boot("forest", duo)
 	var w: NightWorld = m.world
@@ -132,7 +132,7 @@ func _ready() -> void:
 	await tree.process_frame
 	# ---------------- the killer's car into theirs ----------------
 	m = await boot("forest", [{"name": "P", "role": "killer", "char": "killer", "slot": 0},
-		{"name": "D", "role": "survivor", "char": "survivor5", "slot": 1, "dummy": true}])
+		{"name": "D", "role": "survivor", "char": "survivor1", "slot": 1, "dummy": true}])
 	w = m.world
 	await power(m)
 	ec0 = w.esc_cars[0]

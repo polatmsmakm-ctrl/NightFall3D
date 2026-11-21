@@ -29,7 +29,7 @@ func flat(a: Vector3, b: Vector3) -> float:
 func _ready() -> void:
 	tree = get_tree()
 	var players := [{"name": "P", "role": "killer", "char": "killer", "slot": 0},
-		{"name": "D", "role": "survivor", "char": "survivor5", "slot": 1, "dummy": true}]
+		{"name": "D", "role": "survivor", "char": "survivor1", "slot": 1, "dummy": true}]
 	# ---------------- forest: the whole loop ----------------
 	var m = await boot("forest", players)
 	var car: NFCar = m.car
@@ -280,7 +280,7 @@ func _ready() -> void:
 	m.queue_free()
 	await frames(5)
 	# ---------------- a survivor's phone: the car follows the killer's reports ----------------
-	m = await boot("forest", [{"name": "P", "role": "survivor", "char": "survivor5", "slot": 0},
+	m = await boot("forest", [{"name": "P", "role": "survivor", "char": "survivor1", "slot": 0},
 		{"name": "K", "role": "killer", "char": "killer", "slot": 0}])
 	car = m.car
 	var k = m.remotes["K"]
