@@ -1,0 +1,14 @@
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+WARNING: Property agent_height is ceiled to cell_height voxel units and loses precision.
+WARNING: Property agent_max_climb is floored to cell_height voxel units and loses precision.
+WARNING: Property agent_radius is ceiled to cell_size voxel units and loses precision.
+ERROR: Navigation region synchronization error. More than 2 edges tried to occupy the same map rasterization space. This is a logical error in the navigation mesh caused by overlap or too densely placed edges.
+forest base: process 1.13 physics 0.63
+  main._physics_process: 0.23 ms
+  main._process: 0.13 ms
+  _update_ctx: 0.03 ms
+SCRIPT ERROR: Invalid call. Nonexistent function '_physics_process' in base 'CharacterBody3D (NFCar)'.
+          GDScript backtrace (most recent call first):
+              [0] _ready (res://tools/prof_tmp.gd:41)
+              [1] avg (res://tools/prof_tmp.gd:9)
