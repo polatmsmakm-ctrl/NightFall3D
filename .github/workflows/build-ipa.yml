@@ -29,8 +29,12 @@ jobs:
       - name: Export Xcode project
         run: |
           mkdir -p build/ios
-          /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --export-release "iOS" build/ios/NightFall.xcodeproj
+          # Godot sometimes aborts while quitting after a finished export ("Pure virtual function
+          # called"); the project it wrote is complete, so only a missing project or pack fails the step
+          /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --export-release "iOS" build/ios/NightFall.xcodeproj || echo "::warning::Godot exited with $? after the export"
           ls build/ios
+          test -f build/ios/NightFall.xcodeproj/project.pbxproj
+          find build/ios -name "*.pck" | grep -q . || { echo "::error::no .pck exported"; exit 1; }
       - name: Build unsigned archive
         run: |
           cd build/ios
