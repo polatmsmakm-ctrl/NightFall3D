@@ -17,6 +17,7 @@ func boot(map: String, players: Array):
 	tree.root.add_child.call_deferred(m)
 	for i in 10: await tree.process_frame
 	m._start({"map": map, "me": "P", "offline": true, "players": players})
+	m.fin_done = true # running the lone dummy down would set off the final slow-motion shot and slow this test
 	for i in 900:
 		await tree.process_frame
 		if m.world.ready_done and m.car != null: break
