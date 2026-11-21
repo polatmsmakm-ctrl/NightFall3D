@@ -28,6 +28,8 @@ var day_paid := false  # today's challenge already paid its experience
 var rounds := 0        # rounds played, all time
 var history: Array = [] # the last HISTORY rounds: {d, map, role, res, score, kills}, newest first
 const HISTORY := 20
+var status := {}       # friend (lowercase) -> "menu" / "room" / "game" while online (the server says)
+var bio := ""           # a short line about me, on my profile (sent with my numbers)
 var fstats := {}       # friend (lowercase) -> {name, lv, xp, esc, kills, rounds}: the server passes them on
 
 var _ws: WebSocketPeer
@@ -59,6 +61,7 @@ func _ready() -> void:
 		day_paid = bool(c.get_value("p", "day_paid", false))
 		rounds = int(c.get_value("p", "rounds", 0))
 		history = c.get_value("p", "history", [])
+		bio = str(c.get_value("p", "bio", ""))
 		if day_n.size() != 3: day_n = [0, 0, 0]
 	var env_url := OS.get_environment("NF_URL")
 	if env_url != "": url = env_url
@@ -77,6 +80,7 @@ func save() -> void:
 	c.set_value("p", "last_round", last_round)
 	c.set_value("p", "rounds", rounds)
 	c.set_value("p", "history", history)
+	c.set_value("p", "bio", bio)
 	c.set_value("p", "day", day)
 	c.set_value("p", "day_n", day_n)
 	c.set_value("p", "day_paid", day_paid)
@@ -113,7 +117,33 @@ func gift(friend: String, on: bool) -> void:
 
 ## My numbers for the friends' board (the server keeps them only to pass them on).
 func my_stats() -> Dictionary:
-	return {"name": username, "lv": level(), "xp": xp, "esc": escapes, "kills": kills, "rounds": rounds}
+	return {"name": username, "lv": level(), "xp": xp, "esc": escapes, "kills": kills, "rounds": rounds, "ch": last_char, "bio": bio}
+
+## Where a friend is: "game" (in a round), "room" (in a room's lobby), "menu" (online), "off".
+func status_of(n: String) -> String:
+	var k := n.to_lower()
+	if not online.has(k): return "off"
+	return str(status.get(k, "menu"))
+
+## «متصل» and friends, in Arabic, with how long ago for someone offline (from the server's last seen).
+func status_text(n: String) -> String:
+	match status_of(n):
+		"game": return "بجولة الحين"
+		"room": return "بغرفة — ينتظر"
+		"menu": return "متصل"
+	var seen := int(fstats.get(n.to_lower(), {}).get("seen", 0))
+	if seen <= 0: return "غير متصل"
+	var mins := int((Time.get_unix_time_from_system() * 1000.0 - float(seen)) / 60000.0)
+	if mins < 1: return "غير متصل — قبل شوي"
+	if mins < 60: return "غير متصل — قبل %d دقيقة" % mins
+	if mins < 60 * 24: return "غير متصل — قبل %d ساعة" % (mins / 60)
+	return "غير متصل — قبل %d يوم" % (mins / 1440)
+
+func set_bio(t: String) -> void:
+	bio = t.strip_edges().replace("<", "").replace(">", "").left(60)
+	save()
+	send_stats()
+	changed.emit()
 
 func send_stats() -> void:
 	if state == "online": send({"t": "stats", "s": my_stats()})
@@ -275,14 +305,24 @@ func _handle(m: Dictionary) -> void:
 		"welcome": state = "online"
 		"friends":
 			online = {}
+			status = {}
 			for n in m.get("online", []): online[str(n).to_lower()] = true
+			var stt = m.get("status", {})
+			if stt is Dictionary:
+				for n in stt: status[str(n).to_lower()] = str(stt[n])
 			for row in m.get("stats", []):
 				if row is Dictionary: fstats[str(row.get("name", "")).to_lower()] = row
 		"fstats": # a friend finished a round
 			if m.get("s") is Dictionary: fstats[str(m.s.get("name", "")).to_lower()] = m.s
 		"presence":
-			if m.get("online", false): online[str(m.name).to_lower()] = true
-			else: online.erase(str(m.name).to_lower())
+			var pk := str(m.name).to_lower()
+			if m.get("online", false):
+				online[pk] = true
+				status[pk] = str(m.get("st", "menu"))
+			else:
+				online.erase(pk)
+				status.erase(pk)
+				if fstats.has(pk) and m.has("seen"): fstats[pk]["seen"] = m.seen
 		"room":
 			room = m if str(m.get("code", "")) != "" else {}
 		"gift": # the owner opened (or shut) the hidden character for me

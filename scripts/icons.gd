@@ -132,6 +132,28 @@ static func draw(ci: CanvasItem, name: String, c: Vector2, size: float, col: Col
 		"shield":
 			_stroke(ci, c, size, [[0.0, -0.88], [0.72, -0.6], [0.62, 0.22], [0.0, 0.9], [-0.62, 0.22], [-0.72, -0.6]], col, w, true)
 			_stroke(ci, c, size, [[-0.3, 0.02], [-0.06, 0.3], [0.36, -0.24]], col, w)
+		"bolt": # ⚡ a generator on the map
+			_fill(ci, c, size, [[0.22, -0.95], [-0.62, 0.12], [-0.06, 0.12], [-0.24, 0.95], [0.62, -0.16], [0.06, -0.16]], col)
+		"gate": # an exit gate: two posts, a lintel and bars
+			_bar(ci, c, size, -0.78, -0.7, -0.78, 0.8, col, w * 1.2)
+			_bar(ci, c, size, 0.78, -0.7, 0.78, 0.8, col, w * 1.2)
+			_bar(ci, c, size, -0.95, -0.72, 0.95, -0.72, col, w * 1.2)
+			for gx in [-0.38, 0.0, 0.38]: _bar(ci, c, size, gx, -0.5, gx, 0.8, Color(col, col.a * 0.7), w * 0.7)
+		"locker": # a tall metal locker with vents
+			_stroke(ci, c, size, [[-0.5, -0.9], [0.5, -0.9], [0.5, 0.9], [-0.5, 0.9]], col, w, true)
+			for vy in [-0.6, -0.4, -0.2]: _bar(ci, c, size, -0.25, vy, 0.25, vy, col, w * 0.6)
+		"hatch": # a round hatch in the ground
+			ci.draw_arc(c, size * 0.75, 0, TAU, 24, col, maxf(1.0, size * 0.14))
+			_bar(ci, c, size, -0.5, 0.0, 0.5, 0.0, col, w)
+			_bar(ci, c, size, 0.0, -0.5, 0.0, 0.5, col, w)
+		"gun": # a stun pistol, barrel to the right, a spark at the muzzle
+			_fill(ci, c, size, [[-0.8, -0.38], [0.62, -0.38], [0.62, -0.02], [-0.18, -0.02], [-0.3, 0.72], [-0.72, 0.72], [-0.6, -0.02], [-0.8, -0.02]], col)
+			_bar(ci, c, size, -0.2, 0.0, -0.06, 0.26, col, w * 0.8)
+			_stroke(ci, c, size, [[0.72, -0.52], [0.9, -0.36], [0.74, -0.2], [0.94, -0.04]], col, w * 0.8)
+		"ghost": # vanish: a ghost fading at the bottom
+			_stroke(ci, c, size, [[-0.6, 0.8], [-0.6, -0.2], [-0.42, -0.66], [0.0, -0.86], [0.42, -0.66], [0.6, -0.2], [0.6, 0.8], [0.3, 0.56], [0.0, 0.8], [-0.3, 0.56]], col, w, true)
+			ci.draw_circle(_u(c, size, -0.22, -0.22), size * 0.11, col)
+			ci.draw_circle(_u(c, size, 0.22, -0.22), size * 0.11, col)
 		"eye":
 			_stroke(ci, c, size, [[-0.92, 0.0], [-0.5, -0.42], [0.0, -0.56], [0.5, -0.42], [0.92, 0.0], [0.5, 0.42], [0.0, 0.56], [-0.5, 0.42]], col, w, true)
 			ci.draw_circle(c, size * 0.15, col)

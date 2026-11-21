@@ -50,6 +50,7 @@ func _ready() -> void:
 	await frames(6)
 	# ---------- the hidden page, once this phone has unlocked it ----------
 	for i in 15: Dev.tap()
+	Dev.try_key("4343")
 	m.menu.open("dev")
 	await frames(10)
 	await shot("63_dev_page")

@@ -13,7 +13,7 @@ const VERSION := "v1.4"
 const CHARS := {"killer": "القاتل", "survivor1": "الناجية", "survivor2": "الرحّال", "survivor3": "الشريف", "survivor4": "الفالكيري القرمزية", "survivor5": "المحاربة الجريحة", "survivor6": "حارسة الليل", "survivor7": "الباحثة", "survivor8": "وردة الليل"}
 const SECRET := "survivor4" # hidden: only on phones Net.has_secret() is true for
 const ERRORS := {"no_room": "ما في غرفة بهالكود", "room_full": "الغرفة ممتلئة", "in_game": "اللعبة بدأت بالغرفة",
-	"killer_taken": "في قاتل بالغرفة", "offline": "صديقك مو متصل", "bad_name": "الاسم لازم 2 إلى 16 حرف بدون مسافات",
+	"killer_taken": "في قاتل بالغرفة", "offline": "صديقك مو متصل", "invite_later": "صديقك مو متصل — توصله الدعوة أول ما يدخل (لين ٢٠ دقيقة)", "bad_name": "الاسم لازم 2 إلى 16 حرف بدون مسافات",
 	"name_taken": "الاسم مستخدم الحين، اختر غيره"}
 
 var page := ""
@@ -24,6 +24,8 @@ var typed := {} # LineEdit texts kept across rebuilds
 var off_map := "forest"
 var off_char := "killer"
 var off_theme := "normal"
+var prof_name := ""  # whose profile the «profile» page shows ("" = mine)
+var off_gun := false # «وضع السلاح» in trial mode
 var off_bot := true # trial mode as a survivor: a computer killer hunts you (NFBot)
 var lobby: NFLobby       # the campfire scene, set by main.gd
 var card: Control        # player card in the top corner
@@ -119,7 +121,7 @@ func _on_msg(m: Dictionary) -> void:
 			elif page in ["lobby", "friends", "chars"]: page = "main"
 		"started":
 			start_game.emit({"map": m.map, "players": m.players, "me": Net.username, "offline": false,
-				"seed": int(m.get("seed", 1)), "theme": str(m.get("theme", "normal"))})
+				"seed": int(m.get("seed", 1)), "theme": str(m.get("theme", "normal")), "gun": bool(m.get("gun", false))})
 			return
 		"welcome": # an older server does not know the newer maps and silently ignores them
 			var known: Array = m.get("maps", [])
@@ -255,6 +257,7 @@ func _refresh() -> void:
 		"dev": _page_dev()
 		"help": _page_help()
 		"board": _page_board()
+		"profile": _page_profile()
 	_sync_lobby()
 
 # ---------- the campfire scene follows the menu ----------
@@ -447,7 +450,8 @@ const HELP := {
 		["wrench", "صلّح المولدات", "5 مولدات تشغّل البوابات. انتبه لاختبار المهارة: الغلطة تفجّر المولد والقاتل يسمعها."],
 		["out", "اهرب من البوابة", "لما تشتغل البوابات يطلع لك سهم أخضر لأقرب بوابة. اطلع قبل لا ينزل القمر (دقيقتين)."],
 		["car", "سيارة الهروب", "ورا كل بوابة سيارة وحدة للكل: أول واحد يركب يسوق والباقي يركبون معاه. البوابة الأخيرة بعد 600 م وعندكم دقيقتين. إذا صدمتكم القاتلة بسيارتها أو خلص الوقت، تطيحون على الطريق وتعلّقكم."],
-		["rescue", "أنقذ ربعك", "المعلّق على الخطاف شيلوه سوا: كل واحد يمسك معاك يسرّع الإنقاذ."],
+		["rescue", "أنقذ ربعك", "المعلّق على الخطاف شيلوه سوا: كل واحد يمسك معاك يسرّع الإنقاذ. أسماء ربعك فوق روسهم وتشوفونهم ورا الجدران."],
+		["gun", "وضع السلاح", "إذا شغّله صاحب الغرفة: معاك مسدس صاعق فيه 3 طلقات. وجّه الكاميرا عليها وهي لين 22 م — الطلقة تدوّخها 3 ثواني وتطيّح اللي شايلته."],
 		["heart", "انتبه لنبضك", "دقات القلب والحواف الحمراء تعني القاتل قريب. القوس الأحمر يوريك من وين انضربت."],
 		["search", "تخبّى", "الخزانات تخبيك، بس القاتل يقدر يفتّشها ويطلّعك."],
 		["plank", "الطبليات والشبابيك", "طيّح الطبلية على القاتل وهو وراك يندهش، واقفز من الشبابيك عشان تبعد."],
@@ -531,18 +535,26 @@ func _page_friends() -> void:
 	_button("إضافة", func():
 		Net.add_friend(typed.get("friend", "")); typed["friend"] = ""; _refresh(), h, true, "chat")
 	if Net.friends.is_empty(): _label("ما أضفت أحد للحين", 20, Color(0.7, 0.7, 0.7))
-	_button("الترتيب وسجل جولاتي", func(): open("board"), null, true, "star")
-	for f in Net.friends:
+	var top := _row()
+	_button("ملفي", func(): prof_name = ""; open("profile"), top, true, "star")
+	_button("الترتيب وسجل جولاتي", func(): open("board"), top, true, "star")
+	# online first, then by name
+	var sorted: Array = Net.friends.duplicate()
+	sorted.sort_custom(func(a, b) -> bool:
+		var oa := Net.is_online(str(a)); var ob := Net.is_online(str(b))
+		if oa != ob: return oa
+		return str(a).to_lower() < str(b).to_lower())
+	for f in sorted:
 		var name := str(f)
 		var r := _row()
-		var l := Label.new()
 		var on := Net.is_online(name)
-		l.text = ("● " if on else "○ ") + name
-		l.add_theme_color_override("font_color", Color(0.5, 1, 0.5) if on else Color(0.6, 0.6, 0.6))
-		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		r.add_child(l)
-		if Net.in_room():
-			var b := _button("دعوة", func(): Net.send({"t": "invite", "to": name}); toast = "انرسلت الدعوة لـ" + name; _refresh(), r, on, "chat")
+		var stt := Net.status_of(name)
+		var sc: Color = {"menu": Color(0.5, 1, 0.5), "room": Color(1, 0.85, 0.4), "game": Color(1, 0.5, 0.4)}.get(stt, Color(0.6, 0.6, 0.6))
+		var nb := _button(("● " if on else "○ ") + name + "  —  " + Net.status_text(name), func(): prof_name = name; open("profile"), r, true, "star")
+		nb.add_theme_color_override("font_color", sc)
+		nb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if stt != "game": # in the menus, in a room or offline (the invite waits for him): ask him over
+			var b := _button("دعوة", func(): _invite(name), r, true, "chat")
 			b.size_flags_horizontal = Control.SIZE_SHRINK_END
 		if Dev.unlocked: # the owner's phone: open or shut the hidden character for this friend
 			var has := Net.gifted.has(name.to_lower())
@@ -561,6 +573,67 @@ func _page_friends() -> void:
 			toast = "انفتحت الشخصية السرية: الفالكيري القرمزية" if Net.redeem(typed.get("code", "")) else "الكود غلط"
 			typed["code"] = ""; _refresh(), hc, true, "star")
 	_button("رجوع", func(): open("lobby" if Net.in_room() else "main"), null, true, "exit")
+
+## Ask a friend over: to my room, or to a new one if I have none. An offline friend gets it when he
+## comes online (the server keeps it for 20 minutes while the room is open).
+func _invite(name: String) -> void:
+	if Net.in_room():
+		Net.send({"t": "invite", "to": name})
+		toast = ("انرسلت الدعوة لـ" + name) if Net.is_online(name) else ""
+	else:
+		_invite_after = name
+		Net.send({"t": "create", "map": "forest"})
+		toast = "أسوي غرفة وأدعو %s..." % name
+	_refresh()
+
+## A player's profile: portrait in their character's colour, name, where they are now, level and
+## title, their numbers and their line. Mine (prof_name == "") lets me write that line.
+func _page_profile() -> void:
+	var mine := prof_name == "" or prof_name.to_lower() == Net.username.to_lower()
+	var who := Net.username if mine else prof_name
+	var row: Dictionary = Net.my_stats() if mine else Net.fstats.get(prof_name.to_lower(), {})
+	var ch := str(row.get("ch", ""))
+	var col := NFUI.char_col(ch if ch != "" else "survivor1")
+	var card := Control.new()
+	card.custom_minimum_size = Vector2(0, 150)
+	card.draw.connect(func() -> void:
+		var cx := card.size.x / 2.0
+		card.draw_circle(Vector2(cx, 70), 64, Color(0, 0, 0, 0.55))
+		NFIcons.portrait(card, Vector2(cx, 70), 56.0, col)
+		var stt := "menu" if mine else Net.status_of(who)
+		var ring: Color = {"menu": Color(0.5, 1, 0.5), "room": Color(1, 0.85, 0.4), "game": Color(1, 0.5, 0.4)}.get(stt, Color(0.5, 0.5, 0.5))
+		card.draw_arc(Vector2(cx, 70), 64, 0, TAU, 48, ring, 4.0, true))
+	box.add_child(card)
+	_label(who, 34, Color(1, 0.9, 0.7))
+	_label("أنت" if mine else Net.status_text(who), 20, Color(0.7, 0.9, 0.7) if mine or Net.is_online(who) else Color(0.65, 0.65, 0.68))
+	if row.is_empty() or (not mine and not row.has("lv")):
+		_label("ما وصلتنا أرقامه للحين — تبان أول ما يلعب جولة وهو متصل", 18, Color(0.7, 0.7, 0.72))
+	else:
+		var lv := int(row.get("lv", 0))
+		_label("المستوى %d%s" % [lv, ("  •  " + Net.title()) if mine else ""], 22, Color(1, 0.82, 0.45))
+		if ch != "": _label("شخصيته: %s" % CHARS.get(ch, ch), 20, col.lightened(0.3))
+		_label("هروب %d  •  قتل %d  •  جولات %d" % [int(row.get("esc", 0)), int(row.get("kills", 0)), int(row.get("rounds", 0))], 22, Color(0.88, 0.9, 0.95))
+		var b := str(row.get("bio", ""))
+		if b != "" and not mine: _label("«%s»" % b, 20, Color(0.85, 0.85, 0.95))
+	if mine:
+		var h := _row()
+		var e := _edit("bio", "سطر عنك (يشوفه ربعك)", h)
+		if not typed.has("bio"): e.text = Net.bio
+		e.max_length = 60
+		_button("حفظ", func():
+			Net.set_bio(str(typed.get("bio", Net.bio)))
+			typed.erase("bio")
+			toast = "انحفظ"
+			_refresh(), h, true, "star")
+	else:
+		var h2 := _row()
+		var known := false
+		for f in Net.friends: known = known or str(f).to_lower() == who.to_lower()
+		if known:
+			if Net.status_of(who) != "game": _button("دعوة", func(): _invite(who), h2, true, "chat")
+			_button("حذف", func(): Net.remove_friend(who); open("friends"), h2, true, "exit")
+		else: _button("أضفه صديق", func(): Net.add_friend(who); _refresh(), h2, true, "chat")
+	_button("رجوع", func(): open("friends"), null, true, "exit")
 
 ## The friends' board (me and every friend the server has numbers for, best first) and my own
 ## last rounds. Numbers come from each phone; a friend who has not been online since the server
@@ -629,8 +702,12 @@ func _page_lobby() -> void:
 			var b2 := _button(THEMES[id], func(): Net.send({"t": "set", "theme": id}), ht, true, THEME_ICON[id])
 			b2.add_theme_font_size_override("font_size", 20)
 			if str(r.get("theme", "normal")) == id: b2.modulate = Color(1, 0.75, 0.3)
+		var gon: bool = r.get("gun", false)
+		var bg := _button("وضع السلاح: %s" % ("شغّال — مسدس صاعق للناجين" if gon else "مطفي"), func(): Net.send({"t": "set", "gun": not gon}), null, true, "gun")
+		if gon: bg.modulate = Color(0.6, 0.9, 1.0)
 	else:
-		_label("الخريطة: %s  •  الجو: %s" % [MAPS.get(str(r.map), str(r.map)), THEMES.get(str(r.get("theme", "normal")), "عادي")], 22)
+		_label("الخريطة: %s  •  الجو: %s%s" % [MAPS.get(str(r.map), str(r.map)), THEMES.get(str(r.get("theme", "normal")), "عادي"),
+			"  •  وضع السلاح" if r.get("gun", false) else ""], 22)
 	for p in r.players:
 		var txt := "%s%s — %s" % ["★ " if str(p.name) == str(r.host) else "", str(p.name), CHARS.get(str(p.char), str(p.char))]
 		_label(txt, 20, Color(1, 0.4, 0.4) if str(p.role) == "killer" else Color(0.7, 0.85, 1))
@@ -668,11 +745,24 @@ func _page_chars() -> void:
 
 ## Hidden developer tools. Only reachable on a phone that has unlocked them.
 func _page_dev() -> void:
-	if not Dev.unlocked:
-		open("main")
+	if not Dev.unlocked: # fifteen taps got here: the passkey opens the tools
+		_label("أدوات المطوّر", 30, Color(1, 0.85, 0.4))
+		var hk := _row()
+		var e := _edit("devkey", "الرمز", hk)
+		e.secret = true
+		e.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_NUMBER
+		_button("فتح", func():
+			var ok := Dev.try_key(typed.get("devkey", ""))
+			typed["devkey"] = ""
+			if not ok: toast = "الرمز غلط"
+			_refresh(), hk, true, "star")
+		_button("رجوع", func(): typed["devkey"] = ""; open("main"), null, true, "exit")
 		return
 	_label("أدوات المطوّر", 30, Color(1, 0.85, 0.4))
 	_label("تظهر على جهازك فقط", 18, Color(0.7, 0.7, 0.72))
+	var van := _button("زر Vanish بالجولة: %s" % ("شغّال" if Dev.vanish_tool else "مطفي"), func():
+		Dev.set_vanish_tool(not Dev.vanish_tool); _refresh(), null, true, "ghost")
+	if Dev.vanish_tool: van.modulate = Color(1, 0.75, 0.3)
 	var esp := _button("رؤية اللاعبين: %s" % ("شغّال" if Dev.esp else "مطفي"), func():
 		Dev.set_esp(not Dev.esp); _refresh(), null, true, "next")
 	if Dev.esp: esp.modulate = Color(1, 0.75, 0.3)
@@ -684,6 +774,7 @@ func _page_dev() -> void:
 	sl.set_value_no_signal(Dev.speed)
 	sl.value_changed.connect(func(v: float): Dev.set_speed(v); _refresh())
 	box.add_child(sl)
+	_button("اقفل الأدوات (تحتاج الرمز مرة ثانية)", func(): Dev.lock(); open("main"), null, true, "skull")
 	_button("رجوع", func(): open("main"), null, true, "exit")
 
 func _page_offline() -> void:
@@ -704,6 +795,8 @@ func _page_offline() -> void:
 	if off_char != "killer":
 		var bb := _button("قاتلة كمبيوتر: %s" % ("شغّالة" if off_bot else "طافية"), func(): off_bot = not off_bot; _refresh(), null, true, "skull")
 		if off_bot: bb.modulate = Color(1, 0.6, 0.5)
+	var bgn := _button("وضع السلاح: %s" % ("شغّال — مسدس صاعق للناجين" if off_gun else "مطفي"), func(): off_gun = not off_gun; _refresh(), null, true, "gun")
+	if off_gun: bgn.modulate = Color(0.6, 0.9, 1.0)
 	_button("ابدأ", func():
 		var n := Net.username if Net.username != "" else "Player"
 		var list := [{"name": n, "role": "killer" if off_char == "killer" else "survivor", "char": off_char, "slot": 0}]
@@ -711,5 +804,5 @@ func _page_offline() -> void:
 		list.append({"name": "دمية", "role": "survivor", "char": "survivor1" if off_char != "survivor1" else "survivor2", "slot": 1, "dummy": true})
 		if off_char != "killer" and off_bot: # a computer killer hunting you
 			list.append({"name": "القاتلة", "role": "killer", "char": "killer", "slot": 2, "bot": true})
-		start_game.emit({"map": off_map, "me": n, "offline": true, "theme": off_theme, "players": list}), null, true, "out")
+		start_game.emit({"map": off_map, "me": n, "offline": true, "theme": off_theme, "gun": off_gun, "players": list}), null, true, "out")
 	_button("رجوع", func(): chars_from = "main"; open("main" if Net.username != "" else "name"), null, true, "exit")

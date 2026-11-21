@@ -12,6 +12,12 @@ const BLEED_TIME := 120.0
 const HIT_COOLDOWN := 1.5
 const POWER_CD := 20.0
 const STUN_TIME := 2.5
+## «وضع السلاح» (the host's choice): every survivor carries a stun gun, GUN_SHOTS shots a round; a hit
+## within GUN_RANGE leaves the killer dizzy for GUN_STUN seconds (and she drops whoever she carries).
+const GUN_SHOTS := 3
+const GUN_RANGE := 22.0
+const GUN_STUN := 3.0
+var gun := false
 const DOOM_TIME := 120.0 # once the gates have power the moon falls: this long to get out
 const MASH_STEP := 0.03 # each tap on "free yourself"
 const MASH_DECAY := 0.1 # lost per second, so you have to keep hammering the button
@@ -101,7 +107,7 @@ func setup(n_gens: int, n_gates: int, n_pallets: int, hatches: int, players: Arr
 			var pk: String = PERK.get(str(pl.get("char", "")), "")
 			perk[str(pl.name)] = pk
 			s[str(pl.name)] = {"hp": "ok", "hooks": 0, "hook_i": -1, "t": 0.0, "heal": 0.0, "locker": -1, "item": true, "esc": 0.0, "resc": 0.0, "car": -1,
-				"held": 0.0, "shield": pk == "tough", "risen": false, "rt": 0.0}
+				"held": 0.0, "shield": pk == "tough", "risen": false, "rt": 0.0, "ammo": GUN_SHOTS if gun else 0}
 
 func add(name: String, pts: float) -> void:
 	if score.has(name): score[name] += pts
@@ -277,6 +283,15 @@ func handle(d: Dictionary, from: String) -> Array:
 			if free_now(from) and i >= 0 and i < pallets.size() and pallets[i] == 0:
 				pallets[i] = 1
 				out.append({"k": "pallet", "i": i})
+		"shoot": # the stun gun; the shooter's phone says whether it hit her (and checked the range)
+			if gun and not is_killer and free_now(from) and int(s[from].get("ammo", 0)) > 0:
+				s[from].ammo = int(s[from].ammo) - 1
+				var hit: bool = bool(d.get("hit", false)) and killer != "" and stun <= 0.0
+				if hit:
+					stun = GUN_STUN
+					add(from, 60.0)
+				out.append({"k": "shot", "n": from, "hit": hit, "left": int(s[from].ammo)})
+				if hit: out.append({"k": "stun", "by": "gun"})
 		"break":
 			if is_killer and i >= 0 and i < pallets.size() and pallets[i] == 1:
 				pallets[i] = 2
@@ -463,10 +478,10 @@ func snapshot() -> Dictionary:
 		var p: Dictionary = s[n]
 		var hands := hands_on(n)
 		ss[n] = [p.hp, p.hooks, p.hook_i, ceili(p.t), snappedf(p.heal, 0.001), p.locker, p.item, snappedf(p.esc, 0.001), snappedf(p.resc, 0.001), hands, int(p.get("car", -1)),
-			snappedf(float(p.get("held", 0.0)), 0.1), bool(p.get("shield", false))]
+			snappedf(float(p.get("held", 0.0)), 0.1), bool(p.get("shield", false)), int(p.get("ammo", 0))]
 	var rd := []
 	for r in roads: rd.append([r.st, r.drv, r.who, snappedf(float(r.t), 0.1), r.why, bool(r.get("flat", false))])
-	return {"tp": traps, "sp": spikes, "rd": rd, "k": "gs", "g": gp, "d": gd, "to": to, "pw": powered, "s": ss, "pl": pallets, "kc": carrying, "ks": snappedf(stun, 0.01), "kp": snappedf(power_cd, 0.1), "ov": over, "hx": hatch, "sc": sc, "dm": snappedf(doom, 0.1),
+	return {"tp": traps, "sp": spikes, "rd": rd, "k": "gs", "g": gp, "d": gd, "to": to, "pw": powered, "gn": gun, "s": ss, "pl": pallets, "kc": carrying, "ks": snappedf(stun, 0.01), "kp": snappedf(power_cd, 0.1), "ov": over, "hx": hatch, "sc": sc, "dm": snappedf(doom, 0.1),
 		"dr": doors, "ek": ev_kind if ev_fired else -1, "et": snappedf(ev_t, 0.1), "en": ev_n, "ad": adhan}
 
 func apply(v: Dictionary) -> void:
@@ -475,11 +490,13 @@ func apply(v: Dictionary) -> void:
 	for i in mini(gates.size(), v.to.size()): gates[i].open = bool(v.to[i])
 	for i in mini(pallets.size(), v.pl.size()): pallets[i] = int(v.pl[i])
 	powered = bool(v.pw)
+	gun = bool(v.get("gn", gun))
 	for n in v.s:
 		var a: Array = v.s[n]
 		s[n] = {"hp": str(a[0]), "hooks": int(a[1]), "hook_i": int(a[2]), "t": float(a[3]), "heal": float(a[4]), "locker": int(a[5]), "item": bool(a[6]),
 			"esc": float(a[7]) if a.size() > 7 else 0.0, "resc": float(a[8]) if a.size() > 8 else 0.0, "hands": int(a[9]) if a.size() > 9 else 0, "car": int(a[10]) if a.size() > 10 else -1,
-			"held": float(a[11]) if a.size() > 11 else 0.0, "shield": bool(a[12]) if a.size() > 12 else false, "risen": false, "rt": 0.0}
+			"held": float(a[11]) if a.size() > 11 else 0.0, "shield": bool(a[12]) if a.size() > 12 else false, "risen": false, "rt": 0.0,
+			"ammo": int(a[13]) if a.size() > 13 else 0}
 	var tp = v.get("tp", [])
 	if tp is Array: traps = (tp as Array).duplicate(true)
 	var sp = v.get("sp", [])

@@ -24,17 +24,18 @@ const DEF := {
 		"item": [345.0, 170.0, 40.0],
 		"light": [88.0, 352.0, 40.0],
 		"sig": [430.0, 92.0, 38.0],
+		"gun": [430.0, 205.0, 44.0], # «وضع السلاح» only
 	},
 }
 
 ## Default face of every button (context buttons are overridden in main.gd).
 const LABEL := {
 	"attack": "ضرب", "power": "اندفاع", "interact": "تفاعل", "sprint": "ركض", "crouch": "انحناء",
-	"vault": "قفز", "heal": "علاج", "item": "حقيبة", "light": "كشاف", "sig": "إشارة", "next": "التالي", "trap": "فخ",
+	"vault": "قفز", "heal": "علاج", "item": "حقيبة", "light": "كشاف", "sig": "إشارة", "next": "التالي", "trap": "فخ", "gun": "مسدس",
 }
 const ICON := {
 	"attack": "attack", "power": "power", "interact": "hand", "sprint": "shoe", "crouch": "crouch",
-	"vault": "jump", "heal": "heal", "item": "item", "light": "light", "sig": "chat", "next": "next", "trap": "trap",
+	"vault": "jump", "heal": "heal", "item": "item", "light": "light", "sig": "chat", "next": "next", "trap": "trap", "gun": "gun",
 }
 ## Icon for whatever the interact button is about to do right now.
 const CTX_ICON := {

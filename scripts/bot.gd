@@ -226,6 +226,7 @@ func _look() -> String:
 	var bd := INF
 	for n in m.rules.s:
 		if not m.rules.free_now(n): continue
+		if n == m.my_name and m.vanished: continue # «Vanish»: she cannot see me either
 		var p: Vector3 = m._pos_of(n)
 		var to := p - me
 		var d := to.length()

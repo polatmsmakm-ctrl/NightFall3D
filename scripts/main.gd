@@ -164,6 +164,8 @@ var esc_nitro := {}        # road -> true once its driver has fired the nitro (o
 var esc_popped := {}       # road -> the spikes have been reported
 # the killer's tools: traps on the map, a strip of spikes across an escape road
 var trap_cd := 0.0
+var gun_cd := 0.0          # a beat between two shots of the stun gun
+var vanished := false      # the developer tools' «Vanish»: hidden on every other phone (st flag v)
 var trap_nodes := []       # one node per trap slot (Rules.TRAPS)
 var spike_nodes := []      # one strip per road
 var snap_sent := 0.0       # my own phone: a trap I stepped in has been reported
@@ -205,6 +207,7 @@ func _start(c: Dictionary) -> void:
 	world.build() # staged: terrain + buildings + objectives first, the rest over the next frames
 	Gfx.quiet(30.0) # the governor waits until the map is built and the round has settled
 	rules = Rules.new()
+	rules.gun = bool(c.get("gun", false)) # «وضع السلاح»: the host's choice, sent with start
 	rules.setup(world.gen_points.size(), world.gate_points.size(), world.pallet_points.size(), world.hatch_points.size(),
 		c.players, int(c.get("seed", 1)) if not offline else randi() % 1000000, world.door_points.size())
 	for p in c.players: chars[str(p.name)] = str(p.char)
@@ -353,7 +356,7 @@ func _add_remote(p: Dictionary) -> void:
 	steps.max_distance = 32.0
 	node.add_child(steps)
 	add_child(node)
-	remotes[str(p.name)] = {"node": node, "rig": r, "pos": node.position, "yaw": 0.0, "anim": "idle", "role": str(p.role), "step": 0.0, "steps": steps, "torch": torch, "lit": false, "bleed": bleed}
+	remotes[str(p.name)] = {"node": node, "rig": r, "pos": node.position, "yaw": 0.0, "anim": "idle", "role": str(p.role), "step": 0.0, "steps": steps, "torch": torch, "lit": false, "bleed": bleed, "v": false}
 
 # ---------------- audio ----------------
 func _loop_player(stream_name: String, db: float, autoplay := false, bus := Aud.SFX) -> AudioStreamPlayer:
@@ -580,7 +583,7 @@ func _on_net(m: Dictionary) -> void:
 				r.yaw = float(m.p[3])
 				r.anim = str(m.a)
 				r.lit = int(m.get("f", 0)) == 1
-		"ev":
+				r.v = int(m.get("v", 0)) == 1 # the developer tools' «Vanish» on that phone
 			var d = m.get("d")
 			if d is Dictionary and str(m.get("n", "?")) == "": # only the server referees
 				if str(d.get("k", "")) == "gs": rules.apply(d)
@@ -620,6 +623,56 @@ func _ev(d: Dictionary) -> void:
 		for e in rules.handle(d, my_name): _on_event(e)
 	else:
 		Net.send({"t": "ev", "d": d})
+
+## «وضع السلاح»: fire the stun gun where the camera looks. It hits her if she is within range, near the
+## middle of the screen and nothing solid stands between; this phone decides, the rules keep the count.
+func _shoot() -> void:
+	if not rules.gun or my_role != "survivor" or gun_cd > 0.0 or not rules.free_now(my_name) or _held() > 0.0: return
+	if int(rules.s.get(my_name, {}).get("ammo", 0)) <= 0: return
+	gun_cd = 0.6
+	var cam := get_viewport().get_camera_3d()
+	var fwd := -cam.global_basis.z if cam else Vector3(sin(yaw), 0, cos(yaw))
+	var from := body.position + Vector3(0, 1.35, 0) + Vector3(fwd.x, 0, fwd.z).normalized() * 0.4
+	var hit := false
+	var to := from + fwd * Rules.GUN_RANGE
+	if rules.killer != "" and (remotes.has(rules.killer) or bot):
+		var kp := _pos_of(rules.killer) + Vector3(0, 1.3, 0)
+		var dv := kp - from
+		var along := dv.dot(fwd)
+		var off := (dv - fwd * along).length()
+		if along > 0.5 and along < Rules.GUN_RANGE and off < 0.9 + along * 0.05:
+			var q := PhysicsRayQueryParameters3D.create(from, kp, 1)
+			q.exclude = [body.get_rid()]
+			if get_world_3d().direct_space_state.intersect_ray(q).is_empty():
+				hit = true
+				to = kp
+	_beam(from, to, hit)
+	_shake(0.18)
+	NFHaptics.pulse("hit" if hit else "tick")
+	_ev({"k": "shoot", "hit": hit})
+	if hit: _flash("صبتها! دايخة ٣ ثواني — اهرب")
+
+## A short bright beam for a shot: blue when it hit, pale when it missed. Gone in a fifth of a second.
+func _beam(a: Vector3, b: Vector3, hit: bool) -> void:
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(0.035, 0.035, maxf(a.distance_to(b), 0.1))
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.albedo_color = Color(0.45, 0.85, 1.0) if hit else Color(0.9, 0.95, 1.0, 0.6)
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.emission_enabled = true
+	m.emission = m.albedo_color
+	m.emission_energy_multiplier = 4.0
+	bm.material = m
+	mi.mesh = bm
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+	mi.global_position = (a + b) / 2.0
+	if a.distance_to(b) > 0.01: mi.look_at(b, Vector3.UP if absf((b - a).normalized().y) < 0.98 else Vector3.RIGHT)
+	var tw := create_tween()
+	tw.tween_property(m, "albedo_color:a", 0.0, 0.2)
+	tw.tween_callback(mi.queue_free)
 
 func _pos_of(n: String) -> Vector3:
 	if n == my_name: return body.position
@@ -671,7 +724,16 @@ func _on_event(e: Dictionary) -> void:
 		"empty":
 			if my_role == "killer": _flash("الخزانة فاضية")
 		"stun":
-			if my_role == "killer": _flash("انصعقت!")
+			if my_role == "killer":
+				_flash("دوّخوك بالمسدس!" if str(e.get("by", "")) == "gun" else "انصعقت!")
+				if str(e.get("by", "")) == "gun": _shake(0.7)
+		"shot": # the stun gun: a beam from the shooter, to her if it hit
+			var who := str(e.n)
+			if who != my_name and remotes.has(who):
+				var from: Vector3 = remotes[who].node.position + Vector3(0, 1.35, 0)
+				var to: Vector3 = (_pos_of(rules.killer) + Vector3(0, 1.3, 0)) if bool(e.hit) else from + Vector3(sin(remotes[who].yaw), 0, cos(remotes[who].yaw)) * 18.0
+				_beam(from, to, bool(e.hit))
+			if bool(e.hit): _feed("%s دوّخ القاتلة بالمسدس!" % who, "gun", Color(0.5, 0.9, 1.0))
 		"power":
 			if my_role == "killer":
 				boost_t = 3.5
@@ -994,17 +1056,51 @@ func _build_esp() -> void:
 		mark.add_child(tag)
 		mark.visible = false
 		add_child(mark)
-		esp_nodes[n] = {"meshes": meshes, "mat": mat, "mark": mark, "label": tag}
+		# the team's own see-through look (survivors see each other through walls) and a name over the head
+		var tmat := StandardMaterial3D.new()
+		tmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		tmat.albedo_color = Color(0.4, 0.85, 1.0, 0.32)
+		tmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		tmat.no_depth_test = true
+		tmat.render_priority = 110
+		tmat.grow = true
+		tmat.grow_amount = 0.008
+		var name_tag := Label3D.new()
+		name_tag.font = Net.font
+		name_tag.font_size = 48
+		name_tag.pixel_size = 0.0014
+		name_tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		name_tag.no_depth_test = true
+		name_tag.fixed_size = true
+		name_tag.modulate = Color(0.75, 0.92, 1.0)
+		name_tag.outline_size = 14
+		name_tag.outline_modulate = Color(0, 0, 0, 0.85)
+		name_tag.text = n
+		name_tag.visible = false
+		name_tag.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(name_tag)
+		esp_nodes[n] = {"meshes": meshes, "mat": mat, "mark": mark, "label": tag, "tmat": tmat, "name": name_tag}
 
 func _update_esp() -> void:
-	if Dev.esp and esp_nodes.size() < remotes.size(): _build_esp()
+	if (Dev.esp or my_role == "survivor") and esp_nodes.size() < remotes.size(): _build_esp()
 	if esp_nodes.is_empty(): return
 	for n in esp_nodes:
 		var e: Dictionary = esp_nodes[n]
 		var r = remotes.get(n)
 		var on: bool = Dev.esp and r != null and r.node.visible
+		# survivors know each other: a name over every teammate still in the round, and their body seen
+		# through walls (the killer's phone never gets either)
+		var team: bool = my_role == "survivor" and r != null and r.role == "survivor" and r.node.visible \
+			and rules.hp(n) in ["ok", "hurt", "down", "hooked", "carried"]
+		var ov: Material = e.mat if on else (e.tmat if team else null)
 		for mi in e.meshes:
-			if is_instance_valid(mi): mi.material_overlay = e.mat if on else null
+			if is_instance_valid(mi) and mi.material_overlay != ov: mi.material_overlay = ov
+		var nt: Label3D = e.name
+		nt.visible = team and not on
+		if nt.visible:
+			nt.position = r.node.position + Vector3(0, 2.2 * r.node.scale.y, 0)
+			var dist := roundi(body.position.distance_to(r.node.position))
+			nt.text = n if dist < 12 else "%s  %d م" % [n, dist]
 		e.mark.visible = on
 		if on:
 			e.mark.position = r.node.position
@@ -1162,6 +1258,7 @@ func _buttons() -> Array:
 	var c = ctx.get("interact")
 	var lay := NFControls.layout("killer" if my_role == "killer" else "survivor")
 	for id in lay:
+		if id == "gun" and not rules.gun: continue # only in «وضع السلاح»
 		if esc_i >= 0 and (id != "sig" or rules.roads[esc_i].drv == my_name): continue # in an escape car: the driver's hands are on the wheel (the speedometer sits there); the others can still signal
 		var e: Dictionary = lay[id]
 		var label := NFControls.label_of(id)
@@ -1192,12 +1289,18 @@ func _buttons() -> Array:
 				label = "مسامير" if rd_i >= 0 else "فخ %d/%d" % [armed, Rules.TRAPS]
 				icon = "spike" if rd_i >= 0 else "trap"
 				on = trap_cd <= 0.0 and rules.carrying == "" and not driving and rules.stun <= 0.0 and (rd_i < 0 or int(rules.roads[rd_i].st) <= 1)
+			"gun":
+				var ammo := int(rules.s.get(my_name, {}).get("ammo", 0))
+				label = "مسدس %d" % ammo
+				on = ammo > 0 and gun_cd <= 0.0 and rules.free_now(my_name) and _held() <= 0.0
 			"vault": on = ctx.has("vault")
 			"heal": on = ctx.has("heal")
 			"item": on = ctx.has("item")
 			"light": on = battery > 0.0
 			"sig": on = my_state in ["ok", "hurt", "down", "hooked"]
 		out.append([NFControls.center_of(e, rect), float(e.r) * Gfx.btn_scale, label, id, on, icon])
+	if Dev.unlocked and Dev.vanish_tool and spectating == "": # the developer tools' «Vanish» (this phone only has it)
+		out.append([Vector2(rect.end.x - 58.0, rect.position.y + rect.size.y * 0.42), 40.0, "Vanish" if not vanished else "ظاهر", "vanish", true, "ghost"])
 	if driving and car: # the gearbox, beside the speedometer: first (40 km/h), second (70) or third (90)
 		var vs := get_viewport().get_visible_rect().size
 		out.append([Vector2(vs.x / 2.0 + 190.0, vs.y - 104.0), 44.0, "غيار %d" % car.gear, "gear", true, "shift"])
@@ -1540,8 +1643,10 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 		var out_dir := signf(p.z)
 		var open: bool = rules.gates[i].open
 		if big: minimap.draw_rect(Rect2(c + Vector2(-NightWorld.LANE_W / 2.0, minf(p.z, p.z + out_dir * NightWorld.MAP_ROAD)) * k, Vector2(NightWorld.LANE_W, NightWorld.MAP_ROAD) * k), Color(0.3, 0.3, 0.3) if not open else Color(0.25, 0.5, 0.3))
-		minimap.draw_rect(Rect2(c + Vector2(p.x, p.z) * k - Vector2(7, 3) * u, Vector2(14, 6) * u), Color(0.4, 1, 0.5) if open else Color(1, 0.3, 0.25))
-		if p.y > 1.0: _roof_badge(c + Vector2(p.x, p.z) * k + Vector2(0, 9) * u, u)
+		var gpc := c + Vector2(p.x, p.z) * k
+		minimap.draw_circle(gpc, 7.5 * u, Color(0, 0, 0, 0.6))
+		NFIcons.draw(minimap, "gate", gpc, 6.5 * u, Color(0.4, 1, 0.5) if open else Color(1, 0.3, 0.25))
+		if p.y > 1.0: _roof_badge(gpc + Vector2(0, 11) * u, u)
 	minimap.draw_rect(Rect2(c - Vector2(wl, wl), Vector2(wl, wl) * 2.0), Color(0.85, 0.85, 0.8, 0.8), false, 2.0 * u)
 	for b in world.buildings:
 		minimap.draw_set_transform(c + Vector2(b[0], b[1]) * k, -b[2], Vector2.ONE)
@@ -1577,24 +1682,39 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 		var hp: Vector3 = world.hook_points[i]
 		var used := rules.hook_user(i) != ""
 		var hc := c + Vector2(hp.x, hp.z) * k
-		var col := Color(1, 0.2, 0.2) if used else Color(0.75, 0.3, 0.3)
-		minimap.draw_line(hc + Vector2(-3, -3) * u, hc + Vector2(3, 3) * u, col, 1.6 * u)
-		minimap.draw_line(hc + Vector2(-3, 3) * u, hc + Vector2(3, -3) * u, col, 1.6 * u)
-		if used: minimap.draw_arc(hc, 6.0 * u, 0, TAU, 16, Color(1, 0.3, 0.3), 1.5)
+		var col := Color(1, 0.2, 0.2) if used else Color(0.8, 0.35, 0.35)
+		NFIcons.draw(minimap, "hook", hc, 4.6 * u, col)
+		if used: minimap.draw_arc(hc, 7.0 * u, 0, TAU, 18, Color(1, 0.3, 0.3), 1.5)
 		if hp.y > 1.0: _roof_badge(hc + Vector2(0, -8) * u, u)
 	for i in world.gen_points.size():
 		var gp: Vector3 = world.gen_points[i]
 		var g: Dictionary = rules.gens[i]
 		var gc := c + Vector2(gp.x, gp.z) * k
 		var sz := 7.0 * u
-		minimap.draw_rect(Rect2(gc - Vector2(sz, sz) / 2.0, Vector2(sz, sz)), Color(0.1, 0.1, 0.1))
-		if my_role == "survivor" or g.done: # survivors see repair progress fill up; the killer only sees finished ones
-			minimap.draw_rect(Rect2(gc - Vector2(sz, sz) / 2.0 + Vector2(0, sz * (1.0 - g.p)), Vector2(sz, sz * g.p)), Color(0.4, 1, 0.5) if g.done else Color(1, 0.85, 0.2))
-		minimap.draw_rect(Rect2(gc - Vector2(sz, sz) / 2.0, Vector2(sz, sz)), Color(0.4, 1, 0.5) if g.done else Color(1, 0.85, 0.2), false, 1.2)
+		# ⚡ a bolt per generator; survivors see the repair fill a ring round it (the killer only finished ones)
+		var gcol := Color(0.4, 1, 0.5) if g.done else Color(1, 0.85, 0.2)
+		minimap.draw_circle(gc, sz * 0.95, Color(0, 0, 0, 0.6))
+		if my_role == "survivor" and not g.done and float(g.p) > 0.0:
+			minimap.draw_arc(gc, sz * 0.95, -PI / 2.0, -PI / 2.0 + TAU * float(g.p), 24, Color(1, 0.85, 0.2), 1.6 * u)
+		elif g.done: minimap.draw_arc(gc, sz * 0.95, 0, TAU, 24, gcol, 1.4 * u)
+		NFIcons.draw(minimap, "bolt", gc, sz * 0.75, gcol)
 		if gp.y > 1.0: _roof_badge(gc + Vector2(0, -sz), u)
+	if big: # the big map also shows where to hide and what to drop
+		for lp in world.locker_points:
+			var lc := c + Vector2(lp[0].x, lp[0].z) * k
+			NFIcons.draw(minimap, "locker", lc, 3.6 * u, Color(0.6, 0.7, 0.8, 0.85))
+		for i in world.pallet_points.size():
+			if rules.pallets[i] >= 2: continue # broken: nothing left there
+			var pp: Vector3 = world.pallet_points[i][0]
+			NFIcons.draw(minimap, "plank", c + Vector2(pp.x, pp.z) * k, 3.8 * u, Color(0.85, 0.62, 0.35) if rules.pallets[i] == 0 else Color(0.55, 0.42, 0.3))
+	if my_role == "killer": # her own traps
+		for tr in rules.traps:
+			if bool(tr[2]): NFIcons.draw(minimap, "trap", c + Vector2(float(tr[0]), float(tr[1])) * k, 3.6 * u, Color(1, 0.5, 0.35))
 	if rules.hatch >= 0 and my_role == "survivor":
 		var hp2: Vector3 = world.hatch_points[rules.hatch]
-		minimap.draw_circle(c + Vector2(hp2.x, hp2.z) * k, 5.0 * u, Color(0.5, 1, 0.7))
+		var hc2 := c + Vector2(hp2.x, hp2.z) * k
+		minimap.draw_circle(hc2, 6.5 * u, Color(0, 0, 0, 0.6))
+		NFIcons.draw(minimap, "hatch", hc2, 5.5 * u, Color(0.5, 1, 0.7))
 	if car and my_role == "killer": # the killer always knows where he left his car
 		var cp: Vector2 = inside.call(c + Vector2(car.position.x, car.position.z) * k)
 		var cf := Vector2(sin(car.rotation.y), cos(car.rotation.y))
@@ -1622,16 +1742,22 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 			20 if big else 13, ROOF_COL)
 	if big:
 		var ly := o.y + side + 22.0
-		var items := [["■", Color(1, 0.85, 0.2), "مولد"], ["■", Color(0.4, 1, 0.5), "مولد شغال"], ["✕", Color(0.75, 0.3, 0.3), "خطاف"], ["▬", Color(1, 0.3, 0.25), "بوابة"]]
+		# each entry: [drawn icon or "" + glyph, colour, name]
+		var items := [["bolt", Color(1, 0.85, 0.2), "مولد"], ["bolt", Color(0.4, 1, 0.5), "شغّال"], ["hook", Color(0.8, 0.35, 0.35), "خطاف"],
+			["gate", Color(1, 0.3, 0.25), "بوابة"], ["locker", Color(0.6, 0.7, 0.8), "خزانة"], ["plank", Color(0.85, 0.62, 0.35), "لوح"]]
+		if my_role == "survivor": items.append(["hatch", Color(0.5, 1, 0.7), "فتحة"])
 		if world.map_id == "garage":
 			items.append(["■", Color(0.45, 0.45, 0.48), "درج"]) # the stair cores
 			items.append(["▲", ROOF_COL, "فوق السطح"])
 		else: items.append(["■", Color(0.8, 0.25, 0.25), "السوق"])
-		if my_role == "killer" and car: items.append(["■", CAR_COL, "سيارتك"])
+		if my_role == "killer":
+			items.append(["trap", Color(1, 0.5, 0.35), "فخاخك"])
+			if car: items.append(["■", CAR_COL, "سيارتك"])
 		var lx := o.x
 		for it in items:
-			_map_text(Vector2(lx, ly), it[0], 18, it[1])
-			_map_text(Vector2(lx + 20, ly), it[2], 16, Color(0.9, 0.9, 0.9))
+			if str(it[0]).length() > 1: NFIcons.draw(minimap, str(it[0]), Vector2(lx + 7, ly - 6), 7.0, it[1])
+			else: _map_text(Vector2(lx, ly), it[0], 18, it[1])
+			_map_text(Vector2(lx + 20, ly), it[2], 14, Color(0.9, 0.9, 0.9))
 			lx += side / items.size()
 	else:
 		_map_text(o + Vector2(4, side + 16), "اضغط للتكبير", 13, Color(1, 1, 1, 0.45))
@@ -1763,6 +1889,13 @@ func _press(id: String, touch: int) -> void:
 				_shake(0.45)
 				NFHaptics.pulse("impact")
 				_flash("نيترو!")
+		"gun":
+			_shoot()
+		"vanish":
+			if Dev.unlocked and Dev.vanish_tool:
+				vanished = not vanished
+				_flash("مختفي — محد يشوفك" if vanished else "رجعت تبان")
+				NFHaptics.pulse("tick")
 		"trap":
 			if my_role == "killer" and trap_cd <= 0.0 and rules.carrying == "" and not driving:
 				var rd_i := world.road_at(body.position)
@@ -1972,6 +2105,7 @@ func _process(dt: float) -> void:
 	for k in pop.keys(): pop[k] = maxf(float(pop[k]) - dt, 0.0)
 	hit_t = maxf(hit_t - dt, 0.0)
 	trap_cd = maxf(trap_cd - dt, 0.0)
+	gun_cd = maxf(gun_cd - dt, 0.0)
 	_step_fin(dt)
 	snap_sent = maxf(snap_sent - dt, 0.0)
 	sense_t += dt
@@ -2070,6 +2204,9 @@ func _process(dt: float) -> void:
 			else: r.rig.reach_clear()
 		elif r.role == "survivor": r.rig.reach_clear()
 		if r.torch: r.torch.visible = r.lit and st in ["ok", "hurt"] and rules.car_of(n) < 0
+		if bool(r.get("v", false)): # vanished (developer tools on their phone): nothing of them shows here
+			r.node.visible = false
+			if r.torch: r.torch.visible = false
 		# footsteps are 3D and depend on the ground; the killer also gets scratch marks and the detection indicator
 		var moving: bool = r.node.visible and anim in ["run", "walk", "injured", "carry"]
 		var ghost: bool = rules.perk.get(n, "") == "ghost" and my_role == "killer" # «خطوة شبح»
@@ -2084,7 +2221,7 @@ func _process(dt: float) -> void:
 			if lvl > noise:
 				noise = lvl
 				noise_dir = wrapf(atan2(to.x, -to.z) + yaw, -PI, PI)
-	if Dev.unlocked: _update_esp()
+	if Dev.unlocked or my_role == "survivor": _update_esp() # the team's names and see-through (and the hidden tools)
 	for m in marks:
 		if m.t > 0.0:
 			m.t -= dt
@@ -2304,7 +2441,7 @@ func _physics_process(delta: float) -> void:
 			var p := body.position
 			Net.send({"t": "st", "p": [snappedf(p.x, 0.01), snappedf(p.y, 0.01), snappedf(p.z, 0.01), snappedf(rig.rotation.y, 0.01)], "a": "drive" if driving else (("edrive" if rules.roads[esc_i].drv == my_name else "eride") if esc_i >= 0 else rig.current),
 					"f": 1 if (light_on or (my_role == "killer" and car != null and car.radio_on)
-						or (esc_i >= 0 and (world.esc_cars[esc_i] as NFCar).nitro > 0.0)) else 0}) # the killer has no torch: f is his radio
+						or (esc_i >= 0 and (world.esc_cars[esc_i] as NFCar).nitro > 0.0)) else 0, "v": 1 if vanished else 0}) # the killer has no torch: f is his radio
 
 # ---------------- the killer's car ----------------
 func _enter_car() -> void:

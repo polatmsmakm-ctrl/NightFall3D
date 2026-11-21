@@ -1,6 +1,9 @@
 // Match rules (server authoritative). Mirrors scripts/rules.gd — keep the two in step.
 const NEED = 5, GEN_TIME = 60, HEAL_TIME = 8, SELF_HEAL_TIME = 12, HOOK_TIME = [60, 30];
 const BLEED_TIME = 120, HIT_COOLDOWN = 1.5, POWER_CD = 20, STUN_TIME = 2.5;
+// «وضع السلاح» (the host's choice): every survivor carries a stun gun with GUN_SHOTS shots for the round;
+// a hit within GUN_RANGE leaves the killer dizzy for GUN_STUN seconds (she drops whoever she carries)
+const GUN_SHOTS = 3, GUN_RANGE = 22, GUN_STUN = 3;
 const DOOM_TIME = 120; // once the gates have power the moon falls: this long to get out
 const MASH_STEP = 0.03, MASH_DECAY = 0.1;
 const RESCUE_TIME = 2; // seconds to lift someone off a hook; two of you halve it // "free yourself": keep tapping or the bar drains
@@ -18,7 +21,8 @@ const FIX_MUL = 1.3, MEDIC_MUL = 1.6, LIFT_W = 1.8, RISE_TIME = 20;
 const TRAPS = 4, HELD_TIME = 4; // the killer's traps armed at once; caught in one: held this long
 
 class Rules {
-  constructor(players, seed = 0) {
+  constructor(players, seed = 0, opts = {}) {
+    this.gun = !!(opts && opts.gun);
     this.gens = []; this.gates = []; this.pallets = []; this.s = {}; this.roles = {};
     this.killer = ''; this.carrying = ''; this.stun = 0; this.powerCd = 0;
     this.healers = {}; this.rescuers = {}; this.lastHit = {}; this.powered = false; this.doom = -1; this.over = false; this.clock = 0;
@@ -43,7 +47,7 @@ class Rules {
         const pk = PERK[p.char] || '';
         this.perk[p.name] = pk;
         this.s[p.name] = { hp: 'ok', hooks: 0, hook_i: -1, t: 0, heal: 0, locker: -1, item: true, esc: 0, resc: 0, tap: 0, car: -1,
-          held: 0, shield: pk === 'tough', risen: false, rt: 0 };
+          held: 0, shield: pk === 'tough', risen: false, rt: 0, ammo: this.gun ? GUN_SHOTS : 0 };
       }
     }
   }
@@ -224,6 +228,15 @@ class Rules {
           this.pallets[i] = 1;
           out.push({ k: 'pallet', i });
           if (this.killer && this.pos[this.killer] && this.near(this.killer, L.p[i], 2.3)) { this.stun = STUN_TIME; this.add(from, 50); out.push({ k: 'stun' }); }
+        }
+        break;
+      case 'shoot': // a survivor fires the stun gun; their phone says whether it hit her (positions are the phones' anyway)
+        if (this.gun && !isKiller && this.freeNow(from) && this.s[from].ammo > 0) {
+          this.s[from].ammo -= 1;
+          const hit = !!d.hit && this.killer && this.pos[this.killer] && this.nearPlayer(from, this.killer, GUN_RANGE) && this.stun <= 0;
+          if (hit) { this.stun = GUN_STUN; this.add(from, 60); }
+          out.push({ k: 'shot', n: from, hit: !!hit, left: this.s[from].ammo });
+          if (hit) out.push({ k: 'stun', by: 'gun' });
         }
         break;
       case 'break':
@@ -416,11 +429,11 @@ class Rules {
     for (const r of Object.keys(this.rescuers)) pulling[this.rescuers[r]] = (pulling[this.rescuers[r]] || 0) + 1;
     for (const n in this.s) {
       const p = this.s[n];
-      ss[n] = [p.hp, p.hooks, p.hook_i, Math.ceil(p.t), r3(p.heal), p.locker, p.item, r3(p.esc), r3(p.resc), pulling[n] || 0, p.car, Math.round(p.held * 10) / 10, !!p.shield];
+      ss[n] = [p.hp, p.hooks, p.hook_i, Math.ceil(p.t), r3(p.heal), p.locker, p.item, r3(p.esc), r3(p.resc), pulling[n] || 0, p.car, Math.round(p.held * 10) / 10, !!p.shield, p.ammo || 0];
     }
     return {
       k: 'gs', g: this.gens.map((g) => r3(g.p)), d: this.gens.map((g) => g.done), to: this.gates.map((g) => g.open),
-      pw: this.powered, s: ss, pl: this.pallets, kc: this.carrying, ks: r3(this.stun), kp: Math.round(this.powerCd * 10) / 10, ov: this.over, hx: this.hatch, dm: Math.round(this.doom * 10) / 10,
+      pw: this.powered, gn: this.gun, s: ss, pl: this.pallets, kc: this.carrying, ks: r3(this.stun), kp: Math.round(this.powerCd * 10) / 10, ov: this.over, hx: this.hatch, dm: Math.round(this.doom * 10) / 10,
       sc: Object.fromEntries(Object.entries(this.score).map(([n, v]) => [n, Math.round(v)])),
       rd: this.roads.map((r) => [r.st, r.drv, r.who, Math.round(r.t * 10) / 10, r.why, !!r.flat]),
       tp: this.traps, sp: this.spikes,

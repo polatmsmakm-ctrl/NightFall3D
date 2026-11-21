@@ -55,7 +55,9 @@ func _ready() -> void:
 	for i in 14: opened = Dev.tap() or opened
 	print("after 14 taps: unlocked=", Dev.unlocked, " opened=", opened)
 	opened = Dev.tap()
-	print("after the 15th: unlocked=", Dev.unlocked, " opens the page=", opened)
+	print("after the 15th: unlocked=", Dev.unlocked, " opens the passkey page=", opened)
+	print(("  ok   " if not Dev.try_key("1234") and not Dev.unlocked else "  FAIL ") + "a wrong passkey does not unlock")
+	print(("  ok   " if Dev.try_key("4343") and Dev.unlocked else "  FAIL ") + "the passkey 4343 unlocks the tools")
 	var cfg := ConfigFile.new()
 	cfg.load(Dev.PATH)
 	print("remembered on this phone only: ", cfg.get_value("d", "on"))
