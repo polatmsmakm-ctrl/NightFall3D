@@ -18,7 +18,8 @@ Owner: Rashid (Arabic UI, plays with friends, installs the IPA with Sideloadly).
 - `scripts/haptics.gd` (`NFHaptics`) — every buzz of the phone. `pulse(kind)` / `pulse_scaled(kind, 0..1)` with a per-kind cooldown; `KINDS` holds the duration, strength and cooldown of each. One switch (`Aud.haptics`, "الاهتزاز" in settings) turns all of it off. It reaches the iPhone through `Input.vibrate_handheld`, so **none of it can be checked without the device** — on desktop the calls do nothing.
 - `scripts/look_mod.gd` (`NFLookMod`) — a `SkeletonModifier3D` that turns a character's head/neck toward a world point *after* the animation has posed the skeleton. `CharacterRig.look(at, weight)` / `look_clear()`.
 - `scripts/dev.gd` (autoload `Dev`) — hidden developer tools, off and invisible unless this phone has unlocked them; the unlock lives only in `user://dev.cfg` and is never sent anywhere.
-- `scripts/menu.gd` (`GameMenu`) — menus: name, main, friends, lobby, character select, trial mode; the player card and the swipe area.
+- `scripts/menu.gd` (`GameMenu`) — menus: name, main, friends, lobby, character select, trial mode, the friends' board (`board`); the player card and the swipe area.
+- `scripts/bot.gd` (`NFBot`) — the computer killer in trial mode (see «The extreme pass»).
 - `scripts/lobby.gd` (`NFLobby`) — the start-screen camp (fire, props, cast). `preview(char, label, dir)` stands a character in front of the fire, `focus(on)` moves the camera in on them, `set_cast(players, me)` seats the real room around the fire with name tags (empty list brings back the shipped cast). `_time_of_day()` reads the clock on the phone and lights the camp for dawn / day / dusk / night (sky `day`+`warm`, moonlight, ambient, fog, `fire_mul`), with a 30% chance of mist; `NFLobby.force_hour` / `force_mist` override it for tests and screenshots.
 - `scripts/ui_theme.gd` (`NFUI`) — the horror look: one shared `Theme` (dark, dry-blood borders), `dress(button, icon)` (styles + scratches + icon + click sound), `bar()`, `safe_insets()`, `CHAR_COL` (each character's signature colour).
 - `scripts/icons.gd` (`NFIcons`) — every icon is drawn with `draw_*` calls, no image assets: `NFIcons.draw(ci, "hand", center, size, col)` and `portrait()` for the team bar.
@@ -88,7 +89,8 @@ Owner: Rashid (Arabic UI, plays with friends, installs the IPA with Sideloadly).
 `ev` input `door` (`{k:"door", i, on}` → the server checks you are next to it and sends `{k:"door", i, on, by}` to the room).
 `emote` (`{t:"emote", k:0..2}` → the server sends `{t:"emote", n, k}` to the rest of the room; campfire only).
 `sig` (quick signal: `{t:"sig", k:0..2, p:[x,z]}` → the server relays `{t:"sig", n, k, p}` **to the sender's own side only**, so a survivor signal never reaches the killer).
-Inputs (`d.k`): rep, skill, escape, hit, pickup, hook, rescue, struggle, heal, locker, search, pallet, break, power, door, board, arrive, ram. Snapshot key `gs`.
+Inputs (`d.k`): rep, skill, escape, hit, pickup, hook, rescue, struggle, heal, locker, search, pallet, break, power, door, board, arrive, ram, trap, snap, disarm, spike, pop. Snapshot key `gs` (also `tp` traps, `sp` spikes; survivor rows carry `held` at 11 and `shield` at 12; `rd` rows `flat` at 5).
+`stats` (`{t:"stats", s:{lv, xp, esc, kills, rounds}}`, also inside `hello`): the server keeps each player's numbers (memory + `server/stats.json`) and hands friends' rows out in `friends` (`stats: [...]`) and live as `{t:"fstats", s}`.
 Snapshot also carries `dr` (door states), `ek`/`et`/`en` (the round's event, seconds left, the survivor the alarm gives away) and `ad` (the call to prayer: 0 not yet, 1 playing, 2 done). The clients send the doorway positions in `layout.d`, each gate's escape-car spot in `layout.c` and its road's end (the last gate) in `layout.e`; `layout.h` now holds the 9 map hooks plus 9 along each road (the server takes up to 48). Snapshot `rd` is one row per road: `[state, driver, riders, seconds left, why]`, and each survivor row carries the car they are in at index 10.
 
 ## Testing without a device
@@ -715,3 +717,45 @@ from the agent's machine).
   feed reports boarding, arriving and being caught; the team bar puts a car badge on whoever is in one.
 - `tools/road.tscn` tests it; `tools/shot21.tscn` photographs the car waiting, driving with her behind,
   and the last gate (both in check.yml).
+
+## The extreme pass (the owner: "improve the game to an extreme"; he picked these)
+- **The beach's north gate** stood behind the lagoon's wading wall, out of reach. A **pier**
+  (`world._build_pier`, `PIER_Y` 0.45, `PIER_W` 8 m, from `PIER_FROM` 34 m on the sand to the wall,
+  a ramp up from the sand, rails, posts, three lanterns) now carries you over the water to it; that
+  gate stands at `PIER_Y`, the wading wall has a gap above the deck only. Drawn on the map.
+- **A perk for every survivor** (`Rules.PERK` / `PERK_INFO`, mirrored in `rules.js`): survivor1
+  «نفس ثاني» (longer, faster burst after a hit or off a hook — phone), survivor2 «يد المصلّح» (repairs
+  x1.3), survivor3 «الحامي» (pulls off a hook like 1.8 people), survivor4 «جناح الفالكيري» (down 20 s
+  without being picked up: gets up hurt, once), survivor5 «جلد قاسي» (the first blow of the round does
+  nothing: `shield` event), survivor6 «عين الليل» (a red eye on the ring points at the killer within
+  28 m — phone), survivor7 «طب ميداني» (heals others x1.6), survivor8 «خطوة شبح» (on the killer's phone:
+  no scratch marks, steps 14 dB quieter). Shown under the name on the character stand, as a chip
+  under the minimap in the round (`main._draw_perk`, greyed once spent), and on «طريقة اللعب».
+- **The killer's tools**: a new layout button `trap` (`NFControls.DEF`). Off the roads it lays a
+  **bear trap** at her feet (`trap` input with `p:[x,z,y]`; `Rules.TRAPS` 4 armed, a fifth takes the
+  oldest slot). Survivors see one only within 7 m (a faint glint); walking into it (their own phone
+  sends `snap`) holds them `HELD_TIME` 4 s — no moving, a ring that empties — and gives her an arrow
+  to it (`_add_sig` kind 4 «فخ»); within 2 m the interact button is «فك الفخ» (`disarm`). On an escape
+  road the same button lays a **strip of spikes** 6 m wide across it (`spike`, one per road, moved if
+  laid again): if the escape car's driver goes over it his phone sends `pop` and the road is `flat` —
+  the car's limit drops to 45%. `main._tools()` keeps the trap and spike nodes in step with the rules.
+- **Nitro**: the escape car's driver gets a «نيترو» button by the speedometer, once per run:
+  `NFCar.nitro` = `NITRO_TIME` 3.5 s at `NITRO_MUL` 1.6x top speed and 2.6x the pull, flames out of the
+  exhaust (`_build_flames`), engine pitch up. Other phones light the flames from the driver's `st` `f`
+  flag (which is the torch on foot).
+- **The computer killer** (`scripts/bot.gd`, `NFBot`): trial mode as a survivor has «قاتلة كمبيوتر»
+  (on by default, `GameMenu.off_bot`), a killer player with `bot: true`. She bakes a navigation mesh
+  from the map's static colliders when the map is ready (threaded; `nav_ok`), patrols generators
+  being worked on, sees within 30 m in a 140° cone with a clear line, hears within 10 m, chases at
+  4.6 m/s, swings (0.35 s wind-up, 2.2 s recovery, slowed after a hit), picks up, carries to the
+  nearest free hook (road hooks only on a road), searches a locker she saw you enter, breaks dropped
+  pallets and opens shut doors that block her, goes to blown generators and sprung traps, is stunned
+  by a pallet dropped within 2.4 m. Every action goes through `Rules.handle` as her; she sets her
+  remote's `pos / yaw / anim` each physics frame. Off the map (the roads) she steers straight.
+- **The final shot**: when a survivor goes down (or an escape car is caught) and nobody is left on
+  their feet or in a car, every phone slows to `FIN_SCALE` 0.3 for `FIN_TIME` 1 s of game time (3.3 s)
+  and a camera circles the fallen one, with black bars and «آخر واحد طاح — name» (`main._final_check`).
+- **Friends' board**: «الترتيب وسجل جولاتي» on the friends page (menu page `board`): me and every
+  friend sorted by escapes / kills / level (`Net.board`, rows from `Net.fstats`), and my last 8 rounds
+  (`Net.history`, 20 kept, with date, map, result and points; `Net.rounds`). See `stats` in Protocol.
+- `tools/extreme.tscn` tests all of it (its own CI step: the bot's chase takes a while).
