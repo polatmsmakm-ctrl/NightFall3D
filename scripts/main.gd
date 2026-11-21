@@ -1225,11 +1225,11 @@ func _draw_ui() -> void:
 	var s := get_viewport().get_visible_rect().size
 	var mid := s / 2.0
 	if fin_t > 0.0: # the final shot: black bars, the name, nothing else
-		var bar := s.y * 0.11
-		ui.draw_rect(Rect2(0, 0, s.x, bar), Color(0, 0, 0, 0.92))
-		ui.draw_rect(Rect2(0, s.y - bar, s.x, bar), Color(0, 0, 0, 0.92))
+		var fbar := s.y * 0.11
+		ui.draw_rect(Rect2(0, 0, s.x, fbar), Color(0, 0, 0, 0.92))
+		ui.draw_rect(Rect2(0, s.y - fbar, s.x, fbar), Color(0, 0, 0, 0.92))
 		ui.draw_rect(Rect2(Vector2.ZERO, s), Color(0.5, 0.0, 0.0, 0.18))
-		_text(Vector2(mid.x, s.y - bar * 0.38), "آخر واحد طاح — %s" % fin_who, 34, Color(1, 0.35, 0.3))
+		_text(Vector2(mid.x, s.y - fbar * 0.38), "آخر واحد طاح — %s" % fin_who, 34, Color(1, 0.35, 0.3))
 		return
 	# survivors: red edges pulse when the killer is close
 	if rules.powered and rules.doom >= 0.0:
@@ -2603,9 +2603,8 @@ func _tools(_dt: float) -> void:
 		sn.visible = bool(sp[2]) and i < world.gate_points.size()
 		if not sn.visible: continue
 		var gp: Vector3 = world.gate_points[i][0]
-		var yaw := float(world.gate_points[i][1])
 		sn.position = Vector3(float(sp[0]), gp.y + 0.02, float(sp[1]))
-		sn.rotation.y = yaw
+		sn.rotation.y = float(world.gate_points[i][1])
 		# the escape car's driver: over it?
 		if esc_i == i and rules.roads[i].drv == my_name and not esc_popped.get(i, false):
 			var ec: NFCar = world.esc_cars[i]

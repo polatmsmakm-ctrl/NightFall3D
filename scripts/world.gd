@@ -2892,7 +2892,7 @@ func _build_pier() -> void:
 	body.name = "Pier"
 	var deck_from := PIER_FROM
 	var deck_to := WALL + 0.8
-	var plank := _mat.wood
+	var plank: Material = _mat.wood
 	var mid_z := (deck_from + deck_to) / 2.0
 	_box(body, Vector3(PIER_W, 0.4, deck_to - deck_from), Vector3(0, PIER_Y - 0.2, mid_z), plank)
 	# a ramp up from the sand where the deck starts above it
