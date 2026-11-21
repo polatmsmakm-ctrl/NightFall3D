@@ -18,6 +18,28 @@ const MASH_DECAY := 0.1 # lost per second, so you have to keep hammering the but
 const RESCUE_TIME := 2.0 # seconds to lift someone off a hook; two of you halve it
 const ROAD_TIME := 120.0 # from the first one getting into a gate's escape car to the last gate, 600 m on
 const LIVE := ["ok", "hurt", "down", "carried", "hooked"]
+## One ability per survivor character. The rules apply the ones that touch the round (fix, lift,
+## rise, tough, medic); main.gd does the rest on the phone (burst, sense, ghost). Same table in rules.js.
+const PERK := {"survivor1": "burst", "survivor2": "fix", "survivor3": "lift", "survivor4": "rise",
+	"survivor5": "tough", "survivor6": "sense", "survivor7": "medic", "survivor8": "ghost"}
+## Name, one line and an icon for each, for the character stand, the HUD and «طريقة اللعب».
+const PERK_INFO := {
+	"burst": ["نفس ثاني", "إذا انضربت أو نزلت من الخطاف، تركض أسرع وأطول", "shoe"],
+	"fix": ["يد المصلّح", "تصلّح المولدات أسرع بـ 30%", "wrench"],
+	"lift": ["الحامي", "تنزّل الناس من الخطاف كأنك اثنين", "rescue"],
+	"rise": ["جناح الفالكيري", "إذا طحت وما أحد شالك 20 ثانية، تقوم بروحك (مرة وحدة)", "star"],
+	"tough": ["جلد قاسي", "أول ضربة بالجولة ما تأثر فيك", "shield"],
+	"sense": ["عين الليل", "تحس بالقاتلة إذا قربت 28 م، وسهم يوريك وينها", "eye"],
+	"medic": ["طب ميداني", "تعالج غيرك أسرع بـ 60%", "heal"],
+	"ghost": ["خطوة شبح", "القاتلة ما تشوف آثار ركضك وخطواتك واطية", "crouch"],
+}
+const SENSE_R := 28.0     # «عين الليل»: how close she has to be
+const FIX_MUL := 1.3      # «يد المصلّح»: repairs 30% faster
+const MEDIC_MUL := 1.6    # «طب ميداني»: heals the others 60% faster
+const LIFT_W := 1.8       # «الحامي»: lifts someone off a hook like nearly two people
+const RISE_TIME := 20.0   # «جناح الفالكيري»: down this long without being picked up, she gets up (once)
+const TRAPS := 4          # the killer's traps armed at once: a fifth one takes the oldest one's place
+const HELD_TIME := 4.0    # caught in a trap: held this long
 # one random event per round, picked from the seed so every client agrees
 const EVENT_LEN := [20.0, 40.0, 5.0] # 0 blackout, 1 heavy fog, 2 alarm
 const ADHAN_LEN := 55.0              # the length of assets/sfx/adhan.mp3
@@ -26,7 +48,11 @@ var gens: Array = [] # {p, done, reps}
 var gates: Array = [] # {open}
 # the escape car behind each gate: st 0 waiting, 1 on the road, 2 caught (rammed or out of time),
 # 3 through the last gate. The first one in drives; who lists everyone in it, driver first.
-var roads: Array = [] # {st, drv, who, t, why}
+var roads: Array = [] # {st, drv, who, t, why, flat}
+var perk := {}            # survivor name -> perk id (PERK)
+var traps: Array = []     # the killer's traps: [x, z, armed, y], at most TRAPS slots, reused oldest first
+var trap_k := 0           # the next slot to arm
+var spikes: Array = []    # per road: [x, z, armed] — a strip of spikes across it bursts the escape car's tyres
 var pallets: Array = [] # 0 standing, 1 dropped, 2 broken
 var s := {} # survivor name -> {hp, hooks, hook_i, t, heal, locker, item}
 var roles := {}
@@ -63,13 +89,18 @@ func setup(n_gens: int, n_gates: int, n_pallets: int, hatches: int, players: Arr
 	for i in n_gens: gens.append({"p": 0.0, "done": false, "reps": {}})
 	for i in n_gates:
 		gates.append({"open": false})
-		roads.append({"st": 0, "drv": "", "who": [], "t": ROAD_TIME, "why": ""})
+		roads.append({"st": 0, "drv": "", "who": [], "t": ROAD_TIME, "why": "", "flat": false})
+		spikes.append([0.0, 0.0, false])
 	for i in n_pallets: pallets.append(0)
 	for pl in players:
 		roles[str(pl.name)] = str(pl.role)
 		score[str(pl.name)] = 0.0
 		if str(pl.role) == "killer": killer = str(pl.name)
-		else: s[str(pl.name)] = {"hp": "ok", "hooks": 0, "hook_i": -1, "t": 0.0, "heal": 0.0, "locker": -1, "item": true, "esc": 0.0, "resc": 0.0, "car": -1}
+		else:
+			var pk: String = PERK.get(str(pl.get("char", "")), "")
+			perk[str(pl.name)] = pk
+			s[str(pl.name)] = {"hp": "ok", "hooks": 0, "hook_i": -1, "t": 0.0, "heal": 0.0, "locker": -1, "item": true, "esc": 0.0, "resc": 0.0, "car": -1,
+				"held": 0.0, "shield": pk == "tough", "risen": false, "rt": 0.0}
 
 func add(name: String, pts: float) -> void:
 	if score.has(name): score[name] += pts
@@ -184,12 +215,18 @@ func handle(d: Dictionary, from: String) -> Array:
 		"hit":
 			if is_killer and stun <= 0.0 and carrying == "" and free_now(n) and clock - float(last_hit.get(n, -99.0)) > HIT_COOLDOWN:
 				last_hit[n] = clock
-				if s[n].hp == "ok":
+				if s[n].get("shield", false): # «جلد قاسي»: the first blow of the round does nothing
+					s[n].shield = false
+					out.append({"k": "shield", "n": n})
+				elif s[n].hp == "ok":
 					s[n].hp = "hurt"; s[n].heal = 0.0
 					_drop(n)
-				else: _down(n)
-				add(from, 30.0 if s[n].hp == "hurt" else 50.0)
-				out.append({"k": "hurt", "n": n, "s": s[n].hp})
+					add(from, 30.0)
+					out.append({"k": "hurt", "n": n, "s": s[n].hp})
+				else:
+					_down(n)
+					add(from, 50.0)
+					out.append({"k": "hurt", "n": n, "s": s[n].hp})
 		"pickup":
 			if is_killer and stun <= 0.0 and carrying == "" and hp(n) == "down":
 				s[n].hp = "carried"
@@ -248,6 +285,40 @@ func handle(d: Dictionary, from: String) -> Array:
 			if is_killer and power_cd <= 0.0 and stun <= 0.0 and carrying == "":
 				power_cd = POWER_CD
 				out.append({"k": "power"})
+		"trap": # the killer sets a trap at her feet: p = [x, z]
+			var tp = d.get("p", [])
+			if is_killer and stun <= 0.0 and carrying == "" and tp is Array and tp.size() >= 2:
+				var k := trap_k % TRAPS
+				trap_k += 1
+				var e := [snappedf(float(tp[0]), 0.01), snappedf(float(tp[1]), 0.01), true, snappedf(float(tp[2]), 0.01) if tp.size() > 2 else 0.0]
+				if k < traps.size(): traps[k] = e
+				else:
+					k = traps.size()
+					traps.append(e)
+				out.append({"k": "trap", "i": k})
+		"snap": # a survivor's own phone: I stepped into trap i
+			if free_now(from) and i >= 0 and i < traps.size() and traps[i][2]:
+				traps[i][2] = false
+				s[from].held = HELD_TIME
+				_drop(from)
+				add(killer, 25.0)
+				out.append({"k": "snap", "i": i, "n": from})
+		"disarm": # a survivor springs it with a stick
+			if free_now(from) and i >= 0 and i < traps.size() and traps[i][2]:
+				traps[i][2] = false
+				add(from, 15.0)
+				out.append({"k": "disarm", "i": i, "n": from})
+		"spike": # the killer lays a strip of spikes across escape road i (one per road; laying it again moves it)
+			var sp = d.get("p", [])
+			if is_killer and stun <= 0.0 and carrying == "" and i >= 0 and i < roads.size() and int(roads[i].st) <= 1 and sp is Array and sp.size() >= 2:
+				spikes[i] = [snappedf(float(sp[0]), 0.01), snappedf(float(sp[1]), 0.01), true]
+				out.append({"k": "spike", "i": i})
+		"pop": # the escape car's driver: we went over the spikes
+			if i >= 0 and i < roads.size() and int(roads[i].st) == 1 and roads[i].drv == from and spikes[i][2]:
+				spikes[i][2] = false
+				roads[i].flat = true
+				add(killer, 40.0)
+				out.append({"k": "pop", "i": i})
 		"door": # anyone can swing a door shut or open again
 			if i >= 0 and i < doors.size() and (is_killer or free_now(from)):
 				var shut: bool = d.get("on", false)
@@ -267,7 +338,9 @@ func tick(dt: float) -> Array:
 		carrying = ""
 	for g in gens:
 		if g.done or powered: continue
-		g.p += dt * g.reps.size() / GEN_TIME
+		var w := 0.0
+		for r in g.reps: w += FIX_MUL if perk.get(r, "") == "fix" else 1.0
+		g.p += dt * w / GEN_TIME
 		for r in g.reps: add(r, dt * 100.0 / GEN_TIME) # one point per percent repaired
 		if g.p >= 1.0:
 			g.p = 1.0; g.done = true; g.reps.clear()
@@ -289,6 +362,15 @@ func tick(dt: float) -> Array:
 		if r.t <= 0.0: out.append(_caught(i, "time"))
 	for n in s:
 		var p: Dictionary = s[n]
+		p.held = maxf(float(p.get("held", 0.0)) - dt, 0.0) if p.hp in ["ok", "hurt"] else 0.0
+		if perk.get(n, "") == "rise": # «جناح الفالكيري»: left down long enough, she gets up by herself, once
+			if p.hp == "down" and not p.risen:
+				p.rt = float(p.rt) + dt
+				if p.rt >= RISE_TIME:
+					p.hp = "hurt"; p.risen = true; p.rt = 0.0; p.heal = 0.0
+					healers.erase(n)
+					out.append({"k": "rise", "n": n})
+			elif p.hp != "down": p.rt = 0.0
 		if p.hp == "hooked": p.esc = maxf(p.esc - MASH_DECAY * dt, 0.0)
 		if p.hp == "hooked" or p.hp == "down":
 			p.t -= dt
@@ -297,12 +379,14 @@ func tick(dt: float) -> Array:
 				add(killer, 100.0)
 	# lifting someone off a hook: everybody pulling on the same person adds up
 	var pulling := {}
+	var pull_w := {} # «الحامي» pulls like nearly two
 	for r in rescuers.keys():
 		var tgt: String = rescuers[r]
 		if not free_now(r) or hp(tgt) != "hooked":
 			rescuers.erase(r)
 			continue
 		pulling[tgt] = int(pulling.get(tgt, 0)) + 1
+		pull_w[tgt] = float(pull_w.get(tgt, 0.0)) + (LIFT_W if perk.get(r, "") == "lift" else 1.0)
 	for n in s:
 		var p: Dictionary = s[n]
 		var hands: int = int(pulling.get(n, 0))
@@ -312,7 +396,7 @@ func tick(dt: float) -> Array:
 		if hands <= 0:
 			p.resc = maxf(p.resc - dt * 0.5, 0.0)
 			continue
-		p.resc += dt * hands / RESCUE_TIME
+		p.resc += dt * float(pull_w.get(n, hands)) / RESCUE_TIME
 		if p.resc >= 1.0:
 			p.resc = 0.0
 			p.hp = "hurt"; p.hook_i = -1; p.heal = 0.0
@@ -331,7 +415,7 @@ func tick(dt: float) -> Array:
 		if not valid:
 			healers.erase(h)
 			continue
-		p.heal += dt / (SELF_HEAL_TIME if self_heal else HEAL_TIME)
+		p.heal += dt / (SELF_HEAL_TIME if self_heal else HEAL_TIME) * (MEDIC_MUL if (not self_heal and perk.get(h, "") == "medic") else 1.0)
 		if p.heal >= 1.0:
 			p.heal = 0.0
 			p.hp = "hurt" if p.hp == "down" else "ok"
@@ -377,10 +461,11 @@ func snapshot() -> Dictionary:
 	for n in s:
 		var p: Dictionary = s[n]
 		var hands := hands_on(n)
-		ss[n] = [p.hp, p.hooks, p.hook_i, ceili(p.t), snappedf(p.heal, 0.001), p.locker, p.item, snappedf(p.esc, 0.001), snappedf(p.resc, 0.001), hands, int(p.get("car", -1))]
+		ss[n] = [p.hp, p.hooks, p.hook_i, ceili(p.t), snappedf(p.heal, 0.001), p.locker, p.item, snappedf(p.esc, 0.001), snappedf(p.resc, 0.001), hands, int(p.get("car", -1)),
+			snappedf(float(p.get("held", 0.0)), 0.1), bool(p.get("shield", false))]
 	var rd := []
-	for r in roads: rd.append([r.st, r.drv, r.who, snappedf(float(r.t), 0.1), r.why])
-	return {"rd": rd, "k": "gs", "g": gp, "d": gd, "to": to, "pw": powered, "s": ss, "pl": pallets, "kc": carrying, "ks": snappedf(stun, 0.01), "kp": snappedf(power_cd, 0.1), "ov": over, "hx": hatch, "sc": sc, "dm": snappedf(doom, 0.1),
+	for r in roads: rd.append([r.st, r.drv, r.who, snappedf(float(r.t), 0.1), r.why, bool(r.get("flat", false))])
+	return {"tp": traps, "sp": spikes, "rd": rd, "k": "gs", "g": gp, "d": gd, "to": to, "pw": powered, "s": ss, "pl": pallets, "kc": carrying, "ks": snappedf(stun, 0.01), "kp": snappedf(power_cd, 0.1), "ov": over, "hx": hatch, "sc": sc, "dm": snappedf(doom, 0.1),
 		"dr": doors, "ek": ev_kind if ev_fired else -1, "et": snappedf(ev_t, 0.1), "en": ev_n, "ad": adhan}
 
 func apply(v: Dictionary) -> void:
@@ -392,11 +477,18 @@ func apply(v: Dictionary) -> void:
 	for n in v.s:
 		var a: Array = v.s[n]
 		s[n] = {"hp": str(a[0]), "hooks": int(a[1]), "hook_i": int(a[2]), "t": float(a[3]), "heal": float(a[4]), "locker": int(a[5]), "item": bool(a[6]),
-			"esc": float(a[7]) if a.size() > 7 else 0.0, "resc": float(a[8]) if a.size() > 8 else 0.0, "hands": int(a[9]) if a.size() > 9 else 0, "car": int(a[10]) if a.size() > 10 else -1}
+			"esc": float(a[7]) if a.size() > 7 else 0.0, "resc": float(a[8]) if a.size() > 8 else 0.0, "hands": int(a[9]) if a.size() > 9 else 0, "car": int(a[10]) if a.size() > 10 else -1,
+			"held": float(a[11]) if a.size() > 11 else 0.0, "shield": bool(a[12]) if a.size() > 12 else false, "risen": false, "rt": 0.0}
+	var tp = v.get("tp", [])
+	if tp is Array: traps = (tp as Array).duplicate(true)
+	var sp = v.get("sp", [])
+	if sp is Array:
+		for i in mini(spikes.size(), sp.size()): spikes[i] = (sp[i] as Array).duplicate()
 	if v.has("rd"):
 		for i in mini(roads.size(), v.rd.size()):
 			var e: Array = v.rd[i]
-			roads[i] = {"st": int(e[0]), "drv": str(e[1]), "who": (e[2] as Array).duplicate(), "t": float(e[3]), "why": str(e[4]) if e.size() > 4 else ""}
+			roads[i] = {"st": int(e[0]), "drv": str(e[1]), "who": (e[2] as Array).duplicate(), "t": float(e[3]), "why": str(e[4]) if e.size() > 4 else "",
+				"flat": bool(e[5]) if e.size() > 5 else false}
 	carrying = str(v.kc)
 	stun = float(v.ks)
 	power_cd = float(v.kp)

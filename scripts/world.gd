@@ -263,7 +263,9 @@ func configure(id: String, seed := 1, th := "normal") -> void:
 	# 2 exit gates on opposite edges
 	for g in [[0.0, -WALL, 0.0], [0.0, WALL, PI]]:
 		sites.append([g[0], g[1], _raw_h(g[0], g[1]), 8.0])
-		gate_points.append([Vector3(g[0], _raw_h(g[0], g[1]), g[1]), g[2]])
+		var gy := _raw_h(g[0], g[1])
+		if id == "beach" and g[1] > 0.0: gy = PIER_Y # out across the lagoon: the gate stands on the pier
+		gate_points.append([Vector3(g[0], gy, g[1]), g[2]])
 	# 9 hooks and 5 possible hatches: anywhere free
 	for hi in 9:
 		var hp := _random_site(rng, 3.5, 22.0, 100.0)
@@ -2780,6 +2782,9 @@ func _build_theme_props() -> void:
 ## cost fifteen draw calls.
 const BEACH_SHORE := 42.0   # where the dry sand gives way to the water
 const BEACH_WATER := -0.55  # the surface of the lagoon
+const PIER_Y := 0.45        # the deck of the pier that carries you out over the water to the north gate
+const PIER_W := 8.0
+const PIER_FROM := 34.0     # where the deck starts on the sand (a ramp comes up to it)
 
 func _beach_group(name: String) -> Array:
 	var out := []
@@ -2833,13 +2838,23 @@ func _build_beach() -> void:
 	add_child(sea)
 	var deep := StaticBody3D.new() # you can wade in, you cannot swim out
 	deep.name = "Lagoon"
-	var cs := CollisionShape3D.new()
-	var bs := BoxShape3D.new()
-	bs.size = Vector3(SIZE, 14.0, 4.0)
-	cs.shape = bs
-	cs.position = Vector3(0, 5.0, BEACH_SHORE + 9.0) # wade in knee-deep, no further
-	deep.add_child(cs)
+	var half_gap := PIER_W / 2.0 + 0.4 # the pier goes through it; under the deck it stays shut
+	for sx in [-1.0, 1.0]:
+		var cs := CollisionShape3D.new()
+		var bs := BoxShape3D.new()
+		var wide := SIZE / 2.0 - half_gap
+		bs.size = Vector3(wide, 14.0, 4.0)
+		cs.shape = bs
+		cs.position = Vector3(sx * (half_gap + wide / 2.0), 5.0, BEACH_SHORE + 9.0) # wade in knee-deep, no further
+		deep.add_child(cs)
+	var under := CollisionShape3D.new()
+	var ub := BoxShape3D.new()
+	ub.size = Vector3(half_gap * 2.0, 12.0, 4.0)
+	under.shape = ub
+	under.position = Vector3(0, PIER_Y - 0.45 - 6.0, BEACH_SHORE + 9.0)
+	deep.add_child(under)
 	add_child(deep)
+	_build_pier()
 	# ---- palms: clusters on the dry sand, a few leaning over the water ----
 	var palms := []
 	for i in 90:
@@ -2868,6 +2883,46 @@ func _build_beach() -> void:
 		var fx: float = -WALL + 8.0 + i * (WALL * 2.0 - 16.0) / 25.0
 		var fz: float = BEACH_SHORE - 1.5 + sin(fx * 0.05) * 2.5
 		_mesh_box(self, Vector3(10.0, 0.06, 1.6), Vector3(fx, BEACH_WATER + 0.12, fz), foam)
+
+## The pier: a plank deck on posts from the sand out over the lagoon to the north gate (that gate
+## stands on it at PIER_Y), with rails on both sides and a few lanterns, so both escape roads of the
+## beach can be reached. Wide enough for her car.
+func _build_pier() -> void:
+	var body := StaticBody3D.new()
+	body.name = "Pier"
+	var deck_from := PIER_FROM
+	var deck_to := WALL + 0.8
+	var plank := _mat.wood
+	var mid_z := (deck_from + deck_to) / 2.0
+	_box(body, Vector3(PIER_W, 0.4, deck_to - deck_from), Vector3(0, PIER_Y - 0.2, mid_z), plank)
+	# a ramp up from the sand where the deck starts above it
+	var sand := _raw_h(0.0, deck_from - 8.0)
+	var rise := PIER_Y - sand
+	if rise > 0.15:
+		var run := 8.0
+		var ang := atan2(rise, run)
+		var ramp_len := sqrt(run * run + rise * rise)
+		_box(body, Vector3(PIER_W, 0.4, ramp_len), Vector3(0, (sand + PIER_Y) / 2.0 - 0.2, deck_from - run / 2.0), plank, false, Vector3(-ang, 0, 0)) # tipped up toward the deck
+	# posts into the water and rails along both sides (the rails are what keep you on the deck)
+	var z := deck_from + 2.0
+	while z < deck_to - 1.0:
+		for sx in [-1.0, 1.0]:
+			var ground := _raw_h(sx * (PIER_W / 2.0 - 0.3), z)
+			_mesh_box(body, Vector3(0.35, PIER_Y - ground + 0.2, 0.35), Vector3(sx * (PIER_W / 2.0 - 0.3), (PIER_Y + ground) / 2.0 - 0.1, z), plank)
+			_mesh_box(body, Vector3(0.14, 1.1, 0.14), Vector3(sx * (PIER_W / 2.0 - 0.1), PIER_Y + 0.55, z), plank)
+		z += 6.0
+	for sx in [-1.0, 1.0]:
+		_box(body, Vector3(0.16, 1.2, deck_to - deck_from), Vector3(sx * (PIER_W / 2.0 - 0.1), PIER_Y + 0.6, mid_z), plank)
+	add_child(body)
+	for lz in [deck_from + 12.0, mid_z + 6.0, deck_to - 10.0]: # lanterns on the rail
+		var ll := OmniLight3D.new()
+		ll.position = Vector3(PIER_W / 2.0 - 0.5, PIER_Y + 1.6, lz)
+		ll.light_color = Color(1.0, 0.75, 0.45)
+		ll.light_energy = 1.6
+		ll.omni_range = 11.0
+		add_child(ll)
+		_amb_light(ll)
+		_mesh_box(self, Vector3(0.25, 0.32, 0.25), ll.position, _flat(Color(1.0, 0.8, 0.5), 0.5, 0.0, 3.0))
 
 # ---------------- «المواقف»: the car park under the apartment block ----------------
 ## assets/maps/carpark.glb is one 30 x 20 m module with a 3 m ceiling, split into named

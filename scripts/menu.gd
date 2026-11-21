@@ -24,6 +24,7 @@ var typed := {} # LineEdit texts kept across rebuilds
 var off_map := "forest"
 var off_char := "killer"
 var off_theme := "normal"
+var off_bot := true # trial mode as a survivor: a computer killer hunts you (NFBot)
 var lobby: NFLobby       # the campfire scene, set by main.gd
 var card: Control        # player card in the top corner
 var char_pad: Control    # swipe area for the character carousel
@@ -253,6 +254,7 @@ func _refresh() -> void:
 		"chars": _page_chars()
 		"dev": _page_dev()
 		"help": _page_help()
+		"board": _page_board()
 	_sync_lobby()
 
 # ---------- the campfire scene follows the menu ----------
@@ -439,6 +441,7 @@ func _page_main() -> void:
 
 ## «طريقة اللعب»: a short guide, one drawn icon and two lines per thing to know, a tab per side.
 var help_tab := "survivor"
+var board_by := "esc" # the friends' board: sorted by escapes, kills or level
 const HELP := {
 	"survivor": [
 		["wrench", "صلّح المولدات", "5 مولدات تشغّل البوابات. انتبه لاختبار المهارة: الغلطة تفجّر المولد والقاتل يسمعها."],
@@ -450,6 +453,9 @@ const HELP := {
 		["plank", "الطبليات والشبابيك", "طيّح الطبلية على القاتل وهو وراك يندهش، واقفز من الشبابيك عشان تبعد."],
 		["chat", "الإشارات", "زر الإشارة يرسل لربعك بس: تعال هني، القاتل هني، قاعد أصلّح."],
 		["hand", "الفتحة", "إذا بقيت آخر واحد، دوّر الفتحة واهرب منها."],
+		["star", "قدرة شخصيتك", "كل ناجي له قدرة: تشوفها تحت اسمه لما تختار الشخصية، وتحت الخريطة وقت اللعب."],
+		["nitro", "النيترو", "سواق سيارة الهروب عنده نيترو مرة وحدة: يطير السيارة 3 ثواني ونص. استخدمه لما تكون القاتلة وراكم."],
+		["trap", "الفخاخ", "القاتلة تحط فخاخ على الأرض: اللي يدوس فخ يمسكه 4 ثواني. إذا شفته (يلمع شوي) فكّه من زر التفاعل."],
 	],
 	"killer": [
 		["attack", "اضرب", "الضربة الأولى تجرح والثانية تطيّح. بعد كل ضربة لازم تنتظر شوي."],
@@ -460,6 +466,8 @@ const HELP := {
 		["search", "فتّش الخزانات", "الناجين يتخبّون فيها: افتحها وطلّعهم."],
 		["plank", "اكسر الطبليات", "الطبلية الطايحة تسد الطريق: اكسرها."],
 		["door", "الأبواب", "سكّر الأبواب وراك. اللي بعيد يسمع صوتها."],
+		["trap", "الفخاخ", "زر الفخ يحط فخ تحت رجولك (4 بالكثير، الخامس ياخذ مكان أقدمهم). اللي يدوسه ينمسك 4 ثواني ويطلع لك سهم له."],
+		["spike", "المسامير", "على طريق الهروب نفس الزر يحط مسامير بعرض نص الطريق: إذا مرّت عليها سيارتهم تنفجر كفراتها وتبطّي."],
 	],
 }
 
@@ -523,6 +531,7 @@ func _page_friends() -> void:
 	_button("إضافة", func():
 		Net.add_friend(typed.get("friend", "")); typed["friend"] = ""; _refresh(), h, true, "chat")
 	if Net.friends.is_empty(): _label("ما أضفت أحد للحين", 20, Color(0.7, 0.7, 0.7))
+	_button("الترتيب وسجل جولاتي", func(): open("board"), null, true, "star")
 	for f in Net.friends:
 		var name := str(f)
 		var r := _row()
@@ -552,6 +561,35 @@ func _page_friends() -> void:
 			toast = "انفتحت الشخصية السرية: الفالكيري القرمزية" if Net.redeem(typed.get("code", "")) else "الكود غلط"
 			typed["code"] = ""; _refresh(), hc, true, "star")
 	_button("رجوع", func(): open("lobby" if Net.in_room() else "main"), null, true, "exit")
+
+## The friends' board (me and every friend the server has numbers for, best first) and my own
+## last rounds. Numbers come from each phone; a friend who has not been online since the server
+## started shows dashes until he is.
+func _page_board() -> void:
+	_label("الترتيب بين الربع", 30, Color(1, 0.82, 0.45))
+	var tabs := _row()
+	for t in [["esc", "الهروب", "out"], ["kills", "القتل", "skull"], ["lv", "المستوى", "star"]]:
+		var b := _button(str(t[1]), func(): board_by = str(t[0]); _refresh(), tabs, true, str(t[2]))
+		if board_by == str(t[0]): b.modulate = Color(1, 0.75, 0.3)
+	var rows := Net.board(board_by)
+	var place := 0
+	for row in rows:
+		place += 1
+		var me: bool = str(row.get("name", "")).to_lower() == Net.username.to_lower()
+		var none: bool = row.get("none", false)
+		var medal: String = ("★%d" % place) if place <= 3 and not none else "%d." % place
+		var line := "%s  %s   —   هروب %s  •  قتل %s  •  مستوى %s  •  جولات %s" % [medal, str(row.get("name", "")),
+			"-" if none else str(row.get("esc", 0)), "-" if none else str(row.get("kills", 0)),
+			"-" if none else str(row.get("lv", 0)), "-" if none else str(row.get("rounds", 0))]
+		_label(line, 20, Color(1, 0.85, 0.5) if me else (Color(0.55, 0.55, 0.58) if none else Color(0.88, 0.9, 0.95)))
+	_label("آخر جولاتي", 24, Color(0.95, 0.3, 0.25))
+	if Net.history.is_empty(): _label("ما لعبت جولة للحين", 18, Color(0.7, 0.7, 0.7))
+	for hrow in Net.history.slice(0, 8):
+		var res := str(hrow.get("res", ""))
+		var what: String = str({"escaped": "هربت", "dead": "متّ", "killer": "قاتلة — قتلت %d" % int(hrow.get("kills", 0))}.get(res, res))
+		_label("%s   %s   %s   +%d" % [str(hrow.get("d", "")), str(MAPS.get(str(hrow.get("map", "")), hrow.get("map", ""))), what, int(hrow.get("score", 0))],
+			18, Color(0.5, 1, 0.6) if res == "escaped" else (Color(1, 0.55, 0.5) if res == "dead" else Color(1, 0.8, 0.5)))
+	_button("رجوع", func(): open("friends"), null, true, "exit")
 
 ## The three campfire emotes: played here at once, and relayed to the room if I am in one.
 func _emote_row() -> void:
@@ -618,6 +656,10 @@ func _page_chars() -> void:
 	var i := list.find(id)
 	_label("اختر شخصيتك", 26, Color(1, 0.85, 0.45))
 	_label(str(CHARS.get(id, id)), 40, NFUI.char_col(id))
+	var pk: String = Rules.PERK.get(id, "")
+	if pk != "": # what this character can do that the others cannot
+		var info: Array = Rules.PERK_INFO[pk]
+		_label("القدرة: %s — %s" % [info[0], info[1]], 19, Color(1.0, 0.82, 0.45))
 	_label("%d/%d  •  اسحب الشاشة يمين أو يسار" % [maxi(i, 0) + 1, list.size()], 18, Color(0.7, 0.7, 0.72))
 	var h := _row()
 	_button("‹ السابق", func(): _step(-1), h, true, "next")
@@ -659,10 +701,15 @@ func _page_offline() -> void:
 		b2.add_theme_font_size_override("font_size", 20)
 		if off_theme == id: b2.modulate = Color(1, 0.75, 0.3)
 	_button("الشخصية — %s" % CHARS.get(off_char, off_char), func(): open("chars"), null, true, "star")
+	if off_char != "killer":
+		var bb := _button("قاتلة كمبيوتر: %s" % ("شغّالة" if off_bot else "طافية"), func(): off_bot = not off_bot; _refresh(), null, true, "skull")
+		if off_bot: bb.modulate = Color(1, 0.6, 0.5)
 	_button("ابدأ", func():
 		var n := Net.username if Net.username != "" else "Player"
 		var list := [{"name": n, "role": "killer" if off_char == "killer" else "survivor", "char": off_char, "slot": 0}]
 		# a practice dummy: a target for the killer, or a wounded teammate to heal
 		list.append({"name": "دمية", "role": "survivor", "char": "survivor1" if off_char != "survivor1" else "survivor2", "slot": 1, "dummy": true})
+		if off_char != "killer" and off_bot: # a computer killer hunting you
+			list.append({"name": "القاتلة", "role": "killer", "char": "killer", "slot": 2, "bot": true})
 		start_game.emit({"map": off_map, "me": n, "offline": true, "theme": off_theme, "players": list}), null, true, "out")
 	_button("رجوع", func(): chars_from = "main"; open("main" if Net.username != "" else "name"), null, true, "exit")

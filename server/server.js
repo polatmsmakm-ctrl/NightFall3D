@@ -13,6 +13,22 @@ const CHARS = ['killer', 'survivor1', 'survivor2', 'survivor3', 'survivor4', 'su
 
 const users = new Map();   // lowercase name -> client
 const rooms = new Map();   // code -> room
+// every player's numbers, as their phone last sent them (the phones are the record: this only passes
+// them on to friends, and a copy on disk refills it after a restart)
+const fs = require('fs');
+const STATS_FILE = process.env.STATS_FILE || __dirname + '/stats.json';
+const stats = new Map();   // lowercase name -> {name, lv, xp, esc, kills, rounds}
+try { for (const [k, v] of Object.entries(JSON.parse(fs.readFileSync(STATS_FILE, 'utf8')))) stats.set(k, v); } catch (e) { /* first run */ }
+let statsDirty = false;
+setInterval(() => {
+  if (!statsDirty) return;
+  statsDirty = false;
+  try { fs.writeFileSync(STATS_FILE, JSON.stringify(Object.fromEntries(stats))); } catch (e) { /* read-only disk: memory only */ }
+}, 30000).unref();
+function cleanStats(name, s) {
+  const n = (v) => Math.max(0, Math.min(1e9, Math.floor(Number(v) || 0)));
+  return { name, lv: n(s && s.lv), xp: n(s && s.xp), esc: n(s && s.esc), kills: n(s && s.kills), rounds: n(s && s.rounds) };
+}
 
 const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -46,8 +62,13 @@ function notifyWatchers(name, online) {
 }
 function sendPresence(c) {
   const online = [];
-  for (const f of c.friends) { const u = users.get(f); if (u) online.push(u.name); }
-  send(c, { t: 'friends', online });
+  const rows = [];
+  for (const f of c.friends) {
+    const u = users.get(f);
+    if (u) online.push(u.name);
+    if (stats.has(f)) rows.push(stats.get(f));
+  }
+  send(c, { t: 'friends', online, stats: rows });
 }
 function leaveRoom(c) {
   const r = c.room;
@@ -78,9 +99,18 @@ const handlers = {
     if (users.has(key(name))) return send(c, { t: 'error', code: 'name_taken' });
     c.name = name;
     users.set(key(name), c);
+    if (m.stats && typeof m.stats === 'object') { stats.set(key(name), cleanStats(name, m.stats)); statsDirty = true; }
     handlers.friends(c, m);
-    send(c, { t: 'welcome', name, maps: MAPS, ver: 3 });
+    send(c, { t: 'welcome', name, maps: MAPS, ver: 4 });
     notifyWatchers(name, true);
+  },
+  stats(c, m) { // my numbers after a round: kept, and passed to every friend online who has me listed
+    if (!m.s || typeof m.s !== 'object') return;
+    const row = cleanStats(c.name, m.s);
+    stats.set(key(c.name), row);
+    statsDirty = true;
+    const k = key(c.name);
+    for (const u of users.values()) if (u !== c && u.friends.has(k)) send(u, { t: 'fstats', s: row });
   },
   friends(c, m) {
     c.friends = new Set((Array.isArray(m.friends) ? m.friends : []).slice(0, 100).map(key));

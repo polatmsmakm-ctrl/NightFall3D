@@ -25,6 +25,10 @@ var last_round := {}   # {res: escaped / dead / killer, score, gens, wipe}: the 
 var day := ""          # today's date, for the daily challenge
 var day_n: Array = [0, 0, 0] # today: rounds played, escapes, kills
 var day_paid := false  # today's challenge already paid its experience
+var rounds := 0        # rounds played, all time
+var history: Array = [] # the last HISTORY rounds: {d, map, role, res, score, kills}, newest first
+const HISTORY := 20
+var fstats := {}       # friend (lowercase) -> {name, lv, xp, esc, kills, rounds}: the server passes them on
 
 var _ws: WebSocketPeer
 var _hello := false
@@ -53,6 +57,8 @@ func _ready() -> void:
 		day = str(c.get_value("p", "day", ""))
 		day_n = c.get_value("p", "day_n", [0, 0, 0])
 		day_paid = bool(c.get_value("p", "day_paid", false))
+		rounds = int(c.get_value("p", "rounds", 0))
+		history = c.get_value("p", "history", [])
 		if day_n.size() != 3: day_n = [0, 0, 0]
 	var env_url := OS.get_environment("NF_URL")
 	if env_url != "": url = env_url
@@ -69,6 +75,8 @@ func save() -> void:
 	c.set_value("p", "gifted", gifted)
 	c.set_value("p", "last_char", last_char)
 	c.set_value("p", "last_round", last_round)
+	c.set_value("p", "rounds", rounds)
+	c.set_value("p", "history", history)
 	c.set_value("p", "day", day)
 	c.set_value("p", "day_n", day_n)
 	c.set_value("p", "day_paid", day_paid)
@@ -103,6 +111,26 @@ func gift(friend: String, on: bool) -> void:
 	save()
 	changed.emit()
 
+## My numbers for the friends' board (the server keeps them only to pass them on).
+func my_stats() -> Dictionary:
+	return {"name": username, "lv": level(), "xp": xp, "esc": escapes, "kills": kills, "rounds": rounds}
+
+func send_stats() -> void:
+	if state == "online": send({"t": "stats", "s": my_stats()})
+
+## Me and every friend the server has numbers for, best first by `by` (esc / kills / lv).
+func board(by: String) -> Array:
+	var rows := [my_stats()]
+	for f in friends:
+		var k := str(f).to_lower()
+		if fstats.has(k): rows.append(fstats[k])
+		else: rows.append({"name": str(f), "lv": 0, "xp": 0, "esc": 0, "kills": 0, "rounds": 0, "none": true})
+	rows.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var x := int(a.get(by, 0)); var y := int(b.get(by, 0))
+		if x != y: return x > y
+		return int(a.get("xp", 0)) > int(b.get("xp", 0)))
+	return rows
+
 func level() -> int:
 	return 1 + int(sqrt(xp / 200.0))
 
@@ -118,9 +146,16 @@ func level_progress() -> float:
 	return clampf(float(xp - a) / maxf(float(b - a), 1.0), 0.0, 1.0)
 
 ## Keep the totals of a finished round next to the experience, on the phone.
-func record_match(got_out: int, killed: int) -> void:
+func record_match(got_out: int, killed: int, map := "", role := "", res := "", score := 0) -> void:
 	escapes += maxi(got_out, 0)
 	kills += maxi(killed, 0)
+	rounds += 1
+	if map != "": # the round on my own list
+		var t := Time.get_datetime_dict_from_system()
+		history.push_front({"d": "%d/%d %02d:%02d" % [t.day, t.month, t.hour, t.minute], "map": map, "role": role,
+			"res": res, "score": score, "kills": maxi(killed, 0)})
+		if history.size() > HISTORY: history.resize(HISTORY)
+	send_stats()
 	_roll_day()
 	day_n[0] = int(day_n[0]) + 1
 	day_n[1] = int(day_n[1]) + maxi(got_out, 0)
@@ -218,7 +253,7 @@ func _process(dt: float) -> void:
 		WebSocketPeer.STATE_OPEN:
 			if not _hello:
 				_hello = true
-				send({"t": "hello", "name": username, "friends": friends})
+				send({"t": "hello", "name": username, "friends": friends, "stats": my_stats()})
 			while _ws.get_available_packet_count() > 0:
 				var m = JSON.parse_string(_ws.get_packet().get_string_from_utf8())
 				if m is Dictionary and m.has("t"): _handle(m)
@@ -241,6 +276,10 @@ func _handle(m: Dictionary) -> void:
 		"friends":
 			online = {}
 			for n in m.get("online", []): online[str(n).to_lower()] = true
+			for row in m.get("stats", []):
+				if row is Dictionary: fstats[str(row.get("name", "")).to_lower()] = row
+		"fstats": # a friend finished a round
+			if m.get("s") is Dictionary: fstats[str(m.s.get("name", "")).to_lower()] = m.s
 		"presence":
 			if m.get("online", false): online[str(m.name).to_lower()] = true
 			else: online.erase(str(m.name).to_lower())

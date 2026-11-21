@@ -51,6 +51,13 @@ var radio: AudioStreamPlayer3D # the owner's song (assets/sfx/radio.mp3), from t
 var radio_on := false     # the switch; it keeps playing after he gets out if he left it on
 var gear := 1             # 1, 2 or 3
 var limit := 0.0          # a top speed of its own (the survivors' escape cars); 0: the gearbox decides
+## Nitro, the escape car's one boost per run: NITRO_TIME seconds at NITRO_MUL times its top speed,
+## pulling much harder, with flames out of the exhaust (other phones light them from the driver's st).
+const NITRO_TIME := 3.5
+const NITRO_MUL := 1.6
+var nitro := 0.0          # seconds of boost left, on the driver's phone
+var flame_on := false     # other phones: the driver says the flames are lit
+var flames: Node3D
 var _radio_started := false
 var inside: Node3D        # the cabin + headliner + pillars, only shown to the killer while he drives
 var _last := Vector3.ZERO # remote phones work the speed out from how far it moved
@@ -540,8 +547,8 @@ func grips() -> Array:
 	return out
 
 func top() -> float:
-	if limit > 0.0: return limit
-	return GEAR_TOP[clampi(gear, 1, GEAR_TOP.size()) - 1]
+	var t: float = limit if limit > 0.0 else float(GEAR_TOP[clampi(gear, 1, GEAR_TOP.size()) - 1])
+	return t * NITRO_MUL if nitro > 0.0 else t
 
 ## Where the driver's eyes are, in the world (follows the car's tilt).
 func eye() -> Vector3:
@@ -566,11 +573,12 @@ func forward() -> Vector3:
 ## The driver's phone: throttle -1..1 (stick up = forward), turn -1..1 (right = +1).
 func drive(throttle: float, turn: float, dt: float) -> void:
 	driver_local = true
+	nitro = maxf(nitro - dt, 0.0)
 	if throttle > 0.05:
 		if speed < -0.3: speed = move_toward(speed, 0.0, BRAKE * dt)
 		else: # strong off the line, easing off as it nears top speed
 			var soft: float = [1.0, 0.85, 0.72][clampi(gear, 1, 3) - 1] # each gear up pulls a little softer
-			var pull := ACCEL * lerpf(1.35, 0.55, clampf(speed / top(), 0.0, 1.0)) * soft
+			var pull := ACCEL * lerpf(1.35, 0.55, clampf(speed / top(), 0.0, 1.0)) * soft * (2.6 if nitro > 0.0 else 1.0)
 			speed = move_toward(speed, top() * throttle, pull * dt)
 	elif throttle < -0.05:
 		if speed > 0.3: speed = move_toward(speed, 0.0, BRAKE * dt)
@@ -728,4 +736,40 @@ func _effects(dt: float) -> void:
 		if engine_gain > 0.001 and not engine.playing: engine.play()
 		elif engine_gain <= 0.001 and engine.playing: engine.stop()
 		engine.volume_db = linear_to_db(maxf(engine_gain, 0.0001))
-		engine.pitch_scale = 0.85 + clampf(absf(speed) / top(), 0.0, 1.0) * 0.6 # drops when he shifts up
+		engine.pitch_scale = 0.85 + clampf(absf(speed) / top(), 0.0, 1.0) * 0.6 + (0.25 if (nitro > 0.0 or flame_on) else 0.0) # drops when he shifts up
+	var fire := nitro > 0.0 or flame_on
+	if fire and flames == null: _build_flames()
+	if flames:
+		flames.visible = fire
+		if fire: flames.scale = Vector3(1.0, 1.0, 0.75 + randf() * 0.6) # it roars and flickers
+
+## Two cones of flame out of the exhaust, and their glow on the road behind.
+func _build_flames() -> void:
+	flames = Node3D.new()
+	flames.position = Vector3(-0.55, 0.42, -2.3)
+	model.add_child(flames)
+	for k in 2:
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		mat.albedo_color = Color(1.0, 0.5, 0.12) if k == 0 else Color(0.45, 0.7, 1.0)
+		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		var cone := CylinderMesh.new()
+		cone.top_radius = 0.0
+		cone.bottom_radius = 0.16 if k == 0 else 0.08
+		cone.height = 1.1 if k == 0 else 0.6
+		cone.radial_segments = 10
+		cone.rings = 1
+		cone.material = mat
+		var mi := MeshInstance3D.new()
+		mi.mesh = cone
+		mi.rotation.x = -PI / 2.0 # the cone's tip points out behind the car
+		mi.position = Vector3(0, 0, -cone.height / 2.0)
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		flames.add_child(mi)
+	var glow := OmniLight3D.new()
+	glow.light_color = Color(1.0, 0.55, 0.2)
+	glow.light_energy = 3.0
+	glow.omni_range = 5.0
+	glow.position = Vector3(0, 0, -0.8)
+	flames.add_child(glow)

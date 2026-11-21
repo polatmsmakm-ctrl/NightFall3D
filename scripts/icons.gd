@@ -112,6 +112,29 @@ static func draw(ci: CanvasItem, name: String, c: Vector2, size: float, col: Col
 			ci.draw_circle(_u(c, size, 0.52, 0.42), size * 0.2, Color(0, 0, 0, 0.85))
 			ci.draw_arc(_u(c, size, -0.5, 0.42), size * 0.2, 0, TAU, 18, col, w * 0.8, true)
 			ci.draw_arc(_u(c, size, 0.52, 0.42), size * 0.2, 0, TAU, 18, col, w * 0.8, true)
+		"trap": # the killer's bear trap: a ring of teeth
+			ci.draw_arc(c, size * 0.42, 0, TAU, 28, col, w, true)
+			for k in 10:
+				var a := k * TAU / 10.0
+				var p0 := c + Vector2(cos(a), sin(a)) * size * 0.42
+				var p1 := c + Vector2(cos(a + 0.16), sin(a + 0.16)) * size * 0.22
+				var p2 := c + Vector2(cos(a + 0.32), sin(a + 0.32)) * size * 0.42
+				ci.draw_colored_polygon(PackedVector2Array([p0, p1, p2]), col)
+			ci.draw_circle(c, size * 0.08, col)
+		"spike": # a strip of spikes across a road
+			_bar(ci, c, size, -0.92, 0.55, 0.92, 0.55, col, w)
+			for k in 5:
+				var x := -0.72 + k * 0.36
+				_fill(ci, c, size, [[x - 0.15, 0.5], [x, -0.5], [x + 0.15, 0.5]], col)
+		"nitro": # a flame
+			_fill(ci, c, size, [[0.05, -0.92], [0.5, -0.18], [0.56, 0.36], [0.0, 0.9], [-0.56, 0.36], [-0.44, -0.06], [-0.18, -0.4]], col)
+			_fill(ci, c, size, [[0.02, -0.18], [0.26, 0.3], [0.0, 0.66], [-0.26, 0.3]], Color(0, 0, 0, 0.45))
+		"shield":
+			_stroke(ci, c, size, [[0.0, -0.88], [0.72, -0.6], [0.62, 0.22], [0.0, 0.9], [-0.62, 0.22], [-0.72, -0.6]], col, w, true)
+			_stroke(ci, c, size, [[-0.3, 0.02], [-0.06, 0.3], [0.36, -0.24]], col, w)
+		"eye":
+			_stroke(ci, c, size, [[-0.92, 0.0], [-0.5, -0.42], [0.0, -0.56], [0.5, -0.42], [0.92, 0.0], [0.5, 0.42], [0.0, 0.56], [-0.5, 0.42]], col, w, true)
+			ci.draw_circle(c, size * 0.15, col)
 		"shift": # the gear lever's H gate, the knob in a slot
 			_bar(ci, c, size, -0.55, -0.7, -0.55, 0.7, col, w)
 			_bar(ci, c, size, 0.55, -0.7, 0.55, 0.7, col, w)

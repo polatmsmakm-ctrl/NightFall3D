@@ -13,6 +13,7 @@ const DEF := {
 		"attack": [115.0, 115.0, 62.0],
 		"power": [262.0, 92.0, 50.0],
 		"interact": [215.0, 222.0, 48.0],
+		"trap": [118.0, 262.0, 42.0],
 	},
 	"survivor": {
 		"sprint": [110.0, 110.0, 58.0],
@@ -29,17 +30,17 @@ const DEF := {
 ## Default face of every button (context buttons are overridden in main.gd).
 const LABEL := {
 	"attack": "ضرب", "power": "اندفاع", "interact": "تفاعل", "sprint": "ركض", "crouch": "انحناء",
-	"vault": "قفز", "heal": "علاج", "item": "حقيبة", "light": "كشاف", "sig": "إشارة", "next": "التالي",
+	"vault": "قفز", "heal": "علاج", "item": "حقيبة", "light": "كشاف", "sig": "إشارة", "next": "التالي", "trap": "فخ",
 }
 const ICON := {
 	"attack": "attack", "power": "power", "interact": "hand", "sprint": "shoe", "crouch": "crouch",
-	"vault": "jump", "heal": "heal", "item": "item", "light": "light", "sig": "chat", "next": "next",
+	"vault": "jump", "heal": "heal", "item": "item", "light": "light", "sig": "chat", "next": "next", "trap": "trap",
 }
 ## Icon for whatever the interact button is about to do right now.
 const CTX_ICON := {
 	"rep": "wrench", "rescue": "rescue", "locker_in": "door", "locker_out": "out", "pallet": "plank",
 	"struggle": "fist", "hook": "hook", "pickup": "carry", "search": "search", "break": "axe",
-	"vault": "jump", "heal": "heal", "car_in": "car", "car_out": "out", "board": "car",
+	"vault": "jump", "heal": "heal", "car_in": "car", "car_out": "out", "board": "car", "disarm": "trap",
 }
 
 const MIN_R := 26.0

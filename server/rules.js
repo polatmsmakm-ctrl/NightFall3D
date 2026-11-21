@@ -10,6 +10,11 @@ const EVENT_LEN = [20, 40, 5]; // 0 blackout, 1 heavy fog, 2 alarm
 const ADHAN_LEN = 55;          // the length of assets/sfx/adhan.mp3
 const REACH = 4.5; // generous: positions arrive ~15 times a second
 const ROAD_TIME = 120; // from the first one getting into a gate's escape car to the last gate, 600 m on
+// one ability per survivor character (same table and numbers as rules.gd)
+const PERK = { survivor1: 'burst', survivor2: 'fix', survivor3: 'lift', survivor4: 'rise',
+  survivor5: 'tough', survivor6: 'sense', survivor7: 'medic', survivor8: 'ghost' };
+const FIX_MUL = 1.3, MEDIC_MUL = 1.6, LIFT_W = 1.8, RISE_TIME = 20;
+const TRAPS = 4, HELD_TIME = 4; // the killer's traps armed at once; caught in one: held this long
 
 class Rules {
   constructor(players, seed = 0) {
@@ -19,7 +24,10 @@ class Rules {
     this.pos = {}; this.layout = null; this.ready = false; this.hatch = -1; this.score = {};
     this.doors = [];                        // every doorway: true when the leaf is shut
     // the escape car behind each gate: st 0 waiting, 1 on the road, 2 caught, 3 through the last gate
-    this.roads = [];                        // {st, drv, who, t, why, cp}
+    this.roads = [];                        // {st, drv, who, t, why, cp, flat}
+    this.perk = {};                         // survivor -> perk id
+    this.traps = []; this.trapK = 0;        // [x, z, armed], TRAPS slots reused oldest first
+    this.spikes = [];                       // per road: [x, z, armed]
     const sd = Math.abs(Math.floor(seed));
     this.evKind = sd % 3;                   // which event this round will bring
     this.evAt = 60 + (Math.floor(sd / 3) % 121);
@@ -30,7 +38,12 @@ class Rules {
       this.roles[p.name] = p.role;
       this.score[p.name] = 0;
       if (p.role === 'killer') this.killer = p.name;
-      else this.s[p.name] = { hp: 'ok', hooks: 0, hook_i: -1, t: 0, heal: 0, locker: -1, item: true, esc: 0, resc: 0, tap: 0, car: -1 };
+      else {
+        const pk = PERK[p.char] || '';
+        this.perk[p.name] = pk;
+        this.s[p.name] = { hp: 'ok', hooks: 0, hook_i: -1, t: 0, heal: 0, locker: -1, item: true, esc: 0, resc: 0, tap: 0, car: -1,
+          held: 0, shield: pk === 'tough', risen: false, rt: 0 };
+      }
     }
   }
   setLayout(l) { // object positions, sent by the clients (they all generate the same map)
@@ -40,7 +53,8 @@ class Rules {
     for (let i = 0; i < l.g.length; i++) this.gens.push({ p: 0, done: false, reps: {} });
     for (let i = 0; i < 2; i++) {
       this.gates.push({ open: false });
-      this.roads.push({ st: 0, drv: '', who: [], t: ROAD_TIME, why: '', cp: null });
+      this.roads.push({ st: 0, drv: '', who: [], t: ROAD_TIME, why: '', cp: null, flat: false });
+      this.spikes.push([0, 0, false]);
     }
     for (let i = 0; i < l.p.length; i++) this.pallets.push(0);
     const doors = Array.isArray(l.d) ? l.d.length : 0;
@@ -149,6 +163,7 @@ class Rules {
         if (isKiller && this.stun <= 0 && this.carrying === '' && this.freeNow(n) && this.nearPlayer(from, n)
           && this.clock - (this.lastHit[n] ?? -99) > HIT_COOLDOWN) {
           this.lastHit[n] = this.clock;
+          if (this.s[n].shield) { this.s[n].shield = false; out.push({ k: 'shield', n }); break; } // the first blow does nothing
           if (this.s[n].hp === 'ok') { this.s[n].hp = 'hurt'; this.s[n].heal = 0; this.drop(n); } else this.down(n);
           this.add(from, this.s[n].hp === 'hurt' ? 30 : 50);
           out.push({ k: 'hurt', n, s: this.s[n].hp });
@@ -222,6 +237,41 @@ class Rules {
         }
         break;
       }
+      case 'trap': { // the killer sets a trap at her feet
+        const tp = d.p;
+        if (isKiller && this.stun <= 0 && this.carrying === '' && Array.isArray(tp) && tp.length >= 2 && tp.every((v) => typeof v === 'number') && this.near(from, tp, 4)) {
+          let k = this.trapK % TRAPS;
+          this.trapK += 1;
+          const e = [Math.round(tp[0] * 100) / 100, Math.round(tp[1] * 100) / 100, true, Math.round((tp[2] || 0) * 100) / 100];
+          if (k < this.traps.length) this.traps[k] = e; else { k = this.traps.length; this.traps.push(e); }
+          out.push({ k: 'trap', i: k });
+        }
+        break;
+      }
+      case 'snap': // a survivor's own phone: I stepped into trap i
+        if (this.freeNow(from) && i >= 0 && i < this.traps.length && this.traps[i][2] && this.near(from, this.traps[i], 2.5)) {
+          this.traps[i][2] = false; this.s[from].held = HELD_TIME; this.drop(from); this.add(this.killer, 25);
+          out.push({ k: 'snap', i, n: from });
+        }
+        break;
+      case 'disarm':
+        if (this.freeNow(from) && i >= 0 && i < this.traps.length && this.traps[i][2] && this.near(from, this.traps[i], 3)) {
+          this.traps[i][2] = false; this.add(from, 15); out.push({ k: 'disarm', i, n: from });
+        }
+        break;
+      case 'spike': { // a strip of spikes across escape road i (laying it again moves it)
+        const sp = d.p;
+        if (isKiller && this.stun <= 0 && this.carrying === '' && i >= 0 && i < this.roads.length && this.roads[i].st <= 1 && Array.isArray(sp) && sp.length >= 2 && typeof sp[0] === 'number' && typeof sp[1] === 'number' && this.near(from, sp, 4)) {
+          this.spikes[i] = [Math.round(sp[0] * 100) / 100, Math.round(sp[1] * 100) / 100, true];
+          out.push({ k: 'spike', i });
+        }
+        break;
+      }
+      case 'pop': // the escape car's driver: we went over the spikes
+        if (i >= 0 && i < this.roads.length && this.roads[i].st === 1 && this.roads[i].drv === from && this.spikes[i][2] && this.near(from, this.spikes[i], 10)) {
+          this.spikes[i][2] = false; this.roads[i].flat = true; this.add(this.killer, 40); out.push({ k: 'pop', i });
+        }
+        break;
       case 'power':
         if (isKiller && this.powerCd <= 0 && this.stun <= 0 && this.carrying === '') { this.powerCd = POWER_CD; out.push({ k: 'power' }); }
         break;
@@ -257,7 +307,9 @@ class Rules {
     if (this.stun > 0 && this.carrying !== '') { this.down(this.carrying); this.carrying = ''; }
     for (const g of this.gens) {
       if (g.done || this.powered) continue;
-      g.p += dt * Object.keys(g.reps).length / GEN_TIME;
+      let w = 0;
+      for (const r of Object.keys(g.reps)) w += this.perk[r] === 'fix' ? FIX_MUL : 1;
+      g.p += dt * w / GEN_TIME;
       for (const r of Object.keys(g.reps)) this.add(r, dt * 100 / GEN_TIME);
       if (g.p >= 1) { g.p = 1; g.done = true; g.reps = {}; }
     }
@@ -283,22 +335,30 @@ class Rules {
     }
     for (const n in this.s) {
       const p = this.s[n];
+      p.held = (p.hp === 'ok' || p.hp === 'hurt') ? Math.max(p.held - dt, 0) : 0;
+      if (this.perk[n] === 'rise') { // left down long enough, she gets up by herself, once
+        if (p.hp === 'down' && !p.risen) {
+          p.rt += dt;
+          if (p.rt >= RISE_TIME) { p.hp = 'hurt'; p.risen = true; p.rt = 0; p.heal = 0; delete this.healers[n]; out.push({ k: 'rise', n }); }
+        } else if (p.hp !== 'down') p.rt = 0;
+      }
       if (p.hp === 'hooked') p.esc = Math.max(p.esc - MASH_DECAY * dt, 0);
       if (p.hp === 'hooked' || p.hp === 'down') { p.t -= dt; if (p.t <= 0) { p.hp = 'dead'; this.add(this.killer, 100); } }
     }
     // lifting someone off a hook: everybody pulling on the same person adds up
-    const pulling = {};
+    const pulling = {}, pullW = {};
     for (const r of Object.keys(this.rescuers)) {
       const tgt = this.rescuers[r];
       if (!this.freeNow(r) || this.hp(tgt) !== 'hooked') { delete this.rescuers[r]; continue; }
       pulling[tgt] = (pulling[tgt] || 0) + 1;
+      pullW[tgt] = (pullW[tgt] || 0) + (this.perk[r] === 'lift' ? LIFT_W : 1);
     }
     for (const n in this.s) {
       const p = this.s[n];
       const hands = pulling[n] || 0;
       if (p.hp !== 'hooked') { p.resc = 0; continue; }
       if (hands <= 0) { p.resc = Math.max(p.resc - dt * 0.5, 0); continue; }
-      p.resc += dt * hands / RESCUE_TIME;
+      p.resc += dt * (pullW[n] || hands) / RESCUE_TIME;
       if (p.resc >= 1) {
         p.resc = 0;
         p.hp = 'hurt'; p.hook_i = -1; p.heal = 0;
@@ -318,7 +378,7 @@ class Rules {
       const self = h === tgt;
       const valid = this.freeNow(h) && p && (p.hp === 'hurt' || (p.hp === 'down' && !self)) && (!self || p.item) && (self || this.nearPlayer(h, tgt));
       if (!valid) { delete this.healers[h]; continue; }
-      p.heal += dt / (self ? SELF_HEAL_TIME : HEAL_TIME);
+      p.heal += dt / (self ? SELF_HEAL_TIME : HEAL_TIME) * (!self && this.perk[h] === 'medic' ? MEDIC_MUL : 1);
       if (p.heal >= 1) {
         p.heal = 0;
         p.hp = p.hp === 'down' ? 'hurt' : 'ok';
@@ -355,13 +415,14 @@ class Rules {
     for (const r of Object.keys(this.rescuers)) pulling[this.rescuers[r]] = (pulling[this.rescuers[r]] || 0) + 1;
     for (const n in this.s) {
       const p = this.s[n];
-      ss[n] = [p.hp, p.hooks, p.hook_i, Math.ceil(p.t), r3(p.heal), p.locker, p.item, r3(p.esc), r3(p.resc), pulling[n] || 0, p.car];
+      ss[n] = [p.hp, p.hooks, p.hook_i, Math.ceil(p.t), r3(p.heal), p.locker, p.item, r3(p.esc), r3(p.resc), pulling[n] || 0, p.car, Math.round(p.held * 10) / 10, !!p.shield];
     }
     return {
       k: 'gs', g: this.gens.map((g) => r3(g.p)), d: this.gens.map((g) => g.done), to: this.gates.map((g) => g.open),
       pw: this.powered, s: ss, pl: this.pallets, kc: this.carrying, ks: r3(this.stun), kp: Math.round(this.powerCd * 10) / 10, ov: this.over, hx: this.hatch, dm: Math.round(this.doom * 10) / 10,
       sc: Object.fromEntries(Object.entries(this.score).map(([n, v]) => [n, Math.round(v)])),
-      rd: this.roads.map((r) => [r.st, r.drv, r.who, Math.round(r.t * 10) / 10, r.why]),
+      rd: this.roads.map((r) => [r.st, r.drv, r.who, Math.round(r.t * 10) / 10, r.why, !!r.flat]),
+      tp: this.traps, sp: this.spikes,
       dr: this.doors, ek: this.evFired ? this.evKind : -1, et: Math.round(this.evT * 10) / 10, en: this.evN, ad: this.adhan,
     };
   }
