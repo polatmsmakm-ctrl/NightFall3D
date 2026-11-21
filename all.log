@@ -1,0 +1,27 @@
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+SCRIPT ERROR: Parse Error: Cannot infer the type of "plank" variable because the value doesn't have a set type.
+          at: GDScript::reload (res://scripts/world.gd:2895)
+SCRIPT ERROR: Compile Error: Failed to compile depended scripts.
+          at: GDScript::reload (res://scripts/lobby.gd:0)
+SCRIPT ERROR: Compile Error: Failed to compile depended scripts.
+          at: GDScript::reload (res://scripts/menu.gd:0)
+SCRIPT ERROR: Parse Error: Cannot infer the type of "plank" variable because the value doesn't have a set type.
+          at: GDScript::reload (res://scripts/world.gd:2895)
+SCRIPT ERROR: Parse Error: Cannot infer the type of "plank" variable because the value doesn't have a set type.
+          at: GDScript::reload (res://scripts/world.gd:2895)
+SCRIPT ERROR: Compile Error: Failed to compile depended scripts.
+          at: GDScript::reload (res://scripts/bot.gd:0)
+SCRIPT ERROR: Compile Error: Failed to compile depended scripts.
+          at: GDScript::reload (res://scripts/main.gd:0)
+ERROR: Failed to load script "res://scripts/main.gd" with error "Compilation failed".
+   at: load (modules/gdscript/gdscript.cpp:3041)
+SCRIPT ERROR: Invalid call. Nonexistent function 'new' in base 'GDScript'.
+          at: NFLobby._ready (res://scripts/lobby.gd:121)
+          GDScript backtrace (most recent call first):
+              [0] _ready (res://scripts/lobby.gd:121)
+              [1] _ready (res://scripts/main.gd:174)
+SCRIPT ERROR: Invalid assignment of property or key 'light_energy' with value of type 'float' on a base object of type 'Nil'.
+          at: NFLobby._process (res://scripts/lobby.gd:926)
+          GDScript backtrace (most recent call first):
+              [0] _process (res://scripts/lobby.gd:926)
