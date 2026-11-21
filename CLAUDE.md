@@ -266,7 +266,12 @@ every door and along the paths, and `_cobweb()` under the eaves and on the hooks
   The gate, hook and generator lights are deliberately left out of all that.
 
 ## Hidden developer tools
-Locked by default. On a phone that has them, a small panel appears during a round with two switches:
+Locked by default: fifteen taps on the version text open a page that asks for the **passkey 4343**
+(`Dev.KEY`, `Dev.try_key`); «اقفل الأدوات» locks them again (`Dev.lock`). The dev page also has
+«زر Vanish بالجولة» (`Dev.vanish_tool`): with it on, the round shows a **«Vanish»** button (survivor
+and killer) that hides me on every other phone — `main.vanished` goes out as `v` in my `st`
+(the server relays it), other phones hide that remote's node and torch, and the computer killer
+ignores me. On a phone that has them, a small panel appears during a round with two switches:
 see-through outlines of the other players (their own model drawn again with a `no_depth_test` overlay
 material, plus a mast and a name/distance tag), and a movement-speed multiplier. All of it is local:
 nothing is relayed, the server never hears about it, and nothing is drawn on anyone else's phone.
@@ -779,3 +784,24 @@ from the agent's machine).
   read under the loading screen.
 - Strong phones start at 90% with FSR (`TIER` 3); SSAO is softer (a suspect for the dark specks).
 - **If the black dots stay**, ask the owner for a screenshot: they were never seen in CI.
+
+## Gun mode, team names, friends and profiles, map icons (the owner's next requests)
+- **«وضع السلاح»** (room option `set {gun}` → `room.gun`, `started.gun`; trial mode `GameMenu.off_gun`):
+  every survivor has a stun gun, `GUN_SHOTS` 3 a round (`ammo`, snapshot row index 13, `gn` flag).
+  The `gun` layout button fires where the camera looks (`main._shoot`: within `GUN_RANGE` 22 m, near
+  the middle of the screen, clear line); input `shoot {hit}` — the server re-checks the range — a hit
+  is `GUN_STUN` 3 s of `stun` (she drops whoever she carries) and events `shot` + `stun {by:"gun"}`.
+  A short beam shows the shot on every phone (`_beam`). No gun sound file yet.
+- **Team names**: survivors see every teammate still in the round with a name over the head and a
+  soft see-through overlay (`esp_nodes[n].name` / `tmat` in `_update_esp`); the killer sees none.
+- **Friends**: the server tells each friend where you are (`presence.st`: `menu` / `room` / `game`,
+  `friends.status`) and when you were last seen (`seen`); the friends page lists online first with a
+  coloured status line, «دعوة» works without a room (one is made first) and to an offline friend
+  (kept 20 min, delivered on `hello` with `later`). **Profiles** (menu page `profile`): portrait in the
+  character's colour with a status ring, level, character, numbers and a 60-character line
+  (`Net.bio`, sent in `stats` as `bio`, with `ch`). «ملفي» edits mine.
+- **Map icons** (`NFIcons`: `bolt` ⚡ generators with a repair ring, `gate`, `hook`, `locker`, `plank`,
+  `hatch`, `trap`): drawn on the minimap and the big map, with a legend of the same icons.
+- **Six seats** in the escape car and the **beach killer spawn** on the sand (it was in the lagoon past
+  the wading wall) — see the road chase and the beach above. `tools/gun.tscn` tests the gun, the names,
+  Vanish and the passkey; `node server/test.js` runs in CI now.

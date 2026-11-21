@@ -23,13 +23,17 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq xvfb libgl1-mesa-dri mesa-utils mesa-vulkan-drivers >/dev/null
       - name: Import
         run: godot --headless --path . --import 2>&1 | tail -40 || true
+      - name: Server tests
+        run: |
+          cd server && npm install --silent --no-audit --no-fund >/dev/null 2>&1 && node test.js 2>&1 | tee ../server.log | tail -60 || echo "::warning::server tests failed"
       - name: Headless tests
         run: |
           : > all.log
+          cat server.log >> all.log 2>/dev/null || true
           # a script that does not compile stops everything here, before minutes of tests
           timeout 120 godot --headless --path . --quit 2>&1 | tee boot.log | tail -20
           if grep -E "Parse Error|Compile Error" boot.log; then echo "::error::scripts do not compile"; cat boot.log >> all.log; exit 1; fi
-          for t in ${NF_TESTS:-road hud tex drive props ui smoke map win camp beach}; do
+          for t in ${NF_TESTS:-road hud tex drive props ui smoke map win camp beach gun}; do
             [ -f tools/$t.tscn ] || continue
             echo "=== $t" | tee -a all.log
             timeout 240 godot --headless --path . res://tools/$t.tscn 2>&1 | tee -a all.log || echo "::warning::$t stopped (timeout or exit $?)"

@@ -187,6 +187,46 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(mate.room.state === 'lobby' && mate.room.code === code, 'play again keeps the same room', mate.room.code);
   ok(mate.room.players.length === 3, 'with the same players');
 
+  // --- «وضع السلاح»: a stun gun for the survivors, three shots, a hit leaves her dizzy ---
+  const rg = new Rules([{ name: 'K', role: 'killer' }, { name: 'A', role: 'survivor' }], 5, { gun: true });
+  rg.setLayout({ g: [[0, 0]], p: [[1, 1]], h: [[0, 0]], x: [[3, 3]], d: [[4, 4]] });
+  rg.pos.K = [5, 0, 0]; rg.pos.A = [0, 0, 0];
+  const sh = rg.handle({ k: 'shoot', hit: true }, 'A');
+  ok(sh.some((e) => e.k === 'shot' && e.hit) && rg.stun === 3 && rg.s.A.ammo === 2, 'a hit stuns her for 3 s and costs a shot', JSON.stringify(sh));
+  rg.stun = 0; rg.pos.K = [60, 0, 0];
+  rg.handle({ k: 'shoot', hit: true }, 'A');
+  ok(rg.stun === 0 && rg.s.A.ammo === 1, 'out of range it misses, whatever the phone says');
+  rg.handle({ k: 'shoot', hit: false }, 'A'); rg.handle({ k: 'shoot', hit: true }, 'A');
+  ok(rg.s.A.ammo === 0, 'three shots and the gun is empty');
+  ok(rg.snapshot().s.A[13] === 0 && rg.snapshot().gn === true, 'the snapshot carries the shots left and the mode');
+  const rn = new Rules([{ name: 'K', role: 'killer' }, { name: 'A', role: 'survivor' }], 5);
+  rn.setLayout({ g: [[0, 0]], p: [[1, 1]], h: [[0, 0]], x: [[3, 3]], d: [[4, 4]] });
+  ok(rn.handle({ k: 'shoot', hit: true }, 'A').length === 0, 'no gun outside the mode');
+  host.send({ t: 'set', gun: true });
+  await wait(150);
+  ok(mate.room.gun === true, 'the host switches the gun mode on for the room');
+
+  // --- friends: where they are, invites that wait, the profile line ---
+  const fa = client('Saud');
+  await fa.ready;
+  fa.send({ t: 'friends', friends: ['Rashid', 'Ghanim'] });
+  await wait(150);
+  const fl = fa.last('friends');
+  ok(fl && fl.status && fl.status.Rashid === 'room', 'a friend in a room shows as «in a room»', JSON.stringify(fl && fl.status));
+  host.send({ t: 'invite', to: 'Ghanim' });
+  await wait(150);
+  ok(host.last('error') && host.last('error').code === 'invite_later', 'an invite to an offline friend is kept');
+  const gh = client('Ghanim');
+  await gh.ready;
+  await wait(200);
+  ok(gh.last('invite') && gh.last('invite').from === 'Rashid' && gh.last('invite').later, 'and handed over when he comes online');
+  fa.send({ t: 'stats', s: { lv: 3, xp: 10, esc: 1, kills: 0, rounds: 2, ch: 'survivor6', bio: 'هلا <b>' } });
+  host.send({ t: 'friends', friends: ['Saud'] });
+  await wait(200);
+  const sr = (host.last('friends').stats || []).find((x) => x.name === 'Saud');
+  ok(sr && sr.ch === 'survivor6' && sr.bio === 'هلا b', 'the profile carries the character and a clean line', JSON.stringify(sr));
+  fa.ws.close(); gh.ws.close();
+
   for (const c of [host, mate, third]) c.ws.close();
   srv.kill();
   await wait(150);
