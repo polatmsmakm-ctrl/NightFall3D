@@ -203,6 +203,7 @@ func _start(c: Dictionary) -> void:
 	world.configure(str(c.map), int(c.get("seed", randi() % 1000000) if not offline else randi() % 1000000), theme)
 	add_child(world)
 	world.build() # staged: terrain + buildings + objectives first, the rest over the next frames
+	Gfx.quiet(30.0) # the governor waits until the map is built and the round has settled
 	rules = Rules.new()
 	rules.setup(world.gen_points.size(), world.gate_points.size(), world.pallet_points.size(), world.hatch_points.size(),
 		c.players, int(c.get("seed", 1)) if not offline else randi() % 1000000, world.door_points.size())
@@ -305,8 +306,10 @@ func _make_flashlight() -> SpotLight3D:
 	l.visible = false
 	return l
 
-## Strong devices on «فائق» play the round with every character's close-up model (100k
-## triangles, the 4096 colour map) instead of the 30k one.
+## Strong devices on «فائق» play the round with MY character's close-up model (100k triangles,
+## the 4096 colour map): it is the one the camera sits behind. Everyone else wears the 30k one:
+## seven close-up models were 700k skinned triangles drawn again in every shadow cascade, and the
+## round lagged on the 18 Pro Max too.
 func hd_chars() -> bool:
 	return Gfx.strong and Gfx.effects >= 2 and Gfx.shadows >= 2
 
@@ -314,7 +317,7 @@ func _add_remote(p: Dictionary) -> void:
 	var node := Node3D.new()
 	var r := CharacterRig.new()
 	node.add_child(r)
-	r.setup(str(p.char), CharacterRig.ANIMS, hd_chars())
+	r.setup(str(p.char), CharacterRig.ANIMS, false) # the round model: only my own character gets the close-up one
 	node.position = world.spawn_point(str(p.role), int(p.slot))
 	if p.get("dummy", false): # trial-mode practice target
 		var gp: Vector3 = world.gen_points[0]
@@ -1956,7 +1959,9 @@ func _process(dt: float) -> void:
 		if not is_instance_valid(loading): loading = null
 		else:
 			loading.progress(float(world.build_step) / float(NightWorld.BUILD_STEPS))
-			if world.ready_done and loading.shown > 0.9: loading.finish()
+			if world.ready_done and loading.shown > 0.9:
+				loading.finish()
+				Gfx.quiet(5.0) # the first seconds of play: shaders seen for the first time
 	if bot and not bot_baked and world.ready_done:
 		bot_baked = true
 		bot.bake()
@@ -2710,6 +2715,10 @@ func _esc_cars(dt: float) -> void:
 		var ec: NFCar = world.esc_cars[i]
 		var rd: Dictionary = rules.roads[i]
 		var st := int(rd.st)
+		# behind a shut gate nobody can see or reach it: no drawing, no shadows, no work until then
+		var awake: bool = rules.powered or st > 0
+		if ec.visible != awake: ec.visible = awake
+		if not awake: continue
 		if st != int(esc_seen[i]):
 			if st == 1: ec.begin("in") # the door, the key, the engine
 			elif st == 2 and int(esc_seen[i]) == 1: # caught: a dead stop, the door flies open, out they go

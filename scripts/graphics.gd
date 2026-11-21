@@ -53,6 +53,7 @@ var menu_open := false
 var _t := 0.0
 var _frames := 0
 var _warm := 6.0
+var _quiet := 0.0 # the round is loading or just began: frame times say nothing about the settings
 var _bad := 0
 var _good := 0
 var _hud: Label
@@ -134,9 +135,10 @@ func apply() -> void:
 	var vp := get_viewport()
 	Engine.max_fps = target_fps()
 	vp.msaa_3d = [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X][aa]
-	# the interface too: round buttons, rings, the map and the drawn icons get smooth edges (cheap
-	# on the iPhone's tile-based GPU; text is already anti-aliased by the font)
-	vp.msaa_2d = Viewport.MSAA_4X if maxed() else (Viewport.MSAA_2X if preset >= 1 else Viewport.MSAA_DISABLED)
+	# no MSAA on the 2D layer: it made the whole screen a multisampled target that the 3D picture was
+	# copied into and resolved every frame (at the iPhone's full resolution). The HUD draws its own
+	# smooth edges (anti-aliased lines and rings), the font is anti-aliased already.
+	vp.msaa_2d = Viewport.MSAA_DISABLED
 	vp.scaling_3d_scale = render_scale()
 	# below 100% the picture is rebuilt with AMD FSR (sharper than plain stretching), so the governor
 	# can take the resolution down a little without it looking soft
@@ -163,7 +165,7 @@ func apply() -> void:
 		RenderingServer.environment_set_volumetric_fog_filter_active(true)
 		RenderingServer.sub_surface_scattering_set_quality(RenderingServer.SUB_SURFACE_SCATTERING_QUALITY_MEDIUM if maxed() else RenderingServer.SUB_SURFACE_SCATTERING_QUALITY_LOW)
 	# sharper ground at a glancing angle, and models keep their full detail further away
-	vp.anisotropic_filtering_level = Viewport.ANISOTROPY_16X if maxed() else (Viewport.ANISOTROPY_2X if weak else Viewport.ANISOTROPY_4X)
+	vp.anisotropic_filtering_level = Viewport.ANISOTROPY_8X if maxed() else (Viewport.ANISOTROPY_2X if weak else Viewport.ANISOTROPY_4X)
 	# older phones swap to the simpler level of detail of every model sooner (the GPU's vertex work)
 	vp.mesh_lod_threshold = 0.7 if maxed() else (2.0 if weak else 1.0)
 	changed.emit()
@@ -232,10 +234,16 @@ func _save() -> void:
 	c.save(PATH)
 
 # ---------- adaptive governor ----------
+## The governor looks away for a while: the map is building itself, or a round has just started
+## (main calls it). Loading hitches used to count as "too slow" and take settings away for good.
+func quiet(seconds: float) -> void:
+	_quiet = maxf(_quiet, seconds)
+	_t = 0.0; _frames = 0; _bad = 0
+
 func _process(dt: float) -> void:
 	_t += dt; _frames += 1
-	if _warm > 0.0:
-		_warm -= dt; _t = 0.0; _frames = 0
+	if _warm > 0.0 or _quiet > 0.0:
+		_warm = maxf(_warm - dt, 0.0); _quiet = maxf(_quiet - dt, 0.0); _t = 0.0; _frames = 0
 		return
 	if _t < 2.0: return
 	var avg := _t / float(_frames)
@@ -249,16 +257,19 @@ func _process(dt: float) -> void:
 	else: _bad = 0; _good = 0
 	if _bad >= 2:
 		_bad = 0; _step_down()
-	elif _good >= 8:
-		_good = 0; _step_up()
+	# no stepping back up by itself: going up, finding it too slow, coming down again every twenty
+	# seconds was a hitch each way (shadow atlases, fog buffers and the render size are rebuilt).
+	# What it gave away comes back when the player changes a setting.
 
 func _step_down() -> void:
-	# a smooth 60 with everything on beats a stuttering 120: the frame rate gives way first
+	# a smooth 60 with everything on beats a stuttering 120: the frame rate gives way first, then the
+	# heaviest effects (occlusion, volumetric fog), then the render size in ONE step (every change of
+	# it rebuilds the render buffers: a hitch each), then the shadows
 	if target_fps() > 60: rt_fps_cap = 60
-	elif render_scale() > scale_floor() + 0.001:
-		dyn_scale = maxf(dyn_scale - 0.05, scale_floor() / SCALE_OPTS[scale_idx])
-	elif eff_shadows() > 0: rt_shadows = eff_shadows() - 1
 	elif eff_effects() > 0: rt_effects = eff_effects() - 1
+	elif render_scale() > scale_floor() + 0.001:
+		dyn_scale = scale_floor() / SCALE_OPTS[scale_idx]
+	elif eff_shadows() > 0: rt_shadows = eff_shadows() - 1
 	# an older phone that still cannot hold 60 with all of that given away: a steady 30 is smoother
 	# than 40-something that jumps around. It stays for the session (60 again would only drop back).
 	elif weak and target_fps() > 30: rt_fps_cap = 30

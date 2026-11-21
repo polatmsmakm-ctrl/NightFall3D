@@ -1097,6 +1097,9 @@ func _build_objectives() -> void:
 			_box(body, Vector3(lane_w, 1.0, z1 - z0), Vector3(0, gy - 0.48, -(z0 + z1) / 2.0), road_mat)
 			for sx in [-1.0, 1.0]:
 				_box(body, Vector3(0.6, 9.0, z1 - z0), Vector3(sx * (lane_w / 2.0 + 0.3), gy + 3.5, -(z0 + z1) / 2.0), _mat.concrete)
+			for ch in body.get_children(): # 600 m of floor and walls drawn again in every shadow cascade: not worth it
+				if ch is MeshInstance3D and (ch as MeshInstance3D).position.z < -1.0:
+					(ch as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			z0 = z1
 		_box(body, Vector3(lane_w + 1.2, 9.0, 0.6), Vector3(0, gy + 3.5, -ROAD_LEN - 6.0), _mat.concrete) # dead end behind the last gate
 		for i in int(ROAD_LEN / 40.0): # lamps down the lane, alternating sides
@@ -1109,8 +1112,10 @@ func _build_objectives() -> void:
 			ll.light_color = Color(1.0, 0.82, 0.55)
 			ll.light_energy = 2.0
 			ll.omni_range = 16.0
-			body.add_child(ll)
-			_amb_light(ll)
+			ll.distance_fade_enabled = true
+			ll.distance_fade_begin = 36.0
+			ll.distance_fade_length = 8.0
+			body.add_child(ll) # steady, no halo in the fog: thirty of them along each road
 		# dashed centre line: one MultiMesh for the whole road
 		var dash := BoxMesh.new()
 		dash.size = Vector3(0.16, 0.02, 2.4)

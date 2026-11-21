@@ -36,7 +36,7 @@ func _ready() -> void:
 	# ---------- quality ----------
 	print("anisotropic materials on the forest: ", w.aniso_mats)
 	check(w.aniso_mats > 20, "anisotropic filtering across the map's materials (%d)" % w.aniso_mats)
-	check(get_viewport().msaa_2d != Viewport.MSAA_DISABLED or Gfx.preset == 0, "2D anti-aliasing for the interface (%d)" % get_viewport().msaa_2d)
+	check(get_viewport().msaa_2d == Viewport.MSAA_DISABLED, "no 2D multisampling (the HUD draws its own smooth edges; it cost a full-screen resolve every frame)")
 	var car_ps: PackedScene = load("res://assets/props/car.glb")
 	var ci := car_ps.instantiate()
 	var cm: StandardMaterial3D = null
