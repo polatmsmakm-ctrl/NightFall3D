@@ -276,7 +276,24 @@ func reach(left: Vector3, right: Vector3, left_pole: Vector3, right_pole: Vector
 	reach_mod.hide_head = hide_head
 
 func reach_clear() -> void:
-	if reach_mod: reach_mod.engaged = false
+	if reach_mod:
+		reach_mod.engaged = false
+		reach_mod.use = [true, true]
+		reach_mod.aims = [Vector3.ZERO, Vector3.ZERO]
+
+## The gun hold: one or both arms to their targets, the hands turned along `aim_l` / `aim_r`.
+func reach_arms(left: Vector3, right: Vector3, left_pole: Vector3, right_pole: Vector3, use_left: bool, aim_l: Vector3, aim_r: Vector3) -> void:
+	reach(left, right, left_pole, right_pole)
+	if reach_mod == null: return
+	reach_mod.use = [use_left, true]
+	reach_mod.aims = [aim_l, aim_r]
+
+## Where a bone is in the world (the gun hold reads the shoulders), or the rig's origin if missing.
+func bone_at(bone: String) -> Vector3:
+	if skeleton == null: return global_position
+	var b := skeleton.find_bone(bone)
+	if b < 0: return global_position
+	return skeleton.global_transform * skeleton.get_bone_global_pose(b).origin
 
 ## Is this clip actually available on this character? (false until the GLB is dropped in)
 func has(anim: String) -> bool:

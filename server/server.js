@@ -216,7 +216,8 @@ const handlers = {
     const p = m.p;
     if (!Array.isArray(p) || p.length !== 4 || !p.every(Number.isFinite)) return;
     if (r.rules) r.rules.setPos(c.name, p);
-    broadcast(r, { t: 'st', n: c.name, p, a: String(m.a || 'idle').slice(0, 12), f: m.f ? 1 : 0, v: m.v ? 1 : 0 }, c);
+    broadcast(r, { t: 'st', n: c.name, p, a: String(m.a || 'idle').slice(0, 12), f: m.f ? 1 : 0, v: m.v ? 1 : 0,
+      g: [0, 1, 2].includes(m.g) ? m.g : 0, gp: Math.max(-1, Math.min(1, Number(m.gp) || 0)) }, c); // the gun: put away / lowered / raised, and its tilt
   },
   emote(c, m) { // campfire emote in the lobby, shown to everyone else in the room
     const r = c.room;

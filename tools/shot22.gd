@@ -13,11 +13,11 @@ func shot(name: String) -> void:
 	get_viewport().get_texture().get_image().save_png("%s/%s.png" % [dir, name])
 	print("shot ", name)
 
-func boot(map: String, theme: String):
+func boot(map: String, theme: String, gun := false):
 	var m = load("res://scenes/main.tscn").instantiate()
 	tree.root.add_child.call_deferred(m)
 	await frames(10)
-	m._start({"map": map, "me": "P", "offline": true, "theme": theme, "players": [
+	m._start({"map": map, "me": "P", "offline": true, "theme": theme, "gun": gun, "players": [
 		{"name": "P", "role": "survivor", "char": "survivor6", "slot": 0},
 		{"name": "القاتلة", "role": "killer", "char": "killer", "slot": 1}]})
 	for i in 900:
@@ -84,6 +84,20 @@ func _ready() -> void:
 	m = await boot("garage", "normal")
 	await look_at_spot(m, m.world.gen_points[0], 6.0)
 	await shot("22_garage_grade")
+	m.queue_free()
+	await frames(10)
+	# the pistol: lowered by the hip (seen from the side), then raised in both hands
+	m = await boot("forest", "normal", true)
+	await frames(30)
+	m.rig.rotation.y = m.yaw + PI / 2.0
+	await frames(6)
+	await shot("22_gun_low")
+	m.gun_aim = 3.0
+	await frames(30)
+	await shot("22_gun_aim")
+	m.pitch = 0.45
+	await frames(15)
+	await shot("22_gun_aim_up")
 	m.queue_free()
 	await frames(10)
 	print("SHOT22 DONE")

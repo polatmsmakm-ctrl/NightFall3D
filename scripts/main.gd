@@ -165,6 +165,10 @@ var esc_popped := {}       # road -> the spikes have been reported
 # the killer's tools: traps on the map, a strip of spikes across an escape road
 var trap_cd := 0.0
 var gun_cd := 0.0          # a beat between two shots of the stun gun
+var my_gun: NFGun          # the pistol in my hand («وضع السلاح»)
+var gun_aim := 0.0         # seconds the gun stays raised after the button
+var gun_pending := -1.0    # the shot leaves once the arms are up
+const GUN_POSES := ["idle", "walk", "run", "sprint", "injured", "crouchwalk"] # the arms are free in these
 var vanished := false      # the developer tools' «Vanish»: hidden on every other phone (st flag v)
 var trap_nodes := []       # one node per trap slot (Rules.TRAPS)
 var spike_nodes := []      # one strip per road
@@ -356,7 +360,7 @@ func _add_remote(p: Dictionary) -> void:
 	steps.max_distance = 32.0
 	node.add_child(steps)
 	add_child(node)
-	remotes[str(p.name)] = {"node": node, "rig": r, "pos": node.position, "yaw": 0.0, "anim": "idle", "role": str(p.role), "step": 0.0, "steps": steps, "torch": torch, "lit": false, "bleed": bleed, "v": false, "spd": 0.0}
+	remotes[str(p.name)] = {"node": node, "rig": r, "pos": node.position, "yaw": 0.0, "anim": "idle", "role": str(p.role), "step": 0.0, "steps": steps, "torch": torch, "lit": false, "bleed": bleed, "v": false, "spd": 0.0, "g": 0, "gp": 0.0, "gun": null}
 
 # ---------------- audio ----------------
 func _loop_player(stream_name: String, db: float, autoplay := false, bus := Aud.SFX) -> AudioStreamPlayer:
@@ -584,6 +588,8 @@ func _on_net(m: Dictionary) -> void:
 				r.anim = str(m.a)
 				r.lit = int(m.get("f", 0)) == 1
 				r.v = int(m.get("v", 0)) == 1 # the developer tools' «Vanish» on that phone
+				r.g = int(m.get("g", 0)) # the gun: 0 put away, 1 lowered, 2 raised
+				r.gp = float(m.get("gp", 0.0)) # where it points, up or down
 			var d = m.get("d")
 			if d is Dictionary and str(m.get("n", "?")) == "": # only the server referees
 				if str(d.get("k", "")) == "gs": rules.apply(d)
@@ -649,6 +655,10 @@ func _shoot() -> void:
 			if get_world_3d().direct_space_state.intersect_ray(q).is_empty():
 				hit = true
 				to = kp
+	if my_gun and my_gun.visible:
+		from = my_gun.muzzle()
+		my_gun.shot()
+	gun_aim = 1.4
 	_beam(from, to, hit)
 	_shake(0.18)
 	NFHaptics.pulse("hit" if hit else "tick")
@@ -676,6 +686,40 @@ func _beam(a: Vector3, b: Vector3, hit: bool) -> void:
 	var tw := create_tween()
 	tw.tween_property(m, "albedo_color:a", 0.0, 0.2)
 	tw.tween_callback(mi.queue_free)
+
+## «وضع السلاح»: up and down with the camera — a little above the camera's own tilt, since it
+## looks down at me from behind.
+func _gun_pitch() -> float:
+	return clampf(pitch + 0.22, -0.9, 0.9)
+
+## The pistols: mine (out while I can use my arms; raised for a moment by the button, the shot
+## leaving once it is up) and every other survivor's, from what their phones say (`g`, `gp`).
+func _step_guns(dt: float) -> void:
+	if not rules.gun: return
+	if my_role == "survivor" and rig:
+		if my_gun == null:
+			my_gun = NFGun.new()
+			add_child(my_gun)
+			my_gun.setup(rig)
+		var out: bool = my_state in ["ok", "hurt"] and int(rules.s.get(my_name, {}).get("ammo", 0)) > 0 \
+			and esc_i < 0 and int(rules.s.get(my_name, {}).get("locker", -1)) < 0 and vault.is_empty() and _held() <= 0.0 and str(rig.current) in GUN_POSES
+		gun_aim = maxf(gun_aim - dt, 0.0)
+		if gun_pending >= 0.0:
+			gun_pending -= dt
+			if gun_pending < 0.0: _shoot()
+		my_gun.step(out, 1.0 if gun_aim > 0.0 else 0.0, _gun_pitch(), rig.rotation.y, dt)
+	for n in remotes:
+		var r = remotes[n]
+		if r.role != "survivor": continue
+		var g = r.get("gun")
+		var out2: bool = int(r.get("g", 0)) > 0 and r.node.visible and str(r.rig.current) in GUN_POSES
+		if g == null:
+			if not out2: continue
+			g = NFGun.new()
+			add_child(g)
+			(g as NFGun).setup(r.rig)
+			r.gun = g
+		(g as NFGun).step(out2, 1.0 if int(r.g) == 2 else 0.0, float(r.gp), r.rig.rotation.y, dt)
 
 ## The owner's map pictures (assets/ui/map: his generators, market, hook, gates and hatch, cut out of
 ## his sheet). Draws one `px` wide on the map; false if the picture is missing (the drawn icon then).
@@ -814,6 +858,10 @@ func _on_event(e: Dictionary) -> void:
 			var who := str(e.n)
 			if who != my_name and remotes.has(who):
 				var from: Vector3 = remotes[who].node.position + Vector3(0, 1.35, 0)
+				var rg = remotes[who].get("gun")
+				if rg != null and (rg as NFGun).visible:
+					(rg as NFGun).shot()
+					from = (rg as NFGun).muzzle()
 				var to: Vector3 = (_pos_of(rules.killer) + Vector3(0, 1.3, 0)) if bool(e.hit) else from + Vector3(sin(remotes[who].yaw), 0, cos(remotes[who].yaw)) * 18.0
 				_beam(from, to, bool(e.hit))
 			if bool(e.hit): _feed("%s دوّخ القاتلة بالمسدس!" % who, "gun", Color(0.5, 0.9, 1.0))
@@ -1977,8 +2025,11 @@ func _press(id: String, touch: int) -> void:
 				_shake(0.45)
 				NFHaptics.pulse("impact")
 				_flash("نيترو!")
-		"gun":
-			_shoot()
+		"gun": # up with it, then the shot once the arms are there (at once if it is already up)
+			if my_gun and my_gun.visible and my_gun.raise < 0.8:
+				gun_aim = maxf(gun_aim, 1.6)
+				if gun_pending < 0.0: gun_pending = 0.16
+			else: _shoot()
 		"vanish":
 			if Dev.unlocked and Dev.vanish_tool:
 				vanished = not vanished
@@ -2176,6 +2227,7 @@ func _in_car(n: String) -> bool:
 # ---------------- per-frame ----------------
 func _process(dt: float) -> void:
 	if not started: return
+	_step_guns(dt)
 	if loading != null: # the map is still being built: keep the tip screen up
 		if not is_instance_valid(loading): loading = null
 		else:
@@ -2541,7 +2593,8 @@ func _physics_process(delta: float) -> void:
 			var p := body.position
 			Net.send({"t": "st", "p": [snappedf(p.x, 0.01), snappedf(p.y, 0.01), snappedf(p.z, 0.01), snappedf(rig.rotation.y, 0.01)], "a": "drive" if driving else (("edrive" if rules.roads[esc_i].drv == my_name else "eride") if esc_i >= 0 else rig.current),
 					"f": 1 if (light_on or (my_role == "killer" and car != null and car.radio_on)
-						or (esc_i >= 0 and (world.esc_cars[esc_i] as NFCar).nitro > 0.0)) else 0, "v": 1 if vanished else 0}) # the killer has no torch: f is his radio
+						or (esc_i >= 0 and (world.esc_cars[esc_i] as NFCar).nitro > 0.0)) else 0, "v": 1 if vanished else 0,
+					"g": (0 if my_gun == null or not my_gun.visible else (2 if gun_aim > 0.0 else 1)), "gp": snappedf(_gun_pitch(), 0.05)}) # the killer has no torch: f is his radio
 
 # ---------------- the killer's car ----------------
 func _enter_car() -> void:
@@ -3159,7 +3212,12 @@ func _move(delta: float) -> void:
 	body.move_and_slide()
 	var flat := Vector2(body.velocity.x, body.velocity.z)
 	var v := flat.length()
-	if my_role != "killer" and v > 0.25:
+	if my_gun and my_gun.visible and my_gun.raise > 0.3: # aiming: she turns to where the camera looks
+		var cam := get_viewport().get_camera_3d()
+		if cam:
+			var cf := -cam.global_basis.z
+			rig.rotation.y = lerp_angle(rig.rotation.y, atan2(cf.x, cf.z), 14.0 * delta)
+	elif my_role != "killer" and v > 0.25:
 		rig.rotation.y = lerp_angle(rig.rotation.y, atan2(flat.x, flat.y), 12.0 * delta)
 	# killer hit check during the swing
 	if my_role == "killer" and attack_t > 0.45 and attack_t < 0.95 and not hit_sent:

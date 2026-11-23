@@ -56,12 +56,32 @@ func _ready() -> void:
 	print("   aim: camera %s fwd %s, her at %s, me at %s" % [cam.global_position.snappedf(0.1), fwd.snappedf(0.01), kn.position.snappedf(0.1), m.body.position.snappedf(0.1)])
 	m.remotes["K"].pos = kn.position
 	await frames(2)
+	await frames(10)
+	check(m.my_gun != null and m.my_gun.visible and m.my_gun.raise < 0.05, "the pistol is out, lowered by the hip")
+	var hand: Vector3 = m.rig.bone_at("mixamorig_RightHand")
+	print("   lowered: hand %s, gun %s, miss %.3f" % [hand.snappedf(0.01), m.my_gun.model.global_position.snappedf(0.01), m.rig.reach_mod.miss])
+	check(m.rig.reach_mod.engaged and m.rig.reach_mod.miss < 0.06, "the right arm holds it there (IK within %.2f m)" % m.rig.reach_mod.miss)
+	check(hand.distance_to(m.my_gun.model.global_position) < 0.2, "the gun is in the hand (%.2f m)" % hand.distance_to(m.my_gun.model.global_position))
+	check(m.rig.reach_mod.use[0] == false, "the left arm swings free while it is lowered")
 	m._press("gun", 5)
-	await frames(4)
+	await frames(40)
+	check(m.my_gun.raise > 0.9 and m.rig.reach_mod.use[0], "the button raises it in both hands (%.2f)" % m.my_gun.raise)
+	var shoulder_y: float = m.rig.bone_at("mixamorig_RightArm").y
+	check(absf(m.my_gun.model.global_position.y - shoulder_y) < 0.35, "aimed at shoulder height (%.2f vs %.2f)" % [m.my_gun.model.global_position.y, shoulder_y])
+	var gy_mid: float = m.my_gun.muzzle().y
+	m.pitch = 0.5
+	await frames(12)
+	check(m.my_gun.muzzle().y > gy_mid + 0.05, "and it follows the camera up (%.2f -> %.2f)" % [gy_mid, m.my_gun.muzzle().y])
+	m.pitch = -0.6
+	await frames(12)
+	check(m.my_gun.muzzle().y < gy_mid - 0.03, "and down (%.2f)" % m.my_gun.muzzle().y)
+	m.pitch = -0.25
 	print("   after the shot: stun %.1f, shots left %d" % [m.rules.stun, int(m.rules.s.P.ammo)])
 	check(int(m.rules.s.P.ammo) == 2, "the shot is counted")
 	check(m.rules.stun > 0.0 or not m.world.get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(m.body.position + Vector3(0, 1.35, 0), kn.position + Vector3(0, 1.3, 0), 1)).is_empty(),
 		"aimed at her with a clear line, it hits and she is dizzy")
+	await frames(150)
+	check(m.my_gun.raise < 0.1, "a moment after the shot it goes down again (%.2f)" % m.my_gun.raise)
 	# the team: D's name over D's head, D's body seen through walls; the killer gets nothing
 	await frames(4)
 	var e: Dictionary = m.esp_nodes.get("D", {})

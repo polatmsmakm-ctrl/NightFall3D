@@ -9,6 +9,9 @@ var engaged := false
 var targets := [Vector3.ZERO, Vector3.ZERO]  # world: left hand, right hand (the wrist joint)
 var poles := [Vector3.ZERO, Vector3.ZERO]    # world: where each elbow should point
 var hide_head := false
+var use := [true, true]                       # which arms it moves (the gun hold lowered: the right one only)
+var aims := [Vector3.ZERO, Vector3.ZERO]     # world: where each hand's fingers should point (zero: leave it)
+var _fingers := [-1, -1]                     # the middle finger's first bone of each hand
 var _bones := []                             # [[arm, forearm, hand] left, [..] right], neck
 var runs := 0                                # how many times it has run (the test reads it)
 var miss := 0.0                              # how far the wrists ended from the grips, last run
@@ -19,6 +22,8 @@ func _bones_of(sk: Skeleton3D) -> void:
 		_bones.append([sk.find_bone("mixamorig_%sArm" % side), sk.find_bone("mixamorig_%sForeArm" % side),
 			sk.find_bone("mixamorig_%sHand" % side)])
 	_bones.append(sk.find_bone("mixamorig_Neck"))
+	for i in 2:
+		_fingers[i] = sk.find_bone("mixamorig_%sHandMiddle1" % ["Left", "Right"][i])
 
 func _process_modification() -> void:
 	var sk := get_skeleton()
@@ -29,8 +34,15 @@ func _process_modification() -> void:
 	miss = 0.0
 	for i in 2:
 		var ch: Array = _bones[i]
-		if ch[0] < 0 or ch[1] < 0 or ch[2] < 0: continue
+		if not use[i] or ch[0] < 0 or ch[1] < 0 or ch[2] < 0: continue
 		_two_bone(sk, ch[0], ch[1], ch[2], inv * (targets[i] as Vector3), inv * (poles[i] as Vector3))
+		var aim: Vector3 = aims[i]
+		if aim != Vector3.ZERO and _fingers[i] >= 0: # turn the hand so the fingers run along the grip
+			var H := sk.get_bone_global_pose(ch[2])
+			var f := sk.get_bone_global_pose(_fingers[i]).origin
+			var want := (inv.basis * aim).normalized()
+			var q3 := Quaternion((f - H.origin).normalized(), want)
+			sk.set_bone_global_pose(ch[2], Transform3D(Basis(q3) * H.basis, H.origin))
 		var wrist: Vector3 = sk.global_transform * sk.get_bone_global_pose(ch[2]).origin
 		miss = maxf(miss, wrist.distance_to(targets[i]))
 	# from the seat the camera is where her head is: the neck and everything on it (the head, and the

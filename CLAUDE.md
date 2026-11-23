@@ -853,3 +853,22 @@ from the agent's machine).
   Empty Quarter's wall and behind the beach, no shadows; `sand_blob.glb` patches on the beach;
   `forest_floor.glb` (leaf litter, ferns, stones, a log) on flat spots of the forest, drawn to 70 m.
   Their textures were cut to 1024 with `tools/glb_texsize.py`. No collision: all low or outside.
+
+## The pistol in the hand (`scripts/gun_hold.gd`, `NFGun`; «وضع السلاح» only)
+- A 19 cm pistol built in code (slide with serrations and sights, polymer frame, raked grip, trigger
+  and guard, the barrel's mouth), or the owner's `assets/props/gun.glb` the moment it exists (grip at
+  the origin, barrel toward +Z, metres).
+- **Held by the arms, over the animation**: `NFReach` (two-bone IK) now has `use` (per arm) and
+  `aims` (turns the hand so the fingers run along the grip); `CharacterRig.reach_arms()` and
+  `bone_at()`. **Lowered**: right hand by the hip, muzzle down ahead, the left arm free. **Raised**
+  (the gun button; the shot leaves 0.16 s later, once the arms are up, then it stays up 1.4 s):
+  both hands out at shoulder height, the left cupping the right, and the aim **follows the camera up
+  and down** (`_gun_pitch()`); she turns to where the camera looks. **Recoil**: the muzzle jumps and
+  the hands come back (`kick`). The beam starts at the muzzle.
+- Out only while the arms are free (`GUN_POSES`: idle, walk, run, sprint, injured, crouch-walk), ok or
+  hurt, with shots left, not in a car, a locker, a vault or a trap.
+- **Everyone sees it**: my `st` carries `g` (0 away, 1 lowered, 2 raised) and `gp` (the tilt); the
+  server relays both (Render must be on this version); other phones run an `NFGun` on that remote's
+  rig and kick it on their `shot` event.
+`tools/gun.tscn` checks the hold, the raise, up and down, and the lowering; `tools/shot22.tscn`
+photographs it lowered and raised.
