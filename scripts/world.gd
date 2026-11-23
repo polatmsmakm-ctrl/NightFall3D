@@ -391,6 +391,7 @@ func build() -> void:
 	if map_id != "garage": _build_scatter() # the garage parks its own cars
 	_build_theme_props()
 	if map_id == "rubkhali": _build_animals()
+	_build_scenery()
 	_build_trees()
 	build_step = 3
 	await get_tree().process_frame
@@ -530,6 +531,9 @@ func _build_environment() -> void:
 	env = Environment.new()
 	var sm := ShaderMaterial.new()
 	sm.shader = load("res://shaders/sky.gdshader")
+	if ResourceLoader.exists("res://assets/sky/moon.jpg"): # the owner's moon
+		sm.set_shader_parameter("moon_tex", load("res://assets/sky/moon.jpg"))
+		sm.set_shader_parameter("has_moon_tex", 1.0)
 	sm.set_shader_parameter("moon_dir", moon_dir)
 	sm.set_shader_parameter("noise_tex", _sky_noise)
 	var sky := Sky.new()
@@ -2512,6 +2516,79 @@ func _build_decals() -> void:
 			n += 1
 		decals += n
 
+## The owner's scenery models: big dunes outside the Empty Quarter's wall (and behind the beach) so
+## the horizon is sand hills, not a flat line; sand patches on the beach; and on the forest patches of
+## forest floor — leaf litter, ferns, half-buried stones and a fallen log — laid where the ground is
+## flat enough to take them. No collision: it is all low or outside the wall.
+var scenery := 0
+
+func _scene_model(path: String) -> PackedScene:
+	if not _models.has(path): _models[path] = load(path) if ResourceLoader.exists(path) else null
+	return _models[path]
+
+func _build_scenery() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(map_id) + 77
+	if map_id in ["rubkhali", "beach"]:
+		var dune := _scene_model("res://assets/scatter/dune.glb")
+		if dune:
+			var n := 12 if map_id == "rubkhali" else 5
+			for i in n:
+				var a := TAU * (float(i) + rng.randf_range(-0.3, 0.3)) / float(n)
+				if map_id == "beach": a = PI * 0.15 + PI * 0.7 * float(i) / float(n - 1) # the south side only: the sea is north
+				var r := HALF + rng.randf_range(55.0, 95.0)
+				var d := dune.instantiate() as Node3D
+				var k := rng.randf_range(0.9, 1.5)
+				d.scale = Vector3(k, k * rng.randf_range(0.8, 1.2), k)
+				d.position = Vector3(cos(a) * r, -1.5, sin(a) * r)
+				d.rotation.y = rng.randf() * TAU
+				for gi in d.find_children("*", "GeometryInstance3D", true, false):
+					(gi as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				add_child(d)
+				scenery += 1
+	if map_id == "beach":
+		var blob := _scene_model("res://assets/scatter/sand_blob.glb")
+		if blob:
+			var tries := 0
+			var n := 0
+			while n < 14 and tries < 80:
+				tries += 1
+				var p := _free_spot(rng, 5.0)
+				if p == Vector3.INF or p.z > BEACH_SHORE - 4.0: continue
+				if absf(height(p.x - 4.0, p.z) - height(p.x + 4.0, p.z)) > 0.35: continue
+				var b := blob.instantiate() as Node3D
+				b.position = p + Vector3(0, -0.06, 0)
+				b.rotation.y = rng.randf() * TAU
+				var k := rng.randf_range(0.6, 1.1)
+				b.scale = Vector3(k, k, k)
+				add_child(b)
+				n += 1
+			scenery += n
+	if map_id == "forest":
+		var patch := _scene_model("res://assets/scatter/forest_floor.glb")
+		if patch:
+			var want := 6 if Gfx.weak else 12
+			var tries := 0
+			var n := 0
+			while n < want and tries < 120:
+				tries += 1
+				var p := _free_spot(rng, 4.5)
+				if p == Vector3.INF: continue
+				var k := rng.randf_range(0.6, 0.8)
+				var e := 6.0 * k
+				var hs := [height(p.x - e, p.z - e), height(p.x + e, p.z - e), height(p.x - e, p.z + e), height(p.x + e, p.z + e)]
+				if (hs.max() as float) - (hs.min() as float) > 0.55: continue # too steep: it would float
+				var f := patch.instantiate() as Node3D
+				f.position = Vector3(p.x, (hs.min() as float) + 0.04, p.z)
+				f.rotation.y = rng.randf() * TAU
+				f.scale = Vector3(k, k, k)
+				for gi in f.find_children("*", "GeometryInstance3D", true, false):
+					(gi as GeometryInstance3D).visibility_range_end = 70.0
+					(gi as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				add_child(f)
+				n += 1
+			scenery += n
+
 ## The rain night's lightning: every 9-25 s the sky and the whole map flash white twice, quickly.
 ## (No thunder until the owner sends a sound: nothing is synthesized.)
 func _step_lightning(dt: float) -> void:
@@ -2794,19 +2871,41 @@ func _animal_mesh(kind: String) -> ArrayMesh:
 	mesh.surface_set_material(0, hide)
 	return mesh
 
+## The owner's animals (assets/animals): three horse breeds with their own walk, graze and idle
+## clips (vinish.dev, CC BY 4.0), and his dromedary (no clips: it plods with a bob). The old merged
+## meshes are the fallback when a file is missing.
+const HORSES := ["arabian-horse", "bay-horse", "paint-horse"]
+var animal_models := 0
+
+func _animal_node(kind: String, k: int) -> Node3D:
+	var path := ("res://assets/animals/%s.glb" % HORSES[k % HORSES.size()]) if kind == "horse" else "res://assets/animals/camel.glb"
+	if ResourceLoader.exists(path):
+		var n := (load(path) as PackedScene).instantiate() as Node3D
+		var inner := Node3D.new() # the camel's model faces +X: turned so every animal faces +Z
+		if kind == "camel": n.rotation.y = -PI / 2.0
+		inner.add_child(n)
+		for gi in n.find_children("*", "GeometryInstance3D", true, false):
+			(gi as GeometryInstance3D).visibility_range_end = 95.0 # the storm hides them long before this
+			var aabb := (gi as VisualInstance3D).get_aabb()
+			if aabb.size.length() < 0.12: (gi as GeometryInstance3D).visibility_range_end = 18.0 # eyes, lashes
+		animal_models += 1
+		return inner
+	var mi := MeshInstance3D.new()
+	mi.mesh = _animal_mesh(kind)
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	mi.visibility_range_end = 95.0
+	return mi
+
 func _build_animals() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 616
-	var meshes := {"horse": _animal_mesh("horse"), "camel": _animal_mesh("camel")}
-	for i in 9:
+	var count := 5 if Gfx.weak else 9 # every one is a skinned model of ~100k triangles up close
+	for i in count:
 		var kind := "camel" if i % 3 == 0 else "horse"
 		var start := _free_spot(rng, 4.0)
 		if start == Vector3.INF: continue
-		var mi := MeshInstance3D.new()
-		mi.mesh = meshes[kind]
+		var mi := _animal_node(kind, i)
 		mi.position = start
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-		mi.visibility_range_end = 95.0 # the storm hides them long before this
 		add_child(mi)
 		var path: Array[Vector3] = [start]
 		var p := Vector2(start.x, start.z)
@@ -2815,20 +2914,36 @@ func _build_animals() -> void:
 			p.x = clampf(p.x, -WALL + 10.0, WALL - 10.0)
 			p.y = clampf(p.y, -WALL + 10.0, WALL - 10.0)
 			path.append(Vector3(p.x, height(p.x, p.y), p.y))
-		var stand: bool = kind == "camel" and rng.randf() < 0.5
-		animals.append({"node": mi, "path": path, "i": 1, "speed": rng.randf_range(0.7, 1.15),
-			"bob": rng.randf() * TAU, "stand": stand, "yaw": rng.randf() * TAU})
+		var stand: bool = rng.randf() < (0.5 if kind == "camel" else 0.3)
+		var ap: AnimationPlayer = null
+		var found := mi.find_children("*", "AnimationPlayer", true, false)
+		if not found.is_empty(): ap = found[0]
+		animals.append({"node": mi, "path": path, "i": 1, "speed": rng.randf_range(0.9, 1.4),
+			"bob": rng.randf() * TAU, "stand": stand, "yaw": rng.randf() * TAU, "ap": ap, "kind": kind})
 		mi.rotation.y = animals[-1].yaw
+		if ap:
+			for c in ["Walk", "Idle", "Graze"]:
+				if ap.has_animation(c): ap.get_animation(c).loop_mode = Animation.LOOP_LINEAR
+			_animal_clip(animals[-1], "Graze" if stand else "Walk")
+
+## Play a horse's clip (its own walk keeps pace with how fast it goes).
+func _animal_clip(a: Dictionary, clip: String) -> void:
+	var ap: AnimationPlayer = a.get("ap")
+	if ap == null or not ap.has_animation(clip): return
+	if ap.current_animation != clip: ap.play(clip, 0.4)
+	ap.speed_scale = float(a.speed) / 1.25 if clip == "Walk" else 1.0
 
 ## Horses and camels plod between their waypoints. No sound, no collision: they are scenery.
 func _step_animals(dt: float) -> void:
 	var t := Time.get_ticks_msec() / 1000.0
 	for a in animals:
-		var mi: MeshInstance3D = a.node
+		var mi: Node3D = a.node
 		var base: float = height(mi.position.x, mi.position.z)
 		if a.stand:
-			mi.position.y = base + 0.02 * sin(t * 0.7 + a.bob)
+			mi.position.y = base + (0.0 if a.ap else 0.02 * sin(t * 0.7 + a.bob))
 			mi.rotation.y = a.yaw + 0.05 * sin(t * 0.3 + a.bob)
+			if a.ap and fmod(t + float(a.bob) * 3.0, 14.0) < dt * 1.5: # now and then a horse looks up from grazing
+				_animal_clip(a, "Idle" if (a.ap as AnimationPlayer).current_animation == "Graze" else "Graze")
 			continue
 		var target: Vector3 = a.path[a.i]
 		var to := Vector3(target.x - mi.position.x, 0, target.z - mi.position.z)
@@ -2840,6 +2955,9 @@ func _step_animals(dt: float) -> void:
 		mi.rotation.y = a.yaw
 		var step: Vector3 = Vector3(sin(a.yaw), 0, cos(a.yaw)) * float(a.speed) * dt
 		mi.position += step
+		if a.ap: # its own legs carry it: no bobbing
+			mi.position.y = base
+			continue
 		mi.position.y = base + 0.06 * absf(sin(t * 3.4 + a.bob)) # plodding bob
 		mi.rotation.x = 0.03 * sin(t * 3.4 + a.bob)
 

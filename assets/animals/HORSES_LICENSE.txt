@@ -1,0 +1,16 @@
+Licence: Creative Commons Attribution 4.0 International (CC BY 4.0)
+Licensor: vinish.dev (https://vinish.dev/free-3d-models/)
+
+The 3D models in this download are licensed under CC BY 4.0. In short:
+
+You may
+  - share them: copy and pass them on in any medium or format, for any purpose, including commercial use;
+  - adapt them: change, remix and build on them, for any purpose, including commercial use.
+
+As long as you
+  - give credit: name vinish.dev, link to the licence and say if you changed anything (CREDITS.txt has
+    ready-made credit lines), and
+  - add no extra terms or technical locks that stop others from doing what the licence allows.
+
+This summary is not the licence itself. The full legal text is here:
+https://creativecommons.org/licenses/by/4.0/legalcode

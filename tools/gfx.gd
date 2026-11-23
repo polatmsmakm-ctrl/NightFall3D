@@ -29,6 +29,10 @@ func _ready() -> void:
 	for t in ["blood", "drag", "oil", "dirt", "puddle", "puddle_orm", "soft", "streak"]:
 		var tx := NFDecor.tex(t)
 		check(tx != null and tx.get_width() == 128, "texture %s drawn" % t)
+	for t in ["gun", "bag", "vault", "crouch", "torch", "sig", "heal", "hand", "sprint"]:
+		check(load("res://assets/ui/btn/%s.png" % t) != null, "button picture %s" % t)
+	for t in ["gen_on", "gen_off", "market", "hook", "gate_n", "gate_s", "hatch"]:
+		check(load("res://assets/ui/map/%s.png" % t) != null, "map picture %s" % t)
 	var m = await boot("forest", "normal")
 	var w: NightWorld = m.world
 	var ds := w.find_children("*", "Decal", true, false).size()
@@ -61,6 +65,22 @@ func _ready() -> void:
 	await frames(2)
 	check(absf(w.moon.light_energy - w._moon_base) < 0.01, "and fades back")
 	check(w.look_kind() == "rain", "the rain look")
+	m.queue_free()
+	await frames(20)
+	m = await boot("rubkhali", "normal")
+	w = m.world
+	check(w.animal_models >= 6, "the owner's horses and camels (%d models)" % w.animal_models)
+	var walking := 0
+	for an in w.animals:
+		if an.ap and (an.ap as AnimationPlayer).is_playing(): walking += 1
+	check(walking >= 4, "the horses move on their own clips (%d)" % walking)
+	check(w.scenery >= 10, "dunes on the horizon (%d)" % w.scenery)
+	m.queue_free()
+	await frames(20)
+	m = await boot("forest", "fog")
+	check(m.world.scenery >= 6, "forest floor patches (%d)" % m.world.scenery)
+	var sky: ShaderMaterial = (m.world.env.sky.sky_material as ShaderMaterial)
+	check(sky.get_shader_parameter("has_moon_tex") == 1.0 and sky.get_shader_parameter("moon_tex") != null, "the owner's moon in the sky")
 	m.queue_free()
 	await frames(20)
 	m = await boot("garage", "rain")

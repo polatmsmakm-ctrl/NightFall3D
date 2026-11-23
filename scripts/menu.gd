@@ -483,6 +483,7 @@ func _page_help() -> void:
 		if help_tab == str(t[0]): b.modulate = Color(1, 0.75, 0.55)
 	for it in HELP[help_tab]:
 		_tip(str(it[0]), str(it[1]), str(it[2]))
+	_label("الخيول: \"Horses\" by vinish.dev — CC BY 4.0", 14, Color(0.6, 0.6, 0.62)) # their licence asks for the credit
 	_button("رجوع", func(): open("main"), null, true, "exit")
 
 func _tip(icon: String, title: String, text: String) -> void:

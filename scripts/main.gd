@@ -677,6 +677,86 @@ func _beam(a: Vector3, b: Vector3, hit: bool) -> void:
 	tw.tween_property(m, "albedo_color:a", 0.0, 0.2)
 	tw.tween_callback(mi.queue_free)
 
+## The owner's map pictures (assets/ui/map: his generators, market, hook, gates and hatch, cut out of
+## his sheet). Draws one `px` wide on the map; false if the picture is missing (the drawn icon then).
+var _map_tex := {}
+func _map_pic(at: Vector2, name: String, px: float, mod := Color.WHITE) -> bool:
+	if not _map_tex.has(name):
+		var path := "res://assets/ui/map/%s.png" % name
+		_map_tex[name] = load(path) if ResourceLoader.exists(path) else null
+	var t: Texture2D = _map_tex[name]
+	if t == null: return false
+	var asp := float(t.get_height()) / float(maxi(t.get_width(), 1))
+	var sz := Vector2(px, px * asp) if asp <= 1.0 else Vector2(px / asp, px)
+	minimap.draw_texture_rect(t, Rect2(at - sz / 2.0, sz), false, mod)
+	return true
+
+## The owner's button look (his picture): a black plate in a silver bevel and a glowing red ring,
+## a white icon (his own pictures for the nine he drew, cut out into assets/ui/btn; the drawn icons
+## for the rest), and the name on a dark pill with a red edge across the bottom, a red chevron under it.
+const BTN_PIC := {"gun": "gun", "item": "bag", "jump": "vault", "crouch": "crouch", "light": "torch",
+	"chat": "sig", "heal": "heal", "hand": "hand", "shoe": "sprint"}
+var _btn_tex := {}
+var _pill: StyleBoxFlat
+
+func _btn_pic(icon: String) -> Texture2D:
+	if not BTN_PIC.has(icon): return null
+	if not _btn_tex.has(icon):
+		var path := "res://assets/ui/btn/%s.png" % BTN_PIC[icon]
+		_btn_tex[icon] = load(path) if ResourceLoader.exists(path) else null
+	return _btn_tex[icon]
+
+func _draw_btn(c: Vector2, r: float, icon: String, label: String, live: bool, on: bool, pk: float, ba: float) -> void:
+	var dim := 1.0 if live else 0.45
+	var red := Color(1.0, 0.12, 0.08) if on else Color(0.86, 0.06, 0.05)
+	# the glow round the outside: stronger while held, and a ripple when pressed
+	for k in 4:
+		ui.draw_arc(c, r + 2.0 + k * 3.0, 0, TAU, 48, Color(red, (0.16 if on else 0.09) * (1.0 - k * 0.22) * ba * dim), 3.5, true)
+	ui.draw_circle(c, r * (1.0 + 0.35 * sin(pk * PI)), Color(1, 0.3, 0.25, 0.22 * sin(pk * PI) * ba), false, 3.0, true)
+	# the plate: black, with a darker well inside
+	ui.draw_circle(c, r, Color(0.035, 0.03, 0.035, 0.88 * ba), true, -1.0, true)
+	ui.draw_circle(c, r * 0.8, Color(0.015, 0.012, 0.016, 0.9 * ba), true, -1.0, true)
+	if on: ui.draw_circle(c, r * 0.8, Color(0.5, 0.02, 0.02, 0.28 * ba), true, -1.0, true)
+	for k in 3: # scratches in the well
+		var a0 := 0.6 + k * 1.9
+		ui.draw_line(c + Vector2.from_angle(a0) * r * 0.25, c + Vector2.from_angle(a0 + 0.5) * r * 0.62, Color(1, 1, 1, 0.035 * ba), 1.0, true)
+	# the bevel: silver on top, darker under; then the red ring and a faint inner red line
+	ui.draw_arc(c, r - 1.5, PI * 1.05, PI * 1.95, 32, Color(0.82, 0.82, 0.86, 0.85 * ba * dim), 2.2, true)
+	ui.draw_arc(c, r - 1.5, PI * 0.05, PI * 0.95, 32, Color(0.3, 0.3, 0.33, 0.8 * ba * dim), 2.2, true)
+	ui.draw_arc(c, r * 0.9, 0, TAU, 64, Color(red, 0.95 * ba * dim), 3.0 if on else 2.4, true)
+	ui.draw_arc(c, r * 0.9, PI * 1.55, PI * 1.85, 12, Color(1, 0.55, 0.5, 0.7 * ba * dim), 3.0, true) # a highlight on the ring
+	ui.draw_arc(c, r * 0.8, 0, TAU, 48, Color(0.9, 0.08, 0.06, 0.3 * ba * dim), 1.0, true)
+	# the icon: his picture when there is one, else the drawn one in white
+	var icol := Color(1, 1, 1, dim * maxf(ba, 0.6))
+	var pic := _btn_pic(icon)
+	var ic := c - Vector2(0, r * 0.12)
+	if pic:
+		var sz := r * 1.08
+		ui.draw_texture_rect(pic, Rect2(ic - Vector2(sz, sz) / 2.0, Vector2(sz, sz)), false, icol)
+	else:
+		NFIcons.draw(ui, icon, ic, r * 0.74, Color(0.93, 0.93, 0.95, icol.a))
+	# the name on a dark pill over the bottom of the ring, a red chevron under it
+	if _pill == null:
+		_pill = StyleBoxFlat.new()
+		_pill.bg_color = Color(0.05, 0.04, 0.05, 0.94)
+		_pill.set_border_width_all(2)
+		_pill.border_color = Color(0.85, 0.08, 0.06)
+		_pill.set_corner_radius_all(9)
+		_pill.shadow_color = Color(0.9, 0.05, 0.03, 0.35)
+		_pill.shadow_size = 5
+		_pill.anti_aliasing = true
+	var fs := int(clampf(r * 0.3, 13.0, 20.0))
+	var tw := Net.font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	var pw := maxf(tw + 18.0, r * 1.05)
+	var ph := fs + 9.0
+	var prect := Rect2(c + Vector2(-pw / 2.0, r * 0.62), Vector2(pw, ph))
+	_pill.border_color = Color(red, ba * dim)
+	_pill.bg_color.a = 0.94 * ba
+	ui.draw_style_box(_pill, prect)
+	ui.draw_string(Net.font, Vector2(prect.position.x, prect.position.y + ph * 0.5 + fs * 0.36), label, HORIZONTAL_ALIGNMENT_CENTER, pw, fs, icol)
+	var cv := Vector2(c.x, prect.end.y + 3.0)
+	ui.draw_polyline(PackedVector2Array([cv + Vector2(-5, -1), cv + Vector2(0, 4), cv + Vector2(5, -1)]), Color(red, 0.9 * ba * dim), 2.0, true)
+
 func _pos_of(n: String) -> Vector3:
 	if n == my_name: return body.position
 	var r = remotes.get(n)
@@ -1373,15 +1453,7 @@ func _draw_ui() -> void:
 		var pk: float = clampf(float(pop.get(id, 0.0)) / 0.16, 0.0, 1.0)
 		var r: float = b[1] * (1.0 - 0.09 * sin(pk * PI)) # pressed: it dips and springs back
 		var on: bool = (id == "crouch" and crouch) or (id == "sprint" and sprint) or (id == "light" and light_on) or (id == "sig" and sig_open) or (not hold.is_empty() and hold.btn == id)
-		# dark scratched plate with a dry-blood ring; it lights up red while held
-		ui.draw_circle(b[0], r, Color(0.42, 0.04, 0.05, 0.55 * ba) if on else Color(0.05, 0.045, 0.055, (0.5 if live else 0.3) * ba), true, -1.0, true)
-		ui.draw_circle(b[0], r * (1.0 + 0.35 * sin(pk * PI)), Color(1, 0.3, 0.25, 0.22 * sin(pk * PI) * ba), false, 3.0, true) # the press ripple
-		ui.draw_arc(b[0], r, 0, TAU, 64, Color(1, 0.25, 0.22, 0.95 * ba) if on else Color(0.72, 0.16, 0.16, (0.85 if live else 0.3) * ba), 2.5, true)
-		ui.draw_arc(b[0], r - 4.0, 0.2, 1.1, 14, Color(1, 1, 1, (0.12 if live else 0.05) * ba), 1.5, true)
-		var icol := Color(1, 1, 1, (1.0 if live else 0.38) * maxf(ba, 0.6))
-		NFIcons.draw(ui, str(b[5]), b[0] - Vector2(0, r * 0.2), r * 0.82, icol)
-		ui.draw_string(Net.font, b[0] + Vector2(-r, r * 0.76), b[2], HORIZONTAL_ALIGNMENT_CENTER, r * 2.0,
-			int(clampf(r * 0.33, 13.0, 19.0)), icol)
+		_draw_btn(b[0], r, str(b[5]), str(b[2]), live, on, pk, ba)
 		if id == "light": # battery ring
 			ui.draw_arc(b[0], b[1] + 5.0, -PI / 2.0, -PI / 2.0 + TAU * battery / 100.0, 32, Color(1, 0.9, 0.4) if battery > 25.0 else Color(1, 0.3, 0.2), 4.0)
 		if id == "power" and driving: # the radio: a green ring while it plays
@@ -1651,8 +1723,12 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 		var open: bool = rules.gates[i].open
 		if big: minimap.draw_rect(Rect2(c + Vector2(-NightWorld.LANE_W / 2.0, minf(p.z, p.z + out_dir * NightWorld.MAP_ROAD)) * k, Vector2(NightWorld.LANE_W, NightWorld.MAP_ROAD) * k), Color(0.3, 0.3, 0.3) if not open else Color(0.25, 0.5, 0.3))
 		var gpc := c + Vector2(p.x, p.z) * k
-		minimap.draw_circle(gpc, 7.5 * u, Color(0, 0, 0, 0.6))
-		NFIcons.draw(minimap, "gate", gpc, 6.5 * u, Color(0.4, 1, 0.5) if open else Color(1, 0.3, 0.25))
+		# the owner's gate pictures: red with ↑ for the north one, blue with ↓ for the south; a green
+		# ring once it is open
+		if not _map_pic(gpc, "gate_n" if p.z < 0.0 else "gate_s", 17.0 * u):
+			minimap.draw_circle(gpc, 7.5 * u, Color(0, 0, 0, 0.6))
+			NFIcons.draw(minimap, "gate", gpc, 6.5 * u, Color(0.4, 1, 0.5) if open else Color(1, 0.3, 0.25))
+		if open: minimap.draw_arc(gpc, 10.0 * u, 0, TAU, 24, Color(0.4, 1, 0.5), 1.8 * u)
 		if p.y > 1.0: _roof_badge(gpc + Vector2(0, 11) * u, u)
 	minimap.draw_rect(Rect2(c - Vector2(wl, wl), Vector2(wl, wl) * 2.0), Color(0.85, 0.85, 0.8, 0.8), false, 2.0 * u)
 	for b in world.buildings:
@@ -1683,6 +1759,7 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 		minimap.draw_rect(Rect2(-Vector2(mk.w, mk.d) * k / 2.0, Vector2(mk.w, mk.d) * k), Color(0.8, 0.25, 0.25))
 		minimap.draw_rect(Rect2(Vector2(-mk.w / 2.0, mk.d / 2.0) * k, Vector2(mk.w, 13.0) * k), Color(0.25, 0.25, 0.27)) # parking
 		minimap.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		_map_pic(c + Vector2(mk.pos.x, mk.pos.z) * k, "market", 18.0 * u)
 		if big: _map_text(c + Vector2(mk.pos.x + 8.0, mk.pos.z + 3.0) * k, "السوق", 16, Color(1, 0.7, 0.7))
 	for i in world.hook_points.size():
 		if i >= world.road_hook0: break # the ones along the roads are off the map
@@ -1690,7 +1767,8 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 		var used := rules.hook_user(i) != ""
 		var hc := c + Vector2(hp.x, hp.z) * k
 		var col := Color(1, 0.2, 0.2) if used else Color(0.8, 0.35, 0.35)
-		NFIcons.draw(minimap, "hook", hc, 4.6 * u, col)
+		if not _map_pic(hc, "hook", 12.0 * u, Color(1, 1, 1) if used else Color(0.85, 0.85, 0.85, 0.85)):
+			NFIcons.draw(minimap, "hook", hc, 4.6 * u, col)
 		if used: minimap.draw_arc(hc, 7.0 * u, 0, TAU, 18, Color(1, 0.3, 0.3), 1.5)
 		if hp.y > 1.0: _roof_badge(hc + Vector2(0, -8) * u, u)
 	for i in world.gen_points.size():
@@ -1704,7 +1782,8 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 		if my_role == "survivor" and not g.done and float(g.p) > 0.0:
 			minimap.draw_arc(gc, sz * 0.95, -PI / 2.0, -PI / 2.0 + TAU * float(g.p), 24, Color(1, 0.85, 0.2), 1.6 * u)
 		elif g.done: minimap.draw_arc(gc, sz * 0.95, 0, TAU, 24, gcol, 1.4 * u)
-		NFIcons.draw(minimap, "bolt", gc, sz * 0.75, gcol)
+		if not _map_pic(gc, "gen_on" if g.done else "gen_off", sz * 1.7): # the owner's generators, ⚡ on the front
+			NFIcons.draw(minimap, "bolt", gc, sz * 0.75, gcol)
 		if gp.y > 1.0: _roof_badge(gc + Vector2(0, -sz), u)
 	if big: # the big map also shows where to hide and what to drop
 		for lp in world.locker_points:
@@ -1720,8 +1799,9 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 	if rules.hatch >= 0 and my_role == "survivor":
 		var hp2: Vector3 = world.hatch_points[rules.hatch]
 		var hc2 := c + Vector2(hp2.x, hp2.z) * k
-		minimap.draw_circle(hc2, 6.5 * u, Color(0, 0, 0, 0.6))
-		NFIcons.draw(minimap, "hatch", hc2, 5.5 * u, Color(0.5, 1, 0.7))
+		if not _map_pic(hc2, "hatch", 15.0 * u):
+			minimap.draw_circle(hc2, 6.5 * u, Color(0, 0, 0, 0.6))
+			NFIcons.draw(minimap, "hatch", hc2, 5.5 * u, Color(0.5, 1, 0.7))
 	if car and my_role == "killer": # the killer always knows where he left his car
 		var cp: Vector2 = inside.call(c + Vector2(car.position.x, car.position.z) * k)
 		var cf := Vector2(sin(car.rotation.y), cos(car.rotation.y))
@@ -1750,9 +1830,9 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 	if big:
 		var ly := o.y + side + 22.0
 		# each entry: [drawn icon or "" + glyph, colour, name]
-		var items := [["bolt", Color(1, 0.85, 0.2), "مولد"], ["bolt", Color(0.4, 1, 0.5), "شغّال"], ["hook", Color(0.8, 0.35, 0.35), "خطاف"],
-			["gate", Color(1, 0.3, 0.25), "بوابة"], ["locker", Color(0.6, 0.7, 0.8), "خزانة"], ["plank", Color(0.85, 0.62, 0.35), "لوح"]]
-		if my_role == "survivor": items.append(["hatch", Color(0.5, 1, 0.7), "فتحة"])
+		var items := [["@gen_off", Color(1, 0.85, 0.2), "مولد"], ["@gen_on", Color(0.4, 1, 0.5), "شغّال"], ["@hook", Color(0.8, 0.35, 0.35), "خطاف"],
+			["@gate_n", Color(1, 0.3, 0.25), "الشمالية"], ["@gate_s", Color(0.3, 0.6, 1), "الجنوبية"], ["locker", Color(0.6, 0.7, 0.8), "خزانة"], ["plank", Color(0.85, 0.62, 0.35), "لوح"]]
+		if my_role == "survivor": items.append(["@hatch", Color(0.5, 1, 0.7), "فتحة"])
 		if world.map_id == "garage":
 			items.append(["■", Color(0.45, 0.45, 0.48), "درج"]) # the stair cores
 			items.append(["▲", ROOF_COL, "فوق السطح"])
@@ -1762,7 +1842,8 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 			if car: items.append(["■", CAR_COL, "سيارتك"])
 		var lx := o.x
 		for it in items:
-			if str(it[0]).length() > 1: NFIcons.draw(minimap, str(it[0]), Vector2(lx + 7, ly - 6), 7.0, it[1])
+			if str(it[0]).begins_with("@"): _map_pic(Vector2(lx + 7, ly - 6), str(it[0]).substr(1), 18.0)
+			elif str(it[0]).length() > 1: NFIcons.draw(minimap, str(it[0]), Vector2(lx + 7, ly - 6), 7.0, it[1])
 			else: _map_text(Vector2(lx, ly), it[0], 18, it[1])
 			_map_text(Vector2(lx + 20, ly), it[2], 14, Color(0.9, 0.9, 0.9))
 			lx += side / items.size()

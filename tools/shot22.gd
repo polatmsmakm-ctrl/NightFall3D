@@ -57,6 +57,30 @@ func _ready() -> void:
 	await shot("22_fareej_grade_oil")
 	m.queue_free()
 	await frames(20)
+	m = await boot("rubkhali", "normal")
+	var an: Dictionary = m.world.animals[0]
+	for x in m.world.animals:
+		if x.kind == "horse" and not x.stand:
+			an = x
+			break
+	await look_at_spot(m, an.node.position, 6.0)
+	await shot("22_desert_horse")
+	m.body.position = Vector3(0, m.world.height(0, 0) + 1.0, 0)
+	m.pitch = 0.05
+	await frames(20)
+	await shot("22_desert_dunes")
+	m.queue_free()
+	await frames(20)
+	m = await boot("forest", "normal")
+	m.pitch = 0.35
+	m.yaw = 0.0
+	await frames(20)
+	await shot("22_moon_a")
+	m.yaw = PI
+	await frames(20)
+	await shot("22_moon_b")
+	m.queue_free()
+	await frames(20)
 	m = await boot("garage", "normal")
 	await look_at_spot(m, m.world.gen_points[0], 6.0)
 	await shot("22_garage_grade")

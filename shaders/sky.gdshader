@@ -4,6 +4,9 @@ uniform vec3 moon_dir = vec3(0.3, 0.32, -0.9);
 uniform float blood : hint_range(0.0, 1.0) = 0.0; // 1 = blood moon (gates open)
 uniform float near : hint_range(0.0, 1.0) = 0.0; // 0..1: the moon falling toward the ground
 uniform sampler2D noise_tex : repeat_enable, filter_linear_mipmap;
+// the owner's moon: its near side seen face on (assets/sky/moon.jpg, rendered from his moon.glb)
+uniform sampler2D moon_tex : source_color, filter_linear_mipmap, repeat_disable;
+uniform float has_moon_tex = 0.0;
 uniform float day : hint_range(0.0, 1.0) = 0.0;  // 0 night, 1 daylight (the start screen only)
 uniform float warm : hint_range(0.0, 1.0) = 0.0; // dawn / dusk colour
 uniform float sun : hint_range(0.0, 1.0) = 0.0;  // 1 = daylight sandstorm: the disc is the sun
@@ -42,6 +45,13 @@ void sky() {
 	// the sun has no craters and no shaded limb: it is a flat white disc behind the dust
 	float face = mix(0.55 + 0.6 * crater, 1.35, sun) * mix(0.5 + 0.5 * limb, 1.0, sun);
 	vec3 mooncol = mix(mix(vec3(0.95, 0.93, 0.85), vec3(1.0, 0.95, 0.78), sun), vec3(0.8, 0.11, 0.06), blood) * face;
+	if (has_moon_tex > 0.5 && sun < 0.5) {
+		// the real surface: maria, craters and rays; tinted red under the blood moon
+		vec3 surf = texture(moon_tex, vec2(muv.x, -muv.y) * 0.5 + 0.5).rgb;
+		float lum = dot(surf, vec3(0.3, 0.55, 0.15));
+		vec3 red = vec3(1.0, 0.16, 0.08) * (0.35 + 1.2 * lum);
+		mooncol = mix(surf * 1.25, red, blood) * (0.8 + 0.2 * limb);
+	}
 	vec3 halo = mix(mix(vec3(0.5, 0.6, 0.8), vec3(1.0, 0.82, 0.45), sun), vec3(0.95, 0.12, 0.06), blood);
 	col += halo * (exp(-ang * 9.0 / (1.0 + 4.0 * near)) * (0.35 + 0.5 * near + 0.75 * sun) + exp(-ang * 40.0 / (1.0 + 4.0 * near)) * (0.4 + 0.6 * sun));
 	col = mix(col, mooncol * 1.6, disc);

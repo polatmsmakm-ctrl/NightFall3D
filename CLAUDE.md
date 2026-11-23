@@ -830,3 +830,26 @@ from the agent's machine).
 - Not doable without the owner's files: hair that swings and eyes that blink need **bones in the
   hair and eyelids** (our characters are on the Mixamo skeleton, which has neither).
 `tools/gfx.tscn` tests it; `tools/shot22.tscn` photographs the rain, a hook, a campfire, two grades.
+
+## The owner's pictures and models (his button sheet, his map-icon sheet, moon, horses, camel, dunes, forest floor)
+- **Buttons** (`main._draw_btn`): his look — black plate, silver bevel, glowing red ring, white icon,
+  the name on a dark pill with a red edge and a red chevron. His nine drawn icons are cut out of his
+  sheet into `assets/ui/btn/` (`gun bag vault crouch torch sig heal hand sprint`, mapped from the icon
+  names by `BTN_PIC`); every other button keeps its drawn icon in white. The layout editor still
+  draws its own simple circles.
+- **Map** (`main._map_pic`, `assets/ui/map/`): his generator (grey, or orange with a green glow when
+  done), market, bloody hook, red north gate ↑ / blue south gate ↓ (green ring once open) and hatch,
+  cut out of his sheet (background keyed out); the legend uses them too. The drawn icons stay as the
+  fallback.
+- **Moon** (`assets/sky/moon.jpg`): his `moon.glb` is a 1.5 M-triangle cube-sphere with one 4096
+  texture; its near side was rendered face on into a 1024 disc and the sky shader draws it
+  (`moon_tex`, `has_moon_tex`), tinted red under the blood moon. Same in the camp.
+- **Animals** (`assets/animals/`): `arabian-horse`, `bay-horse`, `paint-horse` (vinish.dev, CC BY 4.0
+  — the credit is on «طريقة اللعب» and in `HORSES_CREDITS.txt`; ~100k skinned triangles each, with
+  Walk / Graze / Idle clips: they walk on their own legs at a matching pace and look up from grazing)
+  and his `camel.glb` (no clips: it still bobs). 9 on the Empty Quarter, 5 on older phones.
+  `world._animal_node`, `animal_models`.
+- **Scenery** (`world._build_scenery`, `scenery` counts): his `dune.glb` (120 m) ringed outside the
+  Empty Quarter's wall and behind the beach, no shadows; `sand_blob.glb` patches on the beach;
+  `forest_floor.glb` (leaf litter, ferns, stones, a log) on flat spots of the forest, drawn to 70 m.
+  Their textures were cut to 1024 with `tools/glb_texsize.py`. No collision: all low or outside.
