@@ -438,6 +438,9 @@ func _page_main() -> void:
 	_button("النمط التجريبي (بدون نت)", func(): chars_from = "offline"; open("offline"), null, true, "star")
 	_button("الصوت والإعدادات", func(): Gfx.open_settings(), null, true, "gear")
 	_button("طريقة اللعب", func(): open("help"), null, true, "note")
+	if Dev.unlocked: # this phone has the hidden tools: straight to them
+		var db := _button("أدوات المطوّر", func(): open("dev"), null, true, "gear")
+		db.modulate = Color(1, 0.85, 0.5)
 	_button("الاسم والسيرفر", func():
 		typed["name"] = Net.username; typed["url"] = Net.url; open("settings"), null, true, "gear")
 	_emote_row()

@@ -13,6 +13,7 @@ const DECEL := 28.0
 const SFX := ["gate", "heart", "breath", "steps_out", "steps_in", "gen_run", "chase", "ambient", "doom", "rope", "male_pain", "scream1", "scream2", "oof1", "oof2", "oof3"]
 const MALE := ["survivor2", "survivor3"] # the other characters (the killer «البركة القرمزية» too) use the female voice clips
 const TERROR_RADIUS := 24.0 # survivors start to feel the killer inside this distance
+const CHASE_NEAR := 16.0     # the chase music plays when she is this close on foot, even unseen (never while she drives)
 ## quick signals: what the three buttons say, their icon, and how they look on a team-mate's screen
 const SIG_TEXT := ["تعال هني", "القاتل هني", "قاعد أصلّح", "باب", "فخ"]  # the last two are local only: a door somebody heard, a trap that shut
 const SIG_ICON := ["pin", "skull", "wrench", "door", "trap"]
@@ -1093,14 +1094,17 @@ func _build_ui() -> void:
 func _build_dev_ui(layer: CanvasLayer) -> void:
 	if not Dev.unlocked: return
 	var safe := _safe()
+	# a real button now (it was a faint dot in the corner nobody could find): «أدوات» on the left edge
 	dev_dot = Button.new()
-	dev_dot.text = "·"
-	dev_dot.flat = true
+	dev_dot.text = "أدوات المطوّر"
 	dev_dot.focus_mode = Control.FOCUS_NONE
-	dev_dot.modulate = Color(1, 1, 1, 0.22)
-	dev_dot.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
-	dev_dot.offset_left = 8.0 + safe.x; dev_dot.offset_right = 38.0 + safe.x
-	dev_dot.offset_top = -38.0; dev_dot.offset_bottom = -8.0
+	dev_dot.theme = NFUI.theme()
+	NFUI.dress(dev_dot, "gear")
+	dev_dot.add_theme_font_size_override("font_size", 15)
+	dev_dot.modulate = Color(1, 0.85, 0.5, 0.9)
+	dev_dot.set_anchors_and_offsets_preset(Control.PRESET_CENTER_LEFT)
+	dev_dot.offset_left = 8.0 + safe.x; dev_dot.offset_right = 150.0 + safe.x
+	dev_dot.offset_top = -20.0; dev_dot.offset_bottom = 20.0
 	dev_dot.pressed.connect(func() -> void: dev_panel.visible = not dev_panel.visible)
 	layer.add_child(dev_dot)
 	dev_panel = PanelContainer.new()
@@ -1108,7 +1112,7 @@ func _build_dev_ui(layer: CanvasLayer) -> void:
 	dev_panel.visible = false
 	dev_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
 	dev_panel.offset_left = 8.0 + safe.x; dev_panel.offset_right = 348.0 + safe.x
-	dev_panel.offset_top = -214.0; dev_panel.offset_bottom = -46.0
+	dev_panel.offset_top = -268.0; dev_panel.offset_bottom = -46.0
 	layer.add_child(dev_panel)
 	var m := MarginContainer.new()
 	for side in ["left", "right", "top", "bottom"]: m.add_theme_constant_override("margin_" + side, 12)
@@ -1124,6 +1128,15 @@ func _build_dev_ui(layer: CanvasLayer) -> void:
 		esp_btn.text = "رؤية اللاعبين: %s" % ("شغّال" if Dev.esp else "مطفي"))
 	NFUI.dress(esp_btn, "next")
 	v.add_child(esp_btn)
+	var van_btn := Button.new() # the «Vanish» button on the screen, from here too
+	van_btn.text = "زر Vanish: %s" % ("شغّال" if Dev.vanish_tool else "مطفي")
+	van_btn.custom_minimum_size.y = 46
+	van_btn.pressed.connect(func() -> void:
+		Dev.set_vanish_tool(not Dev.vanish_tool)
+		if not Dev.vanish_tool: vanished = false
+		van_btn.text = "زر Vanish: %s" % ("شغّال" if Dev.vanish_tool else "مطفي"))
+	NFUI.dress(van_btn, "ghost")
+	v.add_child(van_btn)
 	var lbl := Label.new()
 	lbl.text = "السرعة ×%.2f" % Dev.speed
 	v.add_child(lbl)
@@ -2452,8 +2465,9 @@ func _process(dt: float) -> void:
 				if r.role != "survivor" or not r.node.visible or not rules.free_now(n): continue
 				var to: Vector3 = r.node.position - body.position
 				if to.length() < 24.0 and look.dot(to.normalized()) > 0.35 and _line_of_sight(r.node.position): chase_hold = 6.0
-		elif my_state in ["ok", "hurt"] and me_locker() < 0 and kdist < 18.0 and _line_of_sight(kpos):
-			chase_hold = 6.0
+				elif to.length() < CHASE_NEAR: chase_hold = maxf(chase_hold, 3.0) # one of them is right by her
+		elif my_state in ["ok", "hurt", "down"] and me_locker() < 0 and (kdist < CHASE_NEAR or (kdist < 26.0 and _line_of_sight(kpos))):
+			chase_hold = maxf(chase_hold, 4.0) # she is close (on foot): the music, seen or not
 	chase_hold = 0.0 if k_driving else maxf(chase_hold - dt, 0.0)
 	var chasing := chase_hold > 0.0 and not rules.over
 	if chasing and not chase_music.playing: chase_music.play()

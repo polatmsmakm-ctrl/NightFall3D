@@ -872,3 +872,12 @@ from the agent's machine).
   rig and kick it on their `shot` event.
 `tools/gun.tscn` checks the hold, the raise, up and down, and the lowering; `tools/shot22.tscn`
 photographs it lowered and raised.
+
+## The owner's corrections after the pistol
+- **Chase music when she is close**: it now plays whenever the killer is within `CHASE_NEAR` 16 m on
+  foot (seen or not), or within 26 m with a clear line, for survivors (also while down); the killer
+  hears it when a survivor is in front of her within 24 m or within 16 m. **Never while she drives**
+  (`k_driving`), as before; heartbeat and breathing unchanged.
+- **The developer tools are easy to reach again**: in the round a real «أدوات المطوّر» button on the
+  left edge (it was a faint dot in the bottom-left corner), its panel has «زر Vanish» too; and once
+  this phone has unlocked them, the main menu shows «أدوات المطوّر».
