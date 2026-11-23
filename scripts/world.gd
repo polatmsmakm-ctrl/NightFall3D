@@ -151,6 +151,7 @@ func _random_site(rng: RandomNumberGenerator, pad: float, lo: float, hi: float) 
 		var p := Vector2.from_angle(rng.randf() * TAU) * rng.randf_range(lo, hi)
 		if absf(p.x) > WALL - 8.0 or absf(p.y) > WALL - 8.0: continue
 		if map_id == "beach" and p.y > BEACH_SHORE - 10.0: continue # keep it out of the water
+		if map_id == "beach" and absf(p.x) < PIER_W / 2.0 + 3.0 + pad and p.y > PIER_FROM - 18.0: continue # and off the way to the pier
 		if not in_site(p.x, p.y, pad) and not on_street(p.x, p.y, 1.0): return p
 	return Vector2(lo, lo)
 
@@ -1483,6 +1484,8 @@ func _free_spot(rng: RandomNumberGenerator, pad: float) -> Vector3:
 		var x := rng.randf_range(-WALL + 8.0, WALL - 8.0)
 		var z := rng.randf_range(-WALL + 8.0, (BEACH_SHORE + 4.0) if map_id == "beach" else (WALL - 8.0))
 		if in_site(x, z, pad) or near_tree(x, z, pad + 1.0) or on_street(x, z, pad): continue
+		# the beach: nothing in front of the pier's ramp (a barrel or a car there blocked the way up)
+		if map_id == "beach" and absf(x) < PIER_W / 2.0 + 3.0 + pad and z > PIER_FROM - 18.0: continue
 		return Vector3(x, height(x, z), z)
 	return Vector3.INF
 
