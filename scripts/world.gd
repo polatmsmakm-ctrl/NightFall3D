@@ -586,10 +586,10 @@ func _build_environment() -> void:
 			env.fog_density = fog_density * 1.5
 			env.adjustment_saturation = 1.05
 		"rain": # «مطر»: a wet, blue-grey night; the ground shines and the lightning lights it all
-			env.ambient_light_color = Color(0.16, 0.19, 0.25)
-			env.ambient_light_energy = 0.9
-			env.fog_light_color = Color(0.11, 0.13, 0.16)
-			env.fog_density = fog_density * 1.7
+			env.ambient_light_color = Color(0.17, 0.2, 0.26)
+			env.ambient_light_energy = 1.1
+			env.fog_light_color = Color(0.14, 0.16, 0.2)
+			env.fog_density = fog_density * 1.25
 			env.adjustment_saturation = 0.82
 	# the map's own film look: a little more or less colour and contrast per map. (A colour-correction
 	# curve was tried first: on screen it crushed the darks and burnt the colours — the environment
@@ -642,7 +642,7 @@ func _build_environment() -> void:
 			moon.light_energy = 0.45 # the pumpkins should be the light, not the sky
 		"rain":
 			moon.light_color = Color(0.62, 0.7, 0.9)
-			moon.light_energy = 0.7 # behind the clouds
+			moon.light_energy = 0.9 # behind the clouds
 	if map_id == "rubkhali": # hard noon light through the dust
 		moon.light_color = Color(1.0, 0.91, 0.74)
 		moon.light_energy = 2.4
