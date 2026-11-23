@@ -33,7 +33,7 @@ jobs:
           # a script that does not compile stops everything here, before minutes of tests
           timeout 120 godot --headless --path . --quit 2>&1 | tee boot.log | tail -20
           if grep -E "Parse Error|Compile Error" boot.log; then echo "::error::scripts do not compile"; cat boot.log >> all.log; exit 1; fi
-          for t in ${NF_TESTS:-road hud tex drive props ui smoke map win camp beach gun}; do
+          for t in ${NF_TESTS:-road hud tex drive props ui smoke map win camp beach gun gfx}; do
             [ -f tools/$t.tscn ] || continue
             echo "=== $t" | tee -a all.log
             timeout 240 godot --headless --path . res://tools/$t.tscn 2>&1 | tee -a all.log || echo "::warning::$t stopped (timeout or exit $?)"
@@ -71,6 +71,7 @@ jobs:
           NF_SHOTS=$PWD/shots timeout 900 xvfb-run -a godot --rendering-driver vulkan --resolution 1564x720 --path . res://tools/shot20.tscn 2>&1 | tee -a all.log | grep -v "^\s*at:" | tail -15 || true
           # the road chase: the escape car, the road panel, the last gate
           NF_SHOTS=$PWD/shots timeout 900 xvfb-run -a godot --rendering-driver vulkan --resolution 1564x720 --path . res://tools/shot21.tscn 2>&1 | tee -a all.log | grep -v "^\s*at:" | tail -15 || true
+          NF_SHOTS=$PWD/shots timeout 900 xvfb-run -a godot --rendering-driver vulkan --resolution 1564x720 --path . res://tools/shot22.tscn 2>&1 | tee -a all.log | grep -v "^\s*at:" | tail -15 || true
           NF_SHOTS=$PWD/shots timeout 900 xvfb-run -a godot --rendering-driver vulkan --resolution 1564x720 --path . res://tools/shot19.tscn 2>&1 | tee -a all.log | grep -v "^\s*at:" | tail -15 || true
           for tg in ${NF_LOOK:-}; do
             meth=forward_plus; [ $tg = lo ] && meth=mobile

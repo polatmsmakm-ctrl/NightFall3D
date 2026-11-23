@@ -208,6 +208,14 @@ static func draw(ci: CanvasItem, name: String, c: Vector2, size: float, col: Col
 				var fy: float = -0.34 + k * 0.34
 				var off: float = 0.14 * (1.0 if k == 1 else -1.0)
 				_bar(ci, c, size, -0.6 + off, fy, 0.46 + off, fy, col, w)
+		"rain": # a cloud and three slanted drops
+			ci.draw_circle(_u(c, size, -0.25, -0.3), size * 0.26, col)
+			ci.draw_circle(_u(c, size, 0.15, -0.4), size * 0.32, col)
+			ci.draw_circle(_u(c, size, 0.45, -0.2), size * 0.2, col)
+			_bar(ci, c, size, -0.5, -0.12, 0.62, -0.12, col, w * 1.6)
+			for k in 3:
+				var dx: float = -0.38 + k * 0.38
+				_bar(ci, c, size, dx + 0.08, 0.15, dx - 0.06, 0.72, col, w * 0.9)
 		"sun": # the Empty Quarter plays in daylight, so its countdown is a sun
 			ci.draw_circle(c, size * 0.32, col)
 			for k in 8:

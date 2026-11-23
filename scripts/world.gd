@@ -103,6 +103,11 @@ var env: Environment
 var follow: Node3D
 var dust: GPUParticles3D
 var leaves: GPUParticles3D
+var rain: GPUParticles3D   # the «مطر» weather's streaks (follow the camera like the leaves)
+var decals := 0            # how many were laid (tests look)
+var fire_fx := 0           # campfires with real flames
+var _bolt_t := 0.0         # seconds to the next lightning
+var _bolt := 0.0           # the flash, 1 -> 0
 var flicker: Array[OmniLight3D] = []
 var amb_lights: Array = [] # [light, base energy, is a house light, flickers, current dim 0..1]
 var blackout := false      # the blackout event has the lights out
@@ -367,6 +372,7 @@ func in_site(x: float, z: float, pad := 0.0) -> bool:
 func build() -> void:
 	_make_materials()
 	_build_environment()
+	if theme == "rain": _wet()
 	_build_terrain()
 	build_step = 1
 	await get_tree().process_frame
@@ -392,6 +398,7 @@ func build() -> void:
 		await _build_grass()
 	build_step = 4
 	_build_blobs()
+	_build_decals()
 	_build_particles()
 	_build_probe()
 	await get_tree().physics_frame # the colliders have to be in the physics space before the
@@ -577,6 +584,13 @@ func _build_environment() -> void:
 			env.fog_light_color = Color(0.15, 0.06, 0.02)
 			env.fog_density = fog_density * 1.5
 			env.adjustment_saturation = 1.05
+		"rain": # «مطر»: a wet, blue-grey night; the ground shines and the lightning lights it all
+			env.ambient_light_color = Color(0.16, 0.19, 0.25)
+			env.ambient_light_energy = 0.9
+			env.fog_light_color = Color(0.11, 0.13, 0.16)
+			env.fog_density = fog_density * 1.7
+			env.adjustment_saturation = 0.82
+	env.adjustment_color_correction = NFDecor.grade(map_id, theme) # the map's own film look
 	if map_id == "rubkhali": # «الربع الخالي» plays in daylight: a sandstorm with the sun in it
 		_sky_mat.set_shader_parameter("sun", 1.0)
 		env.ambient_light_color = Color(0.72, 0.6, 0.44)
@@ -620,6 +634,9 @@ func _build_environment() -> void:
 		"halloween":
 			moon.light_color = Color(1.0, 0.6, 0.3)
 			moon.light_energy = 0.45 # the pumpkins should be the light, not the sky
+		"rain":
+			moon.light_color = Color(0.62, 0.7, 0.9)
+			moon.light_energy = 0.7 # behind the clouds
 	if map_id == "rubkhali": # hard noon light through the dust
 		moon.light_color = Color(1.0, 0.91, 0.74)
 		moon.light_energy = 2.4
@@ -1568,6 +1585,8 @@ func _build_scatter() -> void:
 				prop_glow(_last_model, Color(1.0, 0.62, 0.3), 2.6)
 				campfires += 1
 				campfire_points.append(p)
+				NFDecor.fire(body, 0.25, not Gfx.weak)
+				fire_fx += 1
 		add_child(body)
 	for i in 10:
 		var p := _free_spot(rng, 1.8)
@@ -2431,6 +2450,86 @@ func _build_particles() -> void:
 	leaves.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	leaves.emitting = map_id != "garage" # nothing falls from the sky under a concrete slab
 	add_child(leaves)
+	if theme == "rain":
+		leaves.emitting = false
+		if map_id != "garage": # it rains outside the car park, not under the slab
+			rain = NFDecor.rain([350, 650, 1000][Gfx.eff_effects()] if not Gfx.weak else 300)
+			add_child(rain)
+		_bolt_t = 8.0 + randf() * 10.0
+
+## Decals: blood pooled under every hook and dragged away from it, oil under the generators, grime
+## and stains about the map, and on the rain night puddles that mirror the lamps. Forward+ draws all
+## of them; the Mobile renderer of the older phones only the ones by the hooks and generators.
+func _build_decals() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(map_id + theme) + gen_points.size() * 31
+	var few := Gfx.weak or not Gfx.engine_hd()
+	var holder := Node3D.new()
+	holder.name = "Decals"
+	add_child(holder)
+	for i in hook_points.size():
+		if i >= road_hook0 and road_hook0 > 0 and i % 2 == 1: continue # every other one along the roads
+		var hp: Vector3 = hook_points[i] + Vector3(0, 0, 0.9)
+		NFDecor.decal(holder, hp, rng.randf_range(1.4, 2.0), "blood", rng.randf() * TAU)
+		decals += 1
+		if not few and i < road_hook0: # someone was dragged here
+			var a := rng.randf() * TAU
+			NFDecor.decal(holder, hp + Vector3(cos(a), 0, sin(a)) * 2.2, 0.8, "drag", -a, 3.2, 30.0)
+			decals += 1
+	for g in gen_points:
+		NFDecor.decal(holder, g + Vector3(rng.randf_range(-0.6, 0.6), 0, rng.randf_range(-0.6, 0.6)), rng.randf_range(2.0, 2.8), "oil", rng.randf() * TAU)
+		decals += 1
+	if few: return
+	var tries := 0
+	var want := 26 if map_id != "garage" else 40
+	var laid := 0
+	while laid < want and tries < want * 4:
+		tries += 1
+		var p := Vector3(rng.randf_range(-HALF + 6, HALF - 6), 0, rng.randf_range(-HALF + 6, HALF - 6))
+		if map_id == "beach" and p.z > BEACH_SHORE - 2.0: continue # not in the water
+		p.y = height(p.x, p.z) if map_id != "garage" else 0.0
+		var kind := "dirt" if rng.randf() < 0.65 else ("oil" if map_id == "garage" else "blood")
+		NFDecor.decal(holder, p, rng.randf_range(1.5, 3.5) if kind == "dirt" else rng.randf_range(0.8, 1.5), kind, rng.randf() * TAU, rng.randf_range(1.0, 1.6))
+		laid += 1
+	decals += laid
+	if theme == "rain" or map_id == "garage": # standing water (the car park leaks)
+		var n := 0
+		tries = 0
+		while n < 18 and tries < 80:
+			tries += 1
+			var p := Vector3(rng.randf_range(-HALF + 8, HALF - 8), 0, rng.randf_range(-HALF + 8, HALF - 8))
+			if map_id == "beach" and p.z > BEACH_SHORE - 2.0: continue
+			p.y = height(p.x, p.z) if map_id != "garage" else 0.0
+			NFDecor.decal(holder, p, rng.randf_range(1.8, 4.0), "puddle", rng.randf() * TAU, rng.randf_range(1.0, 1.8), 45.0)
+			n += 1
+		decals += n
+
+## The rain night's lightning: every 9-25 s the sky and the whole map flash white twice, quickly.
+## (No thunder until the owner sends a sound: nothing is synthesized.)
+func _step_lightning(dt: float) -> void:
+	_bolt_t -= dt
+	if _bolt_t <= 0.0:
+		_bolt_t = randf_range(9.0, 25.0)
+		_bolt = 1.0
+	if _bolt <= 0.0: return
+	_bolt = maxf(_bolt - dt * 2.6, 0.0)
+	# two strokes: bright, a dip, bright again, fading
+	var k := _bolt * (0.6 + 0.4 * absf(sin(_bolt * 18.0)))
+	if moon: moon.light_energy = _moon_base * (1.0 + k * 3.5)
+	if env: env.ambient_light_energy = _amb_base * (1.0 + k * 1.6)
+	if _bolt <= 0.0:
+		if moon: moon.light_energy = _moon_base
+		if env: env.ambient_light_energy = _amb_base
+
+## Rain makes every surface wet: rougher things get glossier and a little darker (the reflections
+## of the lamps then run over the ground). Applied to the map's own materials once they exist.
+func _wet() -> void:
+	for k in _mat:
+		var m = _mat[k]
+		if m is StandardMaterial3D:
+			var sm := m as StandardMaterial3D
+			sm.roughness = clampf(sm.roughness * 0.55, 0.08, 1.0)
+			sm.albedo_color = sm.albedo_color.darkened(0.18)
 
 func _build_probe() -> void:
 	var p := ReflectionProbe.new()
@@ -2446,6 +2545,7 @@ func _build_probe() -> void:
 func look_kind() -> String:
 	if map_id == "rubkhali": return "day"
 	if map_id == "garage": return "garage"
+	if theme == "rain": return "rain"
 	return "fog" if theme == "fog" else "night"
 
 func _apply_quality() -> void:
@@ -2504,6 +2604,8 @@ func _process(_dt: float) -> void:
 	if follow and dust:
 		dust.global_position = follow.global_position + Vector3(0, 2.0, 0)
 		leaves.global_position = follow.global_position + Vector3(0, 7.0, 0)
+		if rain: rain.global_position = follow.global_position + Vector3(0, 11.0, 0)
+	if theme == "rain": _step_lightning(_dt)
 
 # ---------------- the Empty Quarter: bedouin tents, mud houses, wrecks, animals ----------------
 ## A thin white slab on top of a roof while the snow theme is on.
@@ -2599,6 +2701,8 @@ func _desert_fire(tent: Node3D, d: float) -> void:
 		prop_glow(_last_model, Color(1.0, 0.62, 0.3), 2.6)
 		campfires += 1
 		campfire_points.append(at)
+		NFDecor.fire(body, 0.25, not Gfx.weak)
+		fire_fx += 1
 	add_child(body)
 
 func _build_rubkhali() -> void:

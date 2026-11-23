@@ -808,3 +808,25 @@ from the agent's machine).
 - **Six seats** in the escape car and the **beach killer spawn** on the sand (it was in the lagoon past
   the wading wall) — see the road chase and the beach above. `tools/gun.tscn` tests the gun, the names,
   Vanish and the passkey; `node server/test.js` runs in CI now.
+
+## The graphics pass (`scripts/decor.gd`, `NFDecor`; the owner brings models and textures next)
+- **MetalFX** (`Gfx.on_metal()`, `metalfx_temporal()`): «تنعيم الحواف» has a fourth choice «MetalFX
+  (الآيفون)» — Apple's temporal upscaler (`SCALING_3D_MODE_METALFX_TEMPORAL`, no SMAA on top); strong
+  phones start on it (`TIER` 4). Below 100% on Metal the spatial one replaces FSR. Off elsewhere.
+- **Colour grade per map** (`NFDecor.grade(map, theme)` → `env.adjustment_color_correction`): an
+  S-curve with a tint in the shadows and highlights — teal forest, warm fareej, green car park, blue
+  beach, orange Empty Quarter; the weathers add theirs.
+- **Decals** (`world._build_decals`, `decals` counts them): blood under every hook (every other one
+  on the roads) with a drag mark, oil under the generators, grime and stains about the map, puddles
+  with their own roughness map on the rain night and in the car park. Textures drawn in code, 128 px.
+  The older phones (Mobile renderer, 8 decals per mesh) get only the hook and generator ones.
+- **Fire** (`NFDecor.fire`, `fire_fx`): flames, embers and (not on older phones) smoke on every map
+  campfire.
+- **«مطر»** — a fifth weather (menus, `THEMES` in `server.js`): streaks following the camera
+  (`world.rain`, not under the car park's slab), wet materials (`_wet`: rougher surfaces glossier and
+  darker), SSR on «فائق» effects (`look_kind` "rain"), denser blue fog, and lightning every 9-25 s
+  (`_step_lightning`, two strokes on the moon and the ambient). **No rain or thunder sound until the
+  owner sends files.**
+- Not doable without the owner's files: hair that swings and eyes that blink need **bones in the
+  hair and eyelids** (our characters are on the Mixamo skeleton, which has neither).
+`tools/gfx.tscn` tests it; `tools/shot22.tscn` photographs the rain, a hook, a campfire, two grades.

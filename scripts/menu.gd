@@ -7,8 +7,8 @@ signal start_game(cfg: Dictionary)
 
 const MAPS := {"forest": "الغابة", "village": "القرية المهجورة", "fareej": "الفريج", "rubkhali": "الربع الخالي",
 	"garage": "المواقف", "beach": "الشاطئ"}
-const THEMES := {"normal": "ليل", "fog": "ضباب", "snow": "ثلج", "halloween": "هالوين"}
-const THEME_ICON := {"normal": "moon", "fog": "fog", "snow": "star", "halloween": "skull"}
+const THEMES := {"normal": "ليل", "fog": "ضباب", "rain": "مطر", "snow": "ثلج", "halloween": "هالوين"}
+const THEME_ICON := {"normal": "moon", "fog": "fog", "rain": "rain", "snow": "star", "halloween": "skull"}
 const VERSION := "v1.4"
 const CHARS := {"killer": "القاتل", "survivor1": "الناجية", "survivor2": "الرحّال", "survivor3": "الشريف", "survivor4": "الفالكيري القرمزية", "survivor5": "المحاربة الجريحة", "survivor6": "حارسة الليل", "survivor7": "الباحثة", "survivor8": "وردة الليل"}
 const SECRET := "survivor4" # hidden: only on phones Net.has_secret() is true for

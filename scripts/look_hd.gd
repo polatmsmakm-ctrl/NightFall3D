@@ -54,7 +54,7 @@ static func apply(env: Environment, kind: String) -> void:
 	env.sdfgi_probe_bias = 1.1
 	# volumetric fog: shafts of light from the lamps, the headlights and the torches
 	env.volumetric_fog_enabled = fx >= 1 and kind != "stage"
-	env.volumetric_fog_density = {"night": 0.024, "fog": 0.045, "garage": 0.018, "day": 0.01, "camp": 0.018}.get(kind, 0.024)
+	env.volumetric_fog_density = {"night": 0.024, "fog": 0.045, "rain": 0.032, "garage": 0.018, "day": 0.01, "camp": 0.018}.get(kind, 0.024)
 	env.volumetric_fog_albedo = Color(0.95, 0.82, 0.62) if kind == "day" else Color(0.78, 0.82, 0.9)
 	env.volumetric_fog_emission = Color.BLACK
 	env.volumetric_fog_anisotropy = 0.7 if kind == "day" else 0.55 # forward glow round every light
@@ -76,7 +76,7 @@ static func apply(env: Environment, kind: String) -> void:
 	env.glow_hdr_threshold = 1.0 if kind != "day" else 1.4
 	for i in 7: env.set_glow_level(i, i in [1, 2, 3, 4])
 	# lamps and headlights mirrored in the car park's polished concrete
-	env.ssr_enabled = fx >= 2 and kind == "garage"
+	env.ssr_enabled = fx >= 2 and kind in ["garage", "rain"] # wet floors mirror the lights
 	env.ssr_max_steps = 48
 	env.ssr_fade_in = 0.15
 	env.ssr_fade_out = 2.0

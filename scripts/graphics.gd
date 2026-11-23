@@ -30,7 +30,7 @@ var strong := false
 ## among them). It gets its own start: the lighter Mobile renderer from the second launch, settings
 ## that hold 60 there, and a governor that may go further down (resolution to 70%, a steady 30).
 var weak := false
-const TIER := 3 # raise it to re-apply the strong-device defaults once on every phone
+const TIER := 4 # raise it to re-apply the strong-device defaults once on every phone
 const WEAK_TIER := 1 # the same for the older-phone defaults
 ## This launch is the last one on Forward+ before the lighter renderer takes over (the renderer only
 ## changes at start-up): its heavy effects stay off meanwhile.
@@ -105,6 +105,14 @@ func eff_shadows() -> int: return mini(shadows, rt_shadows)
 func eff_effects() -> int: return 0 if _transit else mini(effects, rt_effects)
 
 ## How far the governor may take the resolution down (FSR rebuilds it): further on an older phone.
+## Metal (the iPhone, the iPad, a Mac): MetalFX is there. Off everywhere else, and in the tests.
+func on_metal() -> bool:
+	return OS.get_name() in ["iOS", "macOS"] and RenderingServer.get_current_rendering_driver_name() == "metal"
+
+## «MetalFX» picked in the edge smoothing, on Forward+ on Metal (elsewhere it falls back to «عالي»).
+func metalfx_temporal() -> bool:
+	return aa == 3 and on_metal() and engine_hd()
+
 func scale_floor() -> float:
 	return 0.7 if weak else 0.85
 
@@ -154,6 +162,7 @@ func apply() -> void:
 	if engine_hd():
 		vp.msaa_3d = Viewport.MSAA_DISABLED
 		vp.screen_space_aa = (Viewport.SCREEN_SPACE_AA_SMAA if (maxed() or aa >= 2) else Viewport.SCREEN_SPACE_AA_FXAA) if aa > 0 else Viewport.SCREEN_SPACE_AA_DISABLED
+		if metalfx_temporal(): vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED # MetalFX smooths the edges itself
 	else:
 		vp.msaa_3d = Viewport.MSAA_2X if (aa > 0 and proj_msaa >= 1) else Viewport.MSAA_DISABLED
 		vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED
@@ -165,6 +174,11 @@ func apply() -> void:
 	# below 100% the picture is rebuilt with AMD FSR (sharper than plain stretching), so the governor
 	# can take the resolution down a little without it looking soft
 	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if render_scale() < 0.999 else Viewport.SCALING_3D_MODE_BILINEAR
+	# on the iPhone, Apple's own MetalFX: «MetalFX» in the edge smoothing is the temporal one (it
+	# rebuilds every frame from the last ones: smoother edges and finer detail than FSR at the same
+	# render size, and no SMAA pass); otherwise the spatial one replaces FSR below 100%
+	if metalfx_temporal(): vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_METALFX_TEMPORAL
+	elif on_metal() and engine_hd() and render_scale() < 0.999: vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_METALFX_SPATIAL
 	vp.fsr_sharpness = 0.35
 	var s := eff_shadows()
 	RenderingServer.directional_shadow_atlas_set_size([1024, 2048, 4096][s], true)
@@ -206,8 +220,9 @@ func _load() -> void:
 		# 460 ppi screen 2x already hides the edges. After that the player's own choice stands.
 		# (TIER 3, after "the game lags" on the 18 Pro Max: 90% of the screen's 2868 x 1320 rebuilt
 		# with FSR — the same picture at 460 ppi for a fifth fewer pixels — and SMAA in place of MSAA.)
+		# (TIER 4, the graphics pass: MetalFX temporal on the iPhone in place of SMAA + FSR.)
 		preset = 2
-		shadows = PRESETS[2][0]; aa = 1; scale_idx = 1; effects = PRESETS[2][3]
+		shadows = PRESETS[2][0]; aa = 3; scale_idx = 1; effects = PRESETS[2][3]
 		fps_idx = 2
 		if ok:
 			brightness = clampf(float(c.get_value("g", "bright", brightness)), 0.6, 1.6)
@@ -233,7 +248,7 @@ func _load() -> void:
 	fps_idx = clampi(c.get_value("g", "fps", fps_idx), 0, 3)
 	preset = clampi(c.get_value("g", "preset", preset), 0, 2)
 	shadows = clampi(c.get_value("g", "shadows", shadows), 0, 2)
-	aa = clampi(c.get_value("g", "aa", aa), 0, 2)
+	aa = clampi(c.get_value("g", "aa", aa), 0, 3)
 	scale_idx = clampi(c.get_value("g", "scale", scale_idx), 0, 2)
 	effects = clampi(c.get_value("g", "effects", effects), 0, 2)
 	brightness = clampf(float(c.get_value("g", "bright", brightness)), 0.6, 1.6)
@@ -379,7 +394,7 @@ func _build_ui() -> void:
 	_row(v, "fps", "الإطارات", ["تلقائي", "30", "60", "120"])
 	_row(v, "preset", "الجرافيكس", ["متوسط", "عالي", "فائق"])
 	_row(v, "shadows", "الظلال", ["منخفض", "متوسط", "عالي"])
-	_row(v, "aa", "تنعيم الحواف", ["مغلق", "عادي", "عالي"])
+	_row(v, "aa", "تنعيم الحواف", ["مغلق", "عادي", "عالي", "MetalFX (الآيفون)"])
 	_row(v, "scale", "دقة الرسم", ["85%", "90%", "100%"])
 	_row(v, "effects", "جودة المؤثرات", ["منخفض", "متوسط", "عالي"])
 	_row(v, "engine", "محرك الرسم", ["عالي (فخم)", "خفيف (أسرع)"])
