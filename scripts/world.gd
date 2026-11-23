@@ -591,7 +591,12 @@ func _build_environment() -> void:
 			env.fog_light_color = Color(0.11, 0.13, 0.16)
 			env.fog_density = fog_density * 1.7
 			env.adjustment_saturation = 0.82
-	env.adjustment_color_correction = NFDecor.grade(map_id, theme) # the map's own film look
+	# the map's own film look: a little more or less colour and contrast per map. (A colour-correction
+	# curve was tried first: on screen it crushed the darks and burnt the colours — the environment
+	# reads the curve's 8-bit texture as sRGB — so it is not used.)
+	var look: Array = {"fareej": [1.06, 1.04], "garage": [0.86, 1.1], "beach": [0.92, 1.06], "village": [0.88, 1.08]}.get(map_id, [1.0, 1.0])
+	env.adjustment_saturation *= float(look[0])
+	env.adjustment_contrast *= float(look[1])
 	if map_id == "rubkhali": # «الربع الخالي» plays in daylight: a sandstorm with the sun in it
 		_sky_mat.set_shader_parameter("sun", 1.0)
 		env.ambient_light_color = Color(0.72, 0.6, 0.44)

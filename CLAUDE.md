@@ -813,9 +813,9 @@ from the agent's machine).
 - **MetalFX** (`Gfx.on_metal()`, `metalfx_temporal()`): «تنعيم الحواف» has a fourth choice «MetalFX
   (الآيفون)» — Apple's temporal upscaler (`SCALING_3D_MODE_METALFX_TEMPORAL`, no SMAA on top); strong
   phones start on it (`TIER` 4). Below 100% on Metal the spatial one replaces FSR. Off elsewhere.
-- **Colour grade per map** (`NFDecor.grade(map, theme)` → `env.adjustment_color_correction`): an
-  S-curve with a tint in the shadows and highlights — teal forest, warm fareej, green car park, blue
-  beach, orange Empty Quarter; the weathers add theirs.
+- **Colour per map**: a little more or less saturation and contrast per map in `_build_environment`.
+  `NFDecor.grade()` (a colour-correction curve) is **not used**: in the screenshots it crushed the
+  darks and burnt the colours — the environment reads the curve's 8-bit texture as sRGB.
 - **Decals** (`world._build_decals`, `decals` counts them): blood under every hook (every other one
   on the roads) with a drag mark, oil under the generators, grime and stains about the map, puddles
   with their own roughness map on the rain night and in the car park. Textures drawn in code, 128 px.

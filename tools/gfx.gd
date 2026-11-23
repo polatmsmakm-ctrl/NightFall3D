@@ -35,7 +35,7 @@ func _ready() -> void:
 	print("forest: %d decals, %d fires" % [ds, w.fire_fx])
 	check(ds >= w.hook_points.size() / 2 + 7 and ds == w.decals, "blood under the hooks, oil by the generators, stains about (%d)" % ds)
 	check(w.fire_fx == w.campfires, "every campfire burns with real flames (%d of %d)" % [w.fire_fx, w.campfires])
-	check(w.env.adjustment_color_correction != null, "the forest has its colour grade")
+	check(w.env.adjustment_color_correction == null, "no colour-correction curve (it burnt the colours on screen)")
 	check(w.rain == null, "no rain on a dry night")
 	check(not Gfx.metalfx_temporal() and get_viewport().scaling_3d_mode != Viewport.SCALING_3D_MODE_METALFX_TEMPORAL, "MetalFX stays off away from Metal")
 	m.queue_free()
