@@ -89,15 +89,18 @@ func _ready() -> void:
 	# the pistol: lowered by the hip (seen from the side), then raised in both hands
 	m = await boot("forest", "normal", true)
 	await frames(30)
-	m.rig.rotation.y = m.yaw + PI / 2.0
+	m.rig.rotation.y = m.yaw - PI / 2.0 # her right side toward the camera
 	await frames(6)
 	await shot("22_gun_low")
-	m.gun_aim = 3.0
+	m.gun_aim = 999.0 # (lavapipe draws a frame a second: a 1.4 s hold would be over before the picture)
 	await frames(30)
 	await shot("22_gun_aim")
 	m.pitch = 0.45
 	await frames(15)
 	await shot("22_gun_aim_up")
+	m.yaw += PI * 0.6 # from the front and to the side, to see the hands and the gun
+	await frames(20)
+	await shot("22_gun_aim_front")
 	m.queue_free()
 	await frames(10)
 	print("SHOT22 DONE")

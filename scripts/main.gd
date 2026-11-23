@@ -2365,7 +2365,7 @@ func _process(dt: float) -> void:
 				var eg := ec.grips()
 				r.rig.reach(eg[0], eg[1], eg[2], eg[3])
 			else: r.rig.reach_clear()
-		elif r.role == "survivor": r.rig.reach_clear()
+		elif r.role == "survivor" and (r.get("gun") == null or not (r.gun as NFGun).visible): r.rig.reach_clear() # (their pistol holds the arms otherwise)
 		if r.torch: r.torch.visible = r.lit and st in ["ok", "hurt"] and rules.car_of(n) < 0
 		if bool(r.get("v", false)): # vanished (developer tools on their phone): nothing of them shows here
 			r.node.visible = false
