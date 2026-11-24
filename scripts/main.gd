@@ -10,8 +10,10 @@ const CARRY_SPEED := 3.6
 const NATURAL := {"walk": 1.3, "run": 3.7, "sprint": 5.2, "crouchwalk": 1.0, "injured": 1.6}
 const ACCEL := 20.0
 const DECEL := 28.0
-const SFX := ["gate", "heart", "breath", "steps_out", "steps_in", "gen_run", "chase", "ambient", "doom", "rope", "male_pain", "scream1", "scream2", "oof1", "oof2", "oof3"]
-const MALE := ["survivor2", "survivor3"] # the other characters (the killer «البركة القرمزية» too) use the female voice clips
+var rain_audio: AudioStreamPlayer
+var ravens: NFRavens
+const SFX := ["gunshot", "scream_beast", "crow", "raven", "gate", "heart", "breath", "steps_out", "steps_in", "gen_run", "chase", "ambient", "doom", "rope", "male_pain", "scream1", "scream2", "oof1", "oof2", "oof3"]
+const MALE := ["survivor2", "survivor3", "killer2"] # the other characters (the killer «البركة القرمزية» too) use the female voice clips
 const TERROR_RADIUS := 24.0 # survivors start to feel the killer inside this distance
 const CHASE_NEAR := 16.0     # the chase music plays when she is this close on foot, even unseen (never while she drives)
 ## quick signals: what the three buttons say, their icon, and how they look on a team-mate's screen
@@ -378,6 +380,15 @@ func _build_audio() -> void:
 	for n in ["heart", "breath", "steps_out", "steps_in", "gen_run", "chase", "ambient"]:
 		(sounds[n] as AudioStreamMP3).loop = true
 	amb = _loop_player("ambient", -13.0, true, Aud.MUSIC)
+	if world.theme == "rain" and ResourceLoader.exists("res://assets/sfx/rain.ogg"): # «مطر»: the owner's rain, looped
+		var rs: AudioStream = load("res://assets/sfx/rain.ogg")
+		if rs is AudioStreamOggVorbis: (rs as AudioStreamOggVorbis).loop = true
+		rain_audio = AudioStreamPlayer.new()
+		rain_audio.bus = Aud.MUSIC
+		rain_audio.stream = rs
+		rain_audio.volume_db = -17.0 if world.map_id == "garage" else -7.0 # muffled under the car park's slab
+		add_child(rain_audio)
+		rain_audio.play()
 	chase_music = _loop_player("chase", -60.0, false, Aud.MUSIC)
 	doom_music = AudioStreamPlayer.new()
 	doom_music.bus = Aud.MUSIC
@@ -660,33 +671,90 @@ func _shoot() -> void:
 		from = my_gun.muzzle()
 		my_gun.shot()
 	gun_aim = 1.4
-	_beam(from, to, hit)
-	_shake(0.18)
+	_beam(from, to, hit, true)
+	_shake(0.3) # the kick of it
 	NFHaptics.pulse("hit" if hit else "tick")
 	_ev({"k": "shoot", "hit": hit})
 	if hit: _flash("صبتها! دايخة ٣ ثواني — اهرب")
 
 ## A short bright beam for a shot: blue when it hit, pale when it missed. Gone in a fifth of a second.
-func _beam(a: Vector3, b: Vector3, hit: bool) -> void:
-	var mi := MeshInstance3D.new()
+## A shot from the pistol, on every phone: the owner's gunshot, a flash at the muzzle that lights
+## the shooter up for an instant, the bullet as a short streak of fire flying to where it went,
+## a puff of smoke that hangs and rises from the barrel, a brass case thrown out to the right,
+## sparks where it struck, and on a hit the stun's blue crackle on her.
+func _beam(a: Vector3, b: Vector3, hit: bool, mine := false) -> void:
+	_sfx("gunshot", null if mine else a, 0.0 if mine else 4.0, randf_range(0.96, 1.04))
+	var dir := (b - a).normalized() if a.distance_to(b) > 0.01 else Vector3.FORWARD
+	# the flash: a hot star at the muzzle and a light for 60 ms
+	var fl := OmniLight3D.new()
+	fl.light_color = Color(1.0, 0.72, 0.35)
+	fl.light_energy = 5.0
+	fl.omni_range = 6.0
+	fl.shadow_enabled = false
+	add_child(fl)
+	fl.global_position = a + dir * 0.1
+	var ftw := create_tween()
+	ftw.tween_property(fl, "light_energy", 0.0, 0.07)
+	ftw.tween_callback(fl.queue_free)
+	NFDecor.burst(self, a + dir * 0.06, dir, 10, 0.09, 0.22, Vector2(0.5, 2.5), 25.0, Vector3.ZERO,
+		Color(1.0, 0.85, 0.45, 1.0), Color(1.0, 0.35, 0.05), true, 0.2)
+	# smoke from the barrel: grey, drifting up and spreading
+	NFDecor.burst(self, a + dir * 0.08, dir * 0.6 + Vector3.UP * 0.4, 0 + (10 if Gfx.weak else 18), 1.8, 0.32,
+		Vector2(0.2, 0.9), 35.0, Vector3(0, 0.35, 0), Color(0.7, 0.7, 0.72, 0.45), Color(0.5, 0.5, 0.52), false, 3.2)
+	# the bullet: a short streak of fire that flies there (~200 m/s, so it is seen for a few frames)
+	var tr := MeshInstance3D.new()
 	var bm := BoxMesh.new()
-	bm.size = Vector3(0.035, 0.035, maxf(a.distance_to(b), 0.1))
+	bm.size = Vector3(0.025, 0.025, 0.7)
 	var m := StandardMaterial3D.new()
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	m.albedo_color = Color(0.45, 0.85, 1.0) if hit else Color(0.9, 0.95, 1.0, 0.6)
-	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	m.emission_enabled = true
-	m.emission = m.albedo_color
-	m.emission_energy_multiplier = 4.0
+	m.albedo_color = Color(1.0, 0.75, 0.35)
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 	bm.material = m
-	mi.mesh = bm
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(mi)
-	mi.global_position = (a + b) / 2.0
-	if a.distance_to(b) > 0.01: mi.look_at(b, Vector3.UP if absf((b - a).normalized().y) < 0.98 else Vector3.RIGHT)
-	var tw := create_tween()
-	tw.tween_property(m, "albedo_color:a", 0.0, 0.2)
-	tw.tween_callback(mi.queue_free)
+	tr.mesh = bm
+	tr.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(tr)
+	tr.global_position = a + dir * 0.4
+	if a.distance_to(b) > 0.01: tr.look_at(b, Vector3.UP if absf(dir.y) < 0.98 else Vector3.RIGHT)
+	var t := clampf(a.distance_to(b) / 200.0, 0.03, 0.15)
+	var ttw := create_tween()
+	ttw.tween_property(tr, "global_position", b, t)
+	ttw.tween_callback(func():
+		tr.queue_free()
+		# sparks where it struck, and the stun's blue on her
+		NFDecor.burst(self, b, -dir + Vector3.UP * 0.5, 14, 0.35, 0.08, Vector2(2.0, 5.0), 60.0, Vector3(0, -9.0, 0),
+			Color(1.0, 0.8, 0.4, 1.0), Color(1.0, 0.3, 0.05), true, 0.4)
+		if hit: NFDecor.burst(self, b, Vector3.UP, 16, 0.5, 0.18, Vector2(0.5, 2.0), 180.0, Vector3.ZERO,
+			Color(0.5, 0.85, 1.0, 1.0), Color(0.3, 0.5, 1.0), true, 1.5))
+	# the spent case, out to the right and down
+	var side := dir.cross(Vector3.UP).normalized()
+	var cs := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = 0.006; cm.bottom_radius = 0.006; cm.height = 0.02; cm.radial_segments = 6; cm.rings = 1
+	cm.material = _brass()
+	cs.mesh = cm
+	cs.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(cs)
+	var c0 := a - dir * 0.12 + Vector3.UP * 0.03
+	cs.global_position = c0
+	var v0 := side * randf_range(1.6, 2.4) + Vector3.UP * randf_range(1.5, 2.2) - dir * 0.3
+	var ground := c0.y - 1.3
+	var ctw := create_tween()
+	ctw.tween_method(func(k: float):
+		var p := c0 + v0 * k + Vector3(0, -4.9 * k * k, 0)
+		p.y = maxf(p.y, ground)
+		cs.global_position = p
+		cs.rotation = Vector3(k * 31.0, k * 17.0, 0.0), 0.0, 0.7, 0.7)
+	ctw.tween_interval(2.0)
+	ctw.tween_callback(cs.queue_free)
+
+var _brass_m: StandardMaterial3D
+func _brass() -> StandardMaterial3D:
+	if _brass_m == null:
+		_brass_m = StandardMaterial3D.new()
+		_brass_m.albedo_color = Color(0.85, 0.65, 0.3)
+		_brass_m.metallic = 1.0
+		_brass_m.roughness = 0.3
+	return _brass_m
 
 ## The body's weight in the movement, on every character and every phone (from how they really
 ## move, so other players lean too): into a turn like a runner on a bend, forward when pulling away
@@ -927,6 +995,9 @@ func _on_event(e: Dictionary) -> void:
 				_shake(0.3)
 				boost_t = 1.5
 			elif my_role == "killer": _flash("ما أثرت الضربة! جلده قاسي")
+		"mend": # «تفتّح» (Bloom)
+			_feed("%s تفتّحت ورجعت سليمة" % str(e.n), "heal", Color(0.75, 0.55, 1.0))
+			if str(e.n) == my_name: _flash("تفتّح — رجعتي سليمة!")
 		"rise": # «جناح الفالكيري»
 			_feed("%s قامت بروحها!" % str(e.n), "star", Color(1.0, 0.55, 0.6))
 			if str(e.n) == my_name:
@@ -1373,6 +1444,23 @@ func _adhan() -> void:
 		adhan_player = null
 
 ## A short kick: the camera tips and rolls, then springs back. `power` is roughly 0..1.
+## «الوحش» (killer2) screams when a chase starts — from where he is, on every phone in the chase —
+## and the survivors' screens shake a little with it (not much: they still have to run).
+var _cry_cd := 0.0
+var _was_chasing := false
+func _beast_cry(chasing: bool, dt: float) -> void:
+	_cry_cd = maxf(_cry_cd - dt, 0.0)
+	var start := chasing and not _was_chasing
+	_was_chasing = chasing
+	if not start or _cry_cd > 0.0 or rules.killer == "" or chars.get(rules.killer, "") != "killer2": return
+	_cry_cd = 14.0
+	if my_role == "killer":
+		_sfx("scream_beast", null, -3.0)
+	else:
+		_sfx("scream_beast", _pos_of(rules.killer) + Vector3(0, 1.6, 0), 6.0)
+		_shake(0.22)
+		NFHaptics.pulse_scaled("hit", 0.35)
+
 func _shake(power: float) -> void:
 	cam_kick_v += Vector2(-power * 2.6, power * 2.2 * (1.0 if randf() < 0.5 else -1.0))
 
@@ -2291,6 +2379,15 @@ func _process(dt: float) -> void:
 	if bot and not bot_baked and world.ready_done:
 		bot_baked = true
 		bot.bake()
+	if ravens == null and world.ready_done and world.map_id != "garage": # the owner's ravens
+		ravens = NFRavens.new()
+		ravens.name = "Ravens"
+		ravens.listeners = func() -> Array:
+			var out := [body.global_position]
+			for n in remotes: out.append((remotes[n].node as Node3D).global_position)
+			return out
+		world.add_child(ravens)
+		ravens.setup(world.raven_perches(), 4 if Gfx.weak else 7, 3, int(rules.ev_at * 1000.0) + rules.ev_kind)
 	flash_t = maxf(flash_t - dt, 0.0)
 	for k in pop.keys(): pop[k] = maxf(float(pop[k]) - dt, 0.0)
 	hit_t = maxf(hit_t - dt, 0.0)
@@ -2365,6 +2462,13 @@ func _process(dt: float) -> void:
 			_lean_rig(r.rig, dt, float(r.spd), anim)
 			if hit_anim.get(n, 0.0) <= 0.0: r.rig.play(anim, stride)
 		_update_bleed(r.bleed, st == "hooked", dt)
+		# far away or behind the camera: the skeleton is posed less often (see CharacterRig.set_anim_rate)
+		var vc := get_viewport().get_camera_3d()
+		if vc and is_instance_valid(r.rig):
+			var rp: Vector3 = (r.node as Node3D).global_position + Vector3(0, 1.0, 0)
+			var dc := vc.global_position.distance_to(rp)
+			var seen := vc.is_position_in_frustum(rp) or dc < 4.0
+			(r.rig as CharacterRig).set_anim_rate(1 if (seen and dc < 30.0) else (2 if (seen and dc < 70.0) else (4 if seen else 6)))
 		# women gasp "oof" now and then while limping around injured
 		if st == "hurt" and r.node.visible and anim in ["walk", "injured", "run"] and not (chars.get(n, "") in MALE):
 			oof_t[n] = oof_t.get(n, 1.5) - dt
@@ -2508,6 +2612,7 @@ func _process(dt: float) -> void:
 			chase_hold = maxf(chase_hold, 4.0) # she is close (on foot): the music, seen or not
 	chase_hold = 0.0 if k_driving else maxf(chase_hold - dt, 0.0)
 	var chasing := chase_hold > 0.0 and not rules.over
+	_beast_cry(chasing, dt)
 	if chasing and not chase_music.playing: chase_music.play()
 	chase_music.volume_db = lerpf(chase_music.volume_db, -6.0 if chasing else -60.0, 1.0 - exp(-2.5 * dt))
 	if chase_music.playing and not chasing and chase_music.volume_db < -50.0: chase_music.stop()

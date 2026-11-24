@@ -28,7 +28,7 @@ const LIVE := ["ok", "hurt", "down", "carried", "hooked"]
 ## One ability per survivor character. The rules apply the ones that touch the round (fix, lift,
 ## rise, tough, medic); main.gd does the rest on the phone (burst, sense, ghost). Same table in rules.js.
 const PERK := {"survivor1": "burst", "survivor2": "fix", "survivor3": "lift", "survivor4": "rise",
-	"survivor5": "tough", "survivor6": "sense", "survivor7": "medic", "survivor8": "ghost"}
+	"survivor5": "tough", "survivor6": "sense", "survivor7": "medic", "survivor8": "ghost", "survivor9": "mend"}
 ## Name, one line and an icon for each, for the character stand, the HUD and «طريقة اللعب».
 const PERK_INFO := {
 	"burst": ["نفس ثاني", "إذا انضربت أو نزلت من الخطاف، تركض أسرع وأطول", "shoe"],
@@ -39,9 +39,11 @@ const PERK_INFO := {
 	"sense": ["عين الليل", "تحس بالقاتلة إذا قربت 28 م، وسهم يوريك وينها", "eye"],
 	"medic": ["طب ميداني", "تعالج غيرك أسرع بـ 60%", "heal"],
 	"ghost": ["خطوة شبح", "القاتلة ما تشوف آثار ركضك وخطواتك واطية", "crouch"],
+	"mend": ["تفتّح", "إذا انجرحت وقعدت 45 ثانية ما انضربتي، ترجعين سليمة", "heal"],
 }
 const SENSE_R := 28.0     # «عين الليل»: how close she has to be
 const FIX_MUL := 1.3      # «يد المصلّح»: repairs 30% faster
+const MEND_TIME := 45.0   # «تفتّح»: how long Bloom has to stay hurt (and not hit again) to mend
 const MEDIC_MUL := 1.6    # «طب ميداني»: heals the others 60% faster
 const LIFT_W := 1.8       # «الحامي»: lifts someone off a hook like nearly two people
 const RISE_TIME := 20.0   # «جناح الفالكيري»: down this long without being picked up, she gets up (once)
@@ -387,6 +389,14 @@ func tick(dt: float) -> Array:
 					healers.erase(n)
 					out.append({"k": "rise", "n": n})
 			elif p.hp != "down": p.rt = 0.0
+		if perk.get(n, "") == "mend": # «تفتّح» (Bloom): hurt and left alone long enough, she mends herself
+			if p.hp == "hurt":
+				p.rt = float(p.rt) + dt
+				if p.rt >= MEND_TIME:
+					p.hp = "ok"; p.rt = 0.0; p.heal = 0.0
+					healers.erase(n)
+					out.append({"k": "mend", "n": n})
+			else: p.rt = 0.0
 		if p.hp == "hooked": p.esc = maxf(p.esc - MASH_DECAY * dt, 0.0)
 		if p.hp == "hooked" or p.hp == "down":
 			p.t -= dt

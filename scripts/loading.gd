@@ -25,7 +25,7 @@ const TIPS := [
 	"الخيل والبعارين ما يأذونك، بس يشتتون نظر القاتل",
 ]
 const NAMES := {"forest": "الغابة", "village": "القرية المهجورة", "fareej": "الفريج", "rubkhali": "الربع الخالي",
-	"garage": "المواقف", "beach": "الشاطئ"}
+	"garage": "المواقف", "beach": "الشاطئ", "city": "City Life"}
 const THEME_NAMES := {"snow": "ثلج", "halloween": "هالوين"}
 
 var map_id := "forest"
@@ -113,6 +113,24 @@ func _draw_preview(r: Rect2) -> void:
 					_pad.draw_colored_polygon(PackedVector2Array([Vector2(x2 - 5.0, y2 - h2), Vector2(x2 + w2 / 2.0, y2 - h2 - r.size.y * 0.1), Vector2(x2 + w2 + 5.0, y2 - h2)]), col2)
 					if depth == 0 and rng.randf() < 0.6: # one lit window
 						_pad.draw_rect(Rect2(Vector2(x2 + w2 * 0.3, y2 - h2 * 0.6), Vector2(w2 * 0.18, h2 * 0.2)), Color(1.0, 0.72, 0.35, 0.5 * a))
+		"city": # City Life: towers with lit windows and neon against a purple sky
+			_pad.draw_rect(r, Color(0.07, 0.04, 0.1, a))
+			for depth in 2:
+				var n4 := 7 + depth * 4
+				for i in n4:
+					var w4 := r.size.x / float(n4) * rng.randf_range(0.5, 0.85)
+					var x4 := r.position.x + r.size.x * i / float(n4) + rng.randf_range(0.0, 8.0)
+					var h4 := r.size.y * rng.randf_range(0.3, 0.75) * (1.0 - depth * 0.3)
+					var c4 := Color(0.05, 0.045, 0.07, a) if depth == 0 else Color(0.03, 0.025, 0.045, a)
+					_pad.draw_rect(Rect2(Vector2(x4, base - h4), Vector2(w4, h4 + 6.0)), c4)
+					if depth == 0:
+						for k in 10:
+							if rng.randf() < 0.45: continue
+							_pad.draw_rect(Rect2(Vector2(x4 + w4 * rng.randf_range(0.1, 0.8), base - h4 * rng.randf_range(0.1, 0.95)), Vector2(3.0, 2.0)),
+								Color(1.0, 0.8, 0.5, 0.6 * a) if rng.randf() < 0.6 else Color(0.6, 0.85, 1.0, 0.6 * a))
+						if rng.randf() < 0.5:
+							var nc := [Color(1.0, 0.2, 0.65), Color(0.2, 0.9, 1.0), Color(0.75, 0.35, 1.0)][i % 3]
+							_pad.draw_rect(Rect2(Vector2(x4 + w4 * 0.15, base - h4 * 0.55), Vector2(w4 * 0.7, 4.0)), Color(nc.r, nc.g, nc.b, 0.9 * a))
 		"garage": # a row of concrete columns under a low slab, with a car and two strip lights
 			var slab := Color(0.05, 0.05, 0.055, a)
 			var cy := r.position.y + r.size.y * 0.18

@@ -20,6 +20,7 @@ const EMOTE_BONES := ["mixamorig_Hips", "mixamorig_Spine", "mixamorig_Spine1", "
 
 var model: Node3D
 var skeleton: Skeleton3D
+var hunch: NFHunch # «الوحش» only
 var player := AnimationPlayer.new()
 var current := ""
 
@@ -46,6 +47,10 @@ func setup(char_name: String, anims: Array = ANIMS, close_up := false, sss := tr
 			var mat := (mi as MeshInstance3D).get_active_material(s) as BaseMaterial3D
 			if mat: mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	skeleton = model.find_children("*", "Skeleton3D", true, false)[0]
+	if char_name == "killer2": # «الوحش»: hunched over whatever clip plays (the first modifier, before the IK)
+		hunch = NFHunch.new()
+		skeleton.add_child(hunch)
+		skeleton.move_child(hunch, 0)
 	player.name = "Anim"
 	model.add_child(player)
 	player.root_node = player.get_path_to(model)
@@ -299,9 +304,34 @@ func bone_at(bone: String) -> Vector3:
 func has(anim: String) -> bool:
 	return player.has_animation(anim)
 
+## Animation throttling (the optimisation pass): a character far away or off screen does not need
+## its skeleton posed sixty times a second. main.gd sets `every` per remote: 1 near and in view,
+## 2 at a distance, 4 far, 6 behind the camera. The clip still runs at its own speed: the skipped
+## time is handed to the next update, so nothing drifts out of step.
+var anim_every := 1
+var _anim_acc := 0.0
+var _anim_n := 0
+func set_anim_rate(every: int) -> void:
+	every = maxi(every, 1)
+	if every == anim_every or player == null: return
+	anim_every = every
+	player.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL if every > 1 else AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_IDLE
+	_anim_acc = 0.0
+	_anim_n = 0
+
+func _process(dt: float) -> void:
+	if anim_every <= 1 or player == null: return
+	_anim_acc += dt
+	_anim_n += 1
+	if _anim_n >= anim_every:
+		player.advance(_anim_acc)
+		_anim_acc = 0.0
+		_anim_n = 0
+
 func play(anim: String, speed := 1.0) -> void:
 	if current == anim and player.speed_scale == speed: return
 	if not player.has_animation(anim): return
 	current = anim
+	if hunch: hunch.want = 0.0 if anim in ["drive", "slump", "hang", "carried", "dying", "crawl", "hide"] else 1.0
 	player.speed_scale = speed
 	player.play(anim, 0.2)

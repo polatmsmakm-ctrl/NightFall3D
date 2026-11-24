@@ -16,7 +16,8 @@ const CAR_SEATS = 6; // an escape car seats six: every survivor a room can have
 const ROAD_TIME = 120; // from the first one getting into a gate's escape car to the last gate, 600 m on
 // one ability per survivor character (same table and numbers as rules.gd)
 const PERK = { survivor1: 'burst', survivor2: 'fix', survivor3: 'lift', survivor4: 'rise',
-  survivor5: 'tough', survivor6: 'sense', survivor7: 'medic', survivor8: 'ghost' };
+  survivor5: 'tough', survivor6: 'sense', survivor7: 'medic', survivor8: 'ghost', survivor9: 'mend' };
+const MEND_TIME = 45; // «تفتّح»: Bloom, hurt and left alone this long, mends herself
 const FIX_MUL = 1.3, MEDIC_MUL = 1.6, LIFT_W = 1.8, RISE_TIME = 20;
 const TRAPS = 4, HELD_TIME = 4; // the killer's traps armed at once; caught in one: held this long
 
@@ -355,6 +356,12 @@ class Rules {
           p.rt += dt;
           if (p.rt >= RISE_TIME) { p.hp = 'hurt'; p.risen = true; p.rt = 0; p.heal = 0; delete this.healers[n]; out.push({ k: 'rise', n }); }
         } else if (p.hp !== 'down') p.rt = 0;
+      }
+      if (this.perk[n] === 'mend') { // «تفتّح» (Bloom): hurt and left alone long enough, she mends herself
+        if (p.hp === 'hurt') {
+          p.rt += dt;
+          if (p.rt >= MEND_TIME) { p.hp = 'ok'; p.rt = 0; p.heal = 0; delete this.healers[n]; out.push({ k: 'mend', n }); }
+        } else p.rt = 0;
       }
       if (p.hp === 'hooked') p.esc = Math.max(p.esc - MASH_DECAY * dt, 0);
       if (p.hp === 'hooked' || p.hp === 'down') { p.t -= dt; if (p.t <= 0) { p.hp = 'dead'; this.add(this.killer, 100); } }

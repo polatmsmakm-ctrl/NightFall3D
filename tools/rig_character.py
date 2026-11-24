@@ -243,6 +243,96 @@ def fit_skeleton(P, donor, arms=None):
     return pos
 
 
+# ------------------------------------------------------------------ a sculpt that is not in a T-pose
+# («الوحش»: hunched, arms hanging, knees bent, a tail.) The joints are given by hand in a JSON file
+# (`--pose`), in the cast's space at the sculpt's own height. The skeleton's REST pose stays the
+# donor's T-pose (so the Mixamo clips play exactly as on everyone else), with this body's bone
+# lengths; the BIND pose is the sculpt's own posture: each bone turned from the donor's direction to
+# the sculpt's limb. Skinning undoes the posture at rest, and the clips pose it from there.
+PRIMARY = {'Hips': 'Spine', 'Spine': 'Spine1', 'Spine1': 'Spine2', 'Spine2': 'Neck', 'Neck': 'Head',
+           'LeftShoulder': 'LeftArm', 'LeftArm': 'LeftForeArm', 'LeftForeArm': 'LeftHand',
+           'RightShoulder': 'RightArm', 'RightArm': 'RightForeArm', 'RightForeArm': 'RightHand',
+           'LeftUpLeg': 'LeftLeg', 'LeftLeg': 'LeftFoot', 'LeftFoot': 'LeftToeBase',
+           'RightUpLeg': 'RightLeg', 'RightLeg': 'RightFoot', 'RightFoot': 'RightToeBase'}
+
+
+def turn_from_to(a, b):
+    a = a / np.linalg.norm(a)
+    b = b / np.linalg.norm(b)
+    v = np.cross(a, b)
+    c = float(np.dot(a, b))
+    if np.linalg.norm(v) < 1e-8:
+        return np.eye(3) if c > 0 else -np.eye(3)
+    K = np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
+    return np.eye(3) + K + K @ K * ((1 - c) / (np.linalg.norm(v) ** 2))
+
+
+def posed_skeleton(donor, jp):
+    """-> bind world matrices (the sculpt's posture), T-pose joint positions with its bone lengths."""
+    ix = donor.idx
+    n = len(donor.names)
+    A = [None] * n
+    for name, k in ix.items():
+        c = PRIMARY.get(name)
+        if c:
+            A[k] = turn_from_to(donor.pos[ix[c]] - donor.pos[k], jp[ix[c]] - jp[k])
+    for name, k in ix.items():                   # hands, the head and the toes turn with their parent
+        if A[k] is None:
+            A[k] = A[donor.parent[k]]
+    world = donor.world.copy()
+    for k in range(n):
+        world[k][:3, :3] = A[k] @ donor.world[k][:3, :3]
+        world[k][:3, 3] = jp[k]
+    tp = jp.copy()
+    for k in range(n):                           # the donor lists parents before their children
+        p = donor.parent[k]
+        if p >= 0:
+            d = donor.pos[k] - donor.pos[p]
+            tp[k] = tp[p] + d / max(np.linalg.norm(d), 1e-9) * np.linalg.norm(jp[k] - jp[p])
+    toe = min(tp[ix['LeftToeBase']][1], tp[ix['RightToeBase']][1])
+    tp[:, 1] += donor.pos[ix['LeftToeBase']][1] * (jp[ix['Head']][1] / donor.pos[ix['Head']][1]) - toe
+    return world, tp
+
+
+def segment_weights(P, F, jp, ix, extra):
+    """Weights by the nearest bones: each vertex goes to the two or three bone segments it is
+    closest to (falling off with the fourth power of the distance), never across the middle to
+    the other side's limbs. `extra`: more segments for a joint, e.g. a tail carried by the hips."""
+    segs = []
+    for name, k in ix.items():
+        c = PRIMARY.get(name)
+        if c:
+            segs.append((k, jp[k], jp[ix[c]]))
+        else:
+            d = jp[k] - jp[donor_parent_of[k]]
+            segs.append((k, jp[k], jp[k] + d / max(np.linalg.norm(d), 1e-9) * (0.22 if 'Hand' in name else 0.12)))
+    for name, pts in extra.items():
+        for a, b in zip(pts[:-1], pts[1:]):
+            segs.append((ix[name], np.array(a, float), np.array(b, float)))
+    nJ = len(jp)
+    W = np.zeros((len(P), nJ))
+    D = np.full((len(P), nJ), 9.0)
+    for k, a, b in segs:
+        ab = b - a
+        t = np.clip(((P - a) @ ab) / max(ab @ ab, 1e-9), 0.0, 1.0)
+        d = np.linalg.norm(P - (a + t[:, None] * ab), axis=1)
+        name = [nm for nm, i in ix.items() if i == k][0]
+        if name.startswith('Left'):
+            d = d + np.where(P[:, 0] < -0.02, 9.0, 0.0)
+        elif name.startswith('Right'):
+            d = d + np.where(P[:, 0] > 0.02, 9.0, 0.0)
+        D[:, k] = np.minimum(D[:, k], d)
+    W = 1.0 / (D + 0.02) ** 4
+    lo = np.sort(W, axis=1)[:, -3][:, None]
+    W[W < lo] = 0.0
+    W /= W.sum(1, keepdims=True)
+    return W
+
+
+donor_parent_of = {}
+SLEEVES = 0.0
+
+
 # ------------------------------------------------------------------ weights by body part
 def chain(u, knots, blends):
     """Weights along a chain of bones: bone i owns knots[i]..knots[i+1], blending at each joint."""
@@ -275,7 +365,17 @@ def skin_weights(P, F, pos, ix, hair=None, chest=None):
         torso[:, ix[n]] = w
     # legs, by height, split left/right with a soft seam down the middle
     legs = np.zeros((len(P), nJ))
-    for side, share in (('Left', smooth(-0.025, 0.025, x)), ('Right', 1.0 - smooth(-0.025, 0.025, x))):
+    # left or right by whichever leg's centre line is nearer at that height (not by the sign of x):
+    # boots that touch in the middle, or stand off-centre, would otherwise be split down the middle
+    # and stretch into a sheet between the feet when she runs
+    def leg_x(side):
+        ks = [pos[ix[side + n]] for n in ('UpLeg', 'Leg', 'Foot')]
+        ys = np.array([k[1] for k in ks])[::-1]
+        xs = np.array([k[0] for k in ks])[::-1]
+        return np.interp(y, ys, xs)
+    lean = np.abs(x - leg_x('Right')) - np.abs(x - leg_x('Left'))
+    left_share = smooth(-0.012, 0.012, lean)
+    for side, share in (('Left', left_share), ('Right', 1.0 - left_share)):
         up, knee, ankle, toe = (pos[ix[side + n]] for n in ('UpLeg', 'Leg', 'Foot', 'ToeBase'))
         w_up, w_leg, w_foot = chain(-y, [-9.0, -knee[1], -ankle[1]], [0.06, 0.03])
         toes = smooth(toe[2] - 0.015, toe[2] + 0.03, z) * (1.0 - smooth(ankle[1] - 0.03, ankle[1] + 0.02, y))
@@ -292,7 +392,9 @@ def skin_weights(P, F, pos, ix, hair=None, chest=None):
     for side, s in (('Left', 1.0), ('Right', -1.0)):
         sh, arm, fore, hand = (pos[ix[side + n]] for n in ('Shoulder', 'Arm', 'ForeArm', 'Hand'))
         u = x * s
-        part = smooth(arm[0] * s - 0.07, arm[0] * s + 0.03, u) * smooth(arm[1] - 0.45, arm[1] - 0.3, y)
+        drop = 0.3 + (SLEEVES * smooth(fore[0] * s - 0.05, fore[0] * s + 0.08, u) if SLEEVES else 0.0)
+        tdrop = np.clip((y - (arm[1] - drop - 0.15)) / 0.15, 0.0, 1.0)
+        part = smooth(arm[0] * s - 0.07, arm[0] * s + 0.03, u) * tdrop * tdrop * (3.0 - 2.0 * tdrop)
         if hair is not None:
             part = part * (1.0 - smooth(0.35, 0.65, hair))
         part = part * (1.0 - proud)
@@ -302,6 +404,11 @@ def skin_weights(P, F, pos, ix, hair=None, chest=None):
         arm_part += part
     arm_part = np.clip(arm_part, 0.0, 1.0)
     W = arms + body * (1.0 - arm_part)[:, None]
+    return finish_weights(P, F, W)
+
+
+def finish_weights(P, F, W, passes=2):
+    nJ = W.shape[1]
     # two passes of smoothing over the mesh, so no seam is a hard line
     # (on the welded surface: the two copies of a vertex on a UV seam must end up with exactly
     # the same weights, or the seam opens into a slit the moment the joint bends)
@@ -314,7 +421,7 @@ def skin_weights(P, F, pos, ix, hair=None, chest=None):
     e = np.vstack([Fw[:, [0, 1]], Fw[:, [1, 2]], Fw[:, [2, 0]]])
     e = np.unique(np.vstack([e, e[:, ::-1]]), axis=0)
     deg = np.bincount(e[:, 0], minlength=nW).astype(float)
-    for _ in range(2):
+    for _ in range(passes):
         acc = np.zeros_like(Ww)
         np.add.at(acc, e[:, 0], Ww[e[:, 1]])
         Ww = 0.5 * Ww + 0.5 * acc / np.maximum(deg, 1.0)[:, None]
@@ -429,7 +536,7 @@ def write_import(png, normal=False):
 
 
 # ------------------------------------------------------------------ the whole job
-def build(src, out_path, donor_path, faces, tex_side, facing='auto', arms=None, bake=False, chest=None, hair_lum=70.0):
+def build(src, out_path, donor_path, faces, tex_side, facing='auto', arms=None, bake=False, chest=None, hair_lum=70.0, pose=None):
     sj, sb = load(src)
     donor = Donor(donor_path)
     ix = donor.idx
@@ -447,7 +554,21 @@ def build(src, out_path, donor_path, faces, tex_side, facing='auto', arms=None, 
         P[:, 2] *= -1.0
         print('turned to face +z')
     # 2. the skeleton, fitted to this body
-    pos = fit_skeleton(P, donor, arms)
+    bind = None
+    if pose:
+        spec = json.load(open(pose))
+        h0 = float(spec.get('height', 1.95))               # the joints were read off the sculpt at this height
+        k = (P[:, 1].max() - P[:, 1].min()) / h0
+        pos = np.array([np.array(spec['joints'][nm], float) * k for nm in donor.names])
+        extra = {nm: [np.array(p, float) * k for p in pts] for nm, pts in spec.get('extra', {}).items()}
+        sc = float(spec.get('scale', 1.0))                 # the creature's size against the cast
+        P = P * sc
+        pos = pos * sc
+        extra = {nm: [p * sc for p in pts] for nm, pts in extra.items()}
+        bind, tpose = posed_skeleton(donor, pos)
+        donor_parent_of.update({i: donor.parent[i] for i in range(len(donor.names))})
+    else:
+        pos = fit_skeleton(P, donor, arms)
     for side in ('Left', 'Right'):
         a, f, h = (pos[ix[side + n]] for n in ('Arm', 'ForeArm', 'Hand'))
         da, dh = donor.pos[ix[side + 'Arm']], donor.pos[ix[side + 'Hand']]
@@ -470,7 +591,11 @@ def build(src, out_path, donor_path, faces, tex_side, facing='auto', arms=None, 
     else:
         P, T, F, N = decimate(P, T, F, faces, pos, ix)
     print('mesh: %d faces, %d vertices' % (len(F), len(P)))
-    JJ, WW = skin_weights(P, F, pos, ix, hair, chest)
+    if bind is not None:
+        Wt = segment_weights(P, F, pos, ix, extra)
+        JJ, WW = finish_weights(P, F, Wt, passes=3)
+    else:
+        JJ, WW = skin_weights(P, F, pos, ix, hair, chest)
     # ---- write the GLB ----
     out = {'asset': {'version': '2.0', 'generator': 'NightFall rig_character.py'}}
     blob = bytearray()
@@ -538,7 +663,7 @@ def build(src, out_path, donor_path, faces, tex_side, facing='auto', arms=None, 
     dj = donor.j
     keep = sorted(set(donor.joints) | {donor.root_node})
     remap = {old: i for i, old in enumerate(keep)}
-    trans = donor.local_translations(pos)
+    trans = donor.local_translations(tpose if bind is not None else pos)
     nodes = []
     for old in keep:
         n = {k: v for k, v in dj['nodes'][old].items() if k not in ('mesh', 'skin', 'children')}
@@ -550,6 +675,8 @@ def build(src, out_path, donor_path, faces, tex_side, facing='auto', arms=None, 
         nodes.append(n)
     world = donor.world.copy()
     world[:, :3, 3] = pos
+    if bind is not None:
+        world = bind
     ibm = np.array([np.linalg.inv(w).T for w in world], dtype='<f4')
     ibm_a = put(ibm.tobytes(), len(ibm), 5126, 'MAT4')
     out['skins'] = [{'inverseBindMatrices': ibm_a, 'joints': [remap[j] for j in donor.joints]}]
@@ -603,11 +730,19 @@ if __name__ == '__main__':
     ap.add_argument('--bake', action='store_true',
                     help="no pymeshlab: collapse with tools/simplify.cpp, make a new atlas and bake the "
                          "sculpt's maps onto it (tools/rig_bake.py). For sculpts cut into thousands of UV islands")
+    ap.add_argument('--sleeves', type=float, default=0.0, metavar='METRES',
+                    help="wide sleeves hanging under the forearm: past the elbow the arm also owns this much more "
+                         "below it (0.4 for «Bloom»), so the hem swings with the arm instead of stretching to the body")
+    ap.add_argument('--pose', default=None, metavar='JOINTS.json',
+                    help="a sculpt that is not in a T-pose: its joints by hand ({'height': h, 'scale': s, "
+                         "'joints': {name: [x,y,z]}, 'extra': {joint: [[x,y,z], ...]}}); weights by the nearest "
+                         "bones, bind pose = the sculpt's posture, rest pose = the donor's T-pose")
     a = ap.parse_args()
     arms = tuple(float(v) for v in a.arms.split(',')) if a.arms else None
     HAIR_DENSITY = a.hair_density
+    SLEEVES = a.sleeves
     FRINGE = a.fringe
     FACE_FACES = a.face_faces
     if a.external:
         EXTERNAL = a.out
-    build(a.src, a.out, a.donor, a.faces, a.tex, a.facing, arms, a.bake, a.chest, a.hair)
+    build(a.src, a.out, a.donor, a.faces, a.tex, a.facing, arms, a.bake, a.chest, a.hair, a.pose)

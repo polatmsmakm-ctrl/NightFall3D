@@ -446,6 +446,7 @@ func _ready() -> void:
 		a.play()
 	_build_air()
 	_build_hook(kit)
+	_build_owner_models()
 	set_map("forest")
 	_time_of_day()
 	kit.free()
@@ -749,6 +750,46 @@ func _build_hook(kit: NightWorld) -> void:
 	if died: # what was left under it
 		_cy(root, 0.42, 0.46, 0.012, Vector3(-0.98, 0.05, 0), _mat_flat(Color(0.2, 0.005, 0.005), 0.0, 0.25))
 
+## The owner's models around the fire: the quiet nun crouched at the edge of the light, ravens on
+## the ground and in the glowing lantern tree, the outpost and the great tree far behind.
+var owner_models := 0
+func _prop(name: String, at: Vector3, yaw := 0.0, k := 1.0, parent: Node3D = null) -> Node3D:
+	var path := "res://assets/props/%s.glb" % name
+	if not ResourceLoader.exists(path): return null
+	var n := (load(path) as PackedScene).instantiate() as Node3D
+	n.position = at
+	n.rotation.y = yaw
+	n.scale = Vector3(k, k, k)
+	(parent if parent else self).add_child(n)
+	owner_models += 1
+	return n
+
+func _build_owner_models() -> void:
+	var nun := _prop("nun", Vector3(-4.6, 0.0, -2.6), atan2(4.6, 2.6) + PI)
+	if nun: # a cold light on her face, nothing else: she is only just there
+		var l := OmniLight3D.new()
+		l.light_color = Color(0.55, 0.65, 1.0)
+		l.light_energy = 0.7
+		l.omni_range = 2.6
+		l.position = Vector3(0.0, 1.3, 0.9)
+		nun.add_child(l)
+	_prop("raven", Vector3(2.9, 0.0, 0.6), -2.2, 0.9)
+	var tree := _prop("lantern_tree", Vector3(-7.6, 0.0, -6.4), 0.6, 1.1)
+	if tree:
+		NightWorld.prop_glow(tree, Color(0.85, 0.97, 1.0), 2.4)
+		var tl := OmniLight3D.new()
+		tl.light_color = Color(0.55, 0.88, 1.0)
+		tl.light_energy = 1.4
+		tl.omni_range = 6.0
+		tl.position = Vector3(0, 1.6, 0)
+		tree.add_child(tl)
+		_prop("raven", Vector3(0.6, 1.25, 0.2), 1.0, 0.8, tree)
+	_prop("outpost", Vector3(15.0, 0.0, -24.0), -0.7)
+	var big := _prop("world_tree", Vector3(-26.0, -0.5, -46.0), 0.3)
+	for n in [big]:
+		if n: for gi in n.find_children("*", "GeometryInstance3D", true, false):
+			(gi as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
 ## Dress the camp for the map the room (or the trial menu) has picked.
 func set_map(id: String) -> void:
 	if id == map_id: return
@@ -812,6 +853,19 @@ func set_map(id: String) -> void:
 					_bx(_dress, Vector3(2.2, 0.06, 0.18), Vector3(tx, 3.46, tz), tube)
 			_bx(_dress, Vector3(1.8, 1.25, 4.2), Vector3(-6.8, 0.63, -11.0), _mat_flat(Color(0.12, 0.13, 0.16), 0.0, 0.4), 0.05)
 			_bx(_dress, Vector3(1.8, 1.25, 4.2), Vector3(6.6, 0.63, -17.5), _mat_flat(Color(0.25, 0.06, 0.06), 0.0, 0.4), -0.08)
+		"city": # City Life: towers with lit windows and neon behind the trees
+			gcol = Color(0.2, 0.2, 0.23); dcol = Color(0.26, 0.26, 0.29)
+			var conc2 := _mat_flat(Color(0.09, 0.09, 0.11), 0.2)
+			var win := _mat_flat(Color(1.0, 0.82, 0.5), 1.6)
+			var neon := [Color(1.0, 0.2, 0.7), Color(0.2, 0.9, 1.0), Color(0.7, 0.3, 1.0)]
+			var tw := [[Vector3(-14, 0, -24), 6.0, 26.0], [Vector3(-4, 0, -30), 7.0, 38.0], [Vector3(8, 0, -26), 6.0, 30.0], [Vector3(18, 0, -20), 5.0, 22.0]]
+			for i in tw.size():
+				var t: Array = tw[i]
+				var h: float = t[2]
+				_bx(_dress, Vector3(t[1], h, t[1]), (t[0] as Vector3) + Vector3(0, h / 2.0, 0), conc2)
+				for k in 7: # rows of lit windows on the face toward the camp
+					_bx(_dress, Vector3(t[1] * 0.8, 0.35, 0.05), (t[0] as Vector3) + Vector3(0, 3.0 + k * h / 8.0, t[1] / 2.0 + 0.03), win)
+				_bx(_dress, Vector3(t[1] * 0.7, 0.5, 0.06), (t[0] as Vector3) + Vector3(0, h * 0.55, t[1] / 2.0 + 0.06), _mat_flat(neon[i % 3], 3.0))
 		"village":
 			var plank := _mat_flat(Color(0.2, 0.17, 0.14), 0.35)
 			for hs in [[Vector3(-10, 0, -14), 0.3], [Vector3(4, 0, -17), -0.15], [Vector3(12, 0, -10), 0.8]]:
@@ -828,13 +882,24 @@ func set_map(id: String) -> void:
 				roof.position.y = 3.9
 				house.add_child(roof)
 				_bx(house, Vector3(0.8, 0.9, 0.06), Vector3(-1.2, 1.7, 2.23), _mat_flat(Color(0.9, 0.6, 0.25), 1.2))
-	if id in ["fareej", "garage", "village"]: # one warm (or strip-white) light on what the map added
+	if id in ["fareej", "garage", "village", "city"]: # one warm (or strip-white) light on what the map added
 		var o := OmniLight3D.new()
 		o.light_color = Color(0.85, 0.92, 1.0) if id == "garage" else Color(1.0, 0.72, 0.42)
 		o.light_energy = 2.4
 		o.omni_range = 14.0
 		o.position = Vector3(1.0, 3.0, -12.5)
 		_dress.add_child(o)
+	# his grass clumps round the clearing: green in the woods, dry on sand
+	var clump := "grass_dry" if id in ["rubkhali", "beach", "fareej"] else ("" if id in ["garage", "city"] else "grass_green")
+	if clump != "":
+		var rg := RandomNumberGenerator.new()
+		rg.seed = 99
+		for i in 16:
+			var a := rg.randf() * TAU
+			var r := rg.randf_range(4.5, 11.0)
+			var at := Vector3(cos(a) * r, 0.0, sin(a) * r - 3.0)
+			if at.z > 1.0 and absf(at.x) < 4.0: continue # keep the stand and the seats clear
+			_prop(clump, at, rg.randf() * TAU, rg.randf_range(0.8, 1.4), _dress)
 	_ground_mat.albedo_color = gcol
 	_dirt_mat.albedo_color = dcol
 

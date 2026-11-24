@@ -898,3 +898,62 @@ photographs it lowered and raised.
   the feet; only in `LEAN_POSES`, never carried / hung / seated / in a car.
 - **The car**: roll in a hard fast turn ~7° (was 3), nose dive and tail squat ~5° (was 3), and a hard
   change of speed throws the body on its springs (`_prev_accel`, a threshold so it does not jitter).
+
+## The November batch: «الوحش», Bloom, City Life, ravens, rain, the shot (the owner's next round)
+- **«الوحش» (`killer2`)** — a second killer to choose (trial mode: in the character list; online: the
+  killer's own stand shows both, `{t:"set", char}` with `KILLERS` in `server.js`). His sculpt is
+  hunched with a tail, not a T-pose, so it went through **`rig_character.py --pose JOINTS.json`**
+  (`tools/rig/monster_pose.json`, joints read off a grid render): the rest pose is still the donor's
+  T-pose with his bone lengths (the clips play as on everyone), the bind pose is his posture, the
+  weights go by the nearest bone segments (the tail rides on the hips). `scripts/hunch_mod.gd`
+  (`NFHunch`, the first modifier on his skeleton) bends his back, lifts his head, bends his knees and
+  sinks his hips over every clip; `CharacterRig.play` turns it off for seats, hooks and dying. When a
+  chase starts he screams (`assets/sfx/scream_beast.mp3`, from where he is) and the survivors' screens
+  shake a little (`main._beast_cry`, 14 s between screams). He uses the male pain voice (`MALE`).
+- **Bloom (`survivor9`)** — the Midnight Starfall sculpt, `--sleeves 0.4` (new: past the elbow the arm
+  owns the wide sleeve hanging under it) and the legs are now split by the nearer leg centre line
+  (boots that touch no longer stretch into a sheet when she runs). Perk «تفتّح» (`mend`, both rules
+  files): hurt and not hit again for `MEND_TIME` 45 s, she is back to ok (event `mend`).
+- **`tools/pose_sheet.py`**: a pose sheet with no Godot — skins a character GLB with the Mixamo clips the
+  way `character_rig.gd` does and splats it front and side. Run it after every rig.
+- **City Life (`city`)**: 24 shop-front blocks (the village's buildings in concrete) on a grid of streets
+  (`CITY_ROWS` / `CITY_COLS`, `on_street`), a tower over each (two MultiMeshes, world-space triplanar
+  window textures, occluders), neon signs (one MultiMesh) with a little coloured light on the
+  pavement, street lamps, his cars, and **his cyberpunk city model (`assets/props/city_skyline.glb`)
+  six times round the outside as the skyline** (three on older phones). Same objectives as every map.
+  In the room's map picker, `MAPS` in `server.js`, the loading picture, and a dressing in the camp.
+- **His props everywhere** (`world._build_owner_props`, `owner_props`): the world-tree and the outpost in
+  the forest, cars (ruined, vintage) in the village, fareej and city, crystal lantern trees (cold
+  glow and light), the galleon run aground on the beach, saguaro cactus in the Empty Quarter, and his
+  grass clumps (`_grass_chunks`: 4x4 chunks of MultiMesh, each culled past 55 m). The camp
+  (`NFLobby._build_owner_models`) has the quiet nun crouched at the edge of the light, a raven on the
+  ground and one in the lantern tree, the outpost and the great tree behind, and his grass round it.
+- **Ravens** (`scripts/ravens.gd`, `NFRavens`): 7 perch on the gallows posts and the roofs (4 on older
+  phones), 3 circle high; anyone within 8 m makes one take off; flapping wings are added in code
+  (the model's are folded). His sounds: **crow caw when the bird is within 20 m of me, the raven's call
+  when it is further**. None in the car park.
+- **Rain sound**: `assets/sfx/rain.ogg` (his clip, loudness-matched, crossfaded into a seamless loop),
+  on the Music bus while the weather is «مطر», quieter under the car park's slab.
+- **The pistol's shot** (`main._beam`): his gunshot (`assets/sfx/gunshot.mp3`, the first of the shots in
+  his clip), a muzzle flash and a 60 ms light, the bullet as a streak of fire flying to the target,
+  smoke from the barrel that hangs and rises, a brass case thrown out, sparks where it hit, the stun's
+  blue on a hit, a stronger kick. `NFDecor.burst()` makes the one-shot particles.
+
+## The optimisation pass (the owner's checklist)
+- **Occlusion culling** was already on (`use_occlusion_culling`); walls without openings carry box
+  occluders, and now the city's towers too (`world.occluders` counts them).
+- **Visibility ranges by size** (`world._apply_view_ranges`, re-run on every settings change): under
+  1.6 m stops at half the preset's view distance (max 70 m), the rest at the view distance —
+  `Gfx.VIEW`: Low 80, Medium 110, High 150, Ultra 200 (x0.85 on older phones). Only for things under
+  30 m across (Godot measures to the middle of an instance). The "far" group is left alone.
+  His grass clumps are chunked (HLOD-style: each chunk culled on its own).
+- **LOD**: the GLBs are imported with Godot's automatic LODs (the default, no `.glb.import` is
+  committed); `mesh_lod_threshold` goes 0.7 / 1.0 / 2.0 (older phones) / **3.0 on «منخفض»**.
+- **Animation**: `CharacterRig.set_anim_rate(every)` — main poses a remote's skeleton every frame near
+  and in view, every 2nd at 30-70 m, every 4th further, every 6th behind the camera (the skipped
+  time is handed on, so the clip does not drift).
+- **«منخفض»** — a fourth graphics preset (stored as 3, listed first): Medium's settings plus a shorter
+  view, simpler models sooner and textures one mip softer (`texture_mipmap_bias` 0.6).
+- **«مراقب الأداء»** in the settings: FPS, frame time, draw calls, objects, triangles, static and
+  video memory, CPU time (Godot's own counters). Off, the corner shows the one FPS line it always did.
+- `tools/city.tscn` tests all of it; `tools/shot23.tscn` photographs it.

@@ -197,6 +197,42 @@ static func rain(amount: int) -> GPUParticles3D:
 	r.preprocess = 1.0
 	return r
 
+## A one-shot burst of particles at `at` that frees itself: the pistol's smoke and sparks.
+## `col0` -> `col1` over its life; `add` for light (sparks, flash), alpha for smoke.
+static func burst(parent: Node, at: Vector3, dir: Vector3, n: int, life: float, size: float, speed: Vector2,
+		spread: float, gravity: Vector3, col0: Color, col1: Color, add: bool, grow := 1.0) -> GPUParticles3D:
+	var p := GPUParticles3D.new()
+	var m := ParticleProcessMaterial.new()
+	m.direction = dir.normalized() if dir.length() > 0.001 else Vector3.UP
+	m.spread = spread
+	m.initial_velocity_min = speed.x
+	m.initial_velocity_max = speed.y
+	m.gravity = gravity
+	m.damping_min = 1.5; m.damping_max = 3.0
+	m.scale_min = 0.6; m.scale_max = 1.2
+	var sc := Curve.new()
+	sc.add_point(Vector2(0, 0.5)); sc.add_point(Vector2(1, grow))
+	var st := CurveTexture.new(); st.curve = sc
+	m.scale_curve = st
+	var g := Gradient.new()
+	g.offsets = PackedFloat32Array([0.0, 0.15, 1.0])
+	g.colors = PackedColorArray([col0, col0, Color(col1.r, col1.g, col1.b, 0.0)])
+	var gt := GradientTexture1D.new(); gt.gradient = g
+	m.color_ramp = gt
+	p.process_material = m
+	p.draw_pass_1 = _quad(size, "soft", add)
+	p.amount = n
+	p.lifetime = life
+	p.one_shot = true
+	p.explosiveness = 0.92
+	p.local_coords = false
+	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(p)
+	p.global_position = at
+	p.emitting = true
+	p.get_tree().create_timer(life + 0.3).timeout.connect(p.queue_free)
+	return p
+
 static func _quad(sz: float, kind: String, add: bool) -> QuadMesh:
 	var q := QuadMesh.new()
 	q.size = Vector2(sz, sz)

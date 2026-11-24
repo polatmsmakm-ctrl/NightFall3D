@@ -33,7 +33,7 @@ jobs:
           # a script that does not compile stops everything here, before minutes of tests
           timeout 120 godot --headless --path . --quit 2>&1 | tee boot.log | tail -20
           if grep -E "Parse Error|Compile Error" boot.log; then echo "::error::scripts do not compile"; cat boot.log >> all.log; exit 1; fi
-          for t in ${NF_TESTS:-road hud tex drive props ui smoke map win camp beach gun gfx}; do
+          for t in ${NF_TESTS:-road hud tex drive props ui smoke map win camp beach gun gfx city}; do
             [ -f tools/$t.tscn ] || continue
             echo "=== $t" | tee -a all.log
             timeout 240 godot --headless --path . res://tools/$t.tscn 2>&1 | tee -a all.log || echo "::warning::$t stopped (timeout or exit $?)"
@@ -65,7 +65,9 @@ jobs:
           # the look as the phone draws it: Forward+ (hd) and the old Mobile renderer (lo), both
           # through Mesa's software Vulkan (lavapipe)
           # a character's pose sheet through Forward+, close-up model (NF_SHEET=survivor6 by default)
-          NF_CHARS=${NF_SHEET:-survivor6} NF_HI=1 NF_SHOTS=$PWD/shots timeout 900 xvfb-run -a godot --rendering-driver vulkan --resolution 1564x720 --path . res://tools/shot14.tscn 2>&1 | tee -a all.log | grep -v "^\s*at:" | tail -15 || true
+          NF_CHARS=${NF_SHEET:-killer2,survivor9} NF_HI=1 NF_SHOTS=$PWD/shots timeout 900 xvfb-run -a godot --rendering-driver vulkan --resolution 1564x720 --path . res://tools/shot14.tscn 2>&1 | tee -a all.log | grep -v "^\s*at:" | tail -15 || true
+          # the November batch: City Life, «الوحش», Bloom, his props, the pistol's shot
+          NF_SHOTS=$PWD/shots timeout 1200 xvfb-run -a godot --rendering-driver vulkan --resolution 1564x720 --path . res://tools/shot23.tscn 2>&1 | tee -a all.log | grep -v "^\s*at:" | tail -15 || true
           # the driver's seat, through Forward+ (short: one map)
           # the interface pass: feed, hit arc, gate arrow, the controls sliders, how to play
           NF_SHOTS=$PWD/shots timeout 900 xvfb-run -a godot --rendering-driver vulkan --resolution 1564x720 --path . res://tools/shot20.tscn 2>&1 | tee -a all.log | grep -v "^\s*at:" | tail -15 || true

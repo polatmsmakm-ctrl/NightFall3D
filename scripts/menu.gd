@@ -6,11 +6,11 @@ extends CanvasLayer
 signal start_game(cfg: Dictionary)
 
 const MAPS := {"forest": "الغابة", "village": "القرية المهجورة", "fareej": "الفريج", "rubkhali": "الربع الخالي",
-	"garage": "المواقف", "beach": "الشاطئ"}
+	"garage": "المواقف", "beach": "الشاطئ", "city": "City Life"}
 const THEMES := {"normal": "ليل", "fog": "ضباب", "rain": "مطر", "snow": "ثلج", "halloween": "هالوين"}
 const THEME_ICON := {"normal": "moon", "fog": "fog", "rain": "rain", "snow": "star", "halloween": "skull"}
 const VERSION := "v1.4"
-const CHARS := {"killer": "القاتل", "survivor1": "الناجية", "survivor2": "الرحّال", "survivor3": "الشريف", "survivor4": "الفالكيري القرمزية", "survivor5": "المحاربة الجريحة", "survivor6": "حارسة الليل", "survivor7": "الباحثة", "survivor8": "وردة الليل"}
+const CHARS := {"killer": "القاتل", "survivor1": "الناجية", "survivor2": "الرحّال", "survivor3": "الشريف", "survivor4": "الفالكيري القرمزية", "survivor5": "المحاربة الجريحة", "survivor6": "حارسة الليل", "survivor7": "الباحثة", "survivor8": "وردة الليل", "survivor9": "Bloom", "killer2": "الوحش"}
 const SECRET := "survivor4" # hidden: only on phones Net.has_secret() is true for
 const ERRORS := {"no_room": "ما في غرفة بهالكود", "room_full": "الغرفة ممتلئة", "in_game": "اللعبة بدأت بالغرفة",
 	"killer_taken": "في قاتل بالغرفة", "offline": "صديقك مو متصل", "invite_later": "صديقك مو متصل — توصله الدعوة أول ما يدخل (لين ٢٠ دقيقة)", "bad_name": "الاسم لازم 2 إلى 16 حرف بدون مسافات",
@@ -273,11 +273,17 @@ func _my_char() -> String:
 	if want_char != "" and want_char != cur: return want_char # waiting for the server to agree
 	return cur if cur != "" else off_char
 
+func _my_role() -> String:
+	var me := _me()
+	return str(me.get("role", "")) if not me.is_empty() else ""
+
 func _char_list() -> Array:
 	var out := []
 	var trial := _offline_flow()
+	var killer_now := not trial and _my_role() == "killer"
 	for id in CHARS:
-		if id == "killer" and not trial: continue # online the role button picks the killer
+		# online the role button picks the killer; then the stand shows the two killers to choose from
+		if id.begins_with("killer") != killer_now and not trial: continue
 		if id == SECRET and not Net.has_secret(): continue
 		out.append(id)
 	return out
@@ -320,7 +326,7 @@ func _sync_lobby(dir := 0.0) -> void:
 ## (the server does not say which one he plays until he is in a room).
 func _friends_at_fire() -> Array:
 	var out := []
-	var pool := ["survivor1", "survivor2", "survivor3", "survivor5", "survivor6", "survivor7", "survivor8"]
+	var pool := ["survivor1", "survivor2", "survivor3", "survivor5", "survivor6", "survivor7", "survivor8", "survivor9"]
 	for f in Net.friends:
 		var n := str(f)
 		if n == Net.username or not Net.is_online(n): continue
@@ -796,17 +802,17 @@ func _page_offline() -> void:
 		b2.add_theme_font_size_override("font_size", 20)
 		if off_theme == id: b2.modulate = Color(1, 0.75, 0.3)
 	_button("الشخصية — %s" % CHARS.get(off_char, off_char), func(): open("chars"), null, true, "star")
-	if off_char != "killer":
+	if not off_char.begins_with("killer"):
 		var bb := _button("قاتلة كمبيوتر: %s" % ("شغّالة" if off_bot else "طافية"), func(): off_bot = not off_bot; _refresh(), null, true, "skull")
 		if off_bot: bb.modulate = Color(1, 0.6, 0.5)
 	var bgn := _button("وضع السلاح: %s" % ("شغّال — مسدس صاعق للناجين" if off_gun else "مطفي"), func(): off_gun = not off_gun; _refresh(), null, true, "gun")
 	if off_gun: bgn.modulate = Color(0.6, 0.9, 1.0)
 	_button("ابدأ", func():
 		var n := Net.username if Net.username != "" else "Player"
-		var list := [{"name": n, "role": "killer" if off_char == "killer" else "survivor", "char": off_char, "slot": 0}]
+		var list := [{"name": n, "role": "killer" if off_char.begins_with("killer") else "survivor", "char": off_char, "slot": 0}]
 		# a practice dummy: a target for the killer, or a wounded teammate to heal
 		list.append({"name": "دمية", "role": "survivor", "char": "survivor1" if off_char != "survivor1" else "survivor2", "slot": 1, "dummy": true})
-		if off_char != "killer" and off_bot: # a computer killer hunting you
+		if not off_char.begins_with("killer") and off_bot: # a computer killer hunting you
 			list.append({"name": "القاتلة", "role": "killer", "char": "killer", "slot": 2, "bot": true})
 		start_game.emit({"map": off_map, "me": n, "offline": true, "theme": off_theme, "gun": off_gun, "players": list}), null, true, "out")
 	_button("رجوع", func(): chars_from = "main"; open("main" if Net.username != "" else "name"), null, true, "exit")

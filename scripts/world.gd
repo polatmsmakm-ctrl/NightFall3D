@@ -143,8 +143,17 @@ func _shuffled(n: int, rng: RandomNumberGenerator) -> Array:
 
 ## Streets and other strips that must stay clear (only the fareej map has them).
 func on_street(x: float, z: float, pad := 0.0) -> bool:
+	if map_id == "city":
+		for zs in CITY_ROWS: if absf(z - zs) < 3.6 + pad: return true
+		for xs in CITY_COLS: if absf(x - xs) < 3.6 + pad: return true
+		return false
 	if map_id != "fareej": return false
 	return absf(absf(z) - 47.0) < 4.0 + pad or absf(z) < 4.5 + pad or (absf(x + 13.0) < 4.0 + pad and absf(z) < 47.0)
+
+## «City Life»'s streets: four running east-west between the rows of blocks, five north-south.
+const CITY_ROWS := [-46.5, -15.5, 15.5, 46.5]
+const CITY_COLS := [-70.0, -42.0, -14.0, 14.0, 42.0]
+var city_towers: Array[float] = [] # how tall the tower over each building is
 
 func _random_site(rng: RandomNumberGenerator, pad: float, lo: float, hi: float) -> Vector2:
 	for k in 200:
@@ -176,6 +185,21 @@ func configure(id: String, seed := 1, th := "normal") -> void:
 				if (i == 0 and j == 0) or (i == 2 and j == 0): continue # centre spawn, and the market's plot
 				buildings.append([i * 28.0 + lay.randf_range(-4, 4), j * 31.0 + lay.randf_range(-4, 4),
 					lay.randf() * TAU, lay.randf_range(6.0, 9.0), lay.randf_range(5.0, 7.0), lay.randf_range(2.8, 3.4)])
+	elif id == "city": # «City Life»: a block of shop fronts under towers, on a grid of streets
+		noise.seed = 505
+		relief = 0.0
+		tree_count = 0
+		grass_per_chunk = 0
+		fog_density = 0.012
+		moon_dir = Vector3(-0.35, 0.42, -0.84).normalized()
+		var lay := RandomNumberGenerator.new()
+		lay.seed = 31
+		for i in [-84.0, -56.0, -28.0, 0.0, 28.0]:
+			for j in [-62.0, -31.0, 0.0, 31.0, 62.0]:
+				if i == 0.0 and j == 0.0: continue # the square where everyone starts
+				buildings.append([i + lay.randf_range(-2.0, 2.0), j + lay.randf_range(-1.5, 1.5), 0.0 if lay.randf() < 0.5 else PI,
+					lay.randf_range(8.0, 10.0), lay.randf_range(6.0, 7.5), 3.4])
+				city_towers.append(lay.randf_range(10.0, 46.0))
 	elif id == "rubkhali": # the Empty Quarter: dunes, bedouin tents, mud houses, a dust storm
 		noise.seed = 909
 		noise.frequency = 0.0062 # long dune waves instead of small bumps
@@ -313,7 +337,7 @@ func _plan_trees() -> void:
 
 ## What the ground is at a position: "indoor" (floors, pavement), "sand" (the bare yards around buildings) or "grass".
 func surface_at(pos: Vector3) -> String:
-	if map_id == "garage": return "indoor" # bare concrete everywhere
+	if map_id in ["garage", "city"]: return "indoor" # bare concrete / pavement everywhere
 	if map_id == "beach": return "sand"
 	var ml: Vector3 = Basis(Vector3.UP, market.yaw).inverse() * (pos - market.pos)
 	if absf(ml.x) < MARKET_W / 2.0 + 2.0 and ml.z > -MARKET_D / 2.0 - 0.3 and ml.z < MARKET_D / 2.0 + 16.0: return "indoor"
@@ -382,6 +406,7 @@ func build() -> void:
 	elif map_id == "garage": _build_garage()
 	elif map_id == "beach": _build_beach()
 	else: _build_buildings()
+	if map_id == "city": _build_city()
 	_build_objectives()
 	_build_extras()
 	_build_doors()
@@ -392,10 +417,11 @@ func build() -> void:
 	_build_theme_props()
 	if map_id == "rubkhali": _build_animals()
 	_build_scenery()
+	_build_owner_props()
 	_build_trees()
 	build_step = 3
 	await get_tree().process_frame
-	if map_id != "garage":
+	if not map_id in ["garage", "city"]:
 		_build_rocks()
 		await _build_grass()
 	build_step = 4
@@ -847,9 +873,11 @@ func _box(parent: Node3D, size: Vector3, pos: Vector3, mat: Material, occlude :=
 		oc.occluder = bo
 		oc.position = pos; oc.rotation = rot
 		parent.add_child(oc)
+		occluders += 1
 
 func _build_buildings() -> void:
 	var idx := 0
+	var wall_mat: Material = _mat.concrete if map_id == "city" else _mat.wood # shop fronts in the city
 	for b in buildings:
 		var w: float = b[3]; var d: float = b[4]; var hgt: float = b[5]
 		var t := 0.2
@@ -859,19 +887,19 @@ func _build_buildings() -> void:
 		body.rotation.y = b[2]
 		_box(body, Vector3(w + 0.6, 1.2, d + 0.6), Vector3(0, -0.5, 0), _mat.concrete)
 		var y0 := 0.1
-		_box(body, Vector3(w, hgt, t), Vector3(0, y0 + hgt / 2.0, -d / 2.0), _mat.wood, true) # back
-		_box(body, Vector3(t, hgt, d), Vector3(w / 2.0, y0 + hgt / 2.0, 0), _mat.wood, true) # right
+		_box(body, Vector3(w, hgt, t), Vector3(0, y0 + hgt / 2.0, -d / 2.0), wall_mat, true) # back
+		_box(body, Vector3(t, hgt, d), Vector3(w / 2.0, y0 + hgt / 2.0, 0), wall_mat, true) # right
 		# left wall with a window gap
 		var seg := (d - 1.4) / 2.0
-		_box(body, Vector3(t, hgt, seg), Vector3(-w / 2.0, y0 + hgt / 2.0, -d / 2.0 + seg / 2.0), _mat.wood)
-		_box(body, Vector3(t, hgt, seg), Vector3(-w / 2.0, y0 + hgt / 2.0, d / 2.0 - seg / 2.0), _mat.wood)
-		_box(body, Vector3(t, 1.0, 1.4), Vector3(-w / 2.0, y0 + 0.5, 0), _mat.wood)
-		_box(body, Vector3(t, hgt - 2.1, 1.4), Vector3(-w / 2.0, y0 + 2.1 + (hgt - 2.1) / 2.0, 0), _mat.wood)
+		_box(body, Vector3(t, hgt, seg), Vector3(-w / 2.0, y0 + hgt / 2.0, -d / 2.0 + seg / 2.0), wall_mat)
+		_box(body, Vector3(t, hgt, seg), Vector3(-w / 2.0, y0 + hgt / 2.0, d / 2.0 - seg / 2.0), wall_mat)
+		_box(body, Vector3(t, 1.0, 1.4), Vector3(-w / 2.0, y0 + 0.5, 0), wall_mat)
+		_box(body, Vector3(t, hgt - 2.1, 1.4), Vector3(-w / 2.0, y0 + 2.1 + (hgt - 2.1) / 2.0, 0), wall_mat)
 		# front wall with a door gap
 		var fw := (w - 1.3) / 2.0
-		_box(body, Vector3(fw, hgt, t), Vector3(-w / 2.0 + fw / 2.0, y0 + hgt / 2.0, d / 2.0), _mat.wood)
-		_box(body, Vector3(fw, hgt, t), Vector3(w / 2.0 - fw / 2.0, y0 + hgt / 2.0, d / 2.0), _mat.wood)
-		_box(body, Vector3(1.3, hgt - 2.2, t), Vector3(0, y0 + 2.2 + (hgt - 2.2) / 2.0, d / 2.0), _mat.wood)
+		_box(body, Vector3(fw, hgt, t), Vector3(-w / 2.0 + fw / 2.0, y0 + hgt / 2.0, d / 2.0), wall_mat)
+		_box(body, Vector3(fw, hgt, t), Vector3(w / 2.0 - fw / 2.0, y0 + hgt / 2.0, d / 2.0), wall_mat)
+		_box(body, Vector3(1.3, hgt - 2.2, t), Vector3(0, y0 + 2.2 + (hgt - 2.2) / 2.0, d / 2.0), wall_mat)
 		# leaning sheet-metal roof
 		_box(body, Vector3(w + 1.0, 0.1, d + 1.0), Vector3(0, y0 + hgt + 0.3, 0), _mat.metal, false, Vector3(0, 0, 0.1))
 		_snow_cap(body, Vector3(w + 1.0, 0.1, d + 1.0), Vector3(0, y0 + hgt + 0.3, 0), Vector3(0, 0, 0.1))
@@ -885,6 +913,302 @@ func _build_buildings() -> void:
 			_amb_light(l, true)
 		add_child(body)
 		idx += 1
+
+# ---------------- «City Life» ----------------
+## The towers over the shop fronts, the streets and their lamps, neon, and the owner's cyberpunk
+## city (`assets/props/city_skyline.glb`) all round outside the wall as the skyline. The towers are
+## drawn as two MultiMeshes (warm and cold windows, world-space triplanar so every size of box
+## gets whole windows), no collision: nobody can get up there.
+var city_parts := 0
+var occluders := 0
+
+func _window_tex(warm: bool) -> ImageTexture:
+	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7 if warm else 8
+	img.fill(Color(0, 0, 0, 1))
+	for cx in 4:
+		for cy in 4:
+			if rng.randf() < 0.42: continue # dark window
+			var c := Color(1.0, 0.78, 0.48) if warm else Color(0.62, 0.82, 1.0)
+			c = c * rng.randf_range(0.55, 1.0)
+			img.fill_rect(Rect2i(cx * 16 + 3, cy * 16 + 4, 10, 8), Color(c.r, c.g, c.b, 1))
+	img.generate_mipmaps()
+	return ImageTexture.create_from_image(img)
+
+func _build_city() -> void:
+	var box := BoxMesh.new()
+	box.size = Vector3.ONE
+	var mms: Array[MultiMesh] = []
+	for warm in [true, false]:
+		var m := StandardMaterial3D.new()
+		m.albedo_color = Color(0.1, 0.1, 0.12)
+		m.roughness = 0.55
+		m.metallic = 0.3
+		m.uv1_triplanar = true
+		m.uv1_world_triplanar = true
+		m.uv1_scale = Vector3(1.0 / 4.0, 1.0 / 3.2, 1.0 / 4.0) # one window bay: 4 m wide, 3.2 m a floor
+		m.emission_enabled = true
+		m.emission_texture = _window_tex(warm)
+		m.emission_energy_multiplier = 1.8
+		var bm := box.duplicate() as BoxMesh
+		bm.material = m
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = bm
+		mms.append(mm)
+	var xs: Array = [[], []]
+	var neon_cols := [Color(1.0, 0.15, 0.6), Color(0.15, 0.9, 1.0), Color(0.75, 0.3, 1.0), Color(1.0, 0.85, 0.2)]
+	var neon_m := StandardMaterial3D.new()
+	neon_m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	neon_m.vertex_color_use_as_albedo = true
+	neon_m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var signs := MultiMesh.new()
+	signs.transform_format = MultiMesh.TRANSFORM_3D
+	signs.use_colors = true
+	var qm := QuadMesh.new()
+	qm.material = neon_m
+	signs.mesh = qm
+	var sx: Array = []
+	var lit := 0
+	for k in buildings.size():
+		var b: Array = buildings[k]
+		var th: float = city_towers[k] if k < city_towers.size() else 18.0
+		var base := Vector3(b[0], _raw_h(b[0], b[1]) + float(b[5]) + 0.4, b[1])
+		var bs := Basis(Vector3.UP, float(b[2]))
+		var size := Vector3(float(b[3]) - 0.3, th, float(b[4]) - 0.3)
+		xs[k % 2].append(Transform3D(bs.scaled(size), base + Vector3(0, th / 2.0, 0)))
+		# a neon sign on the street face, and a second one higher on the tall ones
+		for h in ([2.2, th * 0.6] if th > 24.0 else [2.2]):
+			var col: Color = neon_cols[(k + int(h)) % neon_cols.size()]
+			var face := base + bs * Vector3(0, h - (float(b[5]) + 0.4 if h < 3.0 else 0.0), float(b[4]) / 2.0 + 0.08)
+			sx.append([Transform3D(bs.scaled(Vector3(float(b[3]) * 0.55, 0.75 if h < 3.0 else 2.2, 1.0)), face), col])
+			if h < 3.0 and lit < (8 if Gfx.weak else 14): # its colour on the pavement in front
+				var l := OmniLight3D.new()
+				l.light_color = col
+				l.light_energy = 1.3
+				l.omni_range = 7.5
+				l.position = face + bs * Vector3(0, -0.4, 1.4)
+				add_child(l)
+				_amb_light(l)
+				lit += 1
+	for i in 2:
+		mms[i].instance_count = xs[i].size()
+		for t in xs[i].size(): mms[i].set_instance_transform(t, xs[i][t])
+		var mmi := MultiMeshInstance3D.new()
+		mmi.multimesh = mms[i]
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		add_child(mmi)
+	# the towers hide what is behind them (the occlusion pass: Godot skips drawing it)
+	for i in 2:
+		for t in xs[i]:
+			var tt: Transform3D = t
+			var oc := OccluderInstance3D.new()
+			var bo := BoxOccluder3D.new()
+			bo.size = tt.basis.get_scale() * 0.96
+			oc.occluder = bo
+			oc.transform = Transform3D(tt.basis.orthonormalized(), tt.origin)
+			add_child(oc)
+			occluders += 1
+	signs.instance_count = sx.size()
+	for t in sx.size():
+		signs.set_instance_transform(t, sx[t][0])
+		signs.set_instance_color(t, (sx[t][1] as Color) * 1.0)
+	var smi := MultiMeshInstance3D.new()
+	smi.multimesh = signs
+	smi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(smi)
+	# the streets: asphalt strips with dashed centre lines, pavement everywhere else
+	var asphalt := _flat(Color(0.05, 0.05, 0.055), 0.55, 0.1)
+	var pave := _pbr(Color(0.16, 0.16, 0.17), Color(0.3, 0.3, 0.31), 0.03, Vector3(0.25, 0.25, 0.25), 0.85)
+	_mesh_box(self, Vector3(WALL * 2.0, 0.04, WALL * 2.0), Vector3(0, 0.03, 0), pave)
+	for zs in CITY_ROWS: _mesh_box(self, Vector3(WALL * 2.0, 0.04, 7.2), Vector3(0, 0.06, zs), asphalt)
+	for xc in CITY_COLS: _mesh_box(self, Vector3(7.2, 0.045, WALL * 2.0), Vector3(xc, 0.065, 0), asphalt)
+	var dash := MultiMesh.new()
+	dash.transform_format = MultiMesh.TRANSFORM_3D
+	var dm := BoxMesh.new()
+	dm.size = Vector3(0.18, 0.02, 2.2)
+	dm.material = _flat(Color(0.85, 0.8, 0.55), 0.6, 0.0, 0.25)
+	dash.mesh = dm
+	var dt: Array = []
+	for zs in CITY_ROWS:
+		for x in range(-int(WALL) + 3, int(WALL) - 3, 6): dt.append(Transform3D(Basis(Vector3.UP, PI / 2.0), Vector3(x, 0.09, zs)))
+	for xc in CITY_COLS:
+		for z in range(-int(WALL) + 3, int(WALL) - 3, 6): dt.append(Transform3D(Basis(), Vector3(xc, 0.09, z)))
+	dash.instance_count = dt.size()
+	for t in dt.size(): dash.set_instance_transform(t, dt[t])
+	var dmi := MultiMeshInstance3D.new()
+	dmi.multimesh = dash
+	dmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	dmi.visibility_range_end = 90.0
+	add_child(dmi)
+	# street lamps along the east-west streets, alternating sides
+	var n := 0
+	for zs in CITY_ROWS:
+		for x in range(-96, 97, 32):
+			var side := 1.0 if (n % 2 == 0) else -1.0
+			var p := Vector3(float(x) + 8.0, 0.0, float(zs) + 4.4 * side)
+			if in_site(p.x, p.z, 0.5): continue
+			_lamp_post(p, 0.0 if side < 0.0 else PI)
+			n += 1
+	city_parts = xs[0].size() + xs[1].size() + sx.size() + n
+	# the skyline: his cyberpunk city, round the outside (fewer on the older phones)
+	var sky := _scene_model("res://assets/props/city_skyline.glb")
+	if sky:
+		var k := 3 if Gfx.weak else 6
+		for i in k:
+			var a := TAU * float(i) / float(k) + 0.4
+			var c := sky.instantiate() as Node3D
+			c.position = Vector3(cos(a), 0.0, sin(a)) * (HALF + 230.0) + Vector3(0, -2.0, 0)
+			c.rotation.y = -a + PI / 2.0
+			for gi in c.find_children("*", "GeometryInstance3D", true, false):
+				(gi as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			add_child(c)
+			for gi in c.find_children("*", "GeometryInstance3D", true, false): gi.add_to_group("far")
+			prop_glow(c, Color(0.9, 0.75, 1.0), 2.4)
+			scenery += 1
+	# the night over a city: purple-blue, a little brighter (the towers' glow)
+	if env:
+		env.fog_light_color = Color(0.2, 0.16, 0.3)
+		env.ambient_light_color = Color(0.32, 0.3, 0.45)
+
+# ---------------- the owner's props, where they belong ----------------
+## His models from the November batch: the ancient world-tree and the outpost (watchtowers, forge,
+## campfire, weapons) as landmarks in the woods, wrecked and vintage cars, the galleon run aground on
+## the beach, saguaro cactus in the Empty Quarter, the crystal lantern tree, and his grass clumps
+## scattered in chunks that each stop drawing past 55 m. Big ones get box collision; grass and the
+## skyline none.
+var owner_props := 0
+
+func _solid(at: Vector3, yaw: float, size: Vector3, centre_y: float) -> StaticBody3D:
+	var body := StaticBody3D.new()
+	body.position = at
+	body.rotation.y = yaw
+	var cs := CollisionShape3D.new()
+	var bs := BoxShape3D.new()
+	bs.size = size
+	cs.shape = bs
+	cs.position.y = centre_y
+	body.add_child(cs)
+	add_child(body)
+	return body
+
+func _owner_prop(name: String, at: Vector3, yaw: float, k := 1.0, col := Vector3.ZERO, col_y := 0.0) -> Node3D:
+	var ps := _scene_model("res://assets/props/%s.glb" % name)
+	if ps == null: return null
+	var parent: Node3D = self
+	if col != Vector3.ZERO: parent = _solid(at, yaw, col * k, col_y * k)
+	var n := ps.instantiate() as Node3D
+	if parent == self:
+		n.position = at
+		n.rotation.y = yaw
+	n.scale = Vector3(k, k, k)
+	parent.add_child(n)
+	sites.append([at.x, at.z, at.y, maxf(col.x, col.z) * k * 0.6 + 1.0])
+	owner_props += 1
+	return n
+
+func _grass_chunks(name: String, count: int, rng: RandomNumberGenerator, kmin: float, kmax: float) -> void:
+	var ps := _scene_model("res://assets/props/%s.glb" % name)
+	if ps == null or count <= 0: return
+	var src := ps.instantiate() as Node3D
+	var meshes: Array = []
+	for mi in src.find_children("*", "MeshInstance3D", true, false):
+		meshes.append([(mi as MeshInstance3D).mesh, (mi as MeshInstance3D).transform])
+	src.free()
+	var CH := 4 # 4 x 4 chunks over the map: each one is culled on its own (HLOD-style ranges)
+	var cells := {}
+	var tries := 0
+	var placed := 0
+	while placed < count and tries < count * 6:
+		tries += 1
+		var p := _free_spot(rng, 0.6)
+		if p == Vector3.INF: continue
+		if map_id == "beach" and p.z > BEACH_SHORE - 3.0: continue
+		var key := Vector2i(clampi(int((p.x + HALF) / SIZE * CH), 0, CH - 1), clampi(int((p.z + HALF) / SIZE * CH), 0, CH - 1))
+		if not cells.has(key): cells[key] = []
+		var k := rng.randf_range(kmin, kmax)
+		cells[key].append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(k, k, k)), p))
+		placed += 1
+	for key in cells:
+		for m in meshes:
+			var mm := MultiMesh.new()
+			mm.transform_format = MultiMesh.TRANSFORM_3D
+			mm.mesh = m[0]
+			mm.instance_count = cells[key].size()
+			for t in cells[key].size(): mm.set_instance_transform(t, cells[key][t] * (m[1] as Transform3D))
+			var mmi := MultiMeshInstance3D.new()
+			mmi.multimesh = mm
+			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			mmi.visibility_range_end = 55.0 if not Gfx.weak else 40.0
+			mmi.visibility_range_end_margin = 6.0
+			add_child(mmi)
+	owner_props += placed
+
+func _build_owner_props() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(map_id) + 2026
+	var spot := func(pad: float) -> Vector3:
+		var p := _free_spot(rng, pad)
+		return p
+	match map_id:
+		"forest", "village":
+			var t: Vector3 = spot.call(9.0)
+			if t != Vector3.INF and map_id == "forest": _owner_prop("world_tree", t, rng.randf() * TAU, 1.0, Vector3(5.0, 14.0, 5.0), 7.0)
+			var o: Vector3 = spot.call(9.0)
+			if o != Vector3.INF: _owner_prop("outpost", o, rng.randf() * TAU, 1.0, Vector3(14.0, 4.0, 6.0), 2.0)
+			for i in 3:
+				var c: Vector3 = spot.call(3.5)
+				if c != Vector3.INF: _owner_prop("car_ruin", c, rng.randf() * TAU, 1.0, Vector3(4.4, 1.5, 2.0), 0.75)
+			for i in 2:
+				var lt: Vector3 = spot.call(3.0)
+				if lt != Vector3.INF:
+					var n := _owner_prop("lantern_tree", lt, rng.randf() * TAU, 1.0, Vector3(1.0, 3.0, 1.0), 1.5)
+					if n: _lantern_light(n)
+			if map_id == "village":
+				for i in 2:
+					var v: Vector3 = spot.call(3.5)
+					if v != Vector3.INF: _owner_prop("car_vintage", v, rng.randf() * TAU, 1.0, Vector3(4.3, 1.5, 1.9), 0.75)
+			_grass_chunks("grass_green", 70 if Gfx.weak else 140, rng, 0.8, 1.5)
+		"fareej":
+			for i in 3:
+				var v: Vector3 = spot.call(3.5)
+				if v != Vector3.INF: _owner_prop("car_vintage", v, rng.randf() * TAU, 1.0, Vector3(4.3, 1.5, 1.9), 0.75)
+			_grass_chunks("grass_dry", 40 if Gfx.weak else 80, rng, 0.8, 1.3)
+		"rubkhali":
+			for i in (14 if Gfx.weak else 24):
+				var c: Vector3 = spot.call(2.0)
+				if c != Vector3.INF: _owner_prop("cactus", c, rng.randf() * TAU, rng.randf_range(0.7, 1.3), Vector3(0.7, 4.0, 0.7), 2.0)
+			_grass_chunks("grass_dry", 80 if Gfx.weak else 160, rng, 0.8, 1.4)
+		"beach":
+			for gx in [-66.0, 66.0, -40.0, 40.0]: # run aground on the sand by the water, wherever it fits
+				var g := Vector3(gx, height(gx, BEACH_SHORE - 6.0) - 0.6, BEACH_SHORE - 6.0)
+				if in_site(g.x, g.z, 14.0): continue
+				_owner_prop("galleon", g, 0.35 * signf(gx), 1.0, Vector3(26.0, 7.0, 8.0), 3.0)
+				break
+			_grass_chunks("grass_dry", 40 if Gfx.weak else 90, rng, 0.8, 1.3)
+		"city":
+			for i in 4:
+				var v: Vector3 = spot.call(3.5)
+				if v != Vector3.INF: _owner_prop("car_vintage", v, PI / 2.0 * float(rng.randi() % 4), 1.0, Vector3(4.3, 1.5, 1.9), 0.75)
+			for i in 4:
+				var c: Vector3 = spot.call(3.5)
+				if c != Vector3.INF: _owner_prop("car_ruin", c, rng.randf() * TAU, 1.0, Vector3(4.4, 1.5, 2.0), 0.75)
+			for i in 2:
+				var lt: Vector3 = spot.call(3.0)
+				if lt != Vector3.INF:
+					var n := _owner_prop("lantern_tree", lt, rng.randf() * TAU, 1.0, Vector3(1.0, 3.0, 1.0), 1.5)
+					if n: _lantern_light(n)
+
+func _lantern_light(n: Node3D) -> void:
+	prop_glow(n, Color(0.85, 0.97, 1.0), 2.4) # crystal lanterns: a cold blue-white
+	var l := OmniLight3D.new()
+	l.light_color = Color(0.55, 0.88, 1.0)
+	l.light_energy = 1.5
+	l.omni_range = 7.0
+	l.position = Vector3(0, 1.7, 0)
+	n.add_child(l)
+	_amb_light(l)
 
 # ---------------- objectives: generators + exit gates ----------------
 func _emissive(c: Color) -> StandardMaterial3D:
@@ -904,6 +1228,19 @@ func _mesh_box(parent: Node3D, size: Vector3, pos: Vector3, mat: Material, rot :
 	mi.position = pos; mi.rotation = rot
 	parent.add_child(mi)
 	return mi
+
+## Where the ravens sit (`NFRavens`): the top of every gallows post on the map (not the roads'),
+## and the roofs.
+func raven_perches() -> Array[Vector3]:
+	var out: Array[Vector3] = []
+	if map_id == "garage": return out
+	var gallows := ResourceLoader.exists("res://assets/props/hook.glb")
+	for i in mini(road_hook0, hook_points.size()):
+		out.append(hook_points[i] + (Vector3(0, 5.18, HOOK_POST_Z) if gallows else Vector3(0, 3.32, 0)))
+	for b in buildings:
+		if map_id == "city": continue # the towers are too tall to see a bird on
+		out.append(_local(b, Vector3(0, float(b[5]) + 0.5, 0)))
+	return out
 
 func _build_props() -> void:
 	var red := StandardMaterial3D.new()
@@ -2636,7 +2973,31 @@ func look_kind() -> String:
 	if theme == "rain": return "rain"
 	return "fog" if theme == "fog" else "night"
 
+## Visibility ranges by size (the optimisation pass): whatever is small stops drawing at about half
+## the preset's view distance, everything else at the view distance (Low 80 m … Ultra 200 m; fog has
+## swallowed it well before). Only things under 30 m across: Godot measures the range to the middle
+## of an instance, so a map-wide MultiMesh or the ground must never get one. A small margin of
+## hysteresis keeps them from flickering at the edge. Nodes in the "far" group (dunes, the skyline,
+## the wall) and anything that already set its own range are left alone.
+var ranged := 0
+func _apply_view_ranges() -> void:
+	var view := Gfx.view_dist()
+	ranged = 0
+	for gi in find_children("*", "GeometryInstance3D", true, false):
+		var g := gi as GeometryInstance3D
+		if g.is_in_group("far"): continue
+		if g.visibility_range_end > 0.0 and not g.has_meta("vr"): continue # set on purpose elsewhere
+		var ab := g.get_aabb()
+		var sc := g.global_transform.basis.get_scale()
+		var big := maxf(ab.size.x * absf(sc.x), maxf(ab.size.y * absf(sc.y), ab.size.z * absf(sc.z)))
+		if big > 30.0 or big <= 0.0: continue
+		g.visibility_range_end = minf(view * 0.5, 70.0) if big < 1.6 else view
+		g.visibility_range_end_margin = 4.0
+		g.set_meta("vr", true)
+		ranged += 1
+
 func _apply_quality() -> void:
+	_apply_view_ranges()
 	var fx := Gfx.eff_effects()
 	var sh := Gfx.eff_shadows()
 	env.glow_enabled = fx >= 1

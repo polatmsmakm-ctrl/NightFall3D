@@ -15,7 +15,12 @@ const PRESETS := { # shadows, aa, scale index, effects
 	0: [0, 0, 0, 0], # Medium
 	1: [1, 1, 2, 1], # High
 	2: [2, 2, 2, 2], # Ultra
+	3: [0, 0, 0, 0], # Low: the same as Medium, plus a shorter view, simpler models sooner, softer textures
 }
+## How far the map is drawn, per preset (metres): small things stop at about half of it.
+## Low, Medium, High, Ultra -> 3, 0, 1, 2.
+const VIEW := {3: 80.0, 0: 110.0, 1: 150.0, 2: 200.0}
+var perf_hud := false # «مراقب الأداء»: FPS, frame time, draw calls, objects, triangles, memory on screen
 
 var fps_idx := 0
 var preset := 1
@@ -98,6 +103,9 @@ static func detect_weak() -> bool:
 	return m.begins_with("iPhone") or m.begins_with("iPad")
 
 ## «فائق» on a strong device: everything below turns up a notch.
+func low() -> bool: return preset == 3
+func view_dist() -> float: return float(VIEW.get(preset, 150.0)) * (0.85 if weak else 1.0)
+
 func maxed() -> bool:
 	return strong and eff_effects() >= 2 and eff_shadows() >= 2
 
@@ -203,7 +211,9 @@ func apply() -> void:
 	# sharper ground at a glancing angle, and models keep their full detail further away
 	vp.anisotropic_filtering_level = Viewport.ANISOTROPY_8X if maxed() else (Viewport.ANISOTROPY_2X if weak else Viewport.ANISOTROPY_4X)
 	# older phones swap to the simpler level of detail of every model sooner (the GPU's vertex work)
-	vp.mesh_lod_threshold = 0.7 if maxed() else (2.0 if weak else 1.0)
+	vp.mesh_lod_threshold = 0.7 if maxed() else (3.0 if low() else (2.0 if weak else 1.0))
+	# «منخفض»: one mip level softer textures (half the memory traffic), on top of what FSR asks
+	vp.texture_mipmap_bias = 0.6 if low() else 0.0
 	changed.emit()
 
 func _reset_runtime() -> void:
@@ -246,7 +256,8 @@ func _load() -> void:
 		return
 	if not ok: return
 	fps_idx = clampi(c.get_value("g", "fps", fps_idx), 0, 3)
-	preset = clampi(c.get_value("g", "preset", preset), 0, 2)
+	preset = clampi(c.get_value("g", "preset", preset), 0, 3)
+	perf_hud = bool(c.get_value("g", "perf", perf_hud))
 	shadows = clampi(c.get_value("g", "shadows", shadows), 0, 2)
 	aa = clampi(c.get_value("g", "aa", aa), 0, 3)
 	scale_idx = clampi(c.get_value("g", "scale", scale_idx), 0, 2)
@@ -262,7 +273,7 @@ func _load_controls(c: ConfigFile) -> void:
 
 func _save() -> void:
 	var c := ConfigFile.new()
-	c.set_value("g", "fps", fps_idx); c.set_value("g", "preset", preset)
+	c.set_value("g", "fps", fps_idx); c.set_value("g", "preset", preset); c.set_value("g", "perf", perf_hud)
 	c.set_value("g", "shadows", shadows); c.set_value("g", "aa", aa)
 	c.set_value("g", "scale", scale_idx); c.set_value("g", "effects", effects)
 	c.set_value("g", "bright", brightness)
@@ -288,7 +299,7 @@ func _process(dt: float) -> void:
 	var avg := _t / float(_frames)
 	_t = 0.0; _frames = 0
 	last_avg_ms = avg * 1000.0
-	_hud.text = "%d FPS  %.1f ms  target %d  scale %d%%" % [roundi(1.0 / avg), last_avg_ms, target_fps(), roundi(render_scale() * 100.0)]
+	_hud.text = _perf_text(avg)
 	if menu_open: return
 	var target := 1.0 / float(target_fps())
 	if avg > target * 1.18: _bad += 1; _good = 0
@@ -299,6 +310,20 @@ func _process(dt: float) -> void:
 	# no stepping back up by itself: going up, finding it too slow, coming down again every twenty
 	# seconds was a hitch each way (shadow atlases, fog buffers and the render size are rebuilt).
 	# What it gave away comes back when the player changes a setting.
+
+## «مراقب الأداء»: what the frame costs, from Godot's own counters (the same as the editor's monitors).
+func _perf_text(avg: float) -> String:
+	if not perf_hud: # the one line it always showed
+		return "%d FPS  %.1f ms  target %d  scale %d%%" % [roundi(1.0 / avg), avg * 1000.0, target_fps(), roundi(render_scale() * 100.0)]
+	var rs := RenderingServer
+	return "%d FPS  %.1f ms (هدف %d)  دقة %d%%\nرسم %d  أشياء %d  مثلثات %dk\nذاكرة %d MB  فيديو %d MB  CPU %.1f ms" % [
+		roundi(1.0 / avg), avg * 1000.0, target_fps(), roundi(render_scale() * 100.0),
+		rs.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
+		rs.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_OBJECTS_IN_FRAME),
+		rs.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME) / 1000,
+		roundi(Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0),
+		roundi(rs.get_rendering_info(RenderingServer.RENDERING_INFO_VIDEO_MEM_USED) / 1048576.0),
+		Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0]
 
 func _step_down() -> void:
 	# a smooth 60 with everything on beats a stuttering 120: the frame rate gives way first, then the
@@ -392,12 +417,13 @@ func _build_ui() -> void:
 	_num_row(v, "_btn_a", "وضوح الأزرار", 35.0, 100.0, 5.0, "%d%%", func() -> float: return btn_alpha * 100.0,
 		func(x: float) -> void: btn_alpha = x / 100.0)
 	_row(v, "fps", "الإطارات", ["تلقائي", "30", "60", "120"])
-	_row(v, "preset", "الجرافيكس", ["متوسط", "عالي", "فائق"])
+	_row(v, "preset", "الجرافيكس", ["منخفض", "متوسط", "عالي", "فائق"], [3, 0, 1, 2])
 	_row(v, "shadows", "الظلال", ["منخفض", "متوسط", "عالي"])
 	_row(v, "aa", "تنعيم الحواف", ["مغلق", "عادي", "عالي", "MetalFX (الآيفون)"])
 	_row(v, "scale", "دقة الرسم", ["85%", "90%", "100%"])
 	_row(v, "effects", "جودة المؤثرات", ["منخفض", "متوسط", "عالي"])
 	_row(v, "engine", "محرك الرسم", ["عالي (فخم)", "خفيف (أسرع)"])
+	_row(v, "perf", "مراقب الأداء", ["مطفي", "شغّال"])
 	_engine_note = Label.new()
 	_engine_note.add_theme_font_size_override("font_size", 15)
 	_engine_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -492,12 +518,12 @@ func _num_row(parent: Control, key: String, label: String, lo: float, hi: float,
 	sl.drag_ended.connect(func(_c: bool) -> void: _save())
 	_nums[key] = [sl, pct, get_v, fmt]
 
-func _row(parent: Control, key: String, label: String, items: Array) -> void:
+func _row(parent: Control, key: String, label: String, items: Array, ids: Array = []) -> void:
 	var h := HBoxContainer.new(); parent.add_child(h)
 	var l := Label.new(); l.text = label; l.size_flags_horizontal = Control.SIZE_EXPAND_FILL; h.add_child(l)
 	var o := OptionButton.new(); o.custom_minimum_size = Vector2(200, 48)
-	for it in items: o.add_item(it)
-	o.item_selected.connect(_on_select.bind(key))
+	for k in items.size(): o.add_item(items[k], int(ids[k]) if k < ids.size() else k)
+	o.item_selected.connect(func(i: int): _on_select(o.get_item_id(i), key))
 	h.add_child(o)
 	_opts[key] = o
 
@@ -510,7 +536,8 @@ func _refresh() -> void:
 		var val: float = brightness if key == "_bright" else Aud.get_vol(key)
 		_vol[key][0].set_value_no_signal(roundf(val * 100.0))
 		_vol[key][1].text = "%d%%" % roundi(val * 100.0)
-	_opts["fps"].select(fps_idx); _opts["preset"].select(preset); _opts["shadows"].select(shadows)
+	_opts["fps"].select(fps_idx); _opts["preset"].select(_opts["preset"].get_item_index(preset)); _opts["shadows"].select(shadows)
+	_opts["perf"].select(1 if perf_hud else 0)
 	_opts["aa"].select(aa); _opts["scale"].select(scale_idx); _opts["effects"].select(effects)
 	_opts["engine"].select(0 if engine_next_hd() else 1)
 	_engine_note.visible = engine_next_hd() != engine_hd()
@@ -528,6 +555,7 @@ func _on_select(i: int, key: String) -> void:
 		"scale": scale_idx = i
 		"effects": effects = i
 		"engine": set_engine(i == 0)
+		"perf": perf_hud = i == 1
 	_reset_runtime()
 	_refresh(); _save(); apply()
 

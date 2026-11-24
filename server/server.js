@@ -6,10 +6,11 @@ const { Rules } = require('./rules');
 
 const PORT = process.env.PORT || 8080;
 const MAX_PLAYERS = 7;
-const MAPS = ['forest', 'village', 'fareej', 'rubkhali', 'garage', 'beach'];
+const MAPS = ['forest', 'village', 'fareej', 'rubkhali', 'garage', 'beach', 'city'];
 const THEMES = ['normal', 'fog', 'rain', 'snow', 'halloween'];
 const HIDDEN = ['survivor4']; // never handed out: only a phone that has it unlocked asks for it
-const CHARS = ['killer', 'survivor1', 'survivor2', 'survivor3', 'survivor4', 'survivor5', 'survivor6', 'survivor7', 'survivor8'];
+const CHARS = ['killer', 'survivor1', 'survivor2', 'survivor3', 'survivor4', 'survivor5', 'survivor6', 'survivor7', 'survivor8', 'survivor9'];
+const KILLERS = ['killer', 'killer2']; // «البركة القرمزية» and «الوحش»
 
 const users = new Map();   // lowercase name -> client
 const rooms = new Map();   // code -> room
@@ -28,7 +29,7 @@ setInterval(() => {
 function cleanStats(name, s, old) {
   const n = (v) => Math.max(0, Math.min(1e9, Math.floor(Number(v) || 0)));
   // the profile: the character I play most and a short line about me (both shown on my profile page)
-  const ch = s && CHARS.includes(s.ch) ? s.ch : ((old && old.ch) || '');
+  const ch = s && (CHARS.includes(s.ch) || KILLERS.includes(s.ch)) ? s.ch : ((old && old.ch) || '');
   const bio = s && typeof s.bio === 'string' ? s.bio.replace(/[<>\\"]/g, '').trim().slice(0, 60) : ((old && old.bio) || '');
   return { name, lv: n(s && s.lv), xp: n(s && s.xp), esc: n(s && s.esc), kills: n(s && s.kills), rounds: n(s && s.rounds),
     ch, bio, seen: (old && old.seen) || 0 };
@@ -167,6 +168,7 @@ const handlers = {
       c.role = 'survivor'; c.char = freeSurvivor(r);
     }
     if (m.char !== undefined && c.role === 'survivor' && CHARS.indexOf(m.char) > 0) c.char = m.char;
+    if (m.char !== undefined && c.role === 'killer' && KILLERS.includes(m.char)) c.char = m.char;
     broadcast(r, roomView(r));
   },
   gift(c, m) { // the owner opens (or shuts) the hidden character for a friend who is online
