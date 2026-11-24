@@ -853,6 +853,26 @@ func set_map(id: String) -> void:
 					_bx(_dress, Vector3(2.2, 0.06, 0.18), Vector3(tx, 3.46, tz), tube)
 			_bx(_dress, Vector3(1.8, 1.25, 4.2), Vector3(-6.8, 0.63, -11.0), _mat_flat(Color(0.12, 0.13, 0.16), 0.0, 0.4), 0.05)
 			_bx(_dress, Vector3(1.8, 1.25, 4.2), Vector3(6.6, 0.63, -17.5), _mat_flat(Color(0.25, 0.06, 0.06), 0.0, 0.4), -0.08)
+		"kuwait": # the Gulf Road: palms, the towers over the water, warm street lights
+			gcol = Color(0.3, 0.3, 0.3); dcol = Color(0.36, 0.34, 0.32)
+			_palms(6)
+			var tw2 := _prop("kw_towers", Vector3(16.0, -0.5, -70.0), -PI / 2.0, 0.55, _dress)
+			if tw2: NightWorld.prop_glow(tw2, Color(0.5, 0.7, 1.0), 1.5)
+			var bl2 := OmniLight3D.new()
+			bl2.light_color = Color(0.35, 0.6, 1.0)
+			bl2.light_energy = 3.0
+			bl2.omni_range = 18.0
+			bl2.position = Vector3(16.0, 25.0, -70.0)
+			_dress.add_child(bl2)
+			var sea2 := MeshInstance3D.new()
+			var pl2 := PlaneMesh.new()
+			pl2.size = Vector2(220, 90)
+			var sm2 := _mat_flat(Color(0.02, 0.05, 0.1), 0.0, 0.1)
+			sm2.metallic = 0.45
+			pl2.material = sm2
+			sea2.mesh = pl2
+			sea2.position = Vector3(0, 0.03, -62.0)
+			_dress.add_child(sea2)
 		"city": # City Life: towers with lit windows and neon behind the trees
 			gcol = Color(0.2, 0.2, 0.23); dcol = Color(0.26, 0.26, 0.29)
 			var conc2 := _mat_flat(Color(0.09, 0.09, 0.11), 0.2)

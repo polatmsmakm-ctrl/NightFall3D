@@ -143,6 +143,8 @@ func _shuffled(n: int, rng: RandomNumberGenerator) -> Array:
 
 ## Streets and other strips that must stay clear (only the fareej map has them).
 func on_street(x: float, z: float, pad := 0.0) -> bool:
+	if map_id == "kuwait": # the highway and the car park by the sea
+		return absf(x) < KW_ROAD_HALF + 0.5 + pad or (x > KW_PARK.x - pad and x < KW_PARK.y + pad)
 	if map_id == "city":
 		for zs in CITY_ROWS: if absf(z - zs) < 3.6 + pad: return true
 		for xs in CITY_COLS: if absf(x - xs) < 3.6 + pad: return true
@@ -160,6 +162,7 @@ func _random_site(rng: RandomNumberGenerator, pad: float, lo: float, hi: float) 
 		var p := Vector2.from_angle(rng.randf() * TAU) * rng.randf_range(lo, hi)
 		if absf(p.x) > WALL - 8.0 or absf(p.y) > WALL - 8.0: continue
 		if map_id == "beach" and p.y > BEACH_SHORE - 10.0: continue # keep it out of the water
+		if map_id == "kuwait" and p.x > KW_SHORE - 10.0: continue
 		if map_id == "beach" and absf(p.x) < PIER_W / 2.0 + 3.0 + pad and p.y > PIER_FROM - 18.0: continue # and off the way to the pier
 		if not in_site(p.x, p.y, pad) and not on_street(p.x, p.y, 1.0): return p
 	return Vector2(lo, lo)
@@ -185,6 +188,17 @@ func configure(id: String, seed := 1, th := "normal") -> void:
 				if (i == 0 and j == 0) or (i == 2 and j == 0): continue # centre spawn, and the market's plot
 				buildings.append([i * 28.0 + lay.randf_range(-4, 4), j * 31.0 + lay.randf_range(-4, 4),
 					lay.randf() * TAU, lay.randf_range(6.0, 9.0), lay.randf_range(5.0, 7.0), lay.randf_range(2.8, 3.4)])
+	elif id == "kuwait": # «مدينة الكويت»: the Gulf Road by the National Assembly, the sea and the towers
+		noise.seed = 965
+		relief = 0.0
+		tree_count = 0
+		grass_per_chunk = 0
+		fog_density = 0.007
+		moon_dir = Vector3(0.62, 0.34, -0.71).normalized() # over the sea
+		for k in KW_KIOSKS: buildings.append([k[0], k[1], k[2], 7.0, 5.5, 3.2])
+		sites.append([KW_ASSEMBLY.x, KW_ASSEMBLY.z - 20.0, 0.0, 30.0]) # the Assembly: two circles cover it
+		sites.append([KW_ASSEMBLY.x, KW_ASSEMBLY.z + 20.0, 0.0, 30.0])
+		sites.append([KW_BOX.x, KW_BOX.z, 0.0, 2.5])
 	elif id == "city": # «City Life»: a block of shop fronts under towers, on a grid of streets
 		noise.seed = 505
 		relief = 0.0
@@ -265,9 +279,14 @@ func configure(id: String, seed := 1, th := "normal") -> void:
 		sites.append([b[0], b[1], _raw_h(b[0], b[1]), maxf(b[3], b[4]) * (1.05 if id == "fareej" else 0.75) + 1.0])
 	# the market: a big flat plot on the east side, shop fronts facing the middle of the map
 	var mz: float = -34.0 if id == "beach" else 2.0 # on the beach it sits back from the water
-	var mh := _raw_h(56.0, mz)
-	sites.append([56.0, mz, mh, 21.0])
-	market = {"pos": Vector3(62.0, mh, mz), "yaw": -PI / 2.0, "w": MARKET_W, "d": MARKET_D}
+	var msx := 56.0
+	var mpx := 62.0
+	var myaw := -PI / 2.0
+	if id == "kuwait": # the sea is on the east: the market sits behind the Assembly, facing the road
+		mz = 82.0; msx = -70.0; mpx = -76.0; myaw = PI / 2.0
+	var mh := _raw_h(msx, mz)
+	sites.append([msx, mz, mh, 21.0])
+	market = {"pos": Vector3(mpx, mh, mz), "yaw": myaw, "w": MARKET_W, "d": MARKET_D}
 	var mrot := Basis(Vector3.UP, market.yaw)
 	var mbase: Vector3 = market.pos + Vector3(0, 0.15, 0)
 	# 7 generators out of all the possible spots (beside a front door, or on the market's parking)
@@ -338,6 +357,7 @@ func _plan_trees() -> void:
 ## What the ground is at a position: "indoor" (floors, pavement), "sand" (the bare yards around buildings) or "grass".
 func surface_at(pos: Vector3) -> String:
 	if map_id in ["garage", "city"]: return "indoor" # bare concrete / pavement everywhere
+	if map_id == "kuwait": return "sand" if pos.x > KW_SAND else "indoor"
 	if map_id == "beach": return "sand"
 	var ml: Vector3 = Basis(Vector3.UP, market.yaw).inverse() * (pos - market.pos)
 	if absf(ml.x) < MARKET_W / 2.0 + 2.0 and ml.z > -MARKET_D / 2.0 - 0.3 and ml.z < MARKET_D / 2.0 + 16.0: return "indoor"
@@ -349,6 +369,7 @@ func surface_at(pos: Vector3) -> String:
 
 func _sandiness(x: float, z: float) -> float:
 	if map_id in ["fareej", "rubkhali", "beach"]: return 1.0
+	if map_id == "kuwait": return smoothstep(KW_SAND - 3.0, KW_SAND, x)
 	var v := 0.0
 	for st in sites:
 		var d := Vector2(x - st[0], z - st[1]).length()
@@ -379,6 +400,8 @@ func _raw_h(x: float, z: float) -> float:
 	var h := (noise.get_noise_2d(x, z) * 2.4 + noise.get_noise_2d(x * 3.0 + 50.0, z * 3.0) * 0.35) * relief
 	if map_id == "beach": # the sand slopes down into the lagoon on the north side
 		h -= smoothstep(BEACH_SHORE - 16.0, BEACH_SHORE + 44.0, z) * 3.4
+	elif map_id == "kuwait": # the sand slopes into the Gulf on the east side
+		h -= smoothstep(KW_SHORE - 2.0, KW_SHORE + 26.0, x) * 3.4
 	return h
 
 func height(x: float, z: float) -> float:
@@ -405,6 +428,7 @@ func build() -> void:
 	elif map_id == "rubkhali": _build_rubkhali()
 	elif map_id == "garage": _build_garage()
 	elif map_id == "beach": _build_beach()
+	elif map_id == "kuwait": _build_kuwait()
 	else: _build_buildings()
 	if map_id == "city": _build_city()
 	_build_objectives()
@@ -413,7 +437,7 @@ func build() -> void:
 	if map_id != "garage": _build_market()
 	build_step = 2
 	await get_tree().process_frame
-	if map_id != "garage": _build_scatter() # the garage parks its own cars
+	if not map_id in ["garage", "kuwait"]: _build_scatter() # the garage and Kuwait City park their own cars
 	_build_theme_props()
 	if map_id == "rubkhali": _build_animals()
 	_build_scenery()
@@ -421,7 +445,7 @@ func build() -> void:
 	_build_trees()
 	build_step = 3
 	await get_tree().process_frame
-	if not map_id in ["garage", "city"]:
+	if not map_id in ["garage", "city", "kuwait"]:
 		_build_rocks()
 		await _build_grass()
 	build_step = 4
@@ -548,8 +572,8 @@ func _make_materials() -> void:
 # ---------------- environment ----------------
 ## Register a light that the blackout, the flicker and the killer can all touch.
 ## `house` lights go out when he walks up to them.
-func _amb_light(l: OmniLight3D, house := false, flick := true) -> void:
-	amb_lights.append([l, l.light_energy, house, flick, 1.0])
+func _amb_light(l: OmniLight3D, house := false, flick := true, on_grid := false) -> void:
+	amb_lights.append([l, l.light_energy, house, flick, 1.0, on_grid])
 	NFLook.halo(l)
 	if flick: flicker.append(l)
 
@@ -913,6 +937,349 @@ func _build_buildings() -> void:
 			_amb_light(l, true)
 		add_child(body)
 		idx += 1
+
+# ---------------- «مدينة الكويت» (Kuwait City) ----------------
+## The owner's reference picture, without the far towers of the skyline: the Gulf Road running
+## north-south through the middle (two carriageways, a median of grass and palms), the National
+## Assembly and its gardens on the west, a car park and the corniche promenade on the east, the
+## sand and a rock breakwater, the sea, the Kuwait Towers on their point and a warship out at
+## anchor. The street lights hang on one power box: the killer pulls it, survivors fix it.
+const KW_ROAD_HALF := 16.0                 # the twin carriageway, kerb to kerb
+const KW_WALK := 5.8                       # each sidewalk
+const KW_PARK := Vector2(24.0, 44.0)       # the car park, x from .. to
+const KW_PROM := Vector2(44.0, 56.0)       # the corniche promenade
+const KW_SAND := 56.0                      # sand from here to the water
+const KW_SHORE := 62.0                     # the water line
+const KW_WATER := -0.6
+const KW_ASSEMBLY := Vector3(-75.0, 0.0, 0.0)
+const KW_TOWERS := Vector3(104.0, 0.0, 62.0)
+const KW_BOX := Vector3(-23.6, 0.0, 9.0)   # the power box, on the west sidewalk
+const KW_KIOSKS := [[-38.0, -52.0, PI / 2.0], [-38.0, 52.0, PI / 2.0], [-38.0, -90.0, PI / 2.0], [-38.0, 90.0, PI / 2.0],
+	[-78.0, -78.0, 0.0], [50.0, -64.0, -PI / 2.0], [50.0, 64.0, -PI / 2.0], [50.0, -8.0, -PI / 2.0]]
+var power_box := Vector3.INF               # where the box stands (INF: this map has none)
+var grid_off := false
+var grid_mats: Array[StandardMaterial3D] = [] # the lamps' glow: dark while the power is cut
+var _grid_glow: Array[float] = []
+var box_lamp: StandardMaterial3D
+var kw_parts := 0
+
+## Many copies of one of the owner's models as one MultiMesh per sub-mesh (one draw call each),
+## optional box collision per copy (`hull`: size, centre height), drawn up to `far` metres.
+func _kw_many(name: String, xf: Array, hull := Vector3.ZERO, hull_y := 0.0, far := 0.0, shadow := true) -> Array:
+	var ps := _scene_model("res://assets/props/%s.glb" % name)
+	var out: Array = []
+	if ps == null or xf.is_empty(): return out
+	var src := ps.instantiate() as Node3D
+	for mi in src.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		var rel := src.global_transform.affine_inverse() * m.global_transform if m.is_inside_tree() else m.transform
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = m.mesh
+		mm.instance_count = xf.size()
+		for i in xf.size(): mm.set_instance_transform(i, (xf[i] as Transform3D) * rel)
+		var mmi := MultiMeshInstance3D.new()
+		mmi.multimesh = mm
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadow else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		if far > 0.0: mmi.visibility_range_end = far
+		add_child(mmi)
+		out.append(mmi)
+	src.free()
+	if hull != Vector3.ZERO:
+		var body := StaticBody3D.new()
+		body.name = "KW_%s" % name
+		for t in xf:
+			var tt: Transform3D = t
+			var cs := CollisionShape3D.new()
+			var bs := BoxShape3D.new()
+			bs.size = hull * tt.basis.get_scale()
+			cs.shape = bs
+			cs.transform = Transform3D(tt.basis.orthonormalized(), tt.origin + Vector3(0, hull_y * tt.basis.get_scale().y, 0))
+			body.add_child(cs)
+		add_child(body)
+	kw_parts += xf.size()
+	return out
+
+func _kw_one(name: String, at: Vector3, yaw: float, k := 1.0, hull := Vector3.ZERO, hull_y := 0.0) -> Node3D:
+	var ps := _scene_model("res://assets/props/%s.glb" % name)
+	if ps == null: return null
+	var parent: Node3D = self
+	if hull != Vector3.ZERO: parent = _solid(at, yaw, hull * k, hull_y * k)
+	var n := ps.instantiate() as Node3D
+	if parent == self:
+		n.position = at
+		n.rotation.y = yaw
+	n.scale = Vector3(k, k, k)
+	parent.add_child(n)
+	kw_parts += 1
+	return n
+
+## A street light on the grid: its light goes out with the power, and its glow map too.
+func _grid_light(at: Vector3, col: Color, energy: float, reach: float) -> void:
+	var l := OmniLight3D.new()
+	l.light_color = col
+	l.light_energy = energy
+	l.omni_range = reach
+	l.position = at
+	add_child(l)
+	_amb_light(l, false, false, true)
+
+func _grid_glow_of(n: Node) -> void:
+	var mesh: Mesh = null
+	if n is MultiMeshInstance3D: mesh = (n as MultiMeshInstance3D).multimesh.mesh
+	elif n is MeshInstance3D: mesh = (n as MeshInstance3D).mesh
+	if mesh == null: return
+	for si in mesh.get_surface_count():
+		var m := mesh.surface_get_material(si) as StandardMaterial3D
+		if m == null or m.get_texture(BaseMaterial3D.TEXTURE_EMISSION) == null or grid_mats.has(m): continue
+		m.emission_enabled = true
+		m.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
+		m.emission = Color(1.0, 0.85, 0.6)
+		m.emission_energy_multiplier = 2.4
+		grid_mats.append(m)
+		_grid_glow.append(2.4)
+
+func set_grid(on: bool) -> void:
+	grid_off = not on
+	for i in grid_mats.size():
+		var tw := create_tween()
+		tw.tween_property(grid_mats[i], "emission_energy_multiplier", _grid_glow[i] if on else 0.0, 0.8 if on else 0.25)
+	if box_lamp: box_lamp.emission = Color(0.2, 1.0, 0.35) if on else Color(1.0, 0.15, 0.1)
+
+func _build_kuwait() -> void:
+	_build_buildings() # the kiosks: lockers, doors, windows, generators by their doors
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 965
+	var y := 0.0
+	# ---- the ground: paving everywhere on the land, lawns in front of the Assembly ----
+	var pave := _pbr(Color(0.2, 0.19, 0.18), Color(0.42, 0.4, 0.37), 0.03, Vector3(0.3, 0.3, 0.3), 0.85)
+	var land := KW_SAND + WALL
+	_mesh_box(self, Vector3(land, 0.04, WALL * 2.0), Vector3(-WALL + land / 2.0, 0.03, 0), pave)
+	var lawn := _pbr(Color(0.08, 0.16, 0.05), Color(0.2, 0.36, 0.12), 0.04, Vector3(0.5, 0.5, 0.5), 0.95)
+	for lz in [-38.0, -12.0, 14.0, 40.0]:
+		_mesh_box(self, Vector3(20.0, 0.06, 20.0), Vector3(-40.0, 0.06, lz), lawn)
+	# ---- the Gulf Road: his twin highway, one 32 m tile after another ----
+	var road: Array = []
+	for z in range(-96, 97, 32): road.append(Transform3D(Basis(), Vector3(0, 0.07, float(z))))
+	if _kw_many("kw_road", road, Vector3.ZERO, 0.0, 0.0, false).is_empty():
+		_mesh_box(self, Vector3(KW_ROAD_HALF * 2.0, 0.04, WALL * 2.0), Vector3(0, 0.06, 0), _flat(Color(0.05, 0.05, 0.055), 0.55))
+	# the median: his grass planters end to end, a palm between each pair, a twin-head light every other gap
+	var planters: Array = []
+	var palms: Array = []
+	var lights: Array = []
+	for z in range(-105, 106, 10):
+		planters.append(Transform3D(Basis(Vector3.UP, PI / 2.0), Vector3(0, 0.08, float(z))))
+	for z in range(-100, 101, 10):
+		if z % 20 == 0: palms.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * rng.randf_range(0.9, 1.1)), Vector3(0, 0.1, float(z))))
+		else: lights.append(Transform3D(Basis(), Vector3(0, 0.1, float(z))))
+	if _kw_many("kw_planter", planters, Vector3.ZERO, 0.0, 120.0, false).is_empty():
+		_mesh_box(self, Vector3(3.6, 0.35, WALL * 2.0), Vector3(0, 0.18, 0), lawn)
+	# ---- the sidewalks, with his lamps and planters in them ----
+	var walk_w: Array = []
+	var walk_e: Array = []
+	for z in range(-104, 105, 19):
+		walk_w.append(Transform3D(Basis(Vector3.UP, PI / 2.0), Vector3(-KW_ROAD_HALF - KW_WALK / 2.0, 0.05, float(z))))
+		walk_e.append(Transform3D(Basis(Vector3.UP, -PI / 2.0), Vector3(KW_ROAD_HALF + KW_WALK / 2.0, 0.05, float(z))))
+	var sw := _kw_many("kw_sidewalk", walk_w + walk_e, Vector3.ZERO, 0.0, 150.0, true)
+	for m in sw: _grid_glow_of(m)
+	for t in walk_w + walk_e: # the lamp of each tile
+		var tt: Transform3D = t
+		_grid_light(tt * Vector3(-7.5, 6.2, -1.0), Color(1.0, 0.8, 0.5), 2.0, 16.0)
+	# ---- trees: palms down the median, his emerald canopies round the road and the gardens ----
+	var trees: Array = []
+	for z in range(-100, 101, 16):
+		trees.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU), Vector3(-KW_ROAD_HALF - KW_WALK - 2.2, 0.05, float(z))))
+	for tz in [-46.0, -30.0, -6.0, 6.0, 30.0, 46.0]:
+		for tx in [-46.0, -33.0]: trees.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU), Vector3(tx, 0.06, tz)))
+	_kw_many("kw_tree", trees, Vector3(1.0, 4.0, 1.0), 2.0, 160.0, true)
+	var prom_palms: Array = []
+	for z in range(-104, 105, 10): prom_palms.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU), Vector3(KW_PROM.y - 2.0, 0.05, float(z))))
+	var all_palms: Array = palms + prom_palms
+	if _kw_many("kw_palm", all_palms, Vector3(0.8, 6.0, 0.8), 3.0, 170.0, true).is_empty():
+		for t in all_palms:
+			var tt: Transform3D = t
+			tree_plan.append([tt.origin.x, 0.0, tt.origin.z, 1, 1.0, 0.0])
+	# the median's twin-head lights, and the promenade's
+	for z in range(-98, 99, 14): lights.append(Transform3D(Basis(Vector3.UP, PI / 2.0), Vector3(KW_PROM.x + 2.0, 0.05, float(z))))
+	var ll := _kw_many("kw_light", lights, Vector3(0.4, 9.0, 0.4), 4.5, 170.0, true)
+	for m in ll: _grid_glow_of(m)
+	for t in lights:
+		var tt: Transform3D = t
+		_grid_light(tt.origin + Vector3(0, 8.4, 0), Color(1.0, 0.82, 0.55), 2.6, 18.0)
+	# ---- crossings: traffic lights at the middle crossing, his signs along the walks ----
+	for c in [[-KW_ROAD_HALF - 0.8, -4.0, 0.0], [KW_ROAD_HALF + 0.8, 4.0, PI], [-1.6, 4.0, PI / 2.0], [1.6, -4.0, -PI / 2.0]]:
+		var tl := _kw_one("kw_traffic", Vector3(c[0], 0.05, c[1]), c[2], 1.0, Vector3(0.4, 5.0, 0.4), 2.5)
+		if tl: prop_glow(tl, Color(1, 1, 1), 2.5)
+	var signs := _kw_one("kw_signs", Vector3(-KW_ROAD_HALF - KW_WALK + 0.6, 0.05, -60.0), PI / 2.0)
+	if signs:
+		var top := signs.find_child("row_top", true, false) as Node3D
+		if top: # the sheet's upper row stands on the ground too, further along the walk
+			top.position.y = 0.0
+			top.position.x += 22.0
+	# ---- the car park by the sea: his cars in rows ----
+	var park := _flat(Color(0.06, 0.06, 0.065), 0.6)
+	_mesh_box(self, Vector3(KW_PARK.y - KW_PARK.x, 0.05, WALL * 2.0 - 8.0), Vector3((KW_PARK.x + KW_PARK.y) / 2.0, 0.07, 0), park)
+	var bay := MultiMesh.new()
+	bay.transform_format = MultiMesh.TRANSFORM_3D
+	var bm := BoxMesh.new()
+	bm.size = Vector3(5.0, 0.02, 0.12)
+	bm.material = _flat(Color(0.85, 0.85, 0.82), 0.6, 0.0, 0.2)
+	bay.mesh = bm
+	var bays: Array = []
+	var cars := {"kw_nova": [], "kw_chevelle": [], "kw_supercar": [], "car": []}
+	var kinds := cars.keys()
+	for row in [KW_PARK.x + 3.0, KW_PARK.y - 3.0]:
+		for z in range(-100, 101, 3):
+			bays.append(Transform3D(Basis(), Vector3(row, 0.11, float(z) - 1.5)))
+			if (z + 100) % 33 < 3 or rng.randf() < 0.3: continue # aisles to walk through, and empty bays
+			var kind: String = kinds[rng.randi() % kinds.size()]
+			# nose into the bay: his cars are long along x, the Land Cruiser along z
+			var yaw := (PI / 2.0 if row < 34.0 else -PI / 2.0) if kind == "car" else (PI if row < 34.0 else 0.0)
+			var k := 0.9 if kind == "car" else 1.0
+			cars[kind].append(Transform3D(Basis(Vector3.UP, yaw + rng.randf_range(-0.04, 0.04)).scaled(Vector3.ONE * k), Vector3(row, 0.08, float(z))))
+	bay.instance_count = bays.size()
+	for i in bays.size(): bay.set_instance_transform(i, bays[i])
+	var bmi := MultiMeshInstance3D.new()
+	bmi.multimesh = bay
+	bmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	bmi.visibility_range_end = 90.0
+	add_child(bmi)
+	for kind in cars:
+		_kw_many(kind, cars[kind], Vector3(1.9, 1.4, 4.4) if kind == "car" else Vector3(4.5, 1.4, 1.9), 0.7, 140.0, true)
+	# ---- the corniche: benches facing the water, his white car on its deck, a frost of lights in snow ----
+	var benches: Array = []
+	for z in range(-95, 96, 15): benches.append(Transform3D(Basis(Vector3.UP, PI / 2.0), Vector3(KW_PROM.y - 4.5, 0.05, float(z) + 5.0)))
+	_kw_many("kw_bench", benches, Vector3(1.8, 0.9, 0.6), 0.45, 90.0, true)
+	_kw_one("kw_white", Vector3(KW_PROM.x + 6.0, 0.05, 40.0), -PI / 2.0, 1.0, Vector3(5.2, 1.4, 2.4), 0.7)
+	if theme == "snow":
+		var flakes: Array = []
+		for t in lights:
+			var tt: Transform3D = t
+			flakes.append(Transform3D(Basis(), tt.origin + Vector3(0, 5.6, 0.25)))
+		for m in _kw_many("kw_flake", flakes, Vector3.ZERO, 0.0, 120.0, false): prop_glow(m, Color(0.7, 0.9, 1.0), 2.5)
+	# barriers where the road meets the gates and round the car park's ends
+	var bars: Array = []
+	for zs in [-1.0, 1.0]:
+		for x in [-12.0, -8.0, 8.0, 12.0]: bars.append(Transform3D(Basis(Vector3.UP, rng.randf_range(-0.2, 0.2)), Vector3(x, 0.05, zs * 96.0)))
+		for x in [26.0, 30.0, 38.0, 42.0]: bars.append(Transform3D(Basis(), Vector3(x, 0.05, zs * 104.0)))
+	_kw_many("kw_barrier", bars, Vector3(2.0, 1.4, 0.8), 0.7, 110.0, true)
+	# ---- the sea: sand, rocks along the water, the towers on their point, a warship ----
+	var water := StandardMaterial3D.new()
+	water.albedo_color = Color(0.03, 0.08, 0.14, 0.86)
+	water.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	water.metallic = 0.5
+	water.roughness = 0.05
+	water.normal_enabled = true
+	water.normal_texture = _noise_tex(0.08, 256, true)
+	water.normal_scale = 0.5
+	water.uv1_scale = Vector3(0.05, 0.05, 0.05)
+	water.uv1_triplanar = true
+	var sea := MeshInstance3D.new()
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(700.0, 900.0)
+	pm.material = water
+	sea.mesh = pm
+	sea.position = Vector3(KW_SHORE + 350.0 - 6.0, KW_WATER, 0)
+	sea.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	sea.add_to_group("far")
+	add_child(sea)
+	var deep := StaticBody3D.new() # you can wade in, you cannot swim out
+	deep.name = "Gulf"
+	var cs := CollisionShape3D.new()
+	var bs := BoxShape3D.new()
+	bs.size = Vector3(4.0, 14.0, WALL * 2.0)
+	cs.shape = bs
+	cs.position = Vector3(KW_SHORE + 8.0, 5.0, 0)
+	deep.add_child(cs)
+	add_child(deep)
+	var rocks: Array = []
+	for z in range(-110, 111, 5):
+		var k := rng.randf_range(0.7, 1.3)
+		rocks.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(k, k * 0.8, k)), Vector3(KW_SHORE + 1.5 + rng.randf_range(-0.8, 0.8), height(KW_SHORE + 1.5, float(z)) - 0.5, float(z))))
+	for i in 26: # the point the towers stand on
+		var a := TAU * i / 26.0
+		var k := rng.randf_range(1.0, 1.8)
+		rocks.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(k, k, k)), KW_TOWERS + Vector3(cos(a) * 26.0, -2.4, sin(a) * 26.0)))
+	_kw_many("kw_rock", rocks, Vector3.ZERO, 0.0, 0.0, false)
+	var isle := _pbr(Color(0.5, 0.46, 0.4), Color(0.7, 0.66, 0.6), 0.03, Vector3(0.3, 0.3, 0.3), 0.8)
+	var cyl := MeshInstance3D.new()
+	var cm2 := CylinderMesh.new()
+	cm2.top_radius = 25.0; cm2.bottom_radius = 27.0; cm2.height = 3.0; cm2.radial_segments = 32
+	cm2.material = isle
+	cyl.mesh = cm2
+	cyl.position = KW_TOWERS + Vector3(0, -0.6, 0)
+	cyl.add_to_group("far")
+	add_child(cyl)
+	var towers := _kw_one("kw_towers", KW_TOWERS + Vector3(0, 0.9, 0), -PI / 2.0)
+	if towers:
+		for gi in towers.find_children("*", "GeometryInstance3D", true, false): gi.add_to_group("far")
+	for h in [[0.0, 46.0, 9.0], [0.0, 74.0, 6.0], [-10.0, 36.0, 7.0]]: # the blue spheres, lit
+		var bl := OmniLight3D.new()
+		bl.light_color = Color(0.35, 0.6, 1.0)
+		bl.light_energy = 3.0
+		bl.omni_range = float(h[2]) * 2.2
+		bl.position = KW_TOWERS + Vector3(0, float(h[1]), float(h[0]))
+		add_child(bl)
+	for i in 6: # warm floodlights round the base, as in the picture
+		var fl := OmniLight3D.new()
+		fl.light_color = Color(1.0, 0.75, 0.45)
+		fl.light_energy = 2.2
+		fl.omni_range = 16.0
+		var a := TAU * i / 6.0
+		fl.position = KW_TOWERS + Vector3(cos(a) * 18.0, 2.0, sin(a) * 18.0)
+		add_child(fl)
+	var ship := _kw_one("kw_ship", Vector3(150.0, KW_WATER - 0.4, -55.0), 0.35)
+	if ship:
+		for gi in ship.find_children("*", "GeometryInstance3D", true, false): gi.add_to_group("far")
+	# ---- the National Assembly, lit from its feet ----
+	var asm_node := _kw_one("kw_assembly", KW_ASSEMBLY, PI / 2.0, 1.0, Vector3(80.0, 30.0, 46.0), 15.0)
+	if asm_node:
+		for gi in asm_node.find_children("*", "GeometryInstance3D", true, false): gi.add_to_group("far")
+	else:
+		var body := StaticBody3D.new()
+		body.position = KW_ASSEMBLY
+		_box(body, Vector3(46.0, 26.0, 80.0), Vector3(0, 13.0, 0), _mat.concrete, true)
+		add_child(body)
+	for z in range(-36, 37, 9):
+		var up := OmniLight3D.new()
+		up.light_color = Color(1.0, 0.82, 0.58)
+		up.light_energy = 2.4
+		up.omni_range = 14.0
+		up.position = Vector3(KW_ASSEMBLY.x + 25.0, 1.2, float(z))
+		add_child(up)
+	var oc := OccluderInstance3D.new() # nothing behind the Assembly is drawn while it hides it
+	var bo := BoxOccluder3D.new()
+	bo.size = Vector3(42.0, 24.0, 76.0)
+	oc.occluder = bo
+	oc.position = KW_ASSEMBLY + Vector3(0, 12.0, 0)
+	add_child(oc)
+	occluders += 1
+	# ---- the power box ----
+	_build_power_box()
+
+## The street lights' power box: a grey cabinet on the west sidewalk with a warning plate and a lamp
+## on top (green while the power is on, red when it has been cut). Drawn on everyone's map.
+func _build_power_box() -> void:
+	power_box = KW_BOX
+	var body := StaticBody3D.new()
+	body.name = "PowerBox"
+	body.position = KW_BOX
+	body.rotation.y = PI / 2.0 # its doors toward the road
+	var grey := _pbr(Color(0.32, 0.34, 0.33), Color(0.5, 0.52, 0.5), 0.02, Vector3(0.6, 0.6, 0.6), 0.5, 0.6)
+	_box(body, Vector3(1.4, 1.7, 0.7), Vector3(0, 0.85, 0), grey)
+	_mesh_box(body, Vector3(1.5, 0.08, 0.8), Vector3(0, 1.74, 0), grey)
+	_mesh_box(body, Vector3(0.02, 1.5, 0.02), Vector3(0, 0.85, 0.36), _flat(Color(0.1, 0.1, 0.1), 0.5)) # the doors' seam
+	_mesh_box(body, Vector3(0.36, 0.3, 0.01), Vector3(0.0, 1.3, 0.36), _flat(Color(1.0, 0.82, 0.1), 0.5, 0.0, 0.6)) # ⚡ plate
+	box_lamp = _flat(Color(0.2, 1.0, 0.35), 0.4, 0.0, 4.0)
+	_mesh_box(body, Vector3(0.18, 0.12, 0.18), Vector3(0, 1.84, 0), box_lamp)
+	var l := OmniLight3D.new()
+	l.light_color = Color(0.9, 0.95, 1.0)
+	l.light_energy = 1.2
+	l.omni_range = 5.0
+	l.position = Vector3(0, 2.4, 0.8)
+	body.add_child(l)
+	add_child(body)
+	_blob(KW_BOX, 1.2)
 
 # ---------------- «City Life» ----------------
 ## The towers over the shop fronts, the streets and their lamps, neon, and the owner's cyberpunk
@@ -1567,7 +1934,8 @@ func _build_fortress(sides: Node3D) -> void:
 	var big := 1.35 if map_id == "rubkhali" else 1.0 # the dunes are high: so is the wall
 	var step := WALL_SEG * 0.96 * big                 # end pillars overlap
 	var runs := [] # [start point, unit direction along the run, length, yaw facing inward]
-	runs.append([Vector3(WALL + 0.4, 0, -WALL), Vector3(0, 0, 1), WALL * 2.0, -PI / 2.0])
+	if map_id != "kuwait": # Kuwait City's east side is the open sea
+		runs.append([Vector3(WALL + 0.4, 0, -WALL), Vector3(0, 0, 1), WALL * 2.0, -PI / 2.0])
 	runs.append([Vector3(-WALL - 0.4, 0, -WALL), Vector3(0, 0, 1), WALL * 2.0, PI / 2.0])
 	for zs in [-1.0, 1.0]:
 		var z: float = zs * (WALL + 0.4)
@@ -1578,7 +1946,7 @@ func _build_fortress(sides: Node3D) -> void:
 		if gx == INF:
 			runs.append([Vector3(-WALL, 0, z), Vector3(1, 0, 0), WALL * 2.0, yaw])
 		else:
-			runs.append([Vector3(gx + GATE_HALF, 0, z), Vector3(1, 0, 0), WALL - gx - GATE_HALF, yaw])
+			runs.append([Vector3(gx + GATE_HALF, 0, z), Vector3(1, 0, 0), (KW_SAND + 4.0 if map_id == "kuwait" else WALL) - gx - GATE_HALF, yaw])
 			runs.append([Vector3(gx - GATE_HALF, 0, z), Vector3(-1, 0, 0), WALL + gx - GATE_HALF, yaw])
 	for r in runs:
 		var n := int(ceil(float(r[2]) / step))
@@ -1833,6 +2201,7 @@ func _free_spot(rng: RandomNumberGenerator, pad: float) -> Vector3:
 		var x := rng.randf_range(-WALL + 8.0, WALL - 8.0)
 		var z := rng.randf_range(-WALL + 8.0, (BEACH_SHORE + 4.0) if map_id == "beach" else (WALL - 8.0))
 		if in_site(x, z, pad) or near_tree(x, z, pad + 1.0) or on_street(x, z, pad): continue
+		if map_id == "kuwait" and x > KW_SHORE - 6.0: continue
 		# the beach: nothing in front of the pier's ramp (a barrel or a car there blocked the way up)
 		if map_id == "beach" and absf(x) < PIER_W / 2.0 + 3.0 + pad and z > PIER_FROM - 18.0: continue
 		return Vector3(x, height(x, z), z)
@@ -3028,7 +3397,7 @@ func _process(_dt: float) -> void:
 	for i in amb_lights.size():
 		var e: Array = amb_lights[i]
 		var l: OmniLight3D = e[0]
-		var want := 0.0 if blackout else 1.0
+		var want := 0.0 if (blackout or (grid_off and e.size() > 5 and bool(e[5]))) else 1.0
 		# a house light shies away when the killer is almost on top of it
 		if want > 0.0 and bool(e[2]) and killer_at.distance_to(l.global_position) < 25.0: want = 0.12
 		e[4] = move_toward(float(e[4]), want, _dt * 2.5)

@@ -25,7 +25,7 @@ const TIPS := [
 	"الخيل والبعارين ما يأذونك، بس يشتتون نظر القاتل",
 ]
 const NAMES := {"forest": "الغابة", "village": "القرية المهجورة", "fareej": "الفريج", "rubkhali": "الربع الخالي",
-	"garage": "المواقف", "beach": "الشاطئ", "city": "City Life"}
+	"garage": "المواقف", "beach": "الشاطئ", "city": "City Life", "kuwait": "مدينة الكويت"}
 const THEME_NAMES := {"snow": "ثلج", "halloween": "هالوين"}
 
 var map_id := "forest"
@@ -113,6 +113,31 @@ func _draw_preview(r: Rect2) -> void:
 					_pad.draw_colored_polygon(PackedVector2Array([Vector2(x2 - 5.0, y2 - h2), Vector2(x2 + w2 / 2.0, y2 - h2 - r.size.y * 0.1), Vector2(x2 + w2 + 5.0, y2 - h2)]), col2)
 					if depth == 0 and rng.randf() < 0.6: # one lit window
 						_pad.draw_rect(Rect2(Vector2(x2 + w2 * 0.3, y2 - h2 * 0.6), Vector2(w2 * 0.18, h2 * 0.2)), Color(1.0, 0.72, 0.35, 0.5 * a))
+		"kuwait": # the Gulf Road at night: the Assembly, the lit road, the sea and the towers
+			_pad.draw_rect(r, Color(0.03, 0.04, 0.09, a))
+			var sea_y := base - r.size.y * 0.06
+			_pad.draw_rect(Rect2(Vector2(r.position.x + r.size.x * 0.62, sea_y), Vector2(r.size.x * 0.38, r.position.y + r.size.y - sea_y)), Color(0.03, 0.08, 0.16, a))
+			_pad.draw_rect(Rect2(Vector2(r.position.x + r.size.x * 0.05, base - r.size.y * 0.3), Vector2(r.size.x * 0.32, r.size.y * 0.3 + 6.0)), Color(0.75, 0.68, 0.56, a))
+			for i in 9: # the Assembly's ribs
+				var rx := r.position.x + r.size.x * (0.07 + i * 0.034)
+				_pad.draw_line(Vector2(rx, base - r.size.y * 0.3), Vector2(rx + 4.0, base), Color(0.95, 0.85, 0.65, 0.8 * a), 2.0)
+			var road_l := r.position.x + r.size.x * 0.42
+			var road_r := r.position.x + r.size.x * 0.6
+			_pad.draw_colored_polygon(PackedVector2Array([Vector2(road_l, r.position.y + r.size.y), Vector2(road_r, r.position.y + r.size.y),
+				Vector2(road_r - r.size.x * 0.07, base - r.size.y * 0.12), Vector2(road_l + r.size.x * 0.07, base - r.size.y * 0.12)]), Color(0.12, 0.12, 0.14, a))
+			for i in 8: # street lights down the road
+				var f := i / 7.0
+				var lx := lerpf(road_l - 6.0, road_l + r.size.x * 0.06, f)
+				var lx2 := lerpf(road_r + 6.0, road_r - r.size.x * 0.06, f)
+				var ly := lerpf(r.position.y + r.size.y - 10.0, base - r.size.y * 0.12, f)
+				_pad.draw_circle(Vector2(lx, ly - 10.0 * (1.0 - f * 0.6)), 2.5 - f, Color(1.0, 0.8, 0.45, a))
+				_pad.draw_circle(Vector2(lx2, ly - 10.0 * (1.0 - f * 0.6)), 2.5 - f, Color(1.0, 0.8, 0.45, a))
+			var tx := r.position.x + r.size.x * 0.82
+			for t in [[0.0, 0.62, 0.1], [14.0, 0.5, 0.08], [-11.0, 0.4, 0.0]]: # the towers
+				var top := base - r.size.y * float(t[1])
+				_pad.draw_line(Vector2(tx + float(t[0]), base), Vector2(tx + float(t[0]), top), Color(0.85, 0.85, 0.9, a), 3.0)
+				if float(t[2]) > 0.0:
+					_pad.draw_circle(Vector2(tx + float(t[0]), base - r.size.y * float(t[1]) * 0.55), r.size.y * float(t[2]) * 0.6, Color(0.25, 0.5, 1.0, a))
 		"city": # City Life: towers with lit windows and neon against a purple sky
 			_pad.draw_rect(r, Color(0.07, 0.04, 0.1, a))
 			for depth in 2:

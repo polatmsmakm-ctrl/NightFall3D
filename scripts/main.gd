@@ -217,6 +217,7 @@ func _start(c: Dictionary) -> void:
 	rules.gun = bool(c.get("gun", false)) # «وضع السلاح»: the host's choice, sent with start
 	rules.setup(world.gen_points.size(), world.gate_points.size(), world.pallet_points.size(), world.hatch_points.size(),
 		c.players, int(c.get("seed", 1)) if not offline else randi() % 1000000, world.door_points.size())
+	rules.has_grid = world.map_id == "kuwait" # Kuwait City's street lights hang on one power box
 	for p in c.players: chars[str(p.name)] = str(p.char)
 	Net.last_char = str(chars.get(my_name, Net.last_char)) # the one who stands at the fire next time
 	Net.save()
@@ -250,6 +251,7 @@ func _start(c: Dictionary) -> void:
 		for i in world.gate_points.size():
 			lay.c.append(xz.call(world.esc_start(i)))
 			lay.e.append(xz.call(world.road_end(i)))
+		if world.power_box != Vector3.INF: lay.b = xz.call(world.power_box) # the power box (Kuwait City)
 		Net.send({"t": "layout", "d": lay})
 	started = true
 
@@ -1079,6 +1081,16 @@ func _on_event(e: Dictionary) -> void:
 				_shake(0.3)
 				boost_t = 1.5
 			elif my_role == "killer": _flash("ما أثرت الضربة! جلده قاسي")
+		"grid": # Kuwait City's power box
+			var on := bool(e.get("on", true))
+			world.set_grid(on)
+			if on:
+				_feed("رجعت الكهرباء — الشارع منوّر", "bolt", Color(1.0, 0.9, 0.4))
+				if my_role == "killer": _flash("صلّحوا الكهرباء!")
+			else:
+				_feed("القاتل قطع الكهرباء!", "bolt", Color(1.0, 0.45, 0.3))
+				if my_role == "survivor": _flash("انقطعت الكهرباء! صلّحوا الصندوق ⚡")
+				_shake(0.15)
 		"mend": # «تفتّح» (Bloom)
 			_feed("%s تفتّحت ورجعت سليمة" % str(e.n), "heal", Color(0.75, 0.55, 1.0))
 			if str(e.n) == my_name: _flash("تفتّح — رجعتي سليمة!")
@@ -1787,6 +1799,7 @@ func _draw_ui() -> void:
 		var hands := 0
 		match hold.kind:
 			"rep": p = rules.gens[hold.i].p
+			"pfix": p = rules.grid_p
 			"heal": p = rules.s[hold.n].heal if rules.s.has(hold.n) else 0.0
 			"rescue":
 				if rules.s.has(hold.n):
@@ -1987,6 +2000,17 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 	if world.map_id == "fareej": # streets
 		for st in [[-30.0, -47.0, 150.0, 7.0], [-30.0, 47.0, 150.0, 7.0], [-28.0, 0.0, 142.0, 8.0], [-13.0, 0.0, 7.0, 94.0]]:
 			minimap.draw_rect(Rect2(c + Vector2(st[0] - st[2] / 2.0, st[1] - st[3] / 2.0) * k, Vector2(st[2], st[3]) * k), Color(0.32, 0.32, 0.34))
+	if world.map_id == "kuwait": # the sea, the Gulf Road, the car park, the Assembly
+		var sea_x := NightWorld.KW_SHORE * k
+		minimap.draw_rect(Rect2(c + Vector2(sea_x, -wl), Vector2(wl - sea_x, wl * 2.0)), Color(0.05, 0.14, 0.26))
+		minimap.draw_rect(Rect2(c + Vector2(NightWorld.KW_SAND * k, -wl), Vector2((NightWorld.KW_SHORE - NightWorld.KW_SAND) * k, wl * 2.0)), Color(0.45, 0.38, 0.25))
+		minimap.draw_rect(Rect2(c + Vector2(-NightWorld.KW_ROAD_HALF * k, -wl), Vector2(NightWorld.KW_ROAD_HALF * 2.0 * k, wl * 2.0)), Color(0.3, 0.3, 0.32))
+		minimap.draw_rect(Rect2(c + Vector2(-1.8 * k, -wl), Vector2(3.6 * k, wl * 2.0)), Color(0.2, 0.45, 0.2))
+		minimap.draw_rect(Rect2(c + Vector2(NightWorld.KW_PARK.x * k, -wl), Vector2((NightWorld.KW_PARK.y - NightWorld.KW_PARK.x) * k, wl * 2.0)), Color(0.22, 0.22, 0.24))
+		var asm: Vector3 = NightWorld.KW_ASSEMBLY
+		minimap.draw_rect(Rect2(c + Vector2(asm.x - 23.0, asm.z - 40.0) * k, Vector2(46.0, 80.0) * k), Color(0.7, 0.64, 0.52))
+		if big: _map_text(c + Vector2(asm.x - 18.0, asm.z) * k, "مجلس الأمة", 15, Color(0.15, 0.12, 0.08))
+		minimap.draw_circle(c + Vector2(NightWorld.KW_TOWERS.x, NightWorld.KW_TOWERS.z) * k, 5.0 * u, Color(0.4, 0.65, 1.0))
 	for i in world.gate_points.size(): # escape roads + gates
 		var p: Vector3 = world.gate_points[i][0]
 		var out_dir := signf(p.z)
@@ -2093,6 +2117,14 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 	var sd := Vector2(-f.y, f.x)
 	minimap.draw_colored_polygon(PackedVector2Array([me + f * 8.0 * u, me - f * 4.0 * u + sd * 5.0 * u, me - f * 4.0 * u - sd * 5.0 * u]),
 		Color(1, 0.3, 0.3) if my_role == "killer" else Color(1, 1, 1))
+	if world.power_box != Vector3.INF: # the power box: everyone can find it (yellow, red while it is cut)
+		var bp := c + Vector2(world.power_box.x, world.power_box.z) * k
+		var on: bool = rules.grid
+		var bc := Color(1.0, 0.85, 0.2) if on else Color(1.0, 0.25, 0.2, 0.6 + 0.4 * absf(sin(Time.get_ticks_msec() / 200.0)))
+		minimap.draw_rect(Rect2(bp - Vector2(7, 7) * u, Vector2(14, 14) * u), Color(0.05, 0.05, 0.05, 0.9))
+		minimap.draw_rect(Rect2(bp - Vector2(7, 7) * u, Vector2(14, 14) * u), bc, false, 1.6 * u)
+		NFIcons.draw(minimap, "bolt", bp, 11.0 * u, bc)
+		if big: _map_text(bp + Vector2(10, 5) * u, "الكهرباء" if on else "الكهرباء مقطوعة!", 16, bc)
 	if world.map_id == "garage" and body.position.y > 3.0: # standing on the roof
 		minimap.draw_arc(me, 11.0 * u, 0, TAU, 20, ROOF_COL, 1.6 * u)
 		_map_text(o + Vector2(side / 2.0 - (40.0 if big else 26.0), 18.0 if big else 14.0), "على السطح",
@@ -2107,6 +2139,7 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 			items.append(["■", Color(0.45, 0.45, 0.48), "درج"]) # the stair cores
 			items.append(["▲", ROOF_COL, "فوق السطح"])
 		else: items.append(["■", Color(0.8, 0.25, 0.25), "السوق"])
+		if world.power_box != Vector3.INF: items.append(["bolt", Color(1.0, 0.85, 0.2), "صندوق الكهرباء"])
 		if my_role == "killer":
 			items.append(["trap", Color(1, 0.5, 0.35), "فخاخك"])
 			if car: items.append(["■", CAR_COL, "سيارتك"])
@@ -2168,6 +2201,8 @@ func _update_ctx() -> void:
 				if rules.pallets[i] == 0 and _near(pos, world.pallet_points[i][0], 2.2):
 					ctx.interact = {"kind": "pallet", "label": "اسقط", "i": i}
 		if not ctx.has("interact"): _door_ctx(pos)
+		if not ctx.has("interact") and rules.has_grid and not rules.grid and world.power_box != Vector3.INF and _near(pos, world.power_box, 2.6):
+			ctx.interact = {"kind": "pfix", "label": "صلّح الكهرباء", "i": 0, "need": -1.0}
 		if not ctx.has("interact") and not rules.powered:
 			for i in world.gen_points.size():
 				if not rules.gens[i].done and _near(pos, world.gen_points[i], 2.5):
@@ -2211,6 +2246,8 @@ func _update_ctx() -> void:
 			for w in world.window_points:
 				if _near(pos, w[0], 1.7): ctx.interact = {"kind": "vault", "label": "اقفز", "c": w[0], "n": w[1]}
 		if not ctx.has("interact"): _door_ctx(pos)
+		if not ctx.has("interact") and rules.has_grid and rules.grid and world.power_box != Vector3.INF and _near(pos, world.power_box, 2.6):
+			ctx.interact = {"kind": "cut", "label": "اقطع الكهرباء", "i": 0}
 		if not ctx.has("interact") and car and _car_near(pos) > -2:
 			ctx.interact = {"kind": "car_in", "label": "اركب", "p": _car_near(pos)}
 
@@ -2305,6 +2342,9 @@ func _press(id: String, touch: int) -> void:
 				"locker_in": _ev({"k": "locker", "i": c.i, "on": true})
 				"locker_out": _ev({"k": "locker", "i": c.i, "on": false})
 				"pallet": _ev({"k": "pallet", "i": c.i})
+				"cut":
+					_ev({"k": "cut"})
+					NFHaptics.pulse("tick")
 				"door": _ev({"k": "door", "i": c.i, "on": c.get("on", true)})
 				"board": _ev({"k": "board", "i": c.i})
 				"disarm":
@@ -2327,12 +2367,14 @@ func _press(id: String, touch: int) -> void:
 						next_skill = randf_range(3.0, 6.0)
 						_ev({"k": "rep", "i": c.i, "on": true})
 					elif c.kind == "heal": _ev({"k": "heal", "n": c.n, "on": true})
+					elif c.kind == "pfix": _ev({"k": "pfix", "on": true})
 					elif c.kind == "rescue": _ev({"k": "rescue", "n": c.n, "on": true})
 
 func _end_hold() -> void:
 	if hold.is_empty(): return
 	if hold.kind == "rep": _ev({"k": "rep", "i": hold.i, "on": false})
 	elif hold.kind == "heal": _ev({"k": "heal", "n": hold.n, "on": false})
+	elif hold.kind == "pfix": _ev({"k": "pfix", "on": false})
 	elif hold.kind == "rescue": _ev({"k": "rescue", "n": hold.n, "on": false})
 	hold = {}
 	skill = {}
@@ -2451,6 +2493,7 @@ func _process(dt: float) -> void:
 	if not started: return
 	_step_guns(dt)
 	_step_blood(dt)
+	if rules and rules.has_grid and world.ready_done and world.grid_off == rules.grid: world.set_grid(rules.grid)
 	if loading != null: # the map is still being built: keep the tip screen up
 		if not is_instance_valid(loading): loading = null
 		else:
@@ -3495,6 +3538,7 @@ func _move(delta: float) -> void:
 		var tp := body.position
 		match hold.kind:
 			"rep": tp = world.gen_points[hold.i]
+			"pfix": tp = world.power_box
 			"heal":
 				if hold.n != my_name: tp = _pos_of(hold.n)
 			"rescue": tp = world.hook_points[rules.s[hold.n].hook_i] if rules.s[hold.n].hook_i >= 0 else tp

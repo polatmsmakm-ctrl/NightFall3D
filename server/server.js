@@ -6,7 +6,7 @@ const { Rules } = require('./rules');
 
 const PORT = process.env.PORT || 8080;
 const MAX_PLAYERS = 7;
-const MAPS = ['forest', 'village', 'fareej', 'rubkhali', 'garage', 'beach', 'city'];
+const MAPS = ['forest', 'village', 'fareej', 'rubkhali', 'garage', 'beach', 'city', 'kuwait'];
 const THEMES = ['normal', 'fog', 'rain', 'snow', 'halloween'];
 const HIDDEN = ['survivor4']; // never handed out: only a phone that has it unlocked asks for it
 const CHARS = ['killer', 'survivor1', 'survivor2', 'survivor3', 'survivor4', 'survivor5', 'survivor6', 'survivor7', 'survivor8', 'survivor9'];
