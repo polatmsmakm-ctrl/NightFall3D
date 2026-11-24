@@ -988,3 +988,35 @@ photographs it lowered and raised.
 - `tools/kuwait.tscn` tests it; `tools/shot24.tscn` photographs it from the picture's angle.
 - **Bloom's hands**: re-rigged with `--arms 0.235,0.49,0.745` (her bare shoulders and wide sleeves
   fooled the automatic arm fit, which put the shoulder joint at 0.315 m and turned the hands out).
+
+## Kuwait City, second pass, and Halloween (the owner's next round)
+- **The road is built in code now** (his twin-highway tile sat 0.67 m thick, so cars sank into it, and
+  stretched it looked poor): fine asphalt flush with the ground the cars roll on, three lanes each way
+  (dashed lines, solid edges, a yellow inner line), zebra crossings at z 0 and ±64, granite kerbs.
+- **Raised walks** (`_paver_mat`: pavers drawn in code — rows of stones each a shade different, sunken
+  grout, a normal map from it, world-space at 2 m a tile; warm stone on the corniche): sidewalks 15 cm,
+  median 20 cm (ends at `KW_MEDIAN` 92 m, clear of the gates), promenade 20 cm. Each is a `_kerb_body`:
+  a top box plus a 0.5 m **ramp of collision** on both long sides, so feet and tyres ride up the kerb,
+  and `main._kerb_ctx` lights the **jump button** at every kerb edge (`world.kerbs`).
+- **Street lights burn yellow**: his twin-head lights along both kerbs, the median and the corniche,
+  each head a glowing lamp (`KW_HEADS` / `KW_HEAD_Y`, measured off the model) and a yellow light on the
+  power grid. **Trees every 4 m** down both sides of the street (6 m on older phones). Grass and
+  planters only along the median, never near the gates.
+- **The mosque** (`assets/props/kw_mosque.glb`, his Golden Crescent Mosque, 34 m) replaces the market
+  (the shops, the restaurant, the dry cleaner's: `_build_market` is skipped there), set back so the two
+  generators stand on its forecourt; its two lockers stand either side; no market door or window.
+  Gold on the map, «المسجد».
+- **Yellow light inside the Assembly** (two rows of warm lights behind the glass).
+- **The power box**: his panel at 1.25x with a yellow work lamp; **cut twice a round at most**
+  (`GRID_CUTS` 2) and **not again until 60 s after the repair** (`GRID_GAP`; both rules files; `pb` now
+  carries the cuts and the wait). While it is out the ambient falls to 30% and the moon to 35%: only
+  the torches help. The killer's button reads «اقطع الكهرباء (1/2)», and a line says how long it cools.
+- **The pistol moves**: drawn up from the hip when it comes out, swings with the stride at low ready
+  (`NFGun.spd`, set by main for me and for every remote), sways with breathing while aimed (more on
+  the move), recoil as before.
+- **Halloween is darkness, not red**: neutral ambient at 0.22, a faint grey moon, dark grass and leaves;
+  `set_blackout(true)` for the whole round (it ignores being turned back on), so every street, house
+  and market lamp is out and only the torches and the pumpkins light anything. **His pumpkin**
+  (`assets/props/pumpkin.glb`) is everywhere: 70 about the map (40 on older phones), by every door,
+  generator and hook, and down both escape roads — one MultiMesh, a light in every third
+  (`pumpkin_lights` are spared by the dark).

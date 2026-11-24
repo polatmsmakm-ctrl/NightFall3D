@@ -43,6 +43,8 @@ const PERK_INFO := {
 }
 const SENSE_R := 28.0     # «عين الليل»: how close she has to be
 const FIX_MUL := 1.3      # «يد المصلّح»: repairs 30% faster
+const GRID_CUTS := 2      # the killer may pull the power box twice a round
+const GRID_GAP := 60.0    # and only this long after the power came back
 const GRID_FIX := 12.0    # Kuwait City's power box: one survivor brings the street lights back in 12 s
 const MEND_TIME := 45.0   # «تفتّح»: how long Bloom has to stay hurt (and not hit again) to mend
 const MEDIC_MUL := 1.6    # «طب ميداني»: heals the others 60% faster
@@ -90,6 +92,8 @@ var has_grid := false   # the map has a power box (Kuwait City): the killer cuts
 var grid := true
 var grid_p := 0.0
 var grid_reps := {}
+var grid_cuts := 0
+var grid_wait := 0.0
 var adhan_at := 1e9     # when the call to prayer starts
 var adhan := 0          # 0 not yet, 1 playing, 2 done
 
@@ -195,8 +199,8 @@ func handle(d: Dictionary, from: String) -> Array:
 	var is_killer := from == killer
 	match str(d.get("k", "")):
 		"cut": # the killer pulls the power box: every street light on the map goes out
-			if is_killer and has_grid and grid:
-				grid = false; grid_p = 0.0; grid_reps.clear()
+			if is_killer and has_grid and grid and grid_cuts < GRID_CUTS and grid_wait <= 0.0:
+				grid = false; grid_p = 0.0; grid_reps.clear(); grid_cuts += 1
 				add(from, 40.0)
 				out.append({"k": "grid", "on": false, "by": from})
 		"pfix":
@@ -391,13 +395,14 @@ func tick(dt: float) -> Array:
 		if int(r.st) != 1: continue
 		r.t = maxf(float(r.t) - dt, 0.0)
 		if r.t <= 0.0: out.append(_caught(i, "time"))
+	if has_grid and grid: grid_wait = maxf(grid_wait - dt, 0.0)
 	if has_grid and not grid:
 		for gn in grid_reps.keys():
 			if not free_now(gn): grid_reps.erase(gn)
 		grid_p += dt * float(grid_reps.size()) / GRID_FIX
 		for gn in grid_reps: add(gn, dt * 60.0 / GRID_FIX)
 		if grid_p >= 1.0:
-			grid = true; grid_p = 0.0; grid_reps.clear()
+			grid = true; grid_p = 0.0; grid_reps.clear(); grid_wait = GRID_GAP
 			out.append({"k": "grid", "on": true})
 	for n in s:
 		var p: Dictionary = s[n]
@@ -513,7 +518,7 @@ func snapshot() -> Dictionary:
 	var rd := []
 	for r in roads: rd.append([r.st, r.drv, r.who, snappedf(float(r.t), 0.1), r.why, bool(r.get("flat", false))])
 	return {"tp": traps, "sp": spikes, "rd": rd, "k": "gs", "g": gp, "d": gd, "to": to, "pw": powered, "gn": gun, "s": ss, "pl": pallets, "kc": carrying, "ks": snappedf(stun, 0.01), "kp": snappedf(power_cd, 0.1), "ov": over, "hx": hatch, "sc": sc, "dm": snappedf(doom, 0.1),
-		"dr": doors, "ek": ev_kind if ev_fired else -1, "et": snappedf(ev_t, 0.1), "en": ev_n, "ad": adhan, "pb": [grid, snappedf(grid_p, 0.001)] if has_grid else []}
+		"dr": doors, "ek": ev_kind if ev_fired else -1, "et": snappedf(ev_t, 0.1), "en": ev_n, "ad": adhan, "pb": [grid, snappedf(grid_p, 0.001), grid_cuts, ceili(grid_wait)] if has_grid else []}
 
 func apply(v: Dictionary) -> void:
 	for i in mini(gens.size(), v.g.size()):
@@ -555,4 +560,5 @@ func apply(v: Dictionary) -> void:
 	var pb = v.get("pb", [])
 	if pb is Array and (pb as Array).size() >= 2:
 		has_grid = true; grid = bool(pb[0]); grid_p = float(pb[1])
+		if (pb as Array).size() >= 4: grid_cuts = int(pb[2]); grid_wait = float(pb[3])
 	for n in v.get("sc", {}): score[n] = float(v.sc[n])

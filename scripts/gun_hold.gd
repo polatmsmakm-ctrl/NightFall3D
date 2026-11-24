@@ -84,6 +84,12 @@ static func _build(into: Node3D) -> void:
 
 ## Each frame. `show`: the gun is out at all; `want`: 0 lowered, 1 aimed; `pitch`: the aim up (+)
 ## or down (-) in radians; `yaw`: which way the aim faces.
+## How fast the one holding it is moving (main sets it): the lowered gun swings with the stride.
+var spd := 0.0
+var _phase := 0.0
+var _draw := 0.0   # 0 -> 1: drawn from the hip when it first comes out
+var _t := 0.0
+
 func step(show: bool, want: float, pitch: float, yaw: float, dt: float) -> void:
 	if rig == null: return
 	if not show:
@@ -91,8 +97,13 @@ func step(show: bool, want: float, pitch: float, yaw: float, dt: float) -> void:
 			visible = false
 			rig.reach_clear()
 		raise = 0.0
+		_draw = 0.0
 		return
 	visible = true
+	_t += dt
+	_draw = minf(_draw + dt / 0.35, 1.0)
+	var go := clampf(spd / 4.0, 0.0, 1.0)
+	_phase += dt * (3.0 + spd * 1.9)
 	raise = move_toward(raise, want, dt * (7.0 if want > raise else 3.5))
 	kick = maxf(kick - dt * 6.5, 0.0)
 	var r := clampf(raise, 0.0, 1.0)
@@ -106,9 +117,15 @@ func step(show: bool, want: float, pitch: float, yaw: float, dt: float) -> void:
 	# aimed: out in front along the aim, a little right of the middle and under the eyes
 	var p := clampf(pitch + kick * 0.35, -1.0, 1.0)
 	var aim := (flat * cos(p) + up * sin(p)).normalized()
-	var r_aim := mid + aim * (0.46 - kick * 0.05) + side * 0.045 - up * 0.07
+	# aimed: a breath of sway, more while moving
+	var sway := (side * sin(_t * 1.3) * 0.006 + up * sin(_t * 1.7 + 0.6) * 0.005) * (1.0 + go * 2.5)
+	var r_aim := mid + aim * (0.46 - kick * 0.05) + side * 0.045 - up * 0.07 + sway
 	# lowered: by the right hip, the forearm forward, the muzzle down at the ground ahead
-	var r_low := rs - up * 0.43 + flat * 0.2 + side * 0.03
+	# low ready, swinging a little with each stride; drawn up from the hip at first
+	var swing := (flat * sin(_phase) * 0.06 + up * absf(cos(_phase)) * 0.03) * go
+	var r_low := rs - up * (0.43 - 0.05 * go) + flat * (0.2 + 0.06 * go) + side * 0.03 + swing
+	var dr := _draw * _draw * (3.0 - 2.0 * _draw)
+	r_low = (rs - up * 0.58 + side * 0.1 - flat * 0.05).lerp(r_low, dr)
 	var low_dir := (flat * 0.55 - up * 0.83).normalized()
 	var rw := r_low.lerp(r_aim, e)
 	var gdir := low_dir.slerp(aim, e).normalized()

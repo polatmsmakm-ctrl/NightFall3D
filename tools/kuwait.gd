@@ -56,7 +56,38 @@ func _ready() -> void:
 	for e in w.amb_lights:
 		if e.size() > 5 and bool(e[5]) and (e[0] as OmniLight3D).light_energy > 0.05: lit += 1
 	check(m.rules.grid and not w.grid_off and lit > 30, "fixed: the street is lit again (%d)" % lit)
+	# twice a round, with a wait between
+	var again: Array = m.rules.handle({"k": "cut"}, "K")
+	check(again.is_empty() and m.rules.grid_wait > 30.0, "straight after the repair it cannot be cut again (%d s to wait)" % ceili(m.rules.grid_wait))
+	m.rules.grid_wait = 0.0
+	check(not m.rules.handle({"k": "cut"}, "K").is_empty() and m.rules.grid_cuts == 2, "after the wait: the second cut")
+	m.rules.grid = true; m.rules.grid_wait = 0.0
+	check(m.rules.handle({"k": "cut"}, "K").is_empty(), "and no third")
+	check(w.kerbs.size() >= 3, "kerbs to walk and drive up onto (%d)" % w.kerbs.size())
+	m.body.global_position = Vector3(-NightWorld.KW_ROAD_HALF + 0.3, 0.3, 30.0)
+	await frames(6)
+	check(m.ctx.has("vault"), "at the kerb the jump button lights up")
+	var mosque := w.find_child("KW_kw_mosque", true, false) != null or w.kw_parts > 0
+	check(mosque and w.door_points.size() > 0, "the mosque stands where the market was")
 	var snap: Dictionary = m.rules.snapshot()
 	check(snap.has("pb") and (snap.pb as Array).size() == 2, "the snapshot carries the box (online phones follow it)")
+	m.queue_free()
+	await frames(5)
+	# Halloween: dark, not red; every lamp out all round; his pumpkins everywhere
+	var h = load("res://scenes/main.tscn").instantiate()
+	tree.root.add_child.call_deferred(h)
+	await frames(10)
+	h._start({"map": "forest", "me": "P", "offline": true, "seed": 7, "theme": "halloween", "players": [
+		{"name": "P", "role": "survivor", "char": "survivor1", "slot": 0}, {"name": "K", "role": "killer", "char": "killer", "slot": 1}]})
+	for i in 1200:
+		await tree.process_frame
+		if h.world.ready_done: break
+	await frames(30)
+	var hw = h.world
+	var amb: Color = hw.env.ambient_light_color
+	check(amb.r < 0.15 and absf(amb.r - amb.b) < 0.05, "Halloween is dark, not red (ambient %s)" % amb)
+	check(hw.blackout and hw.pumpkins >= 40, "the lamps are out for the round, %d pumpkins about" % hw.pumpkins)
+	hw.set_blackout(false)
+	check(hw.blackout, "and they stay out")
 	print("kuwait: %d failed" % bad)
 	tree.quit()

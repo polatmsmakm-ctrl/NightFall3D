@@ -18,6 +18,8 @@ const ROAD_TIME = 120; // from the first one getting into a gate's escape car to
 const PERK = { survivor1: 'burst', survivor2: 'fix', survivor3: 'lift', survivor4: 'rise',
   survivor5: 'tough', survivor6: 'sense', survivor7: 'medic', survivor8: 'ghost', survivor9: 'mend' };
 const MEND_TIME = 45;
+const GRID_CUTS = 2; // the killer may pull the power box twice a round
+const GRID_GAP = 60; // and only this long after the power came back
 const GRID_FIX = 12; // Kuwait City's power box: one survivor brings the street lights back in 12 s // «تفتّح»: Bloom, hurt and left alone this long, mends herself
 const FIX_MUL = 1.3, MEDIC_MUL = 1.6, LIFT_W = 1.8, RISE_TIME = 20;
 const TRAPS = 4, HELD_TIME = 4; // the killer's traps armed at once; caught in one: held this long
@@ -33,7 +35,7 @@ class Rules {
     // the escape car behind each gate: st 0 waiting, 1 on the road, 2 caught, 3 through the last gate
     this.roads = [];                        // {st, drv, who, t, why, cp, flat}
     this.perk = {};                         // survivor -> perk id
-    this.hasGrid = false; this.grid = true; this.gridP = 0; this.gridReps = {}; // the power box (Kuwait City)
+    this.hasGrid = false; this.grid = true; this.gridP = 0; this.gridReps = {}; this.gridCuts = 0; this.gridWait = 0; // the power box (Kuwait City)
     this.traps = []; this.trapK = 0;        // [x, z, armed], TRAPS slots reused oldest first
     this.spikes = [];                       // per road: [x, z, armed]
     const sd = Math.abs(Math.floor(seed));
@@ -132,8 +134,8 @@ class Rules {
     const isKiller = from === this.killer;
     const L = this.layout;
     if (d.k === 'cut') { // the killer pulls the power box: every street light goes out
-      if (isKiller && this.hasGrid && this.grid && this.near(from, L.b, 4)) {
-        this.grid = false; this.gridP = 0; this.gridReps = {}; this.add(from, 40);
+      if (isKiller && this.hasGrid && this.grid && this.gridCuts < GRID_CUTS && this.gridWait <= 0 && this.near(from, L.b, 4)) {
+        this.grid = false; this.gridP = 0; this.gridReps = {}; this.gridCuts++; this.add(from, 40);
         out.push({ k: 'grid', on: false, by: from });
       }
       return out;
@@ -363,12 +365,13 @@ class Rules {
       r.t = Math.max(r.t - dt, 0);
       if (r.t <= 0) out.push(this.caught(i, 'time'));
     }
+    if (this.hasGrid && this.grid) this.gridWait = Math.max(this.gridWait - dt, 0);
     if (this.hasGrid && !this.grid) {
       for (const gn of Object.keys(this.gridReps)) if (!this.freeNow(gn)) delete this.gridReps[gn];
       const k = Object.keys(this.gridReps).length;
       this.gridP += dt * k / GRID_FIX;
       for (const gn of Object.keys(this.gridReps)) this.add(gn, dt * 60 / GRID_FIX);
-      if (this.gridP >= 1) { this.grid = true; this.gridP = 0; this.gridReps = {}; out.push({ k: 'grid', on: true }); }
+      if (this.gridP >= 1) { this.grid = true; this.gridP = 0; this.gridReps = {}; this.gridWait = GRID_GAP; out.push({ k: 'grid', on: true }); }
     }
     for (const n in this.s) {
       const p = this.s[n];
@@ -466,7 +469,7 @@ class Rules {
       sc: Object.fromEntries(Object.entries(this.score).map(([n, v]) => [n, Math.round(v)])),
       rd: this.roads.map((r) => [r.st, r.drv, r.who, Math.round(r.t * 10) / 10, r.why, !!r.flat]),
       tp: this.traps, sp: this.spikes,
-      pb: this.hasGrid ? [this.grid, r3(this.gridP)] : [],
+      pb: this.hasGrid ? [this.grid, r3(this.gridP), this.gridCuts, Math.ceil(this.gridWait)] : [],
       dr: this.doors, ek: this.evFired ? this.evKind : -1, et: Math.round(this.evT * 10) / 10, en: this.evN, ad: this.adhan,
     };
   }

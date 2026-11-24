@@ -11,6 +11,7 @@ const NATURAL := {"walk": 1.3, "run": 3.7, "sprint": 5.2, "crouchwalk": 1.0, "in
 const ACCEL := 20.0
 const DECEL := 28.0
 var rain_audio: AudioStreamPlayer
+var _text_hint := "" # a line under the middle of the screen for the killer (the power box cooling)
 var ravens: NFRavens
 const SFX := ["knife1", "knife2", "knife3", "knife4", "gunshot", "scream_beast", "crow", "raven", "gate", "heart", "breath", "steps_out", "steps_in", "gen_run", "chase", "ambient", "doom", "rope", "male_pain", "scream1", "scream2", "oof1", "oof2", "oof3"]
 const MALE := ["survivor2", "survivor3", "killer2"] # the other characters (the killer «البركة القرمزية» too) use the female voice clips
@@ -891,6 +892,7 @@ func _step_guns(dt: float) -> void:
 		if gun_pending >= 0.0:
 			gun_pending -= dt
 			if gun_pending < 0.0: _shoot()
+		my_gun.spd = Vector2(body.velocity.x, body.velocity.z).length()
 		my_gun.step(out, 1.0 if gun_aim > 0.0 else 0.0, _gun_pitch(), rig.rotation.y, dt)
 	for n in remotes:
 		var r = remotes[n]
@@ -903,6 +905,7 @@ func _step_guns(dt: float) -> void:
 			add_child(g)
 			(g as NFGun).setup(r.rig)
 			r.gun = g
+		(g as NFGun).spd = float(r.get("spd", 0.0))
 		(g as NFGun).step(out2, 1.0 if int(r.g) == 2 else 0.0, float(r.gp), r.rig.rotation.y, dt)
 
 ## The owner's map pictures (assets/ui/map: his generators, market, hook, gates and hatch, cut out of
@@ -1791,6 +1794,7 @@ func _draw_ui() -> void:
 			_text(c + Vector2(0, 52), "صوت ركض قريب", 18, Color(1, 0.6, 0.5))
 		if rules.stun > 0.0: _text(mid + Vector2(0, -60), "مصعوق", 30, Color(1, 0.9, 0.3))
 		if rules.carrying != "": _text(sub + Vector2(0, 84), "شايل %s — ودّه للخطاف" % rules.carrying, 20, Color(1, 0.7, 0.5))
+		if _text_hint != "": _text(sub + Vector2(0, 116), _text_hint, 20, Color(1.0, 0.85, 0.4))
 		if attack_t > 0.55: # first person: show the swing
 			ui.draw_arc(mid + Vector2(0, 120), 260, -PI * 0.75, -PI * 0.25, 24, Color(1, 1, 1, 0.35), 14.0)
 	# hold progress + skill check
@@ -2050,11 +2054,15 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 				Vector2(NightWorld.PIER_W, NightWorld.WALL - NightWorld.PIER_FROM) * k), Color(0.55, 0.4, 0.25))
 		var mk: Dictionary = world.market
 		minimap.draw_set_transform(c + Vector2(mk.pos.x, mk.pos.z) * k, -mk.yaw, Vector2.ONE)
-		minimap.draw_rect(Rect2(-Vector2(mk.w, mk.d) * k / 2.0, Vector2(mk.w, mk.d) * k), Color(0.8, 0.25, 0.25))
+		minimap.draw_rect(Rect2(-Vector2(mk.w, mk.d) * k / 2.0, Vector2(mk.w, mk.d) * k), Color(0.8, 0.25, 0.25) if world.map_id != "kuwait" else Color(0.75, 0.62, 0.3))
 		minimap.draw_rect(Rect2(Vector2(-mk.w / 2.0, mk.d / 2.0) * k, Vector2(mk.w, 13.0) * k), Color(0.25, 0.25, 0.27)) # parking
 		minimap.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-		_map_pic(c + Vector2(mk.pos.x, mk.pos.z) * k, "market", 18.0 * u)
-		if big: _map_text(c + Vector2(mk.pos.x + 8.0, mk.pos.z + 3.0) * k, "السوق", 16, Color(1, 0.7, 0.7))
+		if world.map_id == "kuwait":
+			minimap.draw_circle(c + Vector2(mk.pos.x - 5.0, mk.pos.z) * k, 7.0 * u, Color(0.85, 0.72, 0.35))
+			if big: _map_text(c + Vector2(mk.pos.x + 8.0, mk.pos.z + 3.0) * k, "المسجد", 16, Color(1, 0.88, 0.5))
+		else:
+			_map_pic(c + Vector2(mk.pos.x, mk.pos.z) * k, "market", 18.0 * u)
+			if big: _map_text(c + Vector2(mk.pos.x + 8.0, mk.pos.z + 3.0) * k, "السوق", 16, Color(1, 0.7, 0.7))
 	for i in world.hook_points.size():
 		if i >= world.road_hook0: break # the ones along the roads are off the map
 		var hp: Vector3 = world.hook_points[i]
@@ -2161,6 +2169,7 @@ func _near(a: Vector3, b: Vector3, r: float) -> bool:
 
 func _update_ctx() -> void:
 	ctx = {}
+	_text_hint = ""
 	if rules.over: return
 	var pos := body.position
 	if my_role == "survivor":
@@ -2209,6 +2218,7 @@ func _update_ctx() -> void:
 					ctx.interact = {"kind": "rep", "label": "تصليح", "i": i, "need": -1.0}
 		for w in world.window_points:
 			if _near(pos, w[0], 1.7): ctx.vault = {"kind": "vault", "c": w[0], "n": w[1]}
+		if not ctx.has("vault"): _kerb_ctx(pos)
 		for i in world.pallet_points.size():
 			var pp: Array = world.pallet_points[i]
 			if rules.pallets[i] == 1 and _near(pos, pp[0], 1.7):
@@ -2247,7 +2257,9 @@ func _update_ctx() -> void:
 				if _near(pos, w[0], 1.7): ctx.interact = {"kind": "vault", "label": "اقفز", "c": w[0], "n": w[1]}
 		if not ctx.has("interact"): _door_ctx(pos)
 		if not ctx.has("interact") and rules.has_grid and rules.grid and world.power_box != Vector3.INF and _near(pos, world.power_box, 2.6):
-			ctx.interact = {"kind": "cut", "label": "اقطع الكهرباء", "i": 0}
+			if rules.grid_cuts >= Rules.GRID_CUTS: pass # both cuts used
+			elif rules.grid_wait > 0.0: _text_hint = "الصندوق يبرد — بعد %d ث" % ceili(rules.grid_wait)
+			else: ctx.interact = {"kind": "cut", "label": "اقطع الكهرباء (%d/%d)" % [rules.grid_cuts + 1, Rules.GRID_CUTS], "i": 0}
 		if not ctx.has("interact") and car and _car_near(pos) > -2:
 			ctx.interact = {"kind": "car_in", "label": "اركب", "p": _car_near(pos)}
 
@@ -2408,6 +2420,19 @@ func _skill_tap() -> void:
 	_flash("ممتاز!" if ok else "غلط! انفجر المولد")
 	skill = {}
 	next_skill = randf_range(4.0, 8.0)
+
+## Kuwait City: at the edge of a sidewalk, the median or the corniche the jump button lights up and
+## hops you up onto it (or down off it). Walking up the kerb works too: it has a ramp of collision.
+func _kerb_ctx(pos: Vector3) -> void:
+	for k in world.kerbs:
+		var c: Vector3 = k[0]
+		var hw: float = float(k[1]) / 2.0
+		if absf(pos.z - c.z) > float(k[2]) / 2.0: continue
+		for sx in [-1.0, 1.0]:
+			var ex: float = c.x + sx * hw
+			if absf(pos.x - ex) < 0.9:
+				ctx.vault = {"kind": "vault", "c": Vector3(ex, float(k[3]), pos.z), "n": Vector3(sx, 0, 0)}
+				return
 
 func _start_vault(c: Dictionary) -> void:
 	if not vault.is_empty() or attack_t > 0.0: return

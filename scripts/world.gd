@@ -298,7 +298,7 @@ func configure(id: String, seed := 1, th := "normal") -> void:
 	for k in 7: gen_points.append(gen_spots[order[k]])
 	# doorways, and 9 pallets out of them
 	for b in buildings: door_points.append([_local(b, Vector3(0, 0, b[4] / 2.0)), b[2]])
-	door_points.append([mbase + mrot * Vector3(0, 0, -MARKET_D / 2.0), market.yaw])
+	if id != "kuwait": door_points.append([mbase + mrot * Vector3(0, 0, -MARKET_D / 2.0), market.yaw]) # (Kuwait City: the mosque stands there)
 	order = _shuffled(door_points.size(), rng)
 	for k in mini(9, door_points.size()): pallet_points.append(door_points[order[k]])
 	# lockers and vault windows: the first 8 buildings, plus the market
@@ -306,9 +306,13 @@ func configure(id: String, seed := 1, th := "normal") -> void:
 		var b: Array = buildings[bi]
 		locker_points.append([_local(b, Vector3(b[3] / 2.0 - 0.75, 0, -b[4] / 2.0 + 0.6)), b[2]])
 		window_points.append([_local(b, Vector3(-b[3] / 2.0, 0, 0)), Basis(Vector3.UP, b[2]) * Vector3(-1, 0, 0)])
-	locker_points.append([mbase + mrot * Vector3(12.6, 0, -4.3), market.yaw])
-	locker_points.append([mbase + mrot * Vector3(-12.6, 0, -4.3), market.yaw])
-	window_points.append([mbase + mrot * Vector3(-MARKET_W / 2.0, 0, 1.0), mrot * Vector3(-1, 0, 0)])
+	if id == "kuwait": # either side of the mosque, outside it
+		locker_points.append([mbase + mrot * Vector3(21.0, 0, 2.0), market.yaw])
+		locker_points.append([mbase + mrot * Vector3(-21.0, 0, 2.0), market.yaw])
+	else:
+		locker_points.append([mbase + mrot * Vector3(12.6, 0, -4.3), market.yaw])
+		locker_points.append([mbase + mrot * Vector3(-12.6, 0, -4.3), market.yaw])
+		window_points.append([mbase + mrot * Vector3(-MARKET_W / 2.0, 0, 1.0), mrot * Vector3(-1, 0, 0)])
 	# 2 exit gates on opposite edges
 	for g in [[0.0, -WALL, 0.0], [0.0, WALL, PI]]:
 		sites.append([g[0], g[1], _raw_h(g[0], g[1]), 8.0])
@@ -434,7 +438,8 @@ func build() -> void:
 	_build_objectives()
 	_build_extras()
 	_build_doors()
-	if map_id != "garage": _build_market()
+	if map_id == "kuwait": _build_mosque() # his mosque where the market would be
+	elif map_id != "garage": _build_market()
 	build_step = 2
 	await get_tree().process_frame
 	if not map_id in ["garage", "kuwait"]: _build_scatter() # the garage and Kuwait City park their own cars
@@ -559,10 +564,10 @@ func _make_materials() -> void:
 		gr.set_shader_parameter("base_col", Color(0.26, 0.29, 0.34))
 		gr.set_shader_parameter("tip_col", Color(0.55, 0.61, 0.71))
 		fol.set_shader_parameter("tint", Color(1.6, 1.8, 2.1))
-	elif theme == "halloween":
-		gr.set_shader_parameter("base_col", Color(0.07, 0.05, 0.02))
-		gr.set_shader_parameter("tip_col", Color(0.22, 0.13, 0.04))
-		fol.set_shader_parameter("tint", Color(1.3, 0.85, 0.5))
+	elif theme == "halloween": # just dark: no orange or red cast any more (the owner)
+		gr.set_shader_parameter("base_col", Color(0.04, 0.05, 0.035))
+		gr.set_shader_parameter("tip_col", Color(0.12, 0.14, 0.09))
+		fol.set_shader_parameter("tint", Color(0.7, 0.75, 0.7))
 	_mat.grass = gr
 	# desert surfaces
 	_mat.mud = _pbr(Color(0.26, 0.2, 0.14), Color(0.58, 0.47, 0.34), 0.03, Vector3(0.35, 0.35, 0.35), 0.95)
@@ -636,12 +641,12 @@ func _build_environment() -> void:
 			env.fog_light_color = Color(0.2, 0.24, 0.32)
 			env.fog_density = fog_density * 1.5
 			env.adjustment_saturation = 0.72
-		"halloween":
-			env.ambient_light_color = Color(0.2, 0.11, 0.06)
-			env.ambient_light_energy = 0.55
-			env.fog_light_color = Color(0.15, 0.06, 0.02)
-			env.fog_density = fog_density * 1.5
-			env.adjustment_saturation = 1.05
+		"halloween": # pitch dark, the colour of nothing: flashlights and the pumpkins are the light
+			env.ambient_light_color = Color(0.09, 0.09, 0.11)
+			env.ambient_light_energy = 0.22
+			env.fog_light_color = Color(0.025, 0.025, 0.03)
+			env.fog_density = fog_density * 1.6
+			env.adjustment_saturation = 0.85
 		"rain": # «مطر»: a wet, blue-grey night; the ground shines and the lightning lights it all
 			env.ambient_light_color = Color(0.17, 0.2, 0.26)
 			env.ambient_light_energy = 1.1
@@ -695,8 +700,8 @@ func _build_environment() -> void:
 			moon.light_color = Color(0.72, 0.82, 1.0)
 			moon.light_energy = 1.35
 		"halloween":
-			moon.light_color = Color(1.0, 0.6, 0.3)
-			moon.light_energy = 0.45 # the pumpkins should be the light, not the sky
+			moon.light_color = Color(0.62, 0.68, 0.82)
+			moon.light_energy = 0.1 # barely a moon: the pumpkins and the torches are the light
 		"rain":
 			moon.light_color = Color(0.62, 0.7, 0.9)
 			moon.light_energy = 0.9 # behind the clouds
@@ -791,7 +796,7 @@ func _build_terrain() -> void:
 					if map_id == "rubkhali": gcol = Color(0.86, 0.71, 0.46)
 					elif map_id == "garage": gcol = Color(0.17, 0.17, 0.18) # bare concrete under the slab
 					if theme == "snow": gcol = gcol.lerp(Color(0.92, 0.95, 1.0), 0.88)
-					elif theme == "halloween": gcol = gcol.lerp(Color(0.5, 0.33, 0.14), 0.45)
+					elif theme == "halloween": gcol = gcol.darkened(0.45)
 					cols.append(gcol.darkened(_ground_ao(wx, wz))) # shade under walls and buildings
 					
 					norms.append(Vector3(hgt.call(gi - 1, gj) - hgt.call(gi + 1, gj), 2.0 * CELL, hgt.call(gi, gj - 1) - hgt.call(gi, gj + 1)).normalized())
@@ -956,6 +961,9 @@ const KW_TOWERS := Vector3(104.0, 0.0, -62.0) # south-east: looking down the roa
 const KW_BOX := Vector3(-23.6, 0.0, 9.0)   # the power box, on the west sidewalk
 const KW_KIOSKS := [[-38.0, -52.0, PI / 2.0], [-38.0, 52.0, PI / 2.0], [-38.0, -90.0, PI / 2.0], [-38.0, 90.0, PI / 2.0],
 	[-78.0, -78.0, 0.0], [50.0, -64.0, -PI / 2.0], [50.0, 64.0, -PI / 2.0], [50.0, -8.0, -PI / 2.0]]
+const KW_MEDIAN := 92.0                    # the median runs to here each way, clear of the gates
+const KW_HEADS := [-1.75, 1.75]             # his twin-head light: where the two lamps hang (x), at
+const KW_HEAD_Y := 8.55                    # this height, measured off the model
 var power_box := Vector3.INF               # where the box stands (INF: this map has none)
 var grid_off := false
 var grid_mats: Array[StandardMaterial3D] = [] # the lamps' glow: dark while the power is cut
@@ -1014,6 +1022,83 @@ func _kw_one(name: String, at: Vector3, yaw: float, k := 1.0, hull := Vector3.ZE
 	kw_parts += 1
 	return n
 
+## Pavers drawn in code: rows of rectangular stones, each a little different, with sunken grout and
+## a normal map from it, laid in world space (one tile of the texture covers 2 m). `warm`: the
+## corniche's sandy stone; otherwise the grey of the walks.
+var _pavers := {}
+func _paver_mat(raised: bool, warm := false) -> StandardMaterial3D:
+	var key := "%s%s" % [raised, warm]
+	if _pavers.has(key): return _pavers[key]
+	var n := 256
+	var img := Image.create(n, n, false, Image.FORMAT_RGB8)
+	var hgt := Image.create(n, n, false, Image.FORMAT_L8)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 41 if warm else 17
+	var base := Color(0.55, 0.48, 0.38) if warm else Color(0.36, 0.36, 0.37)
+	var rows := 8
+	var cols := 4
+	var cell: Array = []
+	for r in rows:
+		var row: Array = []
+		for c in cols + 1: row.append(rng.randf_range(-0.07, 0.07))
+		cell.append(row)
+	for y in n:
+		var r := y * rows / n
+		var off := (n / cols / 2) if r % 2 == 1 else 0
+		for x in n:
+			var xx := (x + off) % n
+			var c := xx * cols / n
+			var gx := xx % (n / cols)
+			var gy := y % (n / rows)
+			var grout := gx < 2 or gy < 2
+			var v: float = cell[r][c] + rng.randf_range(-0.025, 0.025)
+			var col := base.darkened(0.55) if grout else Color(base.r + v, base.g + v, base.b + v)
+			img.set_pixel(x, y, col)
+			hgt.set_pixel(x, y, Color(0.1, 0.1, 0.1) if grout else Color(0.8 + v, 0.8 + v, 0.8 + v))
+	img.generate_mipmaps()
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = ImageTexture.create_from_image(img)
+	var nrm := hgt.duplicate() as Image
+	nrm.bump_map_to_normal_map(3.0)
+	nrm.generate_mipmaps()
+	m.normal_enabled = true
+	m.normal_texture = ImageTexture.create_from_image(nrm)
+	m.normal_scale = 0.8
+	m.roughness = 0.78
+	m.uv1_triplanar = true
+	m.uv1_world_triplanar = true
+	m.uv1_scale = Vector3(0.5, 0.5, 0.5)
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	_pavers[key] = m
+	return m
+
+## A raised strip you can walk and drive onto: a flat top `h` high, and on both long sides a ramp
+## of collision 0.5 m wide (about 17°), so a foot or a tyre rides up the kerb instead of stopping.
+func _kerb_body(c: Vector3, w: float, length: float, h: float) -> void:
+	var body := StaticBody3D.new()
+	body.name = "Kerb"
+	body.position = c
+	var top := CollisionShape3D.new()
+	var tb := BoxShape3D.new()
+	tb.size = Vector3(w, h, length)
+	top.shape = tb
+	top.position.y = h / 2.0
+	body.add_child(top)
+	for sx in [-1.0, 1.0]:
+		var ramp := CollisionShape3D.new()
+		var cp := ConvexPolygonShape3D.new()
+		var x0: float = sx * w / 2.0
+		var x1: float = sx * (w / 2.0 + 0.5)
+		var L := length / 2.0
+		cp.points = PackedVector3Array([Vector3(x0, 0, -L), Vector3(x0, h, -L), Vector3(x1, 0, -L),
+			Vector3(x0, 0, L), Vector3(x0, h, L), Vector3(x1, 0, L)])
+		ramp.shape = cp
+		body.add_child(ramp)
+	add_child(body)
+	kerbs.append([c, w, length, h])
+
+var kerbs: Array = [] # [centre, width, length, height]: main shows «قفز» at their edges
+
 ## A street light on the grid: its light goes out with the power, and its glow map too.
 func _grid_light(at: Vector3, col: Color, energy: float, reach: float) -> void:
 	var l := OmniLight3D.new()
@@ -1040,6 +1125,10 @@ func _grid_glow_of(n: Node) -> void:
 		_grid_glow.append(2.4)
 
 func set_grid(on: bool) -> void:
+	if env and grid_off == on: # the night closes in while the power is out: only torches help
+		var tw2 := create_tween()
+		tw2.tween_property(env, "ambient_light_energy", _amb_base * (1.0 if on else 0.3), 0.6 if on else 0.3)
+		if moon: tw2.parallel().tween_property(moon, "light_energy", _moon_base * (1.0 if on else 0.35), 0.6 if on else 0.3)
 	grid_off = not on
 	for i in grid_mats.size():
 		var tw := create_tween()
@@ -1051,62 +1140,118 @@ func _build_kuwait() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 965
 	var y := 0.0
-	# ---- the ground: paving everywhere on the land, lawns in front of the Assembly ----
-	var pave := _pbr(Color(0.2, 0.19, 0.18), Color(0.42, 0.4, 0.37), 0.03, Vector3(0.3, 0.3, 0.3), 0.85)
+	# ---- the ground: paving on the land, lawns in front of the Assembly ----
+	var pave := _paver_mat(false)
 	var land := KW_SAND + WALL
-	_mesh_box(self, Vector3(land, 0.04, WALL * 2.0), Vector3(-WALL + land / 2.0, 0.03, 0), pave)
-	var lawn := _pbr(Color(0.08, 0.16, 0.05), Color(0.2, 0.36, 0.12), 0.04, Vector3(0.5, 0.5, 0.5), 0.95)
+	_mesh_box(self, Vector3(land, 0.02, WALL * 2.0), Vector3(-WALL + land / 2.0, 0.0, 0), pave)
+	var lawn := _pbr(Color(0.06, 0.14, 0.04), Color(0.18, 0.34, 0.1), 0.05, Vector3(0.6, 0.6, 0.6), 0.95)
 	for lz in [-38.0, -12.0, 14.0, 40.0]:
 		_mesh_box(self, Vector3(20.0, 0.06, 20.0), Vector3(-40.0, 0.06, lz), lawn)
-	# ---- the Gulf Road: his twin highway, each tile drawn twice as long (64 m), so the lanes run on
-	# and its crossing comes every 64 m instead of every 32 ----
-	var road: Array = []
-	for z in range(-80, 81, 64): road.append(Transform3D(Basis().scaled(Vector3(1.0, 1.0, 2.0)), Vector3(0, 0.07, float(z))))
-	if _kw_many("kw_road", road, Vector3.ZERO, 0.0, 0.0, false).is_empty():
-		_mesh_box(self, Vector3(KW_ROAD_HALF * 2.0, 0.04, WALL * 2.0), Vector3(0, 0.06, 0), _flat(Color(0.05, 0.05, 0.055), 0.55))
-	# the median: his grass planters end to end, a palm between each pair, a twin-head light every other gap
+	# ---- the Gulf Road, built for real: fine asphalt, three lanes each way with dashed lines, solid
+	# edge lines, zebra crossings, raised kerbs you can walk (and drive) up, the median between ----
+	var asphalt := _pbr(Color(0.035, 0.035, 0.04), Color(0.1, 0.1, 0.11), 0.35, Vector3(0.9, 0.9, 0.9), 0.82)
+	asphalt.uv1_triplanar = true
+	asphalt.uv1_world_triplanar = true
+	asphalt.uv1_scale = Vector3(0.25, 0.25, 0.25)
+	# flush with the ground the cars roll on (2.5 cm), so a car sits on it instead of in it
+	_mesh_box(self, Vector3(KW_ROAD_HALF * 2.0, 0.02, WALL * 2.0 + 2.0), Vector3(0, 0.015, 0), asphalt)
+	var white := _flat(Color(0.9, 0.9, 0.86), 0.55, 0.0, 0.35)
+	var yellow := _flat(Color(0.95, 0.75, 0.15), 0.55, 0.0, 0.35)
+	var marks := {"w": [], "y": []}
+	for sx in [-1.0, 1.0]:
+		for lane_x in [6.3, 10.6]: # the dashed lines between the three lanes
+			for z in range(-110, 111, 9):
+				if absf(float(z)) < 5.0 or absf(absf(float(z)) - 64.0) < 5.0: continue # not across the crossings
+				marks.w.append(Transform3D(Basis().scaled(Vector3(0.16, 1.0, 4.5)), Vector3(sx * lane_x, 0.032, float(z))))
+		marks.y.append(Transform3D(Basis().scaled(Vector3(0.18, 1.0, WALL * 2.0)), Vector3(sx * 2.45, 0.032, 0))) # inner edge
+		marks.w.append(Transform3D(Basis().scaled(Vector3(0.18, 1.0, WALL * 2.0)), Vector3(sx * (KW_ROAD_HALF - 0.45), 0.032, 0)))
+		for cz in [-64.0, 0.0, 64.0]: # zebra crossings
+			for k in 9:
+				marks.w.append(Transform3D(Basis().scaled(Vector3(0.6, 1.0, 4.0)), Vector3(sx * (3.0 + k * 1.4), 0.033, cz)))
+	for key in marks:
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		var bm := BoxMesh.new()
+		bm.size = Vector3(1.0, 0.012, 1.0)
+		bm.material = white if key == "w" else yellow
+		mm.mesh = bm
+		mm.instance_count = marks[key].size()
+		for t in marks[key].size(): mm.set_instance_transform(t, marks[key][t])
+		var mmi := MultiMeshInstance3D.new()
+		mmi.multimesh = mm
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(mmi)
+	# kerbs: granite edges, and a walkable ramp of collision so feet and tyres ride up onto them
+	var kerb := _pbr(Color(0.42, 0.41, 0.39), Color(0.62, 0.61, 0.58), 0.6, Vector3(1.2, 1.2, 1.2), 0.7)
+	var walk := _paver_mat(true)
+	var med_len := KW_MEDIAN * 2.0
+	for sx in [-1.0, 1.0]:
+		# the sidewalk: pavers raised 15 cm, a granite kerb on the road side
+		var cx: float = sx * (KW_ROAD_HALF + KW_WALK / 2.0)
+		_mesh_box(self, Vector3(KW_WALK, 0.15, WALL * 2.0), Vector3(cx, 0.075, 0), walk)
+		_mesh_box(self, Vector3(0.3, 0.17, WALL * 2.0), Vector3(sx * (KW_ROAD_HALF + 0.15), 0.085, 0), kerb)
+		_kerb_body(Vector3(cx, 0, 0), KW_WALK, WALL * 2.0, 0.15)
+	# the median: raised, kerbed, ending well before the gates
+	_mesh_box(self, Vector3(4.2, 0.2, med_len), Vector3(0, 0.1, 0), kerb)
+	_mesh_box(self, Vector3(3.6, 0.04, med_len - 0.6), Vector3(0, 0.22, 0), lawn)
+	_kerb_body(Vector3.ZERO, 4.2, med_len, 0.2)
+	# the median planted: grass all along it round the palms, nothing near the gates
 	var planters: Array = []
 	var palms: Array = []
 	var lights: Array = []
-	for z in range(-105, 106, 10):
-		planters.append(Transform3D(Basis(Vector3.UP, PI / 2.0), Vector3(0, 0.08, float(z))))
-	for z in range(-100, 101, 10):
-		if z % 20 == 0: palms.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * rng.randf_range(0.9, 1.1)), Vector3(0, 0.1, float(z))))
-		else: lights.append(Transform3D(Basis(), Vector3(0, 0.1, float(z))))
-	if _kw_many("kw_planter", planters, Vector3.ZERO, 0.0, 120.0, false).is_empty():
-		_mesh_box(self, Vector3(3.6, 0.35, WALL * 2.0), Vector3(0, 0.18, 0), lawn)
-	# ---- the sidewalks, with his lamps and planters in them ----
-	var walk_w: Array = []
-	var walk_e: Array = []
-	for z in range(-104, 105, 19):
-		walk_w.append(Transform3D(Basis(Vector3.UP, PI / 2.0), Vector3(-KW_ROAD_HALF - KW_WALK / 2.0, 0.05, float(z))))
-		walk_e.append(Transform3D(Basis(Vector3.UP, -PI / 2.0), Vector3(KW_ROAD_HALF + KW_WALK / 2.0, 0.05, float(z))))
-	var sw := _kw_many("kw_sidewalk", walk_w + walk_e, Vector3.ZERO, 0.0, 150.0, true)
-	for m in sw: _grid_glow_of(m)
-	for t in walk_w + walk_e: # the lamp of each tile
-		var tt: Transform3D = t
-		_grid_light(tt * Vector3(-7.5, 6.2, -1.0), Color(1.0, 0.8, 0.5), 2.0, 16.0)
-	# ---- trees: palms down the median, his emerald canopies round the road and the gardens ----
+	for z in range(-int(KW_MEDIAN) + 5, int(KW_MEDIAN) - 4, 10):
+		planters.append(Transform3D(Basis(Vector3.UP, PI / 2.0), Vector3(0, 0.22, float(z))))
+	for z in range(-80, 81, 10):
+		if z % 20 == 0: palms.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * rng.randf_range(0.9, 1.1)), Vector3(0, 0.22, float(z))))
+		else: lights.append(Transform3D(Basis(), Vector3(0, 0.22, float(z))))
+	_kw_many("kw_planter", planters, Vector3.ZERO, 0.0, 120.0, false)
+	# twin-head lights along both kerbs as well (the sidewalk tiles used to carry the lamps)
+	for sx in [-1.0, 1.0]:
+		for z in range(-100, 101, 20):
+			lights.append(Transform3D(Basis(Vector3.UP, PI / 2.0), Vector3(sx * (KW_ROAD_HALF + 0.9), 0.15, float(z) + 10.0 * sx)))
+	# ---- trees all down the street: one every few metres on both sides ----
 	var trees: Array = []
-	for z in range(-100, 101, 16):
-		trees.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU), Vector3(-KW_ROAD_HALF - KW_WALK - 2.2, 0.05, float(z))))
+	var step := 6 if Gfx.weak else 4
+	for sx in [-1.0, 1.0]:
+		for z in range(-104, 105, step):
+			if sx < 0.0 and absf(float(z) - KW_BOX.z) < 2.5: continue # the power box stands there
+			trees.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * rng.randf_range(0.85, 1.1)), Vector3(sx * (KW_ROAD_HALF + KW_WALK - 1.2), 0.15, float(z))))
 	for tz in [-46.0, -30.0, -6.0, 6.0, 30.0, 46.0]:
 		for tx in [-46.0, -33.0]: trees.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU), Vector3(tx, 0.06, tz)))
-	_kw_many("kw_tree", trees, Vector3(1.0, 4.0, 1.0), 2.0, 160.0, true)
+	_kw_many("kw_tree", trees, Vector3(0.8, 4.0, 0.8), 2.0, 110.0, true)
 	var prom_palms: Array = []
-	for z in range(-104, 105, 10): prom_palms.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU), Vector3(KW_PROM.y - 2.0, 0.05, float(z))))
+	for z in range(-104, 105, 10): prom_palms.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU), Vector3(KW_PROM.y - 2.0, 0.2, float(z))))
 	var all_palms: Array = palms + prom_palms
 	if _kw_many("kw_palm", all_palms, Vector3(0.8, 6.0, 0.8), 3.0, 170.0, true).is_empty():
 		for t in all_palms:
 			var tt: Transform3D = t
 			tree_plan.append([tt.origin.x, 0.0, tt.origin.z, 1, 1.0, 0.0])
-	# the median's twin-head lights, and the promenade's
-	for z in range(-98, 99, 14): lights.append(Transform3D(Basis(Vector3.UP, PI / 2.0), Vector3(KW_PROM.x + 2.0, 0.05, float(z))))
-	var ll := _kw_many("kw_light", lights, Vector3(0.4, 9.0, 0.4), 4.5, 170.0, true)
-	for m in ll: _grid_glow_of(m)
+	# the promenade: warm pavers, raised and kerbed like the walks
+	_mesh_box(self, Vector3(KW_PROM.y - KW_PROM.x, 0.2, WALL * 2.0), Vector3((KW_PROM.x + KW_PROM.y) / 2.0, 0.1, 0), _paver_mat(true, true))
+	_kerb_body(Vector3((KW_PROM.x + KW_PROM.y) / 2.0, 0, 0), KW_PROM.y - KW_PROM.x, WALL * 2.0, 0.2)
+	for z in range(-98, 99, 14): lights.append(Transform3D(Basis(Vector3.UP, PI / 2.0), Vector3(KW_PROM.x + 2.0, 0.2, float(z))))
+	# the street lights: his twin heads, burning yellow, each head a glowing lamp and a light
+	_kw_many("kw_light", lights, Vector3(0.4, 9.0, 0.4), 4.5, 170.0, true)
+	var lamp_glow := _flat(Color(1.0, 0.85, 0.4), 0.3, 0.0, 6.0)
+	grid_mats.append(lamp_glow)
+	_grid_glow.append(6.0)
+	var heads: Array = []
 	for t in lights:
 		var tt: Transform3D = t
-		_grid_light(tt.origin + Vector3(0, 8.4, 0), Color(1.0, 0.82, 0.55), 2.6, 18.0)
+		for hx in KW_HEADS: heads.append(Transform3D(Basis(), tt * Vector3(hx, KW_HEAD_Y, 0.42)))
+		_grid_light(tt.origin + Vector3(0, KW_HEAD_Y - 0.4, 0), Color(1.0, 0.76, 0.32), 2.8, 19.0)
+	var hm := MultiMesh.new()
+	hm.transform_format = MultiMesh.TRANSFORM_3D
+	var sph := SphereMesh.new()
+	sph.radius = 0.22; sph.height = 0.3; sph.radial_segments = 10; sph.rings = 5
+	sph.material = lamp_glow
+	hm.mesh = sph
+	hm.instance_count = heads.size()
+	for t in heads.size(): hm.set_instance_transform(t, heads[t])
+	var hmi := MultiMeshInstance3D.new()
+	hmi.multimesh = hm
+	hmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(hmi)
 	# ---- crossings: traffic lights at the middle crossing, his signs along the walks ----
 	for c in [[-KW_ROAD_HALF - 0.8, -4.0, 0.0], [KW_ROAD_HALF + 0.8, 4.0, PI], [-1.6, 4.0, PI / 2.0], [1.6, -4.0, -PI / 2.0]]:
 		var tl := _kw_one("kw_traffic", Vector3(c[0], 0.05, c[1]), c[2], 1.0, Vector3(0.4, 5.0, 0.4), 2.5)
@@ -1161,13 +1306,13 @@ func _build_kuwait() -> void:
 	# his bins along the walks and the corniche
 	var bins: Array = []
 	for z in range(-95, 96, 19):
-		bins.append(Transform3D(Basis(), Vector3(-KW_ROAD_HALF - KW_WALK + 0.6, 0.05, float(z))))
+		bins.append(Transform3D(Basis(), Vector3(-KW_ROAD_HALF - 0.9, 0.15, float(z) + 5.0)))
 		bins.append(Transform3D(Basis(), Vector3(KW_PROM.y - 4.5, 0.05, float(z) - 2.0)))
 	_kw_many("kw_trash", bins, Vector3(0.6, 1.0, 0.6), 0.5, 80.0, true)
 	# grass all down the middle of the road: his patches between the planters, tufts round every palm
 	var grass: Array = []
 	var tufts: Array = []
-	for z in range(-108, 109, 3):
+	for z in range(-int(KW_MEDIAN) + 3, int(KW_MEDIAN) - 2, 3): # never past the median's ends: the gates stay clear
 		grass.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * rng.randf_range(0.9, 1.3)), Vector3(rng.randf_range(-0.9, 0.9), 0.2, float(z))))
 	for t in palms + trees:
 		var tt: Transform3D = t
@@ -1281,6 +1426,14 @@ func _build_kuwait() -> void:
 		up.omni_range = 14.0
 		up.position = Vector3(KW_ASSEMBLY.x + 25.0, 1.2, float(z))
 		add_child(up)
+	for z in range(-34, 35, 8): # yellow light inside: it shows through the glass between the ribs
+		for hy in [5.0, 13.0]:
+			var il := OmniLight3D.new()
+			il.light_color = Color(1.0, 0.8, 0.38)
+			il.light_energy = 2.6
+			il.omni_range = 11.0
+			il.position = Vector3(KW_ASSEMBLY.x + 20.5, hy, float(z))
+			add_child(il)
 	var oc := OccluderInstance3D.new() # nothing behind the Assembly is drawn while it hides it
 	var bo := BoxOccluder3D.new()
 	bo.size = Vector3(42.0, 24.0, 76.0)
@@ -1290,6 +1443,30 @@ func _build_kuwait() -> void:
 	occluders += 1
 	# ---- the power box ----
 	_build_power_box()
+
+## Kuwait City: the owner's golden-crescent mosque in place of the market (no shops, no restaurant),
+## set back so the generators on its forecourt stay clear, lit warm, with its own collision.
+func _build_mosque() -> void:
+	var mrot := Basis(Vector3.UP, market.yaw)
+	var at: Vector3 = market.pos + mrot * Vector3(0, 0, -5.0)
+	var m := _kw_one("kw_mosque", at, market.yaw, 1.0, Vector3(30.0, 18.0, 17.0), 9.0)
+	if m:
+		prop_glow(m, Color(1.0, 0.85, 0.5), 2.2)
+		for gi in m.find_children("*", "GeometryInstance3D", true, false): gi.add_to_group("far")
+	else:
+		var body := StaticBody3D.new()
+		body.position = at
+		body.rotation.y = market.yaw
+		_box(body, Vector3(30.0, 9.0, 17.0), Vector3(0, 4.5, 0), _mat.concrete, true)
+		add_child(body)
+	for k in 5: # warm floodlights along its front
+		var l := OmniLight3D.new()
+		l.light_color = Color(1.0, 0.8, 0.45)
+		l.light_energy = 2.2
+		l.omni_range = 12.0
+		l.position = at + mrot * Vector3(-12.0 + k * 6.0, 1.5, 10.5)
+		add_child(l)
+		_amb_light(l, false, false, true)
 
 ## The street lights' power box: a grey cabinet on the west sidewalk with a warning plate and a lamp
 ## on top (green while the power is on, red when it has been cut). Drawn on everyone's map.
@@ -1304,8 +1481,14 @@ func _build_power_box() -> void:
 	_mesh_box(body, Vector3(1.5, 0.08, 0.8), Vector3(0, 1.74, 0), grey)
 	_mesh_box(body, Vector3(0.02, 1.5, 0.02), Vector3(0, 0.85, 0.36), _flat(Color(0.1, 0.1, 0.1), 0.5)) # the doors' seam
 	_mesh_box(body, Vector3(0.36, 0.3, 0.01), Vector3(0.0, 1.3, 0.36), _flat(Color(1.0, 0.82, 0.1), 0.5, 0.0, 0.6)) # ⚡ plate
-	if _swap_model(body, "kw_panel"): # his rusty control panel in place of the cabinet (same collision)
+	if _swap_model(body, "kw_panel", 0.0, 1.25): # his rusty control panel in place of the cabinet (same collision)
 		prop_glow(_last_model, Color(1.0, 0.9, 0.6), 2.0)
+	var sl := OmniLight3D.new() # a yellow work lamp over it: you can see the box from down the street
+	sl.light_color = Color(1.0, 0.8, 0.3)
+	sl.light_energy = 2.4
+	sl.omni_range = 9.0
+	sl.position = Vector3(0, 3.0, 0.6)
+	body.add_child(sl)
 	box_lamp = _flat(Color(0.2, 1.0, 0.35), 0.4, 0.0, 4.0)
 	_mesh_box(body, Vector3(0.18, 0.12, 0.18), Vector3(0, 1.84, 0), box_lamp)
 	var l := OmniLight3D.new()
@@ -2509,6 +2692,7 @@ func set_door(i: int, shut: bool) -> void:
 
 ## The blackout event: every street and house light goes dark, and the night closes in.
 func set_blackout(on: bool) -> void:
+	if theme == "halloween" and not on and blackout: return # the dark stays all round
 	if on == blackout: return
 	blackout = on
 	if env == null: return
@@ -3200,7 +3384,7 @@ func _build_particles() -> void:
 		lm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		lm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	elif theme == "halloween":
-		lm.albedo_color = Color(0.45, 0.17, 0.03)
+		lm.albedo_color = Color(0.16, 0.15, 0.12)
 	leaves.lifetime = 9.0 if theme == "snow" else 7.0
 	leaves.preprocess = leaves.lifetime
 	leaves.visibility_aabb = AABB(Vector3(-22, -14, -22), Vector3(44, 26, 44))
@@ -3433,7 +3617,7 @@ func _process(_dt: float) -> void:
 	for i in amb_lights.size():
 		var e: Array = amb_lights[i]
 		var l: OmniLight3D = e[0]
-		var want := 0.0 if (blackout or (grid_off and e.size() > 5 and bool(e[5]))) else 1.0
+		var want := 0.0 if (blackout or (grid_off and e.size() > 5 and bool(e[5])) or (theme == "halloween" and not pumpkin_lights.has(l))) else 1.0
 		# a house light shies away when the killer is almost on top of it
 		if want > 0.0 and bool(e[2]) and killer_at.distance_to(l.global_position) < 25.0: want = 0.12
 		e[4] = move_toward(float(e[4]), want, _dt * 2.5)
@@ -3732,8 +3916,23 @@ func _step_animals(dt: float) -> void:
 
 # ---------------- snow and halloween dressing ----------------
 ## A carved pumpkin with a candle inside.
-func _pumpkin(at: Vector3, yaw: float) -> void:
+var pumpkin_lights: Array[OmniLight3D] = []
+var _pumpkin_xf: Array = [] # his pumpkin model, gathered and drawn as one MultiMesh at the end
+
+func _pumpkin(at: Vector3, yaw: float, lit := true) -> void:
 	pumpkins += 1
+	if _scene_model("res://assets/props/pumpkin.glb"): # his Wicked Harvest pumpkin
+		_pumpkin_xf.append(Transform3D(Basis(Vector3.UP, yaw).scaled(Vector3.ONE * randf_range(0.85, 1.3)), at))
+		if lit:
+			var pl := OmniLight3D.new()
+			pl.position = at + Vector3(0, 0.45, 0)
+			pl.light_color = Color(1.0, 0.55, 0.15)
+			pl.light_energy = 1.3
+			pl.omni_range = 5.0
+			add_child(pl)
+			pumpkin_lights.append(pl)
+			_amb_light(pl)
+		return
 	var root := Node3D.new()
 	root.position = at
 	root.rotation.y = yaw
@@ -3755,8 +3954,19 @@ func _pumpkin(at: Vector3, yaw: float) -> void:
 	l.light_energy = 1.0
 	l.omni_range = 4.5
 	root.add_child(l)
+	pumpkin_lights.append(l)
 	_amb_light(l)
 	add_child(root)
+
+func _pumpkin_glow(mmi: MultiMeshInstance3D) -> void:
+	var mesh := mmi.multimesh.mesh
+	for si in mesh.get_surface_count():
+		var m := mesh.surface_get_material(si) as StandardMaterial3D
+		if m == null or m.get_texture(BaseMaterial3D.TEXTURE_EMISSION) == null: continue
+		m.emission_enabled = true
+		m.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
+		m.emission = Color(1.0, 0.55, 0.15)
+		m.emission_energy_multiplier = 3.0
 
 ## A cobweb: two translucent triangles tucked into a corner.
 func _cobweb(at: Vector3, yaw: float, size: float) -> void:
@@ -3791,10 +4001,21 @@ func _build_theme_props() -> void:
 		_pumpkin(front, b[2] + rng.randf_range(-0.4, 0.4))
 		_cobweb(_local(b, Vector3(-b[3] / 2.0 + 0.3, b[5] - 0.3, b[4] / 2.0 - 0.3)), b[2], 1.1)
 		_cobweb(_local(b, Vector3(b[3] / 2.0 - 0.3, b[5] - 0.3, b[4] / 2.0 - 0.3)), b[2] + PI / 2.0, 0.9)
-	for i in 10: # pumpkins out in the open, marking paths
-		var p := _free_spot(rng, 1.5)
+	for i in (40 if Gfx.weak else 70): # pumpkins everywhere; one in three lit (lights cost)
+		var p := _free_spot(rng, 1.0)
 		if p == Vector3.INF: continue
-		_pumpkin(p, rng.randf() * TAU)
+		_pumpkin(p, rng.randf() * TAU, i % 3 == 0)
+	for g in gen_points: _pumpkin(g + Vector3(1.6, 0, 1.2), rng.randf() * TAU, false)
+	for hp in hook_points.slice(0, road_hook0): _pumpkin(hp + Vector3(-1.2, 0, 1.6), rng.randf() * TAU, false)
+	for g in gate_points: # down both escape roads too, along the wall
+		var gp: Vector3 = g[0]
+		var gb := Basis(Vector3.UP, float(g[1]))
+		for d in range(30, 600, 45):
+			_pumpkin(gp + gb * Vector3((LANE_W / 2.0 - 0.8) * (1.0 if (d / 45) % 2 == 0 else -1.0), 0.0, -float(d)), rng.randf() * TAU, d % 135 == 30)
+	if not _pumpkin_xf.is_empty():
+		for m in _kw_many("pumpkin", _pumpkin_xf, Vector3.ZERO, 0.0, 120.0, true):
+			_pumpkin_glow(m)
+	set_blackout(true) # every street and house lamp out for the whole round
 	for hp in hook_points: # webs on the hooks
 		_cobweb(hp + Vector3(0, 3.0, 0), rng.randf() * TAU, 1.0)
 
