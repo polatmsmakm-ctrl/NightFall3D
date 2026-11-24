@@ -786,8 +786,8 @@ func _build_owner_models() -> void:
 		_prop("raven", Vector3(0.6, 1.25, 0.2), 1.0, 0.8, tree)
 	_prop("outpost", Vector3(15.0, 0.0, -24.0), -0.7)
 	var big := _prop("world_tree", Vector3(-26.0, -0.5, -46.0), 0.3)
-	for n in [big]:
-		if n: for gi in n.find_children("*", "GeometryInstance3D", true, false):
+	if big:
+		for gi in big.find_children("*", "GeometryInstance3D", true, false):
 			(gi as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 ## Dress the camp for the map the room (or the trial menu) has picked.

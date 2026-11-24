@@ -49,6 +49,20 @@ func _ready() -> void:
 	m.rules.s["P"].rt = 0.0
 	for i in 50: m.rules.tick(1.0)
 	check(m.rules.s["P"].hp == "ok", "she mends herself after 45 s hurt and alone")
+	# a blow: the knife, the blood, a hand on the wound, drops left behind while she walks
+	m.rules.s["P"].hp = "hurt"
+	m._on_event({"k": "hurt", "n": "P", "s": "hurt"})
+	var drops0: int = m._blood.size()
+	check(drops0 >= 1, "the blow: a splash of blood on the ground")
+	m.stick_vec = Vector2(0, -1)
+	for i in 120: await tree.physics_frame
+	m.stick_vec = Vector2.ZERO
+	await frames(2)
+	check(m._blood.size() > drops0 + 1, "hurt, she leaves drops of blood as she walks (%d)" % m._blood.size())
+	check(m.rig.get_meta("clutch", false) and m.rig.reach_mod.use[0] and not m.rig.reach_mod.use[1], "and holds the wound with one hand")
+	m.rules.s["P"].hp = "ok"
+	await frames(3)
+	check(not m.rig.get_meta("clutch", false), "healed, the hand comes away")
 	var kr = m.remotes["K"].rig
 	check(kr.hunch != null, "«الوحش» moves hunched (NFHunch on his skeleton)")
 	kr.play("drive")

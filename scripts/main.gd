@@ -12,7 +12,7 @@ const ACCEL := 20.0
 const DECEL := 28.0
 var rain_audio: AudioStreamPlayer
 var ravens: NFRavens
-const SFX := ["gunshot", "scream_beast", "crow", "raven", "gate", "heart", "breath", "steps_out", "steps_in", "gen_run", "chase", "ambient", "doom", "rope", "male_pain", "scream1", "scream2", "oof1", "oof2", "oof3"]
+const SFX := ["knife1", "knife2", "knife3", "knife4", "gunshot", "scream_beast", "crow", "raven", "gate", "heart", "breath", "steps_out", "steps_in", "gen_run", "chase", "ambient", "doom", "rope", "male_pain", "scream1", "scream2", "oof1", "oof2", "oof3"]
 const MALE := ["survivor2", "survivor3", "killer2"] # the other characters (the killer «البركة القرمزية» too) use the female voice clips
 const TERROR_RADIUS := 24.0 # survivors start to feel the killer inside this distance
 const CHASE_NEAR := 16.0     # the chase music plays when she is this close on foot, even unseen (never while she drives)
@@ -738,12 +738,13 @@ func _beam(a: Vector3, b: Vector3, hit: bool, mine := false) -> void:
 	cs.global_position = c0
 	var v0 := side * randf_range(1.6, 2.4) + Vector3.UP * randf_range(1.5, 2.2) - dir * 0.3
 	var ground := c0.y - 1.3
-	var ctw := create_tween()
-	ctw.tween_method(func(k: float):
+	var fly := func(k: float) -> void:
 		var p := c0 + v0 * k + Vector3(0, -4.9 * k * k, 0)
 		p.y = maxf(p.y, ground)
 		cs.global_position = p
-		cs.rotation = Vector3(k * 31.0, k * 17.0, 0.0), 0.0, 0.7, 0.7)
+		cs.rotation = Vector3(k * 31.0, k * 17.0, 0.0)
+	var ctw := create_tween()
+	ctw.tween_method(fly, 0.0, 0.7, 0.7)
 	ctw.tween_interval(2.0)
 	ctw.tween_callback(cs.queue_free)
 
@@ -755,6 +756,82 @@ func _brass() -> StandardMaterial3D:
 		_brass_m.metallic = 1.0
 		_brass_m.roughness = 0.3
 	return _brass_m
+
+## A killer's blow lands (either killer, on foot): the owner's knife slash from where it struck, blood
+## spraying off the victim and a splash on the ground. Run down by the car it is only the thud.
+func _slash(n: String) -> void:
+	var by_car := car != null and (driving or car_remote)
+	var at := _pos_of(n) + Vector3(0, 1.15, 0)
+	if not by_car:
+		_sfx("knife%d" % (1 + randi() % 4), null if n == my_name else at, 0.0 if n == my_name else 5.0, randf_range(0.95, 1.06))
+	var from := _pos_of(rules.killer)
+	var away := (at - from)
+	away.y = 0.0
+	away = away.normalized() if away.length() > 0.01 else Vector3.FORWARD
+	NFDecor.burst(self, at, away + Vector3.UP * 0.3, 18 if Gfx.weak else 30, 0.7, 0.09, Vector2(1.2, 3.2), 40.0,
+		Vector3(0, -9.0, 0), Color(0.55, 0.02, 0.02, 1.0), Color(0.3, 0.0, 0.0), false, 0.6)
+	_blood_drop(_pos_of(n) + away * 0.6, 0.9)
+
+## Blood on the ground: a hurt survivor leaves drops behind them as they walk (every ~0.9 m, on every
+## phone), each with a few drips falling from the wound. They fade after half a minute; at most
+## `BLOOD_MAX` lie about at once.
+const BLOOD_MAX := 70
+var _blood: Array = []        # [decal, time left]
+var _blood_last := {}         # name -> where the last drop fell
+
+func _blood_drop(at: Vector3, size: float) -> void:
+	var g := Vector3(at.x, world.height(at.x, at.z) if world.map_id != "garage" else at.y, at.z)
+	if world.map_id == "garage" or absf(g.y - at.y) > 1.5: g.y = at.y # on the roof, a pier, a floor
+	var d := NFDecor.decal(world, g, size * randf_range(0.7, 1.2), "blood", randf() * TAU, randf_range(0.8, 1.3), 30.0)
+	_blood.append([d, 30.0])
+	while _blood.size() > BLOOD_MAX:
+		var old: Array = _blood.pop_front()
+		if is_instance_valid(old[0]): (old[0] as Node).queue_free()
+
+func _blood_trail(n: String, feet: Vector3, hurt: bool) -> void:
+	if not hurt:
+		_blood_last.erase(n)
+		return
+	var last: Vector3 = _blood_last.get(n, feet)
+	if not _blood_last.has(n): _blood_last[n] = feet
+	if Vector2(feet.x - last.x, feet.z - last.z).length() < 0.9: return
+	_blood_last[n] = feet
+	var side := Vector3(randf_range(-0.2, 0.2), 0.0, randf_range(-0.2, 0.2))
+	_blood_drop(feet + side, 0.32)
+	if not Gfx.weak: # the drips, falling from the wound
+		NFDecor.burst(self, feet + side + Vector3(0, 0.95, 0), Vector3.DOWN, 4, 0.45, 0.05, Vector2(0.2, 0.6), 10.0,
+			Vector3(0, -9.0, 0), Color(0.5, 0.01, 0.01, 1.0), Color(0.35, 0.0, 0.0), false, 0.8)
+
+func _step_blood(dt: float) -> void:
+	for b in _blood:
+		b[1] = float(b[1]) - dt
+		if float(b[1]) < 4.0 and is_instance_valid(b[0]): (b[0] as Decal).modulate.a = maxf(float(b[1]) / 4.0, 0.0)
+	while not _blood.is_empty() and float(_blood[0][1]) <= 0.0:
+		var old: Array = _blood.pop_front()
+		if is_instance_valid(old[0]): (old[0] as Node).queue_free()
+
+## Hurt and on their feet: one hand pressed to the wound (the left arm, by IK, over the clip), and a
+## limp in the step (_lean_rig reads the "hurt" mark). Never while the pistol is out, in a car or a seat.
+const WOUND_POSES := ["idle", "walk", "injured", "run", "sprint"]
+func _wound_pose(rg: CharacterRig, hurt: bool, gun_out: bool) -> void:
+	if rg == null or rg.skeleton == null: return
+	rg.set_meta("hurt", hurt)
+	var on := hurt and not gun_out and rg.current in WOUND_POSES
+	if on:
+		var b := Basis(Vector3.UP, rg.global_rotation.y)
+		var fwd := b * Vector3(0, 0, 1)
+		var left := b * Vector3(1, 0, 0)
+		var k := rg.global_transform.basis.get_scale().x
+		var s1 := rg.bone_at("mixamorig_Spine1")
+		var sh := rg.bone_at("mixamorig_LeftArm")
+		var t := s1 + (left * 0.1 + fwd * 0.13 - Vector3.UP * 0.04) * k
+		var pole := sh + (left * 0.35 - Vector3.UP * 0.3 - fwd * 0.2) * k
+		rg.reach(t, t, pole, pole)
+		rg.reach_mod.use = [true, false]
+		rg.set_meta("clutch", true)
+	elif rg.get_meta("clutch", false):
+		rg.reach_clear()
+		rg.set_meta("clutch", false)
 
 ## The body's weight in the movement, on every character and every phone (from how they really
 ## move, so other players lean too): into a turn like a runner on a bend, forward when pulling away
@@ -785,6 +862,12 @@ func _lean_rig(rg: Node3D, dt: float, spd: float, anim: String) -> void:
 	_leans[id] = st
 	rg.rotation.x = float(st.pitch)
 	rg.rotation.z = float(st.roll)
+	if rg.get_meta("hurt", false): # the limp: a dip and a sway on the bad leg, bent over the wound
+		var ph := float(st.get("ph", 0.0)) + dt * clampf(spd, 0.0, 6.0) * 2.4
+		st.ph = ph
+		var go := clampf(spd / 1.5, 0.0, 1.0)
+		rg.rotation.z += sin(ph) * 0.07 * go
+		rg.rotation.x += 0.07 + absf(sin(ph)) * 0.05 * go
 
 ## «وضع السلاح»: up and down with the camera — a little above the camera's own tilt, since it
 ## looks down at me from behind.
@@ -922,6 +1005,7 @@ func _on_event(e: Dictionary) -> void:
 		"hurt":
 			if str(e.s) == "down": _final_check(str(e.n))
 			_voice_hit(str(e.n))
+			_slash(str(e.n))
 			_hit_anim(str(e.n)) # a real flinch, if hit.glb has been dropped in
 			if str(e.n) == my_name:
 				hit_t = 1.6 # the red arc points back at her
@@ -2366,6 +2450,7 @@ func _in_car(n: String) -> bool:
 func _process(dt: float) -> void:
 	if not started: return
 	_step_guns(dt)
+	_step_blood(dt)
 	if loading != null: # the map is still being built: keep the tip screen up
 		if not is_instance_valid(loading): loading = null
 		else:
@@ -2507,7 +2592,13 @@ func _process(dt: float) -> void:
 				var eg := ec.grips()
 				r.rig.reach(eg[0], eg[1], eg[2], eg[3])
 			else: r.rig.reach_clear()
-		elif r.role == "survivor" and (r.get("gun") == null or not (r.gun as NFGun).visible): r.rig.reach_clear() # (their pistol holds the arms otherwise)
+		elif r.role == "survivor" and (r.get("gun") == null or not (r.gun as NFGun).visible):
+			if st == "hurt" and r.node.visible: _wound_pose(r.rig, true, false) # a hand on the wound
+			else:
+				r.rig.set_meta("hurt", false)
+				if r.rig.get_meta("clutch", false): r.rig.set_meta("clutch", false)
+				r.rig.reach_clear() # (their pistol holds the arms otherwise)
+		if r.role == "survivor": _blood_trail(n, r.node.position, st == "hurt" and r.node.visible and rules.car_of(n) < 0)
 		if r.torch: r.torch.visible = r.lit and st in ["ok", "hurt"] and rules.car_of(n) < 0
 		if bool(r.get("v", false)): # vanished (developer tools on their phone): nothing of them shows here
 			r.node.visible = false
@@ -3425,3 +3516,6 @@ func _move(delta: float) -> void:
 		else: rig.play("walk", clampf(v / NATURAL.walk, 0.6, 1.7))
 	else:
 		rig.play("idle")
+	if my_role == "survivor" and esc_i < 0:
+		_wound_pose(rig, my_state == "hurt", my_gun != null and my_gun.visible)
+		_blood_trail(my_name, body.global_position, my_state == "hurt")

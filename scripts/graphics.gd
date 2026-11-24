@@ -315,14 +315,13 @@ func _process(dt: float) -> void:
 func _perf_text(avg: float) -> String:
 	if not perf_hud: # the one line it always showed
 		return "%d FPS  %.1f ms  target %d  scale %d%%" % [roundi(1.0 / avg), avg * 1000.0, target_fps(), roundi(render_scale() * 100.0)]
-	var rs := RenderingServer
 	return "%d FPS  %.1f ms (هدف %d)  دقة %d%%\nرسم %d  أشياء %d  مثلثات %dk\nذاكرة %d MB  فيديو %d MB  CPU %.1f ms" % [
 		roundi(1.0 / avg), avg * 1000.0, target_fps(), roundi(render_scale() * 100.0),
-		rs.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
-		rs.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_OBJECTS_IN_FRAME),
-		rs.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME) / 1000,
+		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
+		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_OBJECTS_IN_FRAME),
+		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME) / 1000,
 		roundi(Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0),
-		roundi(rs.get_rendering_info(RenderingServer.RENDERING_INFO_VIDEO_MEM_USED) / 1048576.0),
+		roundi(RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_VIDEO_MEM_USED) / 1048576.0),
 		Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0]
 
 func _step_down() -> void:

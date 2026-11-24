@@ -129,7 +129,7 @@ func _draw_preview(r: Rect2) -> void:
 							_pad.draw_rect(Rect2(Vector2(x4 + w4 * rng.randf_range(0.1, 0.8), base - h4 * rng.randf_range(0.1, 0.95)), Vector2(3.0, 2.0)),
 								Color(1.0, 0.8, 0.5, 0.6 * a) if rng.randf() < 0.6 else Color(0.6, 0.85, 1.0, 0.6 * a))
 						if rng.randf() < 0.5:
-							var nc := [Color(1.0, 0.2, 0.65), Color(0.2, 0.9, 1.0), Color(0.75, 0.35, 1.0)][i % 3]
+							var nc: Color = [Color(1.0, 0.2, 0.65), Color(0.2, 0.9, 1.0), Color(0.75, 0.35, 1.0)][i % 3]
 							_pad.draw_rect(Rect2(Vector2(x4 + w4 * 0.15, base - h4 * 0.55), Vector2(w4 * 0.7, 4.0)), Color(nc.r, nc.g, nc.b, 0.9 * a))
 		"garage": # a row of concrete columns under a low slab, with a car and two strip lights
 			var slab := Color(0.05, 0.05, 0.055, a)
