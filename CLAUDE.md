@@ -957,3 +957,34 @@ photographs it lowered and raised.
 - **«مراقب الأداء»** in the settings: FPS, frame time, draw calls, objects, triangles, static and
   video memory, CPU time (Godot's own counters). Off, the corner shows the one FPS line it always did.
 - `tools/city.tscn` tests all of it; `tools/shot23.tscn` photographs it.
+
+## «مدينة الكويت» (Kuwait City, `kuwait`) — the owner's reference picture of the Gulf Road
+- Laid out from his picture, without the far skyline: the **Gulf Road** north-south through the
+  middle (`KW_ROAD_HALF` 16 m each side: his twin-highway tile every 32 m), the **median** of his
+  grass planters end to end with palms every 20 m, his grass patches and tufts all along it and round
+  every tree, twin-head street lights between the palms; **sidewalks** (his lamp-lit tile every 19 m,
+  `KW_WALK` 5.8 m) with emerald canopies outside them, bins and his road signs; the **National
+  Assembly** (`KW_ASSEMBLY`, 80 x 46 m, lit from its feet, an occluder) with lawns and trees on the
+  west; a **car park** (`KW_PARK` 24-44 m) of his cars nose-in in two rows with aisles; the **corniche**
+  (`KW_PROM`) with palms, benches facing the water, lights and his white car on its deck; **sand**
+  (`KW_SAND` 56 m, his sand mounds) and a rock breakwater (his rocks and rock piles) at the water
+  (`KW_SHORE` 62 m, the ground drops away under a sea plane, a wading wall at +8 m); the **Kuwait
+  Towers** on a rock point (`KW_TOWERS`, 90 m, blue lights in the spheres, warm floodlights at the
+  base) and his warship at anchor. Traffic lights at the middle crossing, jersey barriers at the gate
+  ends. The gates are the two ends of the road. No fortress wall on the sea side. The market sits
+  behind the Assembly (north-west), 8 kiosks carry the lockers, doors and generators. The pieces are
+  `assets/props/kw_*.glb` (prop_bake, `--soft` for grass, leaves and the cars), drawn as MultiMeshes
+  through `world._kw_many` (one draw call per sub-mesh, optional box hulls). In snow his frost
+  crystals hang glowing on the median lights. His locker model is `assets/props/locker.glb`, so it is
+  every map's locker now.
+- **The power box** (`world.power_box`, `KW_BOX` on the west sidewalk, his rusty control panel over a
+  code-built cabinet, a lamp on top green / red): every street light of the map is on it (`_grid_light`,
+  `_amb_light(..., on_grid)`, and the lamps' glow maps in `grid_mats`). The killer's interact button
+  there is «اقطع الكهرباء» (`cut`); then survivors hold «صلّح الكهرباء» (`pfix`, `GRID_FIX` 12 s alone,
+  faster together, points like a generator). Both rules files (`has_grid`, `grid`, `grid_p`,
+  `grid_reps`; event `grid {on}`; snapshot `pb`); the server knows the box from `layout.b` and checks
+  the distance. On every map view the box is a ⚡ square, yellow, blinking red while cut, with its
+  name on the big map and in the legend. Feed lines and a flash for each side.
+- `tools/kuwait.tscn` tests it; `tools/shot24.tscn` photographs it from the picture's angle.
+- **Bloom's hands**: re-rigged with `--arms 0.235,0.49,0.745` (her bare shoulders and wide sleeves
+  fooled the automatic arm fit, which put the shoulder joint at 0.315 m and turned the hands out).

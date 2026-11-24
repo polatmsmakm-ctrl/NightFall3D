@@ -1126,7 +1126,7 @@ func _build_kuwait() -> void:
 	bm.material = _flat(Color(0.85, 0.85, 0.82), 0.6, 0.0, 0.2)
 	bay.mesh = bm
 	var bays: Array = []
-	var cars := {"kw_nova": [], "kw_chevelle": [], "kw_supercar": [], "car": []}
+	var cars := {"kw_nova": [], "kw_chevelle": [], "kw_supercar": [], "kw_pickup": [], "car": []}
 	var kinds := cars.keys()
 	for row in [KW_PARK.x + 3.0, KW_PARK.y - 3.0]:
 		for z in range(-100, 101, 3):
@@ -1145,7 +1145,7 @@ func _build_kuwait() -> void:
 	bmi.visibility_range_end = 90.0
 	add_child(bmi)
 	for kind in cars:
-		_kw_many(kind, cars[kind], Vector3(1.9, 1.4, 4.4) if kind == "car" else Vector3(4.5, 1.4, 1.9), 0.7, 140.0, true)
+		_kw_many(kind, cars[kind], Vector3(1.9, 1.4, 4.4) if kind == "car" else Vector3(5.2 if kind == "kw_pickup" else 4.5, 1.5, 1.9), 0.7, 140.0, true)
 	# ---- the corniche: benches facing the water, his white car on its deck, a frost of lights in snow ----
 	var benches: Array = []
 	for z in range(-95, 96, 15): benches.append(Transform3D(Basis(Vector3.UP, PI / 2.0), Vector3(KW_PROM.y - 4.5, 0.05, float(z) + 5.0)))
@@ -1157,6 +1157,30 @@ func _build_kuwait() -> void:
 			var tt: Transform3D = t
 			flakes.append(Transform3D(Basis(), tt.origin + Vector3(0, 5.6, 0.25)))
 		for m in _kw_many("kw_flake", flakes, Vector3.ZERO, 0.0, 120.0, false): prop_glow(m, Color(0.7, 0.9, 1.0), 2.5)
+	# his bins along the walks and the corniche
+	var bins: Array = []
+	for z in range(-95, 96, 19):
+		bins.append(Transform3D(Basis(), Vector3(-KW_ROAD_HALF - KW_WALK + 0.6, 0.05, float(z))))
+		bins.append(Transform3D(Basis(), Vector3(KW_PROM.y - 4.5, 0.05, float(z) - 2.0)))
+	_kw_many("kw_trash", bins, Vector3(0.6, 1.0, 0.6), 0.5, 80.0, true)
+	# grass all down the middle of the road: his patches between the planters, tufts round every palm
+	var grass: Array = []
+	var tufts: Array = []
+	for z in range(-108, 109, 3):
+		grass.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * rng.randf_range(0.9, 1.3)), Vector3(rng.randf_range(-0.9, 0.9), 0.2, float(z))))
+	for t in palms + trees:
+		var tt: Transform3D = t
+		for i in 4:
+			var a := TAU * i / 4.0 + rng.randf()
+			tufts.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * rng.randf_range(0.8, 1.2)), tt.origin + Vector3(cos(a), 0.0, sin(a)) * 1.3))
+	for lz in [-38.0, -12.0, 14.0, 40.0]: # the Assembly's lawns
+		for i in 10: grass.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * 1.2), Vector3(-40.0 + rng.randf_range(-9, 9), 0.08, lz + rng.randf_range(-9, 9))))
+	_kw_many("kw_grass", grass + tufts, Vector3.ZERO, 0.0, 70.0, false)
+	var clumps: Array = [] # his jungle clump is 10k triangles: one at the foot of each median palm only
+	for t in palms:
+		var tt: Transform3D = t
+		clumps.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU), tt.origin + Vector3(0.0, 0.1, 1.2)))
+	_kw_many("kw_clump", clumps, Vector3.ZERO, 0.0, 50.0, false)
 	# barriers where the road meets the gates and round the car park's ends
 	var bars: Array = []
 	for zs in [-1.0, 1.0]:
@@ -1192,8 +1216,16 @@ func _build_kuwait() -> void:
 	cs.position = Vector3(KW_SHORE + 8.0, 5.0, 0)
 	deep.add_child(cs)
 	add_child(deep)
+	var sand: Array = [] # his sand mounds along the beach
+	for z in range(-104, 105, 13):
+		sand.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(1.0, rng.randf_range(0.6, 1.0), 1.0)), Vector3(KW_SAND + 3.0 + rng.randf_range(-1.0, 1.0), height(KW_SAND + 3.0, float(z)) - 0.25, float(z))))
+	_kw_many("kw_sand", sand, Vector3.ZERO, 0.0, 140.0, false)
+	var piles: Array = []
 	var rocks: Array = []
 	for z in range(-110, 111, 5):
+		if (z / 5) % 3 == 0:
+			piles.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU), Vector3(KW_SHORE + 1.2, height(KW_SHORE + 1.2, float(z)) - 0.4, float(z))))
+			continue
 		var k := rng.randf_range(0.7, 1.3)
 		rocks.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(k, k * 0.8, k)), Vector3(KW_SHORE + 1.5 + rng.randf_range(-0.8, 0.8), height(KW_SHORE + 1.5, float(z)) - 0.5, float(z))))
 	for i in 26: # the point the towers stand on
@@ -1201,6 +1233,7 @@ func _build_kuwait() -> void:
 		var k := rng.randf_range(1.0, 1.8)
 		rocks.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(k, k, k)), KW_TOWERS + Vector3(cos(a) * 26.0, -2.4, sin(a) * 26.0)))
 	_kw_many("kw_rock", rocks, Vector3.ZERO, 0.0, 0.0, false)
+	_kw_many("kw_rocks2", piles, Vector3.ZERO, 0.0, 0.0, false)
 	var isle := _pbr(Color(0.5, 0.46, 0.4), Color(0.7, 0.66, 0.6), 0.03, Vector3(0.3, 0.3, 0.3), 0.8)
 	var cyl := MeshInstance3D.new()
 	var cm2 := CylinderMesh.new()
@@ -1270,6 +1303,8 @@ func _build_power_box() -> void:
 	_mesh_box(body, Vector3(1.5, 0.08, 0.8), Vector3(0, 1.74, 0), grey)
 	_mesh_box(body, Vector3(0.02, 1.5, 0.02), Vector3(0, 0.85, 0.36), _flat(Color(0.1, 0.1, 0.1), 0.5)) # the doors' seam
 	_mesh_box(body, Vector3(0.36, 0.3, 0.01), Vector3(0.0, 1.3, 0.36), _flat(Color(1.0, 0.82, 0.1), 0.5, 0.0, 0.6)) # ⚡ plate
+	if _swap_model(body, "kw_panel"): # his rusty control panel in place of the cabinet (same collision)
+		prop_glow(_last_model, Color(1.0, 0.9, 0.6), 2.0)
 	box_lamp = _flat(Color(0.2, 1.0, 0.35), 0.4, 0.0, 4.0)
 	_mesh_box(body, Vector3(0.18, 0.12, 0.18), Vector3(0, 1.84, 0), box_lamp)
 	var l := OmniLight3D.new()
