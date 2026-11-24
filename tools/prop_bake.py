@@ -225,6 +225,9 @@ def main():
     ap.add_argument('--box-faces', type=int, default=3500, help='at least this many faces for a --box piece (a door is a small part of a car\'s area, but it is seen up close)')
     ap.add_argument('--part', action='append', default=[], metavar='NAME,CX,CY,CZ,R,AX,AY,AZ,T', help='cut a disc-shaped piece out on its own node')
     ap.add_argument('--wheels', default=None, metavar='YF,ZF,YR,ZR,R,XIN', help='a car: cut the four wheels out, each on its own axle node')
+    ap.add_argument('--soft', action='store_true',
+                    help='let thin open pieces (leaves, cards, grass) pinch shut as they collapse, like hair on the '
+                         'characters: without it a sculpt made of open leaf cards refuses most collapses (the world-tree)')
     a = ap.parse_args()
     if a.reglow:
         return reglow(a)
@@ -286,7 +289,7 @@ def main():
         G0 = Fw[part == k]
         target = max(int(a.faces * share[k]), a.box_faces if nm in box_names else 200)
         V, G = rb.simplify(Pw, G0, np.zeros(len(G0), np.uint8), [target], np.ones(len(Pw), np.float32),
-                           np.zeros(len(Pw), np.uint8), maxlen=1e9)
+                           np.full(len(Pw), 1 if a.soft else 0, np.uint8), maxlen=1e9)
         print('   %s: %d -> %d faces' % (nm, len(G0), len(G)), flush=True)
         Vs.append(V)
         Gs.append(G + base)

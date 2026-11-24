@@ -50,6 +50,8 @@ func _ready() -> void:
 	for i in 50: m.rules.tick(1.0)
 	check(m.rules.s["P"].hp == "ok", "she mends herself after 45 s hurt and alone")
 	# a blow: the knife, the blood, a hand on the wound, drops left behind while she walks
+	var ammo0 = m.rules.s["P"].get("ammo", 0)
+	m.rules.s["P"].ammo = 0 # the pistol away (it holds the arms while it is out)
 	m.rules.s["P"].hp = "hurt"
 	m._on_event({"k": "hurt", "n": "P", "s": "hurt"})
 	var drops0: int = m._blood.size()
@@ -63,6 +65,7 @@ func _ready() -> void:
 	m.rules.s["P"].hp = "ok"
 	await frames(3)
 	check(not m.rig.get_meta("clutch", false), "healed, the hand comes away")
+	m.rules.s["P"].ammo = ammo0
 	var kr = m.remotes["K"].rig
 	check(kr.hunch != null, "«الوحش» moves hunched (NFHunch on his skeleton)")
 	kr.play("drive")
