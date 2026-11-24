@@ -116,11 +116,19 @@ func step(show: bool, want: float, pitch: float, yaw: float, dt: float) -> void:
 	var r_pole := rs + side * 0.35 - up * 0.45 - flat * 0.1
 	var l_pole := ls - side * 0.35 - up * 0.45 - flat * 0.1
 	rig.reach_arms(lw, rw, l_pole, r_pole, e > 0.35, (gdir + side * 0.15).normalized(), gdir)
-	# the pistol sits in the right palm: a little past the wrist along the grip, under it
-	var grip_up := gdir.cross(side).normalized() * -1.0
-	if grip_up.dot(up) < 0.0: grip_up = -grip_up
-	var basis := Basis(grip_up.cross(gdir).normalized(), grip_up, gdir).orthonormalized() # a true rotation: x = up x forward
-	model.global_transform = Transform3D(basis, rw + gdir * 0.075 - grip_up * 0.02)
+	# the pistol sits in the palm of the REAL hand (where the arm actually got to, not where it was
+	# asked to go), its barrel straight on from the forearm like a held gun, the grip under the hand
+	var hand := rig.bone_at("mixamorig_RightHand")
+	var elbow := rig.bone_at("mixamorig_RightForeArm")
+	var fore := hand - elbow
+	var barrel := gdir
+	if fore.length() > 0.05: barrel = fore.normalized().slerp(gdir, 0.35).normalized()
+	var grip_up := (up - barrel * barrel.dot(up))
+	if grip_up.length() < 0.05: grip_up = flat
+	grip_up = grip_up.normalized()
+	var basis := Basis(grip_up.cross(barrel).normalized(), grip_up, barrel).orthonormalized() # a true rotation: x = up x forward
+	var at := hand + barrel * 0.065 - grip_up * 0.012 if fore.length() > 0.05 else rw + gdir * 0.075
+	model.global_transform = Transform3D(basis.scaled(Vector3.ONE * 1.12), at)
 
 func shot() -> void:
 	kick = 1.0

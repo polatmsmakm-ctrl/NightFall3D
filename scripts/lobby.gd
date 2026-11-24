@@ -126,6 +126,9 @@ func _ready() -> void:
 	if ResourceLoader.exists("res://assets/sky/moon.jpg"): # the owner's moon
 		sm.set_shader_parameter("moon_tex", load("res://assets/sky/moon.jpg"))
 		sm.set_shader_parameter("has_moon_tex", 1.0)
+	if ResourceLoader.exists("res://assets/sky/milkyway.jpg"): # the owner's night sky photograph
+		sm.set_shader_parameter("night_tex", load("res://assets/sky/milkyway.jpg"))
+		sm.set_shader_parameter("has_night_tex", 1.0)
 	sm.set_shader_parameter("moon_dir", Vector3(0.35, 0.33, -0.88).normalized())
 	sm.set_shader_parameter("noise_tex", kit._sky_noise)
 	var sky := Sky.new()

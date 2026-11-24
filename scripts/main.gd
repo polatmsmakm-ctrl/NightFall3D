@@ -688,6 +688,36 @@ func _beam(a: Vector3, b: Vector3, hit: bool) -> void:
 	tw.tween_property(m, "albedo_color:a", 0.0, 0.2)
 	tw.tween_callback(mi.queue_free)
 
+## The body's weight in the movement, on every character and every phone (from how they really
+## move, so other players lean too): into a turn like a runner on a bend, forward when pulling away
+## and into a sprint, back on the heels when pulling up. Pivots at the feet, so they stay planted.
+## Only while walking, running, sprinting, limping, creeping or standing — never when carried, hung,
+## in a seat or vaulting.
+const LEAN_POSES := ["idle", "walk", "run", "sprint", "injured", "crouchwalk"]
+var _leans := {}
+
+func _lean_rig(rg: Node3D, dt: float, spd: float, anim: String) -> void:
+	if rg == null or dt <= 0.0: return
+	var id := rg.get_instance_id()
+	var st: Dictionary = _leans.get(id, {"yaw": rg.rotation.y, "spd": spd, "roll": 0.0, "pitch": 0.0})
+	if not anim in LEAN_POSES:
+		_leans[id] = {"yaw": rg.rotation.y, "spd": spd, "roll": 0.0, "pitch": 0.0}
+		rg.rotation.x = 0.0; rg.rotation.z = 0.0
+		return
+	var turn := angle_difference(float(st.yaw), rg.rotation.y) / dt # rad/s
+	var acc := (spd - float(st.spd)) / dt # m/s²
+	var fast := clampf(spd / 6.0, 0.0, 1.0)
+	var want_roll := clampf(-turn * spd * 0.028, -0.2, 0.2) # ~11° at a hard sprinting turn
+	var want_pitch := clampf(acc * 0.022, -0.1, 0.13) + (0.07 if anim == "sprint" else 0.03 * fast)
+	var k := 1.0 - exp(-9.0 * dt)
+	st.roll = lerpf(float(st.roll), want_roll, k)
+	st.pitch = lerpf(float(st.pitch), want_pitch, k * 0.8)
+	st.yaw = rg.rotation.y
+	st.spd = spd
+	_leans[id] = st
+	rg.rotation.x = float(st.pitch)
+	rg.rotation.z = float(st.roll)
+
 ## «وضع السلاح»: up and down with the camera — a little above the camera's own tilt, since it
 ## looks down at me from behind.
 func _gun_pitch() -> float:
@@ -1535,7 +1565,7 @@ func _draw_ui() -> void:
 		_draw_road(road, mid)
 	elif doom_up:
 		_draw_moon(Vector2(mid.x, 120.0))
-		var falling := "تنزل الشمس" if world.map_id == "rubkhali" else "ينزل القمر"
+		var falling := "ينزل القمر" # the moon on every map now, the Empty Quarter too
 		if my_role == "killer": _text(Vector2(mid.x, 214), "امنعهم من الهرب قبل لا %s" % falling, 22, Color(1, 0.5, 0.4))
 		elif my_state in ["escaped", "dead"]: _text(Vector2(mid.x, 214), "باقي %d من ربعك داخل" % _others_alive().size(), 22, Color(1, 0.9, 0.6))
 		else: _text(Vector2(mid.x, 214), "اهرب قبل لا %s!" % falling, 24, Color(1, 0.45, 0.35))
@@ -1701,8 +1731,15 @@ func _draw_moon(c: Vector2) -> void:
 	if left < 30.0: pulse = 0.72 + 0.28 * sin(Time.get_ticks_msec() / 1000.0 * 9.0)
 	var r: float = 30.0 + (3.0 * pulse if left < 30.0 else 0.0)
 	ui.draw_circle(c, 27.0, Color(0.03, 0.025, 0.035, 0.92))
-	NFIcons.draw(ui, "sun" if world.map_id == "rubkhali" else "moon", c, 38.0,
-		Color(0.96, 0.93, 0.88).lerp(Color(1.0, 0.55, 0.4), f * 0.8))
+	# the moon on every map (the Empty Quarter too: the owner wants the moon here, not the sun) —
+	# his own moon picture, reddening as the time runs out
+	var mt: Texture2D = _map_tex.get("@moon") if _map_tex.has("@moon") else null
+	if not _map_tex.has("@moon"):
+		mt = load("res://assets/sky/moon.jpg") if ResourceLoader.exists("res://assets/sky/moon.jpg") else null
+		_map_tex["@moon"] = mt
+	var mcol := Color(1, 1, 1).lerp(Color(1.0, 0.45, 0.35), f * 0.85)
+	if mt: ui.draw_texture_rect(mt, Rect2(c - Vector2(24, 24), Vector2(48, 48)), false, mcol)
+	else: NFIcons.draw(ui, "moon", c, 38.0, Color(0.96, 0.93, 0.88).lerp(Color(1.0, 0.55, 0.4), f * 0.8))
 	ui.draw_arc(c, r, 0, TAU, 44, Color(1, 1, 1, 0.12), 6.0)
 	ui.draw_arc(c, r, -PI / 2.0, -PI / 2.0 + TAU * f, 48, Color(1.0, 0.13, 0.1, pulse), 6.0)
 	_text(c + Vector2(0, r + 22.0), "%d:%02d" % [int(ceil(left)) / 60, int(ceil(left)) % 60], 22,
@@ -2325,6 +2362,7 @@ func _process(dt: float) -> void:
 		else:
 			r.rig.position.y = lerpf(r.rig.position.y, lift, w)
 			r.rig.rotation = Vector3(0, lerp_angle(r.rig.rotation.y, face, w), 0)
+			_lean_rig(r.rig, dt, float(r.spd), anim)
 			if hit_anim.get(n, 0.0) <= 0.0: r.rig.play(anim, stride)
 		_update_bleed(r.bleed, st == "hooked", dt)
 		# women gasp "oof" now and then while limping around injured
@@ -3233,6 +3271,8 @@ func _move(delta: float) -> void:
 			rig.rotation.y = lerp_angle(rig.rotation.y, atan2(cf.x, cf.z), 14.0 * delta)
 	elif my_role != "killer" and v > 0.25:
 		rig.rotation.y = lerp_angle(rig.rotation.y, atan2(flat.x, flat.y), 12.0 * delta)
+	if driving or esc_i >= 0: rig.rotation.x = 0.0; rig.rotation.z = 0.0
+	else: _lean_rig(rig, delta, Vector2(body.velocity.x, body.velocity.z).length(), str(rig.current))
 	# killer hit check during the swing
 	if my_role == "killer" and attack_t > 0.45 and attack_t < 0.95 and not hit_sent:
 		var fwd := Basis(Vector3.UP, rig.rotation.y) * Vector3(0, 0, 1)

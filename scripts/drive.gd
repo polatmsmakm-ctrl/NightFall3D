@@ -687,6 +687,8 @@ func _ground_normal() -> Vector3:
 
 ## Wheels roll with the speed and the front pair steers; the body leans out of a turn, dips its
 ## nose when braking and squats when pulling away (only the body: the wheels stay on the ground).
+var _prev_accel := 0.0
+
 func _animate(dt: float) -> void:
 	spin = wrapf(spin + speed / (WHEEL_R * _scale) * dt, -TAU, TAU)
 	for e in wheels:
@@ -695,15 +697,20 @@ func _animate(dt: float) -> void:
 		w.basis = Basis(Vector3.UP, a) * Basis(Vector3.RIGHT, spin)
 	var accel := (speed - _prev_speed) / maxf(dt, 0.001)
 	_prev_speed = speed
-	var want := Vector2(steer * clampf(absf(speed) / MAX_FWD, 0.0, 1.0) * 0.055,
-		clampf(-accel * 0.006, -0.05, 0.05))
-	lean = lean.lerp(want, 1.0 - exp(-5.0 * dt))
+	# (stronger since the owner asked for movement you feel: ~7° of roll flat out in a hard turn,
+	# the nose diving ~5° on the brakes and the tail squatting when it pulls away)
+	var want := Vector2(steer * clampf(absf(speed) / MAX_FWD, 0.0, 1.2) * 0.12,
+		clampf(-accel * 0.012, -0.09, 0.09))
+	lean = lean.lerp(want, 1.0 - exp(-6.0 * dt))
+	# a hard change of speed throws the body on its springs too (it bounces back after a brake)
+	if absf(accel - _prev_accel) > 8.0: bob_v += clampf(-(accel - _prev_accel) * 0.004, -0.25, 0.25)
+	_prev_accel = accel
 	# suspension: a bump (the car's vertical speed changing) kicks a damped spring under the body
 	var vy := velocity.y if driven else 0.0
 	bob_v += clampf(-(vy - _prev_vy) * 0.35, -0.6, 0.6)
 	_prev_vy = vy
 	bob_v += (-140.0 * bob - 14.0 * bob_v) * dt
-	bob = clampf(bob + bob_v * dt, -0.06, 0.06)
+	bob = clampf(bob + bob_v * dt, -0.09, 0.09)
 	# the engine: a fine shiver at idle, a rougher one at speed
 	_t += dt
 	var shake := 0.0

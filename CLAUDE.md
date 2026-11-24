@@ -881,3 +881,20 @@ photographs it lowered and raised.
 - **The developer tools are easy to reach again**: in the round a real «أدوات المطوّر» button on the
   left edge (it was a faint dot in the bottom-left corner), its panel has «زر Vanish» too; and once
   this phone has unlocked them, the main menu shows «أدوات المطوّر».
+
+## Sky, moon icon, grip and weight (the owner's next round)
+- **The night sky is his photograph** (`assets/sky/milkyway.jpg`, the Milky Way): `sky.gdshader`
+  `night_tex` / `has_night_tex` wraps it round the sky twice, mirrored (no seam), the horizon on its
+  bottom edge; the drawn stars are off when it is there; his moon is drawn on top; over it the
+  clouds are thinner, wispier and moonlit blue-grey (they used to cover 85%, now 62%) so the Milky
+  Way shows through. Camp and every night map. The Empty Quarter's daylight is unchanged.
+- **The countdown ring shows the moon on every map** (his moon picture, reddening as time runs out;
+  the Empty Quarter too, and «ينزل القمر» in its warning).
+- **The pistol sits in the real hand**: `NFGun` now places it from where the hand actually is
+  (`bone_at` RightHand / RightForeArm), barrel straight on from the forearm, grip under the palm,
+  1.12x. (The characters have no finger bones, so the fingers cannot curl round it.)
+- **Weight in the movement** (`main._lean_rig`, every character on every phone): into a turn up to
+  ~11° when sprinting, forward when pulling away and in a sprint, back when pulling up; pivots at
+  the feet; only in `LEAN_POSES`, never carried / hung / seated / in a car.
+- **The car**: roll in a hard fast turn ~7° (was 3), nose dive and tail squat ~5° (was 3), and a hard
+  change of speed throws the body on its springs (`_prev_accel`, a threshold so it does not jitter).

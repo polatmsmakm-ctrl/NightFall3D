@@ -81,6 +81,17 @@ func _ready() -> void:
 	check(m.world.scenery >= 6, "forest floor patches (%d)" % m.world.scenery)
 	var sky: ShaderMaterial = (m.world.env.sky.sky_material as ShaderMaterial)
 	check(sky.get_shader_parameter("has_moon_tex") == 1.0 and sky.get_shader_parameter("moon_tex") != null, "the owner's moon in the sky")
+	check(sky.get_shader_parameter("has_night_tex") == 1.0 and sky.get_shader_parameter("night_tex") != null, "his Milky Way photograph is the night sky")
+	# the body's weight: a sprinting turn leans the runner in, pulling away tips her forward
+	var dummy := Node3D.new()
+	m.add_child(dummy)
+	for i in 20:
+		dummy.rotation.y += 0.05
+		m._lean_rig(dummy, 1.0 / 60.0, 6.0, "sprint")
+	check(absf(dummy.rotation.z) > 0.08, "a sprinting turn leans her into it (%.2f rad)" % dummy.rotation.z)
+	check(dummy.rotation.x > 0.04, "and a sprint tips her forward (%.2f rad)" % dummy.rotation.x)
+	m._lean_rig(dummy, 1.0 / 60.0, 0.0, "hang")
+	check(dummy.rotation.x == 0.0 and dummy.rotation.z == 0.0, "never while hung, carried or seated")
 	m.queue_free()
 	await frames(20)
 	m = await boot("garage", "rain")
