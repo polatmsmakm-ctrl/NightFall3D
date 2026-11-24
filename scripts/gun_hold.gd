@@ -116,18 +116,33 @@ func step(show: bool, want: float, pitch: float, yaw: float, dt: float) -> void:
 	var r_pole := rs + side * 0.35 - up * 0.45 - flat * 0.1
 	var l_pole := ls - side * 0.35 - up * 0.45 - flat * 0.1
 	rig.reach_arms(lw, rw, l_pole, r_pole, e > 0.35, (gdir + side * 0.15).normalized(), gdir)
-	# the pistol sits in the palm of the REAL hand (where the arm actually got to, not where it was
-	# asked to go), its barrel straight on from the forearm like a held gun, the grip under the hand
+	_rw = rw; _gdir = gdir; _flat = flat
+	# the arms are posed by the IK after this, so the pistol is placed once the skeleton's final pose
+	# is known (`skeleton_updated`); placing it here first only covers the very first frame
+	if rig.skeleton and not rig.skeleton.skeleton_updated.is_connected(_place):
+		rig.skeleton.skeleton_updated.connect(_place)
+	_place()
+
+var _rw := Vector3.ZERO
+var _gdir := Vector3.FORWARD
+var _flat := Vector3.FORWARD
+
+## The pistol sits in the palm of the REAL hand (where the arm actually got to, not where it was
+## asked to go), its barrel straight on from the forearm like a held gun, the grip under the hand.
+func _place() -> void:
+	if not visible or rig == null or model == null: return
+	var up := Vector3.UP
 	var hand := rig.bone_at("mixamorig_RightHand")
 	var elbow := rig.bone_at("mixamorig_RightForeArm")
 	var fore := hand - elbow
-	var barrel := gdir
-	if fore.length() > 0.05: barrel = fore.normalized().slerp(gdir, 0.35).normalized()
+	var ok := fore.length() > 0.05 and hand.distance_to(_rw) < 0.25
+	var barrel := _gdir
+	if ok: barrel = fore.normalized().slerp(_gdir, 0.35).normalized()
 	var grip_up := (up - barrel * barrel.dot(up))
-	if grip_up.length() < 0.05: grip_up = flat
+	if grip_up.length() < 0.05: grip_up = _flat
 	grip_up = grip_up.normalized()
 	var basis := Basis(grip_up.cross(barrel).normalized(), grip_up, barrel).orthonormalized() # a true rotation: x = up x forward
-	var at := hand + barrel * 0.065 - grip_up * 0.012 if fore.length() > 0.05 else rw + gdir * 0.075
+	var at := hand + barrel * 0.065 - grip_up * 0.012 if ok else _rw + _gdir * 0.075
 	model.global_transform = Transform3D(basis.scaled(Vector3.ONE * 1.12), at)
 
 func shot() -> void:
