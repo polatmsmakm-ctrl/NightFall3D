@@ -33,8 +33,8 @@ func _ready() -> void:
 	var cam := Camera3D.new()
 	m.add_child(cam)
 	cam.fov = 62.0
-	for v in [["24_kw_reference", Vector3(-46, 34, -118), Vector3(14, 0, 40)], ["24_kw_road", Vector3(0, 7, -100), Vector3(0, 3, 20)],
-			["24_kw_towers", Vector3(48, 4, 10), Vector3(104, 30, 62)], ["24_kw_assembly", Vector3(-12, 5, -30), Vector3(-75, 10, 5)],
+	for v in [["24_kw_reference", Vector3(-46, 34, 118), Vector3(14, 0, -40)], ["24_kw_road", Vector3(-8, 7, 100), Vector3(-8, 3, -20)],
+			["24_kw_towers", Vector3(48, 4, -10), Vector3(104, 30, -62)], ["24_kw_assembly", Vector3(-12, 5, -30), Vector3(-75, 10, 5)],
 			["24_kw_park", Vector3(34, 9, -70), Vector3(40, 0, 0)]]:
 		cam.global_position = v[1]
 		cam.look_at(v[2])
@@ -42,8 +42,8 @@ func _ready() -> void:
 		await frames(30)
 		await shot(v[0])
 	for e in m.rules.handle({"k": "cut"}, "K"): m._on_event(e)
-	cam.global_position = Vector3(0, 7, -100)
-	cam.look_at(Vector3(0, 3, 20))
+	cam.global_position = Vector3(-8, 7, 100)
+	cam.look_at(Vector3(-8, 3, -20))
 	await frames(60)
 	await shot("24_kw_power_cut")
 	cam.current = false

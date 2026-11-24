@@ -960,7 +960,7 @@ photographs it lowered and raised.
 
 ## «مدينة الكويت» (Kuwait City, `kuwait`) — the owner's reference picture of the Gulf Road
 - Laid out from his picture, without the far skyline: the **Gulf Road** north-south through the
-  middle (`KW_ROAD_HALF` 16 m each side: his twin-highway tile every 32 m), the **median** of his
+  middle (`KW_ROAD_HALF` 16 m each side: his twin-highway tile stretched to 64 m long), the **median** of his
   grass planters end to end with palms every 20 m, his grass patches and tufts all along it and round
   every tree, twin-head street lights between the palms; **sidewalks** (his lamp-lit tile every 19 m,
   `KW_WALK` 5.8 m) with emerald canopies outside them, bins and his road signs; the **National
@@ -969,7 +969,7 @@ photographs it lowered and raised.
   (`KW_PROM`) with palms, benches facing the water, lights and his white car on its deck; **sand**
   (`KW_SAND` 56 m, his sand mounds) and a rock breakwater (his rocks and rock piles) at the water
   (`KW_SHORE` 62 m, the ground drops away under a sea plane, a wading wall at +8 m); the **Kuwait
-  Towers** on a rock point (`KW_TOWERS`, 90 m, blue lights in the spheres, warm floodlights at the
+  Towers** on a rock point to the south-east (`KW_TOWERS`, 90 m: looking south down the road you have his picture — the Assembly on the left, the sea and the towers on the right; blue lights in the spheres, warm floodlights at the
   base) and his warship at anchor. Traffic lights at the middle crossing, jersey barriers at the gate
   ends. The gates are the two ends of the road. No fortress wall on the sea side. The market sits
   behind the Assembly (north-west), 8 kiosks carry the lockers, doors and generators. The pieces are

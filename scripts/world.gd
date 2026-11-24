@@ -952,7 +952,7 @@ const KW_SAND := 56.0                      # sand from here to the water
 const KW_SHORE := 62.0                     # the water line
 const KW_WATER := -0.6
 const KW_ASSEMBLY := Vector3(-75.0, 0.0, 0.0)
-const KW_TOWERS := Vector3(104.0, 0.0, 62.0)
+const KW_TOWERS := Vector3(104.0, 0.0, -62.0) # south-east: looking down the road to the south, as in his picture
 const KW_BOX := Vector3(-23.6, 0.0, 9.0)   # the power box, on the west sidewalk
 const KW_KIOSKS := [[-38.0, -52.0, PI / 2.0], [-38.0, 52.0, PI / 2.0], [-38.0, -90.0, PI / 2.0], [-38.0, 90.0, PI / 2.0],
 	[-78.0, -78.0, 0.0], [50.0, -64.0, -PI / 2.0], [50.0, 64.0, -PI / 2.0], [50.0, -8.0, -PI / 2.0]]
@@ -1058,9 +1058,10 @@ func _build_kuwait() -> void:
 	var lawn := _pbr(Color(0.08, 0.16, 0.05), Color(0.2, 0.36, 0.12), 0.04, Vector3(0.5, 0.5, 0.5), 0.95)
 	for lz in [-38.0, -12.0, 14.0, 40.0]:
 		_mesh_box(self, Vector3(20.0, 0.06, 20.0), Vector3(-40.0, 0.06, lz), lawn)
-	# ---- the Gulf Road: his twin highway, one 32 m tile after another ----
+	# ---- the Gulf Road: his twin highway, each tile drawn twice as long (64 m), so the lanes run on
+	# and its crossing comes every 64 m instead of every 32 ----
 	var road: Array = []
-	for z in range(-96, 97, 32): road.append(Transform3D(Basis(), Vector3(0, 0.07, float(z))))
+	for z in range(-80, 81, 64): road.append(Transform3D(Basis().scaled(Vector3(1.0, 1.0, 2.0)), Vector3(0, 0.07, float(z))))
 	if _kw_many("kw_road", road, Vector3.ZERO, 0.0, 0.0, false).is_empty():
 		_mesh_box(self, Vector3(KW_ROAD_HALF * 2.0, 0.04, WALL * 2.0), Vector3(0, 0.06, 0), _flat(Color(0.05, 0.05, 0.055), 0.55))
 	# the median: his grass planters end to end, a palm between each pair, a twin-head light every other gap
@@ -1261,7 +1262,7 @@ func _build_kuwait() -> void:
 		var a := TAU * i / 6.0
 		fl.position = KW_TOWERS + Vector3(cos(a) * 18.0, 2.0, sin(a) * 18.0)
 		add_child(fl)
-	var ship := _kw_one("kw_ship", Vector3(150.0, KW_WATER - 0.4, -55.0), 0.35)
+	var ship := _kw_one("kw_ship", Vector3(150.0, KW_WATER - 0.4, 55.0), 0.35)
 	if ship:
 		for gi in ship.find_children("*", "GeometryInstance3D", true, false): gi.add_to_group("far")
 	# ---- the National Assembly, lit from its feet ----
