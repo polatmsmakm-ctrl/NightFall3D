@@ -54,6 +54,10 @@ func _ready() -> void:
 			break
 	m.stick_vec = Vector2.ZERO
 	check(saw_climb, "on the stairs she plays the climbing clip (made from the walk)")
+	if not climbed:
+		for ci in m.body.get_slide_collision_count():
+			var col := m.body.get_slide_collision(ci)
+			print("    stuck on ", col.get_collider(), " ", (col.get_collider() as Node).get_path() if col.get_collider() is Node else "", " normal ", col.get_normal(), " at ", col.get_position())
 	check(climbed, "she climbs both flights to the roof (y %.1f, x %.1f)" % [m.body.global_position.y, m.body.global_position.x])
 	check(m.rig.has("climb"), "every rig has «climb»")
 	# the rifle
@@ -150,6 +154,7 @@ func _ready() -> void:
 		if bot.sn_state == "aim":
 			up = true
 			break
+	if not up: print("    bot: ", bot.sn_state, " at ", bot.pos(), " way ", bot.sn_way.size(), " nav ", bot.nav_ok, " goal ", bot.goal)
 	check(up, "the computer killer climbs to the rifle (y %.1f)" % bot.pos().y)
 	check(bot.pos().y > NightWorld.SN_H - 0.8, "and lies on the roof")
 	print("sniper: %d failed" % bad)

@@ -5065,15 +5065,8 @@ func _sn_slab(parent: Node3D, a: Vector3, b: Vector3, w: float, mat: Material) -
 	var ln := Vector2(run, rise).length()
 	var ang := atan2(rise, run)
 	var mid := (a + b) / 2.0 + Vector3(-sin(ang) * 0.15 * signf(a.x - b.x), -cos(ang) * 0.15, 0)
-	var body := StaticBody3D.new()
-	var cs := CollisionShape3D.new()
-	var sh := BoxShape3D.new()
-	sh.size = Vector3(ln, 0.3, w)
-	cs.shape = sh
-	cs.position = mid
-	cs.rotation.z = -ang if b.x < a.x else ang
-	body.add_child(cs)
-	parent.add_child(body)
+	var slab_rot := -ang if b.x < a.x else ang
+	_mesh_box(parent, Vector3(ln, 0.3, w), mid, mat, Vector3(0, 0, slab_rot)) # (drawn: the walking surface is the trimesh)
 	# the steps: 0.2 m risers, one MultiMesh per flight
 	var n := ceili(rise / 0.2)
 	var rr := run / float(n)
@@ -5095,7 +5088,7 @@ func _sn_slab(parent: Node3D, a: Vector3, b: Vector3, w: float, mat: Material) -
 	# the stringers under it
 	var str_mat := _flat(Color(0.16, 0.17, 0.18), 0.5, 0.7)
 	for sz in [-1.0, 1.0]:
-		_mesh_box(parent, Vector3(ln, 0.35, 0.12), mid + Vector3(0, -0.05, sz * (w / 2.0 - 0.06)), str_mat, Vector3(0, 0, cs.rotation.z))
+		_mesh_box(parent, Vector3(ln, 0.35, 0.12), mid + Vector3(0, -0.05, sz * (w / 2.0 - 0.06)), str_mat, Vector3(0, 0, slab_rot))
 	sn_flights.append([a, b])
 
 func _sn_rail(parent: Node3D, a: Vector3, b: Vector3, z: float) -> void:
@@ -5154,11 +5147,30 @@ func _build_sniper_tower() -> void:
 	_sn_slab(root, a0, a1, SN_STAIR_W, tread)
 	_sn_slab(root, b0, b1, SN_STAIR_W, tread)
 	# the landing between the flights and the one at the top (onto the roof's corner)
-	var land := StaticBody3D.new()
-	root.add_child(land)
-	# (exactly between the flights: a landing reaching over the slope made a lip that stopped her)
-	_box(land, Vector3(SN_LAND_X - SN_LAND2_X, 0.3, SN_STAIR_W), Vector3((SN_LAND_X + SN_LAND2_X) / 2.0, SN_H / 2.0 - 0.15, z), tread)
-	_box(land, Vector3(SN_HALF + SN_TOP_X + 0.6, 0.3, SN_STAIR_W), Vector3((SN_TOP_X - SN_HALF) / 2.0 - 0.3, SN_H - 0.15, z), tread)
+	_mesh_box(root, Vector3(SN_LAND_X - SN_LAND2_X, 0.3, SN_STAIR_W), Vector3((SN_LAND_X + SN_LAND2_X) / 2.0, SN_H / 2.0 - 0.15, z), tread)
+	_mesh_box(root, Vector3(SN_HALF + SN_TOP_X + 0.6, 0.3, SN_STAIR_W), Vector3((SN_TOP_X - SN_HALF) / 2.0 - 0.3, SN_H - 0.15, z), tread)
+	# what feet (and the computer killer) walk on: ONE surface from the road to the roof's corner —
+	# separate boxes for the flights and the landings caught her at every seam
+	var line := [Vector3(SN_STAIR_X0 + 1.0, -0.62, z), a0, a1, b0, b1, Vector3(-SN_HALF - 0.6, SN_H, z)]
+	var tris := PackedVector3Array()
+	var hw := SN_STAIR_W / 2.0
+	for i in line.size() - 1:
+		var p0: Vector3 = line[i]
+		var p1: Vector3 = line[i + 1]
+		var a_ := p0 + Vector3(0, 0, -hw)
+		var b_ := p0 + Vector3(0, 0, hw)
+		var c_ := p1 + Vector3(0, 0, hw)
+		var d_ := p1 + Vector3(0, 0, -hw)
+		tris.append_array([a_, b_, c_, a_, c_, d_])
+	var walk_sh := ConcavePolygonShape3D.new()
+	walk_sh.backface_collision = true
+	walk_sh.set_faces(tris)
+	var walk_b := StaticBody3D.new()
+	walk_b.name = "StairWalk"
+	var walk_cs := CollisionShape3D.new()
+	walk_cs.shape = walk_sh
+	walk_b.add_child(walk_cs)
+	root.add_child(walk_b)
 	for px in [SN_LAND_X, SN_LAND2_X, SN_TOP_X, -SN_HALF + 0.2, SN_STAIR_X0 - 4.0]: # the columns holding it up
 		var top := SN_H / 2.0 if px >= SN_LAND2_X else SN_H
 		if px == SN_STAIR_X0 - 4.0: top = SN_H / 2.0 * (SN_STAIR_X0 - px) / (SN_STAIR_X0 - SN_LAND_X)
