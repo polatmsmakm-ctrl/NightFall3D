@@ -5,6 +5,17 @@ on:
   push:
     branches: ['claude/**']
   workflow_dispatch:
+    inputs:
+      tests:
+        description: 'headless tests to run (space separated; empty = all)'
+        default: ''
+      shots:
+        description: 'take the screenshots'
+        type: boolean
+        default: true
+      online:
+        description: 'online rounds to run (forest kuwait-sniper ...)'
+        default: 'forest'
 env:
   GODOT_VERSION: "4.5-stable"
 permissions:
@@ -21,40 +32,65 @@ jobs:
           unzip -q godot.zip
           sudo mv Godot_v${GODOT_VERSION}_linux.x86_64 /usr/local/bin/godot
           sudo apt-get update -qq && sudo apt-get install -y -qq xvfb libgl1-mesa-dri mesa-utils mesa-vulkan-drivers >/dev/null
+      - name: Restore the import (25 minutes otherwise)
+        id: imp
+        uses: actions/cache/restore@v4
+        with:
+          path: .godot
+          key: godot-import-${{ env.GODOT_VERSION }}-${{ hashFiles('assets/**', '**/*.import', 'project.godot') }}
+          restore-keys: godot-import-${{ env.GODOT_VERSION }}-
       - name: Import
         run: godot --headless --path . --import 2>&1 | tail -40 || true
+      - name: Save the import
+        if: steps.imp.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .godot
+          key: godot-import-${{ env.GODOT_VERSION }}-${{ hashFiles('assets/**', '**/*.import', 'project.godot') }}
       - name: Server tests
         run: |
           cd server && npm install --silent --no-audit --no-fund >/dev/null 2>&1 && node test.js 2>&1 | tee ../server.log | tail -60 || echo "::warning::server tests failed"
       - name: Online round (the real server, this game, and a second phone in node)
         run: |
-          cd server && (PORT=8099 node server.js > ../srv_online.log 2>&1 &) && cd ..
-          sleep 1
-          rm -f /tmp/code.txt
-          (WS_MODULE=$PWD/server/node_modules/ws node tools/online_bot.js ws://127.0.0.1:8099 > bot_online.log 2>&1 &)
-          NF_URL=ws://127.0.0.1:8099 timeout 300 godot --headless --path . res://tools/online.tscn 2>&1 | grep -E "^O |ERROR|SCRIPT" | head -40 | tee online.log || true
-          sleep 2; cat bot_online.log | head -40; echo "--- server"; tail -20 srv_online.log
+          : > online_all.log
+          for mode in ${{ github.event.inputs.online || 'forest kuwait-sniper' }}; do
+            pkill -f "node server.js" || true; sleep 1
+            (cd server && PORT=8099 node server.js > ../srv_online.log 2>&1 &)
+            sleep 1
+            rm -f /tmp/code.txt
+            (WS_MODULE=$PWD/server/node_modules/ws node tools/online_bot.js ws://127.0.0.1:8099 > bot_online.log 2>&1 &)
+            echo "=== online $mode" | tee -a online_all.log
+            NF_MODE=$mode NF_URL=ws://127.0.0.1:8099 timeout 300 godot --headless --path . res://tools/online.tscn > online_raw.log 2>&1 || true
+            grep -E "^O |ERROR|SCRIPT|Invalid|Parse" online_raw.log | head -60 | tee -a online_all.log
+            sleep 2; echo "--- bot" | tee -a online_all.log; head -60 bot_online.log | tee -a online_all.log
+            echo "--- server" | tee -a online_all.log; tail -20 srv_online.log | tee -a online_all.log
+          done
+          pkill -f "node server.js" || true
       - name: Headless tests
         run: |
           : > all.log
+          cat online_all.log >> all.log 2>/dev/null || true
           cat server.log >> all.log 2>/dev/null || true
           # a script that does not compile stops everything here, before minutes of tests
           timeout 120 godot --headless --path . --quit 2>&1 | tee boot.log | tail -20
           if grep -E "Parse Error|Compile Error" boot.log; then echo "::error::scripts do not compile"; cat boot.log >> all.log; exit 1; fi
-          for t in ${NF_TESTS:-road hud tex drive props ui smoke map win camp beach gun gfx city kuwait sniper}; do
+          TL="${{ github.event.inputs.tests }}"
+          for t in ${TL:-road hud tex drive props ui smoke map win camp beach gun gfx city kuwait sniper}; do
             [ -f tools/$t.tscn ] || continue
             echo "=== $t" | tee -a all.log
             timeout 240 godot --headless --path . res://tools/$t.tscn 2>&1 | tee -a all.log || echo "::warning::$t stopped (timeout or exit $?)"
           done
-          # the extreme pass: pier, perks, traps, spikes, nitro, the computer killer, the final shot, the board (long: a whole chase)
-          echo "=== extreme" | tee -a all.log
-          timeout 480 godot --headless --path . res://tools/extreme.tscn 2>&1 | tee -a all.log || echo "::warning::extreme stopped"
-          # the same round as a strong iPhone plays it: «فائق», the close-up characters in the round
-          echo "=== drive (strong device)" | tee -a all.log
-          NF_STRONG=1 timeout 240 godot --headless --path . res://tools/drive.tscn 2>&1 | tee -a all.log || echo "::warning::strong drive stopped"
-          # and as an older iPhone (13 / 14 / 15) plays it: its own start, the governor further down
-          echo "=== weak (older iPhone)" | tee -a all.log
-          NF_WEAK=1 timeout 240 godot --headless --path . res://tools/weak.tscn 2>&1 | tee -a all.log || echo "::warning::weak stopped"
+          if [ -z "$TL" ]; then
+            # the extreme pass: pier, perks, traps, spikes, nitro, the computer killer, the final shot, the board (long: a whole chase)
+            echo "=== extreme" | tee -a all.log
+            timeout 480 godot --headless --path . res://tools/extreme.tscn 2>&1 | tee -a all.log || echo "::warning::extreme stopped"
+            # the same round as a strong iPhone plays it: «فائق», the close-up characters in the round
+            echo "=== drive (strong device)" | tee -a all.log
+            NF_STRONG=1 timeout 240 godot --headless --path . res://tools/drive.tscn 2>&1 | tee -a all.log || echo "::warning::strong drive stopped"
+            # and as an older iPhone (13 / 14 / 15) plays it: its own start, the governor further down
+            echo "=== weak (older iPhone)" | tee -a all.log
+            NF_WEAK=1 timeout 240 godot --headless --path . res://tools/weak.tscn 2>&1 | tee -a all.log || echo "::warning::weak stopped"
+          fi
           if grep -E "SCRIPT ERROR|Parse Error|Parser Error|Invalid call|Invalid access|Invalid get|Cannot call|Nonexistent function" all.log; then echo "::error::script errors"; exit 1; fi
       - name: Publish the test log early (the screenshots take a long time)
         if: always()
@@ -64,7 +100,7 @@ jobs:
           git -c user.name=check -c user.email=check@users.noreply.github.com commit -qm "tests of ${GITHUB_SHA}" || true
           git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" check-log
       - name: Screenshots
-        if: always()
+        if: always() && github.event.inputs.shots != 'false'
         run: |
           mkdir -p shots
           for sc in ${NF_SHOT_SCENES:-}; do # the old software-GL screenshots, when asked for
