@@ -503,7 +503,7 @@ func _time_of_day() -> void:
 	sky_mat.set_shader_parameter("day", sky_day)
 	sky_mat.set_shader_parameter("warm", sky_warm)
 	moon.light_color = moon_col
-	moon.light_energy = moon_e
+	moon.light_energy = moon_e * 0.6 # the owner: softer moonlight
 	env.ambient_light_color = amb
 	env.ambient_light_energy = amb_e * 1.25 # lighter, like the maps
 	env.tonemap_exposure = 1.1 * Gfx.brightness
@@ -514,7 +514,7 @@ func _time_of_day() -> void:
 	sky_mat.set_shader_parameter("blood", 1.0 if blood else 0.0)
 	if blood:
 		moon.light_color = Color(1.0, 0.32, 0.26)
-		moon.light_energy = 1.25
+		moon.light_energy = 0.75
 		env.ambient_light_color = Color(0.3, 0.1, 0.12)
 		env.fog_light_color = fog.lerp(Color(0.3, 0.05, 0.05), 0.6)
 

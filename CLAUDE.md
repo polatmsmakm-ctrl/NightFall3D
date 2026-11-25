@@ -667,7 +667,7 @@ stand afterwards):
 
 ## Lighter nights and «السطوع»
 The owner found the maps too dark. `world._build_environment` now multiplies every night map's
-ambient by 2.0, its fog by 0.65 and its moonlight by 1.4, with exposure 1.32 (the Empty Quarter
+ambient by 2.0, its fog by 0.65 and its moonlight by **0.6** (it was 1.4 until the owner found the moonlight far too bright), with exposure 1.32 (the Empty Quarter
 is untouched: it is daylight). On top of that the settings panel has «السطوع» (60-160%,
 `Gfx.brightness`, saved in `user://graphics.cfg`): it multiplies the exposure live on the map and
 the camp through `Gfx.look_changed`. `tools/shot16.tscn` shoots three maps before and after.
@@ -1033,3 +1033,4 @@ photographs it lowered and raised.
 - **The long ground pieces are cut into 16-32 m pieces** (`_strip`; the markings in 32 m chunks):
   the Mobile renderer lights a mesh with its 8 nearest lights only, so one 224 m road was lit by
   8 lamps. All the ground materials are world-space, so the cuts do not show.
+- Kuwait City's air: thin flat fog (x0.35), the moon lights no volumetric fog (no blue haze), the moon at 0.75 of the other maps'. `_kw_look` runs its one-off part once (`_kw_set`). The camp's moon is x0.6 too.

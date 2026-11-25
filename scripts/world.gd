@@ -708,7 +708,7 @@ func _build_environment() -> void:
 	if map_id == "rubkhali": # hard noon light through the dust
 		moon.light_color = Color(1.0, 0.91, 0.74)
 		moon.light_energy = 2.4
-	else: moon.light_energy *= 1.4 # lighter nights
+	else: moon.light_energy *= 0.6 # the owner: the moonlight was far too bright (it was x1.4)
 	_moon_base = moon.light_energy
 	moon.shadow_enabled = true
 	moon.directional_shadow_blend_splits = true
@@ -1585,7 +1585,7 @@ func _kw_look() -> void:
 		if moon:
 			moon.light_color = Color(0.62, 0.7, 0.95)
 			moon.light_volumetric_fog_energy = 0.0 # the moon does not light the air: no blue haze
-			_moon_base = moon.light_energy * 0.32
+			_moon_base = moon.light_energy * 0.75
 			moon.light_energy = _moon_base * (0.35 if grid_off else 1.0)
 	if env.volumetric_fog_enabled: # thin warm-grey air that only the lamps light
 		env.volumetric_fog_density = 0.011
