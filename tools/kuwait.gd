@@ -138,7 +138,7 @@ func _ready() -> void:
 	g.rules.clock = 200.0
 	await frames(6)
 	var mid_sun: float = gw.moon.light_energy
-	check(mid_sun < 1.2 and gw._sky_mat.get_shader_parameter("warm") > 0.1, "an hour later it is going down, red-gold (%.2f)" % mid_sun)
+	check(mid_sun < 1.9 and gw._sky_mat.get_shader_parameter("warm") > 0.3, "an hour later it is going down, red-gold (%.2f)" % mid_sun)
 	g.rules.clock = 301.0
 	await frames(70)
 	check(gw.night_fell() and gw.moon.light_energy < 0.05 and gw.env.ambient_light_energy < NightWorld.DARK_AMB_E + 0.05, "five minutes: the sun is gone and it is pitch dark (%.2f)" % gw.env.ambient_light_energy)

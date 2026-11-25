@@ -10,8 +10,8 @@ render_mode blend_mix, depth_draw_opaque, cull_back, specular_schlick_ggx;
 uniform sampler2D albedo_tex : source_color, filter_linear_mipmap, repeat_disable;
 uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap, repeat_disable;
 uniform bool has_normal = false;
-uniform vec3 fresh : source_color = vec3(0.34, 0.015, 0.02);
-uniform vec3 dried : source_color = vec3(0.12, 0.03, 0.022);
+uniform vec3 fresh : source_color = vec3(0.42, 0.022, 0.028);
+uniform vec3 dried : source_color = vec3(0.15, 0.036, 0.026);
 
 varying vec4 cd;
 varying vec3 wpos;

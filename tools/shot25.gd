@@ -33,7 +33,9 @@ func _ready() -> void:
 	Gfx.shadows = 1; Gfx.effects = 1; Gfx.scale_idx = 2; Gfx.aa = 1
 	Gfx.apply()
 	# --- the blood: a blow, then walking hurt, then a close look at the ground
-	var m = await round_of("village", "normal", 5)
+	var m = await round_of("village", "sunset", 5) # in the afternoon light: the blood's own colour
+	m.rules.ev_at = 99999.0
+	m.rules.clock = 40.0
 	m.rules.s["P"].ammo = 0
 	m.rules.s["P"].hp = "hurt"
 	m._on_event({"k": "hurt", "n": "P", "s": "hurt"})

@@ -648,7 +648,7 @@ func _build_environment() -> void:
 			env.adjustment_saturation = 0.72
 		"halloween": # a grey night with every light on; the power box takes it to the dark (DARK_*)
 			env.ambient_light_color = Color(0.13, 0.13, 0.16)
-			env.ambient_light_energy = 0.8
+			env.ambient_light_energy = 1.0
 			env.fog_light_color = Color(0.05, 0.05, 0.06)
 			env.fog_density = fog_density * 1.3
 			env.adjustment_saturation = 0.85
@@ -1184,6 +1184,7 @@ func _grid_glow_of(n: Node) -> void:
 const SUNSET_TIME := 300.0
 const MOON_RISE := 150.0     # the moon comes up over this long once the sun is gone
 var moon_now := -10.0        # the moon's height in degrees (tests)
+var _vol_base := -1.0
 var round_t := 0.0           # the round's clock (main copies the rules' one in)
 var _dk := 1.0               # how far into the pitch dark (follows the power box)
 var _sun_az := Vector2(0.3, -0.9).normalized() # where it goes down (where the moon hangs on the other nights)
@@ -1192,10 +1193,12 @@ func night_fell() -> bool: return round_t >= SUNSET_TIME
 
 func _step_sunset(dt: float) -> void:
 	var t := clampf(round_t / SUNSET_TIME, 0.0, 1.0)
-	var el := lerpf(38.0, -7.0, smoothstep(0.0, 1.0, t) * 0.35 + t * 0.65) # degrees over the horizon
+	# degrees over the horizon: it touches the horizon just before the five minutes are up, and at
+	# five minutes it is gone and the night is complete
+	var el := lerpf(38.0, -4.0, pow(t, 1.25)) if round_t <= SUNSET_TIME else -4.0 - (round_t - SUNSET_TIME) * 0.1
 	var day := clampf((el - 3.0) / 17.0, 0.0, 1.0)
-	var warm := smoothstep(30.0, 6.0, el) * smoothstep(-7.0, 0.0, el)
-	var night := 1.0 - smoothstep(-6.0, 5.0, el)
+	var warm := smoothstep(30.0, 6.0, el) * smoothstep(-5.0, 0.0, el)
+	var night := 1.0 - smoothstep(-4.0, 4.0, el)
 	_dk = move_toward(_dk, 1.0 if grid_off else 0.0, dt * 1.5)
 	# the sun moves across the sky as it goes down (it drifts round as well as down), and once it is
 	# gone the moon comes up on the other side over MOON_RISE seconds
@@ -1214,7 +1217,10 @@ func _step_sunset(dt: float) -> void:
 	_sky_mat.set_shader_parameter("sun_disc", 1.0 if sun_up else 0.0)
 	moon_now = mel
 	if map_id == "rubkhali": _sky_mat.set_shader_parameter("sun", day) # the sandstorm goes with the sun
-	env.tonemap_exposure = lerpf(1.0, _exp_base, night) * Gfx.brightness
+	env.tonemap_exposure = lerpf(0.92, _exp_base, night) * Gfx.brightness
+	if _vol_base < 0.0: _vol_base = env.volumetric_fog_density
+	if env.volumetric_fog_enabled: # the sun in thick air is a white haze: the air is clear by day
+		env.volumetric_fog_density = _vol_base * lerpf(0.12, 1.0, night)
 	if _blood: return # the gates have power: the blood moon owns the light now
 	var desert := map_id == "rubkhali"
 	var amb_day := Color(0.72, 0.6, 0.44) if desert else Color(0.6, 0.67, 0.8)
@@ -1227,7 +1233,7 @@ func _step_sunset(dt: float) -> void:
 	env.ambient_light_energy = e
 	var fog_day := Color(0.76, 0.6, 0.38) if desert else Color(0.62, 0.68, 0.78)
 	env.fog_light_color = fog_day.lerp(Color(0.8, 0.5, 0.32), warm).lerp(Color(0.07, 0.09, 0.14).lerp(DARK_FOG, _dk), night)
-	env.fog_density = fog_base * lerpf(0.5, 1.0, night)
+	env.fog_density = fog_base * lerpf(0.18, 1.0, night)
 	if el > -1.0: # the sun's light
 		moon.basis = Basis.looking_at(-dir)
 		moon.light_color = Color(1.0, 0.94, 0.84).lerp(Color(1.0, 0.52, 0.26), warm)
