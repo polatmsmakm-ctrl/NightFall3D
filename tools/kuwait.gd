@@ -94,9 +94,67 @@ func _ready() -> void:
 	await frames(30)
 	var hw = h.world
 	var amb: Color = hw.env.ambient_light_color
-	check(amb.r < 0.15 and absf(amb.r - amb.b) < 0.05, "Halloween is dark, not red (ambient %s)" % amb)
-	check(hw.blackout and hw.pumpkins >= 40, "the lamps are out for the round, %d pumpkins about" % hw.pumpkins)
-	hw.set_blackout(false)
-	check(hw.blackout, "and they stay out")
+	check(absf(amb.r - amb.b) < 0.05, "Halloween is grey, not red (ambient %s)" % amb)
+	var lit_h := 0
+	for e in hw.amb_lights:
+		if not hw.pumpkin_lights.has(e[0]) and (e[0] as Light3D).light_energy > 0.05: lit_h += 1
+	check(not hw.blackout and h.rules.has_grid and h.rules.grid and lit_h > 0, "its lights are on to begin with (%d)" % lit_h)
+	check(hw.power_box != Vector3.INF and hw.pumpkins >= 40, "a power box on the map, %d pumpkins about" % hw.pumpkins)
+	h.body.global_position = hw.power_box + Vector3(1.4, 0.3, 0)
+	await frames(10)
+	check(h.ctx.has("interact") and h.ctx.interact.kind == "off", "at the box a survivor can «اطفي الكهرباء»")
+	for e in h.rules.handle({"k": "off"}, "P"): h._on_event(e)
+	await frames(80)
+	lit_h = 0
+	for e in hw.amb_lights:
+		if not hw.pumpkin_lights.has(e[0]) and (e[0] as Light3D).light_energy > 0.05: lit_h += 1
+	var a2: Color = hw.env.ambient_light_color
+	check(not h.rules.grid and lit_h == 0, "switched off: every lamp of the map goes out (%d still lit)" % lit_h)
+	check(absf(hw.env.ambient_light_energy - NightWorld.DARK_AMB_E) < 0.05 and a2.is_equal_approx(NightWorld.DARK_AMB) and hw.moon.light_energy < 0.2,
+		"and the night is the old Halloween dark (ambient %.2f, moon %.2f)" % [hw.env.ambient_light_energy, hw.moon.light_energy])
+	check(h.rules.handle({"k": "off"}, "K").is_empty(), "(the killer has no «اطفي»: hers is the cut)")
+	h.rules.handle({"k": "pfix", "on": true}, "P")
+	for i in 13:
+		for e in h.rules.tick(1.0): h._on_event(e)
+	await frames(60)
+	check(h.rules.grid and hw.env.ambient_light_energy > NightWorld.DARK_AMB_E + 0.2, "fixed: the lights and the night come back")
+	check(h.rules.handle({"k": "off"}, "P").is_empty(), "and it cannot be switched off again straight away")
+	h.queue_free()
+	await frames(5)
+	# «بين العصر والمغرب»: afternoon, the sun goes down over five minutes, then pitch dark until the lights are on
+	var g = load("res://scenes/main.tscn").instantiate()
+	tree.root.add_child.call_deferred(g)
+	await frames(10)
+	g._start({"map": "village", "me": "P", "offline": true, "seed": 9, "theme": "sunset", "players": [
+		{"name": "P", "role": "survivor", "char": "survivor2", "slot": 0}, {"name": "K", "role": "killer", "char": "killer", "slot": 1}]})
+	for i in 1200:
+		await tree.process_frame
+		if g.world.ready_done: break
+	await frames(20)
+	var gw = g.world
+	check(gw.power_box != Vector3.INF and g.rules.has_grid and not g.rules.grid, "the street lights start off, a power box on the map")
+	check(gw.moon.light_energy > 1.2 and gw.env.ambient_light_energy > 1.0 and gw.moon.global_basis.z.y > 0.3, "it is afternoon: the sun is high (%.2f)" % gw.moon.light_energy)
+	g.rules.clock = 200.0
+	await frames(6)
+	var mid_sun: float = gw.moon.light_energy
+	check(mid_sun < 1.2 and gw._sky_mat.get_shader_parameter("warm") > 0.1, "an hour later it is going down, red-gold (%.2f)" % mid_sun)
+	g.rules.clock = 301.0
+	await frames(70)
+	check(gw.night_fell() and gw.moon.light_energy < 0.05 and gw.env.ambient_light_energy < NightWorld.DARK_AMB_E + 0.05, "five minutes: the sun is gone and it is pitch dark (%.2f)" % gw.env.ambient_light_energy)
+	g.body.global_position = gw.power_box + Vector3(1.4, 0.3, 0)
+	await frames(10)
+	check(g.ctx.has("interact") and g.ctx.interact.kind == "pfix" and g.ctx.interact.label == "شغّل أنوار الشارع", "at the box: «شغّل أنوار الشارع»")
+	g.rules.handle({"k": "pfix", "on": true}, "P")
+	for i in 13:
+		for e in g.rules.tick(1.0): g._on_event(e)
+	g.rules.clock = 320.0
+	await frames(70)
+	var lit_s := 0
+	for e in gw.amb_lights: if (e[0] as Light3D).light_energy > 0.05: lit_s += 1
+	check(g.rules.grid and lit_s > 0 and gw.env.ambient_light_energy > 0.9, "on: the lamps light the night (%d lamps)" % lit_s)
+	g.rules.grid_wait = 0.0
+	check(not g.rules.handle({"k": "cut"}, "K").is_empty(), "and the killer can cut them again")
+	g.queue_free()
+	await frames(5)
 	print("kuwait: %d failed" % bad)
 	tree.quit()

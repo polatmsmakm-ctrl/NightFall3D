@@ -218,7 +218,8 @@ func _start(c: Dictionary) -> void:
 	rules.gun = bool(c.get("gun", false)) # «وضع السلاح»: the host's choice, sent with start
 	rules.setup(world.gen_points.size(), world.gate_points.size(), world.pallet_points.size(), world.hatch_points.size(),
 		c.players, int(c.get("seed", 1)) if not offline else randi() % 1000000, world.door_points.size())
-	rules.has_grid = world.map_id == "kuwait" # Kuwait City's street lights hang on one power box
+	rules.has_grid = world.has_power_box() # Kuwait City; every map in Halloween and «بين العصر والمغرب»
+	rules.set_grid_mode(1 if theme == "halloween" else (2 if theme == "sunset" else 0))
 	for p in c.players: chars[str(p.name)] = str(p.char)
 	Net.last_char = str(chars.get(my_name, Net.last_char)) # the one who stands at the fire next time
 	Net.save()
@@ -252,7 +253,7 @@ func _start(c: Dictionary) -> void:
 		for i in world.gate_points.size():
 			lay.c.append(xz.call(world.esc_start(i)))
 			lay.e.append(xz.call(world.road_end(i)))
-		if world.power_box != Vector3.INF: lay.b = xz.call(world.power_box) # the power box (Kuwait City)
+		if world.power_box != Vector3.INF: lay.b = xz.call(world.power_box) # the power box (decided with the layout)
 		Net.send({"t": "layout", "d": lay})
 	started = true
 
@@ -489,32 +490,73 @@ func _make_bleed() -> Node3D:
 	m.initial_velocity_min = 0.0; m.initial_velocity_max = 0.25
 	m.spread = 180.0
 	p.process_material = m
-	var q := QuadMesh.new()
-	q.size = Vector2(0.045, 0.07)
-	var mat := StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.albedo_color = Color(0.42, 0.0, 0.0)
-	mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
-	q.material = mat
-	p.draw_pass_1 = q
+	var drop := _blood_model("res://assets/props/blood_drop.glb")
+	if drop: # the owner's droplet, falling point up
+		var dm := StandardMaterial3D.new()
+		dm.albedo_color = Color(0.3, 0.008, 0.012)
+		dm.roughness = 0.05
+		dm.metallic_specular = 0.8
+		drop.surface_set_material(0, dm)
+		m.scale_min = 0.018; m.scale_max = 0.03
+		p.draw_pass_1 = drop
+	else:
+		var q := QuadMesh.new()
+		q.size = Vector2(0.045, 0.07)
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.albedo_color = Color(0.42, 0.0, 0.0)
+		mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+		q.material = mat
+		p.draw_pass_1 = q
 	p.amount = 16
 	p.lifetime = 0.75
 	p.position = Vector3(0, 2.0, 0.05)
 	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	root.add_child(p)
 	var pool := MeshInstance3D.new()
-	var cyl := CylinderMesh.new()
-	cyl.top_radius = 0.5; cyl.bottom_radius = 0.5; cyl.height = 0.01; cyl.radial_segments = 20
-	var pm := StandardMaterial3D.new()
-	pm.albedo_color = Color(0.22, 0.0, 0.0)
-	pm.roughness = 0.15
-	cyl.material = pm
-	pool.mesh = cyl
+	var pmesh := _blood_model("res://assets/props/blood_pool.glb")
+	if pmesh: # the owner's puddle, darkened to blood and wet
+		var src := pmesh.surface_get_material(0) as StandardMaterial3D
+		var pm2 := StandardMaterial3D.new()
+		if src:
+			pm2.albedo_texture = src.albedo_texture
+			pm2.normal_enabled = src.normal_enabled
+			pm2.normal_texture = src.normal_texture
+		pm2.albedo_color = Color(0.42, 0.05, 0.06)
+		pm2.roughness = 0.05
+		pm2.metallic_specular = 0.75
+		pmesh.surface_set_material(0, pm2)
+		pool.mesh = pmesh
+		pool.rotation.y = randf() * TAU
+	else:
+		var cyl := CylinderMesh.new()
+		cyl.top_radius = 0.5; cyl.bottom_radius = 0.5; cyl.height = 0.01; cyl.radial_segments = 20
+		var pm := StandardMaterial3D.new()
+		pm.albedo_color = Color(0.22, 0.0, 0.0)
+		pm.roughness = 0.15
+		cyl.material = pm
+		pool.mesh = cyl
 	pool.position.y = 0.03
 	pool.name = "Pool"
 	root.add_child(pool)
 	root.visible = false
 	return root
+
+var _blood_models := {}
+func _blood_model(path: String) -> Mesh:
+	if not _blood_models.has(path):
+		var found: Mesh = null
+		if ResourceLoader.exists(path):
+			var root := (load(path) as PackedScene).instantiate()
+			var stack: Array = [root]
+			while not stack.is_empty() and found == null:
+				var nd: Node = stack.pop_back()
+				if nd is MeshInstance3D: found = (nd as MeshInstance3D).mesh
+				stack.append_array(nd.get_children())
+			root.free()
+		_blood_models[path] = found
+	var m: Mesh = _blood_models[path]
+	return m.duplicate() if m else null
 
 func _update_bleed(b: Node3D, hooked: bool, dt: float) -> void:
 	if not hooked:
@@ -523,9 +565,9 @@ func _update_bleed(b: Node3D, hooked: bool, dt: float) -> void:
 	var pool := b.get_node("Pool") as MeshInstance3D
 	if not b.visible:
 		b.visible = true
-		pool.scale = Vector3(0.15, 1, 0.15)
+		pool.scale = Vector3(0.15, 0.3, 0.15)
 	var k := minf(pool.scale.x + dt * 0.035, 1.6) # the pool keeps spreading while they hang
-	pool.scale = Vector3(k, 1, k)
+	pool.scale = Vector3(k, 0.3, k)
 
 ## Loop the right footstep recording for the ground under `at`; faster/louder when running, silent when still.
 func _steps(a: Node, at: Vector3, moving: bool, running: bool, base_db: float) -> void:
@@ -771,47 +813,35 @@ func _slash(n: String) -> void:
 	var away := (at - from)
 	away.y = 0.0
 	away = away.normalized() if away.length() > 0.01 else Vector3.FORWARD
-	NFDecor.burst(self, at, away + Vector3.UP * 0.3, 18 if Gfx.weak else 30, 0.7, 0.09, Vector2(1.2, 3.2), 40.0,
-		Vector3(0, -9.0, 0), Color(0.55, 0.02, 0.02, 1.0), Color(0.3, 0.0, 0.0), false, 0.6)
-	_blood_drop(_pos_of(n) + away * 0.6, 0.9)
+	# a fine mist on the GPU, then the owner's drops, the wall behind them and the pool (NFBlood)
+	NFDecor.burst(self, at, away + Vector3.UP * 0.3, 10 if Gfx.weak else 18, 0.45, 0.05, Vector2(1.0, 2.6), 40.0,
+		Vector3(0, -9.0, 0), Color(0.42, 0.015, 0.02, 1.0), Color(0.25, 0.0, 0.01), false, 0.6)
+	if blood: blood.splash(at, away, _cam_pos())
 
-## Blood on the ground: a hurt survivor leaves drops behind them as they walk (every ~0.9 m, on every
-## phone), each with a few drips falling from the wound. They fade after half a minute; at most
-## `BLOOD_MAX` lie about at once.
-const BLOOD_MAX := 70
-var _blood: Array = []        # [decal, time left]
-var _blood_last := {}         # name -> where the last drop fell
+## Blood on the ground (scripts/blood.gd): drips from a hurt survivor on every phone, more often the
+## faster they go; a smear behind one who is down and crawling. Nothing while fine, hooked (the hook
+## has its own), dead, out, in a car or vanished.
+var blood: NFBlood
 
-func _blood_drop(at: Vector3, size: float) -> void:
-	var g := Vector3(at.x, world.height(at.x, at.z) if world.map_id != "garage" else at.y, at.z)
-	if world.map_id == "garage" or absf(g.y - at.y) > 1.5: g.y = at.y # on the roof, a pier, a floor
-	var d := NFDecor.decal(world, g, size * randf_range(0.7, 1.2), "blood", randf() * TAU, randf_range(0.8, 1.3), 30.0)
-	_blood.append([d, 30.0])
-	while _blood.size() > BLOOD_MAX:
-		var old: Array = _blood.pop_front()
-		if is_instance_valid(old[0]): (old[0] as Node).queue_free()
+func _blood_trail(n: String, feet: Vector3, kind: int) -> void:
+	if blood: blood.bleed(n, feet, kind, _cam_pos())
 
-func _blood_trail(n: String, feet: Vector3, hurt: bool) -> void:
-	if not hurt:
-		_blood_last.erase(n)
-		return
-	var last: Vector3 = _blood_last.get(n, feet)
-	if not _blood_last.has(n): _blood_last[n] = feet
-	if Vector2(feet.x - last.x, feet.z - last.z).length() < 0.9: return
-	_blood_last[n] = feet
-	var side := Vector3(randf_range(-0.2, 0.2), 0.0, randf_range(-0.2, 0.2))
-	_blood_drop(feet + side, 0.32)
-	if not Gfx.weak: # the drips, falling from the wound
-		NFDecor.burst(self, feet + side + Vector3(0, 0.95, 0), Vector3.DOWN, 4, 0.45, 0.05, Vector2(0.2, 0.6), 10.0,
-			Vector3(0, -9.0, 0), Color(0.5, 0.01, 0.01, 1.0), Color(0.35, 0.0, 0.0), false, 0.8)
+## «بين العصر والمغرب»: a warning a minute before the sun is gone, and the call when it is.
+var _sun_said := 0
+func _sunset_calls() -> void:
+	var left := world.sun_left()
+	if _sun_said == 0 and left <= 60.0 and left > 0.0:
+		_sun_said = 1
+		_flash("الشمس بتغيب بعد دقيقة — جهّزوا الكشافات" if my_role == "survivor" else "الشمس بتغيب بعد دقيقة")
+	elif _sun_said <= 1 and left <= 0.0:
+		_sun_said = 2
+		if my_role == "survivor": _flash("غابت الشمس! شغّلوا الأنوار من صندوق الكهرباء ⚡" if not rules.grid else "غابت الشمس — الأنوار شغّالة")
+		else: _flash("غابت الشمس — الظلام لك" if not rules.grid else "غابت الشمس")
+		_feed("غابت الشمس", "moon", Color(1.0, 0.6, 0.4))
 
-func _step_blood(dt: float) -> void:
-	for b in _blood:
-		b[1] = float(b[1]) - dt
-		if float(b[1]) < 4.0 and is_instance_valid(b[0]): (b[0] as Decal).modulate.a = maxf(float(b[1]) / 4.0, 0.0)
-	while not _blood.is_empty() and float(_blood[0][1]) <= 0.0:
-		var old: Array = _blood.pop_front()
-		if is_instance_valid(old[0]): (old[0] as Node).queue_free()
+func _cam_pos() -> Vector3:
+	var c := get_viewport().get_camera_3d()
+	return c.global_position if c else Vector3.INF
 
 ## Hurt and on their feet: one hand pressed to the wound (the left arm, by IK, over the clip), and a
 ## limp in the step (_lean_rig reads the "hurt" mark). Never while the pistol is out, in a car or a seat.
@@ -1088,11 +1118,15 @@ func _on_event(e: Dictionary) -> void:
 			var on := bool(e.get("on", true))
 			world.set_grid(on)
 			if on:
-				_feed("رجعت الكهرباء — الشارع منوّر", "bolt", Color(1.0, 0.9, 0.4))
+				_feed("انولعت أنوار الشارع" if rules.grid_mode == 2 else "رجعت الكهرباء — الشارع منوّر", "bolt", Color(1.0, 0.9, 0.4))
 				if my_role == "killer": _flash("صلّحوا الكهرباء!")
+			elif bool(e.get("sv", false)): # Halloween: one of the survivors switched it off
+				_feed("%s طفّى الكهرباء — الدنيا ظلام" % str(e.get("by", "")), "bolt", Color(0.7, 0.75, 1.0))
+				if my_role == "killer": _flash("طفّوا الأنوار! دوّرهم بالظلام")
+				elif str(e.get("by", "")) != my_name: _flash("%s طفّى الأنوار — الكشاف بس" % str(e.get("by", "")))
 			else:
 				_feed("القاتل قطع الكهرباء!", "bolt", Color(1.0, 0.45, 0.3))
-				if my_role == "survivor": _flash("انقطعت الكهرباء! صلّحوا الصندوق ⚡")
+				if my_role == "survivor": _flash("انقطعت الكهرباء! الكشاف بس — صلّحوا الصندوق ⚡")
 				_shake(0.15)
 		"mend": # «تفتّح» (Bloom)
 			_feed("%s تفتّحت ورجعت سليمة" % str(e.n), "heal", Color(0.75, 0.55, 1.0))
@@ -1760,6 +1794,13 @@ func _draw_ui() -> void:
 		_text(top, "باقي %d من ربعك داخل" % _others_alive().size(), 24, Color(1, 0.9, 0.6))
 	else:
 		_text(top, "المولدات %d/%d" % [rules.done_count(), Rules.NEED], 26, Color(1, 0.9, 0.6))
+	if theme == "sunset" and road < 0: # «بين العصر والمغرب»: how long until the sun is gone
+		var tr := Vector2(mid.x + 250.0, 96.0)
+		if not world.night_fell():
+			var left := int(world.sun_left())
+			_text(tr, "☀ المغرب بعد %d:%02d" % [left / 60, left % 60], 22, Color(1.0, 0.75, 0.4) if left > 60 else Color(1.0, 0.45, 0.3))
+		elif rules.has_grid and not rules.grid:
+			_text(tr, "ظلام — شغّلوا الأنوار ⚡" if my_role == "survivor" else "الظلام لك", 22, Color(1.0, 0.55, 0.4))
 	var sub := Vector2(mid.x, 242.0) if doom_up else top + Vector2(0, 32)
 	if my_role == "survivor":
 		var me: Dictionary = rules.s.get(my_name, {})
@@ -2211,7 +2252,10 @@ func _update_ctx() -> void:
 					ctx.interact = {"kind": "pallet", "label": "اسقط", "i": i}
 		if not ctx.has("interact"): _door_ctx(pos)
 		if not ctx.has("interact") and rules.has_grid and not rules.grid and world.power_box != Vector3.INF and _near(pos, world.power_box, 2.6):
-			ctx.interact = {"kind": "pfix", "label": "صلّح الكهرباء", "i": 0, "need": -1.0}
+			ctx.interact = {"kind": "pfix", "label": "شغّل أنوار الشارع" if rules.grid_mode == 2 else "صلّح الكهرباء", "i": 0, "need": -1.0}
+		if not ctx.has("interact") and rules.has_grid and rules.grid and rules.grid_mode == 1 and world.power_box != Vector3.INF and _near(pos, world.power_box, 2.6):
+			if rules.grid_wait > Rules.GRID_GAP - Rules.GRID_OFF_GAP: _text_hint = "الصندوق يبرد — بعد %d ث" % ceili(rules.grid_wait - (Rules.GRID_GAP - Rules.GRID_OFF_GAP))
+			else: ctx.interact = {"kind": "off", "label": "اطفي الكهرباء", "i": 0}
 		if not ctx.has("interact") and not rules.powered:
 			for i in world.gen_points.size():
 				if not rules.gens[i].done and _near(pos, world.gen_points[i], 2.5):
@@ -2356,6 +2400,9 @@ func _press(id: String, touch: int) -> void:
 				"pallet": _ev({"k": "pallet", "i": c.i})
 				"cut":
 					_ev({"k": "cut"})
+					NFHaptics.pulse("tick")
+				"off": # Halloween: a survivor plunges the map into the dark
+					_ev({"k": "off"})
 					NFHaptics.pulse("tick")
 				"door": _ev({"k": "door", "i": c.i, "on": c.get("on", true)})
 				"board": _ev({"k": "board", "i": c.i})
@@ -2517,8 +2564,9 @@ func _in_car(n: String) -> bool:
 func _process(dt: float) -> void:
 	if not started: return
 	_step_guns(dt)
-	_step_blood(dt)
 	if rules and rules.has_grid and world.ready_done and world.grid_off == rules.grid: world.set_grid(rules.grid)
+	if rules: world.round_t = rules.clock
+	if rules and theme == "sunset": _sunset_calls()
 	if loading != null: # the map is still being built: keep the tip screen up
 		if not is_instance_valid(loading): loading = null
 		else:
@@ -2532,6 +2580,11 @@ func _process(dt: float) -> void:
 	if bot and not bot_baked and world.ready_done:
 		bot_baked = true
 		bot.bake()
+	if blood == null and world.ready_done: # the owner's blood models (scripts/blood.gd)
+		blood = NFBlood.new()
+		blood.name = "Blood"
+		world.add_child(blood)
+		blood.setup(world, [body.get_rid()])
 	if ravens == null and world.ready_done and world.map_id != "garage": # the owner's ravens
 		ravens = NFRavens.new()
 		ravens.name = "Ravens"
@@ -2666,7 +2719,10 @@ func _process(dt: float) -> void:
 				r.rig.set_meta("hurt", false)
 				if r.rig.get_meta("clutch", false): r.rig.set_meta("clutch", false)
 				r.rig.reach_clear() # (their pistol holds the arms otherwise)
-		if r.role == "survivor": _blood_trail(n, r.node.position, st == "hurt" and r.node.visible and rules.car_of(n) < 0)
+		if r.role == "survivor":
+			var bk := 0
+			if r.node.visible and rules.car_of(n) < 0: bk = 1 if st == "hurt" else (2 if st == "down" else 0)
+			_blood_trail(n, r.node.position, bk)
 		if r.torch: r.torch.visible = r.lit and st in ["ok", "hurt"] and rules.car_of(n) < 0
 		if bool(r.get("v", false)): # vanished (developer tools on their phone): nothing of them shows here
 			r.node.visible = false
@@ -3587,4 +3643,4 @@ func _move(delta: float) -> void:
 		rig.play("idle")
 	if my_role == "survivor" and esc_i < 0:
 		_wound_pose(rig, my_state == "hurt", my_gun != null and my_gun.visible)
-		_blood_trail(my_name, body.global_position, my_state == "hurt")
+		_blood_trail(my_name, body.global_position, 1 if my_state == "hurt" else (2 if my_state == "down" else 0))

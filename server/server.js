@@ -7,7 +7,7 @@ const { Rules } = require('./rules');
 const PORT = process.env.PORT || 8080;
 const MAX_PLAYERS = 7;
 const MAPS = ['forest', 'village', 'fareej', 'rubkhali', 'garage', 'beach', 'city', 'kuwait'];
-const THEMES = ['normal', 'fog', 'rain', 'snow', 'halloween'];
+const THEMES = ['normal', 'fog', 'rain', 'snow', 'halloween', 'sunset'];
 const HIDDEN = ['survivor4']; // never handed out: only a phone that has it unlocked asks for it
 const CHARS = ['killer', 'survivor1', 'survivor2', 'survivor3', 'survivor4', 'survivor5', 'survivor6', 'survivor7', 'survivor8', 'survivor9'];
 const KILLERS = ['killer', 'killer2']; // «البركة القرمزية» and «الوحش»
@@ -196,7 +196,7 @@ const handlers = {
     r.state = 'game';
     r.seed = Math.floor(Math.random() * 1e9);
     const players = r.members.map((m, i) => ({ name: m.name, role: m.role, char: m.char, slot: i }));
-    r.rules = new Rules(players, r.seed, { gun: !!r.gun });
+    r.rules = new Rules(players, r.seed, { gun: !!r.gun, theme: r.theme });
     broadcast(r, { t: 'started', map: r.map, theme: r.theme || 'normal', gun: !!r.gun, seed: r.seed, players });
     notifyRoom(r);
   },

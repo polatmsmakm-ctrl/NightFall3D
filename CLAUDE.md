@@ -1034,3 +1034,50 @@ photographs it lowered and raised.
   the Mobile renderer lights a mesh with its 8 nearest lights only, so one 224 m road was lit by
   8 lamps. All the ground materials are world-space, so the cuts do not show.
 - Kuwait City's air: thin flat fog (x0.35), the moon lights no volumetric fog (no blue haze), the moon at 0.75 of the other maps'. `_kw_look` runs its one-off part once (`_kw_set`). The camp's moon is x0.6 too.
+
+## Blood (`scripts/blood.gd`, `NFBlood`; the owner's three Meshy models)
+- His models, through `prop_bake.py` (new switches `--pitch` to lay a sculpt from the XY plane flat
+  and `--keep` to take one piece out of a sheet of them): `assets/props/blood_pool.glb` (his splash /
+  puddle, 2.6k triangles, 1 m), `blood_smear.glb` (his drag trail, laid flat with `--pitch -90`) and
+  `blood_drop.glb` (the big teardrop out of his sheet of drops, `--keep`, 300 triangles).
+- **One `NFBlood` per round** (`main.blood`, made when the map is ready, under the world): **drops** are
+  his droplet in one MultiMesh (`max_drops` 48, 24 on older phones), simulated on the CPU with gravity
+  and drag, tail up the way they came, **one physics ray per drop per step** (the local player's own
+  capsule excluded) — where a drop lands it leaves a mark on that surface. **Marks** are three
+  ring-buffered MultiMeshes (`caps`: pool 110, smear 40, wall 30; about half on older phones) drawn
+  with `shaders/blood.gdshader`: per instance (INSTANCE_CUSTOM) how far it has spread, how dry it is,
+  how much is left and a seed. Fresh: dark crimson, glossy, its surface moving a little; then it dries
+  dark brown, matte and flat from 30% of `MARK_LIFE` (80 s) and dithers away over the last 15%. A drop
+  that lands on a fresh pool makes that pool spread instead of adding a spot (so blood gathers under
+  someone standing still). Opaque (dithered fade), no shadows, no node made after `setup()`.
+- `bleed(name, feet, kind, cam)` every frame for every survivor on every phone (`main._blood_trail`):
+  hurt = drips from the wound, slow while still, now and then walking, often (two at a time) running,
+  with the runner's speed so they land along the path; running hard also smears now and then. Down =
+  a smear every 0.65 m as they crawl. Fine, healed, hooked (the hook keeps its own drip and pool, now
+  his droplet and his puddle), dead, out, in a car or vanished = nothing. Further than 45 m from the
+  camera the drop is not flown: its mark is laid where it would land.
+- `splash(at, dir, cam)` on every blow (`main._slash`): a spray out of the far side, a splash on a wall
+  within 2.6 m behind them (ray), a pool spreading under them, plus the old GPU mist.
+- `tools/city.tscn` tests it (drops in the air, landing, on the ground, along the path, spreading,
+  drying, fading, a wall, the crawl smear); `tools/shot25.tscn` photographs it.
+
+## The power box everywhere, the old Halloween dark, and «بين العصر والمغرب»
+- **A power cut is the old Halloween night, exactly** (`NightWorld.DARK_*`: ambient (0.09, 0.09, 0.11)
+  at 0.44, a grey moon at 0.14, black fog): `set_grid(false)` tweens to it and back (`_lit` keeps the
+  night's own colours), on every map with a box; lightning and the blackout event keep to it.
+- **Halloween**: every light is **on** to begin with (no more permanent blackout) on a grey night;
+  every map has a power box (`world.has_power_box()`, `_plan_power_box`: decided in `configure`, in
+  front of the market or on a seeded free spot, so it goes out with the layout as `layout.b`), and
+  **the whole map hangs on it** (`grid_all`: every lamp but the pumpkins, and the market). A
+  **survivor** can switch it off («اطفي الكهرباء», input `off`, both rules files, `grid_mode` 1; not
+  for 15 s after a repair, `GRID_OFF_GAP`); the killer can still cut it (2 cuts, 60 s apart); anyone
+  survivor repairs it as before.
+- **«بين العصر والمغرب»** (theme `sunset`, its own row under the weathers, `THEMES` in `server.js`;
+  the camp is at dusk while it is picked): `world._step_sunset` every frame from the round's clock
+  (`round_t` = `rules.clock`, now in the snapshot as `ck`): the sun (the moon's light and the sky's
+  disc, `sun_disc` in `sky.gdshader`, with day / gold / red clouds) goes from 38° to below the horizon
+  over `SUNSET_TIME` 300 s — afternoon light, gold, red, dusk — then pitch dark (DARK_*). The street
+  lights start **off** (`grid_mode` 2, `Rules.set_grid_mode`; the server reads the room's theme) and
+  the whole map hangs on the box: survivors «شغّل أنوار الشارع» (the repair), the killer can cut them
+  again. The HUD counts down «☀ المغرب بعد m:ss», a warning a minute before and a call at dark.
+- `tools/kuwait.tscn` tests Halloween and the sunset; `tools/shot25.tscn` photographs them.

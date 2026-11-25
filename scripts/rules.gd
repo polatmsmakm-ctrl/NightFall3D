@@ -45,6 +45,7 @@ const SENSE_R := 28.0     # «عين الليل»: how close she has to be
 const FIX_MUL := 1.3      # «يد المصلّح»: repairs 30% faster
 const GRID_CUTS := 2      # the killer may pull the power box twice a round
 const GRID_GAP := 60.0    # and only this long after the power came back
+const GRID_OFF_GAP := 15.0 # Halloween: a survivor may switch the power off again this long after it came back
 const GRID_FIX := 12.0    # Kuwait City's power box: one survivor brings the street lights back in 12 s
 const MEND_TIME := 45.0   # «تفتّح»: how long Bloom has to stay hurt (and not hit again) to mend
 const MEDIC_MUL := 1.6    # «طب ميداني»: heals the others 60% faster
@@ -89,6 +90,13 @@ var ev_t := 0.0         # seconds of it left
 var ev_n := ""          # the survivor the alarm gives away
 var ev_fired := false
 var has_grid := false   # the map has a power box (Kuwait City): the killer cuts it, survivors fix it
+## The power box's mode, from the room's weather: Halloween's lights can be switched off by the
+## survivors too, and «بين العصر والمغرب» starts with them off (they come on when someone fixes it).
+func set_grid_mode(m: int) -> void:
+	grid_mode = m
+	grid = m != 2
+
+var grid_mode := 0      # 0 Kuwait City, 1 Halloween (survivors may switch it off too), 2 «بين العصر والمغرب» (starts off)
 var grid := true
 var grid_p := 0.0
 var grid_reps := {}
@@ -203,6 +211,10 @@ func handle(d: Dictionary, from: String) -> Array:
 				grid = false; grid_p = 0.0; grid_reps.clear(); grid_cuts += 1
 				add(from, 40.0)
 				out.append({"k": "grid", "on": false, "by": from})
+		"off": # Halloween: a survivor switches the whole map dark (to hide); a short wait after a repair
+			if not is_killer and has_grid and grid and grid_mode == 1 and free_now(from) and grid_wait <= GRID_GAP - GRID_OFF_GAP:
+				grid = false; grid_p = 0.0; grid_reps.clear()
+				out.append({"k": "grid", "on": false, "by": from, "sv": true})
 		"pfix":
 			if has_grid and not grid and d.get("on", false) and free_now(from): grid_reps[from] = true
 			else: grid_reps.erase(from)
@@ -518,7 +530,7 @@ func snapshot() -> Dictionary:
 	var rd := []
 	for r in roads: rd.append([r.st, r.drv, r.who, snappedf(float(r.t), 0.1), r.why, bool(r.get("flat", false))])
 	return {"tp": traps, "sp": spikes, "rd": rd, "k": "gs", "g": gp, "d": gd, "to": to, "pw": powered, "gn": gun, "s": ss, "pl": pallets, "kc": carrying, "ks": snappedf(stun, 0.01), "kp": snappedf(power_cd, 0.1), "ov": over, "hx": hatch, "sc": sc, "dm": snappedf(doom, 0.1),
-		"dr": doors, "ek": ev_kind if ev_fired else -1, "et": snappedf(ev_t, 0.1), "en": ev_n, "ad": adhan, "pb": [grid, snappedf(grid_p, 0.001), grid_cuts, ceili(grid_wait)] if has_grid else []}
+		"dr": doors, "ek": ev_kind if ev_fired else -1, "et": snappedf(ev_t, 0.1), "en": ev_n, "ad": adhan, "pb": [grid, snappedf(grid_p, 0.001), grid_cuts, ceili(grid_wait)] if has_grid else [], "ck": snappedf(clock, 0.1)}
 
 func apply(v: Dictionary) -> void:
 	for i in mini(gens.size(), v.g.size()):
@@ -557,6 +569,7 @@ func apply(v: Dictionary) -> void:
 	ev_t = float(v.get("et", 0.0))
 	ev_n = str(v.get("en", ""))
 	adhan = int(v.get("ad", 0))
+	if v.has("ck"): clock = float(v.ck)
 	var pb = v.get("pb", [])
 	if pb is Array and (pb as Array).size() >= 2:
 		has_grid = true; grid = bool(pb[0]); grid_p = float(pb[1])

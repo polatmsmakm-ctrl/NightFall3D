@@ -464,7 +464,7 @@ static var force_mist := -1
 ## from the weather the host picked for the round (ضباب), so the start screen already shows you
 ## what you are about to play. force_hour is only for the tests and the screenshots.
 func _time_of_day() -> void:
-	var h: int = force_hour if force_hour >= 0 else 21
+	var h: int = force_hour if force_hour >= 0 else (18 if weather() == "sunset" else 21) # «بين العصر والمغرب»: the camp at dusk
 	if h >= 5 and h < 8: period = "dawn"
 	elif h >= 8 and h < 17: period = "day"
 	elif h >= 17 and h < 20: period = "dusk"

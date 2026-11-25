@@ -7,8 +7,8 @@ signal start_game(cfg: Dictionary)
 
 const MAPS := {"forest": "الغابة", "village": "القرية المهجورة", "fareej": "الفريج", "rubkhali": "الربع الخالي",
 	"garage": "المواقف", "beach": "الشاطئ", "city": "City Life", "kuwait": "مدينة الكويت"}
-const THEMES := {"normal": "ليل", "fog": "ضباب", "rain": "مطر", "snow": "ثلج", "halloween": "هالوين"}
-const THEME_ICON := {"normal": "moon", "fog": "fog", "rain": "rain", "snow": "star", "halloween": "skull"}
+const THEMES := {"normal": "ليل", "fog": "ضباب", "rain": "مطر", "snow": "ثلج", "halloween": "هالوين", "sunset": "بين العصر والمغرب"}
+const THEME_ICON := {"normal": "moon", "fog": "fog", "rain": "rain", "snow": "star", "halloween": "skull", "sunset": "sun"}
 const VERSION := "v1.4"
 const CHARS := {"killer": "القاتل", "survivor1": "الناجية", "survivor2": "الرحّال", "survivor3": "الشريف", "survivor4": "الفالكيري القرمزية", "survivor5": "المحاربة الجريحة", "survivor6": "حارسة الليل", "survivor7": "الباحثة", "survivor8": "وردة الليل", "survivor9": "Bloom", "killer2": "الوحش"}
 const SECRET := "survivor4" # hidden: only on phones Net.has_secret() is true for
@@ -709,7 +709,8 @@ func _page_lobby() -> void:
 			_map_card(id, str(r.map) == id, func(): Net.send({"t": "set", "map": id}), h)
 		var ht := _row()
 		for id in THEMES:
-			var b2 := _button(THEMES[id], func(): Net.send({"t": "set", "theme": id}), ht, true, THEME_ICON[id])
+			if id == "sunset": ht = _row() # a game mode of its own: its own row
+			var b2 := _button(("وضع: " if id == "sunset" else "") + THEMES[id], func(): Net.send({"t": "set", "theme": id}), ht, true, THEME_ICON[id])
 			b2.add_theme_font_size_override("font_size", 20)
 			if str(r.get("theme", "normal")) == id: b2.modulate = Color(1, 0.75, 0.3)
 		var gon: bool = r.get("gun", false)
@@ -798,7 +799,8 @@ func _page_offline() -> void:
 		_map_card(id, off_map == id, func(): off_map = id; _refresh(), h)
 	var ht := _row()
 	for id in THEMES:
-		var b2 := _button(THEMES[id], func(): off_theme = id; NFLobby.last_theme = id; _weather_changed(); _refresh(), ht, true, THEME_ICON[id])
+		if id == "sunset": ht = _row() # a game mode of its own: its own row
+		var b2 := _button(("وضع: " if id == "sunset" else "") + THEMES[id], func(): off_theme = id; NFLobby.last_theme = id; _weather_changed(); _refresh(), ht, true, THEME_ICON[id])
 		b2.add_theme_font_size_override("font_size", 20)
 		if off_theme == id: b2.modulate = Color(1, 0.75, 0.3)
 	_button("الشخصية — %s" % CHARS.get(off_char, off_char), func(): open("chars"), null, true, "star")

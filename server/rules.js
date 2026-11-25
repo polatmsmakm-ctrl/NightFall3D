@@ -20,6 +20,7 @@ const PERK = { survivor1: 'burst', survivor2: 'fix', survivor3: 'lift', survivor
 const MEND_TIME = 45;
 const GRID_CUTS = 2; // the killer may pull the power box twice a round
 const GRID_GAP = 60; // and only this long after the power came back
+const GRID_OFF_GAP = 15; // Halloween: a survivor may switch the power off again this long after it came back
 const GRID_FIX = 12; // Kuwait City's power box: one survivor brings the street lights back in 12 s // «تفتّح»: Bloom, hurt and left alone this long, mends herself
 const FIX_MUL = 1.3, MEDIC_MUL = 1.6, LIFT_W = 1.8, RISE_TIME = 20;
 const TRAPS = 4, HELD_TIME = 4; // the killer's traps armed at once; caught in one: held this long
@@ -27,6 +28,9 @@ const TRAPS = 4, HELD_TIME = 4; // the killer's traps armed at once; caught in o
 class Rules {
   constructor(players, seed = 0, opts = {}) {
     this.gun = !!(opts && opts.gun);
+    // the power box's mode from the room's weather: 1 Halloween (survivors may switch it off too),
+    // 2 «بين العصر والمغرب» (the lights start off and come on when someone fixes it)
+    this.gridMode = opts && opts.theme === 'halloween' ? 1 : (opts && opts.theme === 'sunset' ? 2 : 0);
     this.gens = []; this.gates = []; this.pallets = []; this.s = {}; this.roles = {};
     this.killer = ''; this.carrying = ''; this.stun = 0; this.powerCd = 0;
     this.healers = {}; this.rescuers = {}; this.lastHit = {}; this.powered = false; this.doom = -1; this.over = false; this.clock = 0;
@@ -67,7 +71,7 @@ class Rules {
       this.spikes.push([0, 0, false]);
     }
     for (let i = 0; i < l.p.length; i++) this.pallets.push(0);
-    if (Array.isArray(l.b) && l.b.length >= 2 && l.b.every(Number.isFinite)) { this.hasGrid = true; this.grid = true; this.gridP = 0; this.gridReps = {}; }
+    if (Array.isArray(l.b) && l.b.length >= 2 && l.b.every(Number.isFinite)) { this.hasGrid = true; this.grid = this.gridMode !== 2; this.gridP = 0; this.gridReps = {}; }
     const doors = Array.isArray(l.d) ? l.d.length : 0;
     for (let i = 0; i < Math.min(doors, 40); i++) this.doors.push(false);
     this.ready = true;
@@ -137,6 +141,14 @@ class Rules {
       if (isKiller && this.hasGrid && this.grid && this.gridCuts < GRID_CUTS && this.gridWait <= 0 && this.near(from, L.b, 4)) {
         this.grid = false; this.gridP = 0; this.gridReps = {}; this.gridCuts++; this.add(from, 40);
         out.push({ k: 'grid', on: false, by: from });
+      }
+      return out;
+    }
+    if (d.k === 'off') { // Halloween: a survivor switches the whole map dark (to hide)
+      if (!isKiller && this.hasGrid && this.grid && this.gridMode === 1 && this.freeNow(from)
+          && this.gridWait <= GRID_GAP - GRID_OFF_GAP && this.near(from, L.b, 4)) {
+        this.grid = false; this.gridP = 0; this.gridReps = {};
+        out.push({ k: 'grid', on: false, by: from, sv: true });
       }
       return out;
     }
@@ -470,6 +482,7 @@ class Rules {
       rd: this.roads.map((r) => [r.st, r.drv, r.who, Math.round(r.t * 10) / 10, r.why, !!r.flat]),
       tp: this.traps, sp: this.spikes,
       pb: this.hasGrid ? [this.grid, r3(this.gridP), this.gridCuts, Math.ceil(this.gridWait)] : [],
+      ck: Math.round(this.clock * 10) / 10,
       dr: this.doors, ek: this.evFired ? this.evKind : -1, et: Math.round(this.evT * 10) / 10, en: this.evN, ad: this.adhan,
     };
   }

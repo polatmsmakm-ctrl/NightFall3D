@@ -53,18 +53,74 @@ func _ready() -> void:
 	var ammo0 = m.rules.s["P"].get("ammo", 0)
 	m.rules.s["P"].ammo = 0 # the pistol away (it holds the arms while it is out)
 	m.rules.s["P"].hp = "hurt"
+	await frames(3)
+	var bl: NFBlood = m.blood
+	check(bl != null and bl.sets["pool"].mm.mesh != null and bl.drops_mm.mesh != null, "the blood system runs on his models (pool, smear, drop)")
 	m._on_event({"k": "hurt", "n": "P", "s": "hurt"})
-	var drops0: int = m._blood.size()
-	check(drops0 >= 1, "the blow: a splash of blood on the ground")
+	check(bl.drops_live() >= 6, "the blow: a spray of drops in the air (%d)" % bl.drops_live())
+	check(bl.count("pool") >= 1, "and a pool spreading under her")
+	for i in 90: await tree.physics_frame
+	check(bl.landed >= 6 and bl.drops_live() < 6, "the drops fall and land (%d landed)" % bl.landed)
+	var pm: Dictionary = bl.sets["pool"]
+	var on_ground := true
+	for i in int(pm.n):
+		var t: Transform3D = pm.xf[i]
+		if absf(t.origin.y - m.body.global_position.y) > 0.6: on_ground = false
+	check(on_ground, "every pool lies on the ground under her, not floating or sunk")
+	var spread0: float = bl._spread(pm, 0)
+	var marks0: int = bl.count("pool") + bl.count("smear")
+	var landed0: int = bl.landed
+	var start: Vector3 = m.body.global_position
 	m.stick_vec = Vector2(0, -1)
-	for i in 120: await tree.physics_frame
+	for i in 150: await tree.physics_frame
 	m.stick_vec = Vector2.ZERO
 	await frames(2)
-	check(m._blood.size() > drops0 + 1, "hurt, she leaves drops of blood as she walks (%d)" % m._blood.size())
+	check(bl.landed > landed0 + 1, "hurt, she drips as she walks (%d more drops)" % (bl.landed - landed0))
+	var near := 0
+	for i in int(pm.n):
+		var t: Transform3D = pm.xf[i]
+		var o := t.origin
+		var ab := m.body.global_position - start
+		var tt := clampf((o - start).dot(ab) / maxf(ab.length_squared(), 0.01), 0.0, 1.0)
+		if Vector2(o.x, o.z).distance_to(Vector2(start.x + ab.x * tt, start.z + ab.z * tt)) < 1.2: near += 1
+	check(near >= 2, "and the drops lie along the way she went (%d)" % near)
+	check(bl._spread(pm, 0) > spread0 or spread0 >= 0.99, "the first pool keeps spreading")
 	check(m.rig.get_meta("clutch", false) and m.rig.reach_mod.use[0] and not m.rig.reach_mod.use[1], "and holds the wound with one hand")
 	m.rules.s["P"].hp = "ok"
 	await frames(3)
 	check(not m.rig.get_meta("clutch", false), "healed, the hand comes away")
+	check(not bl._st.has("P"), "and the bleeding stops")
+	# drying and fading
+	var keep := bl._clock
+	bl._clock += NFBlood.MARK_LIFE * 0.7
+	bl._tick = 0.0
+	await frames(2)
+	var c: Color = (bl.sets["pool"].mm as MultiMesh).get_instance_custom_data(0)
+	check(c.g > 0.3, "an old pool has dried (%.2f)" % c.g)
+	bl._clock = keep + NFBlood.MARK_LIFE + 1.0
+	bl._tick = 0.0
+	await frames(2)
+	check(bl.count("pool") == 0 and bl.count("smear") == 0, "and is gone at the end of its life")
+	# a wall behind her takes the splash
+	var wall := StaticBody3D.new()
+	var cs := CollisionShape3D.new()
+	var bx := BoxShape3D.new()
+	bx.size = Vector3(4, 4, 0.3)
+	cs.shape = bx
+	wall.add_child(cs)
+	m.add_child(wall)
+	wall.global_position = m.body.global_position + Vector3(0, 1.5, 1.6)
+	await tree.physics_frame
+	await tree.physics_frame
+	bl.splash(m.body.global_position + Vector3(0, 1.15, 0), Vector3(0, 0, 1))
+	check(bl.count("wall") >= 1, "a wall behind her takes the splash (%d)" % bl.count("wall"))
+	wall.queue_free()
+	# down: a smear behind her as she crawls
+	var sm0: int = bl.count("smear")
+	for i in 60:
+		bl.bleed("Q", Vector3(m.body.global_position.x + i * 0.05, m.body.global_position.y, m.body.global_position.z - 3.0), 2)
+		await tree.physics_frame
+	check(bl.count("smear") > sm0, "down, she drags a smear behind her (%d)" % (bl.count("smear") - sm0))
 	m.rules.s["P"].ammo = ammo0
 	var kr = m.remotes["K"].rig
 	check(kr.hunch != null, "«الوحش» moves hunched (NFHunch on his skeleton)")

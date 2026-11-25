@@ -225,6 +225,8 @@ def main():
     ap.add_argument('--box-faces', type=int, default=3500, help='at least this many faces for a --box piece (a door is a small part of a car\'s area, but it is seen up close)')
     ap.add_argument('--part', action='append', default=[], metavar='NAME,CX,CY,CZ,R,AX,AY,AZ,T', help='cut a disc-shaped piece out on its own node')
     ap.add_argument('--wheels', default=None, metavar='YF,ZF,YR,ZR,R,XIN', help='a car: cut the four wheels out, each on its own axle node')
+    ap.add_argument('--pitch', type=float, default=0.0, help='degrees about +X first (a sculpt lying in the XY plane: -90 lays it flat on the ground)')
+    ap.add_argument('--keep', default=None, metavar='X0,Y0,Z0,X1,Y1,Z1', help='only the faces whose centre lies in this box of the source (its own units, before anything else)')
     ap.add_argument('--soft', action='store_true',
                     help='let thin open pieces (leaves, cards, grass) pinch shut as they collapse, like hair on the '
                          'characters: without it a sculpt made of open leaf cards refuses most collapses (the world-tree)')
@@ -235,6 +237,19 @@ def main():
         raise SystemExit('give --width or --height')
     sj, sb = rc.load(a.src)
     P, T, F = rc.mesh_of(sj, sb)
+    if a.keep:
+        k = np.array([float(v) for v in a.keep.split(',')])
+        cc = P[F].mean(axis=1)
+        F = F[np.all((cc >= k[:3]) & (cc <= k[3:]), axis=1)]
+        used = np.unique(F)
+        remap = np.full(len(P), -1, np.int64)
+        remap[used] = np.arange(len(used))
+        P, T, F = P[used], T[used], remap[F]
+        print('kept %d faces' % len(F), flush=True)
+    if a.pitch:
+        r = np.radians(a.pitch)
+        c, sn = np.cos(r), np.sin(r)
+        P = P @ np.array([[1, 0, 0], [0, c, sn], [0, -sn, c]], dtype=P.dtype)
     P, s = place(P, a.yaw, a.width, a.height, a.depth, tuple(float(v) for v in a.shift.split(',')))
     print('placed: %.2f x %.2f x %.2f m (scale %.3f), %d faces' % (np.ptp(P[:, 0]), np.ptp(P[:, 1]), np.ptp(P[:, 2]), s, len(F)), flush=True)
     sculpt = rb.Sculpt(P, T, F, rb.source_images(sj, sb))

@@ -66,7 +66,9 @@ jobs:
           # through Mesa's software Vulkan (lavapipe)
           # a character's pose sheet through Forward+, close-up model (NF_SHEET=survivor6 by default)
           NF_CHARS=${NF_SHEET:-killer2,survivor9} NF_HI=1 NF_SHOTS=$PWD/shots timeout 900 xvfb-run -a godot --rendering-driver vulkan --resolution 1564x720 --path . res://tools/shot14.tscn 2>&1 | tee -a all.log | grep -v "^\s*at:" | tail -15 || true
-          # Kuwait City against his reference picture (first: it is the one to look at)
+          # the blood, «بين العصر والمغرب» and Halloween's power box (first: the newest)
+          NF_SHOTS=$PWD/shots timeout 1500 xvfb-run -a godot --rendering-driver vulkan --resolution 1564x720 --path . res://tools/shot25.tscn 2>&1 | tee -a all.log | grep -v "^\s*at:" | tail -15 || true
+          # Kuwait City against his reference picture
           NF_SHOTS=$PWD/shots timeout 1500 xvfb-run -a godot --rendering-driver vulkan --resolution 1564x720 --path . res://tools/shot24.tscn 2>&1 | tee -a all.log | grep -v "^\s*at:" | tail -15 || true
           # the November batch: City Life, «الوحش», Bloom, his props, the pistol's shot
           NF_SHOTS=$PWD/shots timeout 1200 xvfb-run -a godot --rendering-driver vulkan --resolution 1564x720 --path . res://tools/shot23.tscn 2>&1 | tee -a all.log | grep -v "^\s*at:" | tail -15 || true

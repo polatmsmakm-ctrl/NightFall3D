@@ -169,9 +169,11 @@ func _random_site(rng: RandomNumberGenerator, pad: float, lo: float, hi: float) 
 
 ## `seed` shuffles where the generators, hooks, pallets, hatches are, so every round plays differently.
 ## Everyone in a room gets the same seed from the server, so they all build the same layout.
+var layout_seed := 1
 func configure(id: String, seed := 1, th := "normal") -> void:
 	map_id = id
 	theme = th
+	layout_seed = seed
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed
 	noise.frequency = 0.012
@@ -330,6 +332,7 @@ func configure(id: String, seed := 1, th := "normal") -> void:
 		hatch_points.append(Vector3(hp.x, _raw_h(hp.x, hp.y), hp.y))
 	_plan_road()
 	_plan_trees()
+	if has_power_box(): _plan_power_box() # decided with the layout: the server hears where it is
 
 ## The hooks along each escape road: one every 60 m on alternating sides of the lane, so a car
 ## the killer stops can be emptied onto the nearest one.
@@ -440,6 +443,8 @@ func build() -> void:
 	_build_doors()
 	if map_id == "kuwait": _build_mosque() # his mosque where the market would be
 	elif map_id != "garage": _build_market()
+	if map_id != "kuwait" and has_power_box(): _build_power_box()
+	grid_all = theme in ["halloween", "sunset"] # the whole map hangs on the box (Kuwait City otherwise: its street lights)
 	build_step = 2
 	await get_tree().process_frame
 	if not map_id in ["garage", "kuwait"]: _build_scatter() # the garage and Kuwait City park their own cars
@@ -641,11 +646,11 @@ func _build_environment() -> void:
 			env.fog_light_color = Color(0.2, 0.24, 0.32)
 			env.fog_density = fog_density * 1.5
 			env.adjustment_saturation = 0.72
-		"halloween": # pitch dark, the colour of nothing: flashlights and the pumpkins are the light
-			env.ambient_light_color = Color(0.09, 0.09, 0.11)
-			env.ambient_light_energy = 0.22
-			env.fog_light_color = Color(0.025, 0.025, 0.03)
-			env.fog_density = fog_density * 1.6
+		"halloween": # a grey night with every light on; the power box takes it to the dark (DARK_*)
+			env.ambient_light_color = Color(0.13, 0.13, 0.16)
+			env.ambient_light_energy = 0.8
+			env.fog_light_color = Color(0.05, 0.05, 0.06)
+			env.fog_density = fog_density * 1.3
 			env.adjustment_saturation = 0.85
 		"rain": # «مطر»: a wet, blue-grey night; the ground shines and the lightning lights it all
 			env.ambient_light_color = Color(0.17, 0.2, 0.26)
@@ -701,7 +706,7 @@ func _build_environment() -> void:
 			moon.light_energy = 1.35
 		"halloween":
 			moon.light_color = Color(0.62, 0.68, 0.82)
-			moon.light_energy = 0.1 # barely a moon: the pumpkins and the torches are the light
+			moon.light_energy = 0.9
 		"rain":
 			moon.light_color = Color(0.62, 0.7, 0.9)
 			moon.light_energy = 0.9 # behind the clouds
@@ -1171,11 +1176,76 @@ func _grid_glow_of(n: Node) -> void:
 		grid_mats.append(m)
 		_grid_glow.append(2.4)
 
+# ---------------- «بين العصر والمغرب» ----------------
+## The round starts in the afternoon and the sun goes down over SUNSET_TIME (five minutes of the
+## round's own clock, `round_t`, the same on every phone): golden light, then the sky reddens, then
+## dusk, then nothing. From then on the night is pitch dark (DARK_*) until a survivor turns the street
+## lights on at the power box (`grid_off` false); the killer can cut them again. Written every frame.
+const SUNSET_TIME := 300.0
+var round_t := 0.0           # the round's clock (main copies the rules' one in)
+var _dk := 1.0               # how far into the pitch dark (follows the power box)
+var _sun_az := Vector2(0.3, -0.9).normalized() # where it goes down (where the moon hangs on the other nights)
+func sun_left() -> float: return maxf(SUNSET_TIME - round_t, 0.0)
+func night_fell() -> bool: return round_t >= SUNSET_TIME
+
+func _step_sunset(dt: float) -> void:
+	var t := clampf(round_t / SUNSET_TIME, 0.0, 1.0)
+	var el := lerpf(38.0, -7.0, smoothstep(0.0, 1.0, t) * 0.35 + t * 0.65) # degrees over the horizon
+	var day := clampf((el - 3.0) / 17.0, 0.0, 1.0)
+	var warm := smoothstep(30.0, 6.0, el) * smoothstep(-7.0, 0.0, el)
+	var night := 1.0 - smoothstep(-6.0, 5.0, el)
+	_dk = move_toward(_dk, 1.0 if grid_off else 0.0, dt * 1.5)
+	var r := deg_to_rad(el)
+	var dir := Vector3(_sun_az.x * cos(r), sin(r), _sun_az.y * cos(r)).normalized()
+	_sky_mat.set_shader_parameter("moon_dir", dir)
+	_sky_mat.set_shader_parameter("day", day)
+	_sky_mat.set_shader_parameter("warm", warm)
+	_sky_mat.set_shader_parameter("sun_disc", 1.0 if el > -3.0 else 0.0)
+	if map_id == "rubkhali": _sky_mat.set_shader_parameter("sun", day) # the sandstorm goes with the sun
+	env.tonemap_exposure = lerpf(1.0, _exp_base, night) * Gfx.brightness
+	if _blood: return # the gates have power: the blood moon owns the light now
+	var desert := map_id == "rubkhali"
+	var amb_day := Color(0.72, 0.6, 0.44) if desert else Color(0.6, 0.67, 0.8)
+	var amb_warm := Color(0.78, 0.55, 0.38)
+	var amb_dusk := Color(0.24, 0.23, 0.36)
+	var night_amb := Color(0.16, 0.2, 0.32).lerp(DARK_AMB, _dk)
+	var col := amb_day.lerp(amb_warm, warm).lerp(amb_dusk, smoothstep(4.0, -3.0, el)).lerp(night_amb, night)
+	var e := lerpf(lerpf(1.45, 0.95, warm), lerpf(1.3, DARK_AMB_E, _dk), night)
+	env.ambient_light_color = col
+	env.ambient_light_energy = e
+	var fog_day := Color(0.76, 0.6, 0.38) if desert else Color(0.62, 0.68, 0.78)
+	env.fog_light_color = fog_day.lerp(Color(0.8, 0.5, 0.32), warm).lerp(Color(0.07, 0.09, 0.14).lerp(DARK_FOG, _dk), night)
+	env.fog_density = fog_base * lerpf(0.5, 1.0, night)
+	moon.basis = Basis.looking_at(-dir)
+	moon.light_color = Color(1.0, 0.94, 0.84).lerp(Color(1.0, 0.52, 0.26), warm)
+	moon.light_energy = 2.2 * pow(clampf((el + 1.0) / 22.0, 0.0, 1.0), 0.7)
+	moon.shadow_enabled = el > 0.5
+
+## The power out is the old Halloween night, exactly (the owner): the colour of nothing, a moon you
+## can hardly see, black fog. Only the torches (and the pumpkins) light anything until it is fixed.
+const DARK_AMB := Color(0.09, 0.09, 0.11)
+const DARK_AMB_E := 0.44     # (0.22 x the lighter nights' 2.0, as it was)
+const DARK_MOON := Color(0.62, 0.68, 0.82)
+const DARK_MOON_E := 0.14    # (0.1 x 1.4, as it was)
+const DARK_FOG := Color(0.025, 0.025, 0.03)
+var grid_all := false        # every lamp of the map hangs on the box (all but Kuwait City: there, the street lights)
+var _lit := {}               # the lit night's colours, kept while the power is out
+
 func set_grid(on: bool) -> void:
-	if env and grid_off == on: # the night closes in while the power is out: only torches help
-		var tw2 := create_tween()
-		tw2.tween_property(env, "ambient_light_energy", _amb_base * (1.0 if on else 0.3), 0.6 if on else 0.3)
-		if moon: tw2.parallel().tween_property(moon, "light_energy", _moon_base * (1.0 if on else 0.35), 0.6 if on else 0.3)
+	if env and grid_off == on and theme != "sunset": # (the sunset mode draws its own sky: _step_sunset)
+		if not on:
+			_lit = {"amb": env.ambient_light_color, "fog": env.fog_light_color, "moon": moon.light_color if moon else Color.WHITE}
+		var tw2 := create_tween().set_parallel(true)
+		var d := 0.6 if on else 0.35
+		tw2.tween_property(env, "ambient_light_energy", _amb_base if on else DARK_AMB_E, d)
+		tw2.tween_property(env, "ambient_light_color", _lit.get("amb", env.ambient_light_color) if on else DARK_AMB, d)
+		tw2.tween_property(env, "fog_light_color", _lit.get("fog", env.fog_light_color) if on else DARK_FOG, d)
+		if moon:
+			tw2.tween_property(moon, "light_energy", _moon_base if on else DARK_MOON_E, d)
+			tw2.tween_property(moon, "light_color", _lit.get("moon", moon.light_color) if on else DARK_MOON, d)
+	if grid_off == on and not garage_panels.is_empty(): # the car park's strip lights hang on it too
+		var tw4 := create_tween().set_parallel(true)
+		for m in garage_panels: tw4.tween_property(m, "emission_energy_multiplier", 3.2 if (on and not blackout) else 0.05, 0.5)
 	grid_off = not on
 	for i in grid_mats.size():
 		var tw := create_tween()
@@ -1602,12 +1672,44 @@ func _kw_look() -> void:
 
 ## The street lights' power box: a grey cabinet on the west sidewalk with a warning plate and a lamp
 ## on top (green while the power is on, red when it has been cut). Drawn on everyone's map.
+## Every map has a power box in Halloween and «بين العصر والمغرب»: in front of the market where there
+## is one (where everybody passes), otherwise on a free spot picked from the room's seed, so every
+## phone puts it in the same place. Kuwait City keeps its own on the west sidewalk.
+func has_power_box() -> bool:
+	return map_id == "kuwait" or theme in ["halloween", "sunset"]
+
+var power_box_yaw := PI / 2.0
+func _plan_power_box() -> void:
+	if map_id == "kuwait":
+		power_box = KW_BOX
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = layout_seed * 31 + 4049
+	var at := Vector3.INF
+	if not market.is_empty():
+		var mrot := Basis(Vector3.UP, float(market.yaw))
+		for k in 16:
+			var off := mrot * Vector3(rng.randf_range(-10.0, 10.0), 0.0, float(market.d) / 2.0 + rng.randf_range(6.0, 11.0))
+			var c: Vector3 = market.pos + off
+			if absf(c.x) > WALL - 8.0 or absf(c.z) > WALL - 8.0: continue
+			if in_site(c.x, c.z, 1.5) or near_tree(c.x, c.z, 2.0): continue
+			if map_id == "beach" and c.z > BEACH_SHORE - 4.0: continue
+			at = Vector3(c.x, _raw_h(c.x, c.z), c.z)
+			break
+	if at == Vector3.INF:
+		var p2 := _random_site(rng, 2.0, 10.0, 60.0)
+		at = Vector3(p2.x, _raw_h(p2.x, p2.y), p2.y)
+	power_box = at
+	power_box_yaw = rng.randf() * TAU
+	sites.append([at.x, at.z, at.y, 1.6])
+
 func _build_power_box() -> void:
-	power_box = KW_BOX
+	var at := power_box
+	var yaw := power_box_yaw
 	var body := StaticBody3D.new()
 	body.name = "PowerBox"
-	body.position = KW_BOX
-	body.rotation.y = PI / 2.0 # its doors toward the road
+	body.position = at
+	body.rotation.y = yaw # (Kuwait City: its doors toward the road)
 	var grey := _pbr(Color(0.32, 0.34, 0.33), Color(0.5, 0.52, 0.5), 0.02, Vector3(0.6, 0.6, 0.6), 0.5, 0.6)
 	_box(body, Vector3(1.4, 1.7, 0.7), Vector3(0, 0.85, 0), grey)
 	_mesh_box(body, Vector3(1.5, 0.08, 0.8), Vector3(0, 1.74, 0), grey)
@@ -1630,7 +1732,7 @@ func _build_power_box() -> void:
 	l.position = Vector3(0, 2.4, 0.8)
 	body.add_child(l)
 	add_child(body)
-	_blob(KW_BOX, 1.2)
+	_blob(at, 1.2)
 
 # ---------------- «City Life» ----------------
 ## The towers over the shop fronts, the streets and their lamps, neon, and the owner's cyberpunk
@@ -2824,12 +2926,11 @@ func set_door(i: int, shut: bool) -> void:
 
 ## The blackout event: every street and house light goes dark, and the night closes in.
 func set_blackout(on: bool) -> void:
-	if theme == "halloween" and not on and blackout: return # the dark stays all round
 	if on == blackout: return
 	blackout = on
 	if env == null: return
 	var tw := create_tween()
-	tw.tween_property(env, "ambient_light_energy", (0.45 if on else 1.0) * _amb_base, 1.2)
+	tw.tween_property(env, "ambient_light_energy", (0.45 if on else 1.0) * (DARK_AMB_E if grid_off else _amb_base), 1.2)
 	for m in garage_panels: # the strip lights go dead with everything else
 		tw.parallel().tween_property(m, "emission_energy_multiplier", 0.05 if on else 3.2, 1.0)
 	var lit := not on and not grid_off # Kuwait City's lamp heads and their glare go dark too
@@ -3665,11 +3766,13 @@ func _step_lightning(dt: float) -> void:
 	_bolt = maxf(_bolt - dt * 2.6, 0.0)
 	# two strokes: bright, a dip, bright again, fading
 	var k := _bolt * (0.6 + 0.4 * absf(sin(_bolt * 18.0)))
-	if moon: moon.light_energy = _moon_base * (1.0 + k * 3.5)
-	if env: env.ambient_light_energy = _amb_base * (1.0 + k * 1.6)
+	var mb := DARK_MOON_E if grid_off else _moon_base # the power out: the flash lights the dark, then it is dark again
+	var ab := DARK_AMB_E if grid_off else _amb_base
+	if moon: moon.light_energy = mb * (1.0 + k * 3.5)
+	if env: env.ambient_light_energy = ab * (1.0 + k * 1.6)
 	if _bolt <= 0.0:
-		if moon: moon.light_energy = _moon_base
-		if env: env.ambient_light_energy = _amb_base
+		if moon: moon.light_energy = mb
+		if env: env.ambient_light_energy = ab
 
 ## Rain makes every surface wet: rougher things get glossier and a little darker (the reflections
 ## of the lamps then run over the ground). Applied to the map's own materials once they exist.
@@ -3750,11 +3853,13 @@ func _apply_quality() -> void:
 
 func _process(_dt: float) -> void:
 	var t := Time.get_ticks_msec() / 1000.0
+	if theme == "sunset" and env and moon: _step_sunset(_dt)
 	if not animals.is_empty(): _step_animals(_dt)
 	for i in amb_lights.size():
 		var e: Array = amb_lights[i]
 		var l: Light3D = e[0]
-		var want := 0.0 if (blackout or (grid_off and e.size() > 5 and bool(e[5])) or (theme == "halloween" and not pumpkin_lights.has(l))) else 1.0
+		var gridded := e.size() > 5 and bool(e[5]) or (grid_all and not pumpkin_lights.has(l))
+		var want := 0.0 if (blackout or (grid_off and gridded)) else 1.0
 		# a house light shies away when the killer is almost on top of it
 		if want > 0.0 and bool(e[2]) and killer_at.distance_to(l.global_position) < 25.0: want = 0.12
 		e[4] = move_toward(float(e[4]), want, _dt * 2.5)
@@ -3765,7 +3870,7 @@ func _process(_dt: float) -> void:
 	for ml in market_lights: # blackout while the killer is inside; a rare stutter otherwise
 		var base: float = ml[1]
 		if market_t > 0.0: ml[0].light_energy = base if sin(t * 43.0) > 0.1 else 0.0
-		elif market_dark: ml[0].light_energy = 0.0
+		elif market_dark or (grid_off and grid_all): ml[0].light_energy = 0.0
 		else: ml[0].light_energy = base * (0.25 if (sin(t * 0.37) > 0.985 and sin(t * 31.0) > 0.0) else 1.0)
 	for g in gen_nodes: # a generator about to start: its lamps stutter on and off
 		if g.done: continue
@@ -4152,7 +4257,7 @@ func _build_theme_props() -> void:
 	if not _pumpkin_xf.is_empty():
 		for m in _kw_many("pumpkin", _pumpkin_xf, Vector3.ZERO, 0.0, 120.0, true):
 			_pumpkin_glow(m)
-	set_blackout(true) # every street and house lamp out for the whole round
+	# (the lights stay on now: the power box turns them out, see set_grid)
 	for hp in hook_points: # webs on the hooks
 		_cobweb(hp + Vector3(0, 3.0, 0), rng.randf() * TAU, 1.0)
 
