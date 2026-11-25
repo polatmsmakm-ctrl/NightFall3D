@@ -132,6 +132,7 @@ func _ready() -> void:
 		if g.world.ready_done: break
 	await frames(20)
 	var gw = g.world
+	g.rules.ev_at = 99999.0 # (the jumps in the clock below would set off the round's own event)
 	check(gw.power_box != Vector3.INF and g.rules.has_grid and not g.rules.grid, "the street lights start off, a power box on the map")
 	check(gw.moon.light_energy > 1.2 and gw.env.ambient_light_energy > 1.0 and gw.moon.global_basis.z.y > 0.3, "it is afternoon: the sun is high (%.2f)" % gw.moon.light_energy)
 	g.rules.clock = 200.0
@@ -145,13 +146,15 @@ func _ready() -> void:
 	await frames(10)
 	check(g.ctx.has("interact") and g.ctx.interact.kind == "pfix" and g.ctx.interact.label == "شغّل أنوار الشارع", "at the box: «شغّل أنوار الشارع»")
 	g.rules.handle({"k": "pfix", "on": true}, "P")
-	for i in 13:
+	for i in 40: # (and past the round's own blackout event, which the jumps in the clock set off)
 		for e in g.rules.tick(1.0): g._on_event(e)
-	g.rules.clock = 320.0
+	g.world.set_blackout(false)
+	g.rules.clock = 420.0
 	await frames(70)
 	var lit_s := 0
 	for e in gw.amb_lights: if (e[0] as Light3D).light_energy > 0.05: lit_s += 1
 	check(g.rules.grid and lit_s > 0 and gw.env.ambient_light_energy > 0.9, "on: the lamps light the night (%d lamps)" % lit_s)
+	check(gw.moon_now > 15.0 and gw.moon.light_energy > 0.1 and gw.moon.global_basis.z.y > 0.2, "the moon has come up on the other side (%.0f°)" % gw.moon_now)
 	g.rules.grid_wait = 0.0
 	check(not g.rules.handle({"k": "cut"}, "K").is_empty(), "and the killer can cut them again")
 	g.queue_free()

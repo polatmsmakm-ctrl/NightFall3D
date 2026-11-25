@@ -80,7 +80,7 @@ func _ready() -> void:
 	for i in int(pm.n):
 		var t: Transform3D = pm.xf[i]
 		var o := t.origin
-		var ab := m.body.global_position - start
+		var ab: Vector3 = m.body.global_position - start
 		var tt := clampf((o - start).dot(ab) / maxf(ab.length_squared(), 0.01), 0.0, 1.0)
 		if Vector2(o.x, o.z).distance_to(Vector2(start.x + ab.x * tt, start.z + ab.z * tt)) < 1.2: near += 1
 	check(near >= 2, "and the drops lie along the way she went (%d)" % near)

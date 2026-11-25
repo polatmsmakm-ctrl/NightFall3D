@@ -64,6 +64,7 @@ func _ready() -> void:
 	await frames(5)
 	# --- «بين العصر والمغرب»
 	var g = await round_of("village", "sunset", 9)
+	g.rules.ev_at = 99999.0 # no blackout or fog event in the middle of the pictures
 	var gc := Camera3D.new()
 	g.add_child(gc)
 	gc.fov = 62.0
@@ -75,8 +76,13 @@ func _ready() -> void:
 		await frames(60)
 		await shot(v[0])
 	g.rules.grid = true
+	g.rules.clock = 330.0
 	await frames(90)
-	await shot("25_sunset_6_lights_on")
+	await shot("25_sunset_6_lights_on_moon_rising")
+	gc.look_at(gc.global_position + Vector3(-0.3, 0.35, 0.9)) # the other way: the moon up
+	g.rules.clock = 440.0
+	await frames(60)
+	await shot("25_sunset_7_moon_up")
 	g.queue_free()
 	await frames(5)
 	# --- Halloween: lit, then switched off

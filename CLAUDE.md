@@ -1080,4 +1080,7 @@ photographs it lowered and raised.
   lights start **off** (`grid_mode` 2, `Rules.set_grid_mode`; the server reads the room's theme) and
   the whole map hangs on the box: survivors «شغّل أنوار الشارع» (the repair), the killer can cut them
   again. The HUD counts down «☀ المغرب بعد m:ss», a warning a minute before and a call at dark.
+  **The sun moves** (down and drifting round, the light and the disc with it), and once it is gone
+  **the moon comes up** on the other side of the sky over `MOON_RISE` 150 s (the sky's disc becomes his
+  moon picture; its light is cold, and faint — `DARK_MOON_E` — while the power is out). `moon_now`.
 - `tools/kuwait.tscn` tests Halloween and the sunset; `tools/shot25.tscn` photographs them.

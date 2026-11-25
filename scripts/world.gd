@@ -1182,6 +1182,8 @@ func _grid_glow_of(n: Node) -> void:
 ## dusk, then nothing. From then on the night is pitch dark (DARK_*) until a survivor turns the street
 ## lights on at the power box (`grid_off` false); the killer can cut them again. Written every frame.
 const SUNSET_TIME := 300.0
+const MOON_RISE := 150.0     # the moon comes up over this long once the sun is gone
+var moon_now := -10.0        # the moon's height in degrees (tests)
 var round_t := 0.0           # the round's clock (main copies the rules' one in)
 var _dk := 1.0               # how far into the pitch dark (follows the power box)
 var _sun_az := Vector2(0.3, -0.9).normalized() # where it goes down (where the moon hangs on the other nights)
@@ -1195,12 +1197,22 @@ func _step_sunset(dt: float) -> void:
 	var warm := smoothstep(30.0, 6.0, el) * smoothstep(-7.0, 0.0, el)
 	var night := 1.0 - smoothstep(-6.0, 5.0, el)
 	_dk = move_toward(_dk, 1.0 if grid_off else 0.0, dt * 1.5)
+	# the sun moves across the sky as it goes down (it drifts round as well as down), and once it is
+	# gone the moon comes up on the other side over MOON_RISE seconds
 	var r := deg_to_rad(el)
-	var dir := Vector3(_sun_az.x * cos(r), sin(r), _sun_az.y * cos(r)).normalized()
-	_sky_mat.set_shader_parameter("moon_dir", dir)
+	var az := _sun_az.rotated(deg_to_rad(lerpf(-12.0, 6.0, t)))
+	var dir := Vector3(az.x * cos(r), sin(r), az.y * cos(r)).normalized()
+	var since := round_t - SUNSET_TIME
+	var mel := lerpf(-8.0, 34.0, smoothstep(0.0, 1.0, clampf(since / MOON_RISE, 0.0, 1.0))) if since > -20.0 else -10.0
+	var mr := deg_to_rad(mel)
+	var maz := (-_sun_az).rotated(deg_to_rad(lerpf(-20.0, 10.0, clampf(since / MOON_RISE, 0.0, 1.0))))
+	var mdir := Vector3(maz.x * cos(mr), sin(mr), maz.y * cos(mr)).normalized()
+	var sun_up := el > -3.0
+	_sky_mat.set_shader_parameter("moon_dir", dir if sun_up else mdir)
 	_sky_mat.set_shader_parameter("day", day)
 	_sky_mat.set_shader_parameter("warm", warm)
-	_sky_mat.set_shader_parameter("sun_disc", 1.0 if el > -3.0 else 0.0)
+	_sky_mat.set_shader_parameter("sun_disc", 1.0 if sun_up else 0.0)
+	moon_now = mel
 	if map_id == "rubkhali": _sky_mat.set_shader_parameter("sun", day) # the sandstorm goes with the sun
 	env.tonemap_exposure = lerpf(1.0, _exp_base, night) * Gfx.brightness
 	if _blood: return # the gates have power: the blood moon owns the light now
@@ -1216,10 +1228,16 @@ func _step_sunset(dt: float) -> void:
 	var fog_day := Color(0.76, 0.6, 0.38) if desert else Color(0.62, 0.68, 0.78)
 	env.fog_light_color = fog_day.lerp(Color(0.8, 0.5, 0.32), warm).lerp(Color(0.07, 0.09, 0.14).lerp(DARK_FOG, _dk), night)
 	env.fog_density = fog_base * lerpf(0.5, 1.0, night)
-	moon.basis = Basis.looking_at(-dir)
-	moon.light_color = Color(1.0, 0.94, 0.84).lerp(Color(1.0, 0.52, 0.26), warm)
-	moon.light_energy = 2.2 * pow(clampf((el + 1.0) / 22.0, 0.0, 1.0), 0.7)
-	moon.shadow_enabled = el > 0.5
+	if el > -1.0: # the sun's light
+		moon.basis = Basis.looking_at(-dir)
+		moon.light_color = Color(1.0, 0.94, 0.84).lerp(Color(1.0, 0.52, 0.26), warm)
+		moon.light_energy = 2.2 * pow(clampf((el + 1.0) / 22.0, 0.0, 1.0), 0.7)
+		moon.shadow_enabled = el > 0.5
+	else: # the moon's: cold, faint while the power is out, up as it climbs
+		moon.basis = Basis.looking_at(-mdir)
+		moon.light_color = Color(0.6, 0.68, 0.95).lerp(DARK_MOON, _dk)
+		moon.light_energy = lerpf(_moon_base, DARK_MOON_E, _dk) * smoothstep(-2.0, 12.0, mel)
+		moon.shadow_enabled = mel > 4.0
 
 ## The power out is the old Halloween night, exactly (the owner): the colour of nothing, a moon you
 ## can hardly see, black fog. Only the torches (and the pumpkins) light anything until it is fixed.
