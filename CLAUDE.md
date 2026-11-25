@@ -1084,3 +1084,50 @@ photographs it lowered and raised.
   **the moon comes up** on the other side of the sky over `MOON_RISE` 150 s (the sky's disc becomes his
   moon picture; its light is cold, and faint — `DARK_MOON_E` — while the power is out). `moon_now`.
 - `tools/kuwait.tscn` tests Halloween and the sunset; `tools/shot25.tscn` photographs them.
+
+## «وضع القنّاص» (the sniper mode; Kuwait City only) and the car's headlights
+- **The mode**: room option `set {sniper}` (`room.sniper`, `started.sniper`; turning it on sets the map to
+  Kuwait City, picking another map turns it off — `server.js`), trial mode `GameMenu.off_sniper`. Both
+  rules files (`sniper`, `rules.js` from the room's `opts.sniper`): **one gate** — when the generators
+  are done only gate 0 (south, the Kuwait Towers' side) opens, nobody boards road 1's car — and **no
+  moon** (`doom` stays -1): the round runs until everyone is dead or out. Input `snipe {n, p}` (the
+  killer's phone says whom the bullet hit and where it struck; `SNIPE_CD` 1.2 s, no limit): a
+  survivor on their feet is **down at once** (`_down`; «جلد قاسي» does not save them) and bleeds out
+  in `BLEED_TIME` unless healed. Event `snipe {by, n, p}`.
+- **The tower** (`world._build_sniper_tower`, `world.sniper` set before `configure`, which keeps its
+  ground free of objectives): a 30 x 12 x 13 m block across the north end of the Gulf Road in front of
+  the shut north gate (`SN_FACE` 96 .. `SN_BACK` 108, `SN_HALF` 15, roof `SN_H` 13), a steel stair
+  along its south face — two flights (collision = sloping slabs, 32°; the steps drawn on them as one
+  MultiMesh each) with a landing between and one at the roof's corner, a yellow rail and its wall
+  on the open side. At the foot a red-and-white barrier on `SN_LAYER` (only survivors' bodies collide
+  with it: `main` adds the layer to their mask) and two bollards that keep the cars off. On the roof a
+  0.3 m parapet (lying down she sees over it) with an invisible 2.2 m edge on `SN_EDGE` (bodies only:
+  the rifle's ray and the bot's sight use layer 1), sandbags, a water tank, an AC unit, a mast with a
+  red light, two landing lamps, and **the rifle on its crate** (`snipe_rifle`, `rifle_stand`).
+  `on_stairs(p)`, `on_roof(p)`. The north gate-end barriers are not placed. The killer starts at the
+  foot of the stairs (`spawn_point`). Survivors' map: the tower with a red crosshair, the stair line;
+  the north gate and its road are not drawn, the gate arrow points only at gate 0.
+- **Climbing**: on the stairs the killer moves at 2.2 m/s and plays **`climb`** — made in
+  `CharacterRig._climb_anim()` from the walk (thigh swing x1.55 about its average, knee bend x1.7 from
+  its straightest key, hip bob x1.6); a `climb.glb` in `assets/anims` would replace it. Her first-person
+  eye rises and dips with each step (`main._killer_eye`).
+- **The rifle** (`scripts/sniper.gd`, `NFSniper.rifle()`: built in code, bolt-action, scope, bipod):
+  «خذ القنّاصة» at the crate → `main.sniping`: she lies down (eye 0.55 m), crawls at 1 m/s (`crawl`,
+  frozen when still — every phone freezes a remote crawl under 0.15 m/s), the rifle in her hands in
+  first person; attack = «اطلق», power = «سكوب ×4 / ×8 / بدون سكوب» (`scope`, `NFSniper.ZOOMS`; FOV
+  /4 and /8, look speed slowed the same, `NFSniper.draw_scope`: black round the eyepiece, posts, a
+  fine cross, mil dots, a red point, ×4/×8), interact = «قوم». The shot (`_snipe_fire`): from the
+  camera down the middle of the screen, whoever it passes within 0.42 m of (feet to head, nothing in
+  between) is hit. Every phone (`_snipe_fx`): the pistol's tracer and flash (`_beam`) plus the
+  rifle's crack (his gunshot at 0.62 pitch, heard across the map), blood on whoever it dropped,
+  «انقنصت!» and a hard shake for them, «رصاصة جنبك!» for a near miss. Other phones see her lying
+  with the rifle in front of her (`r.rifle`), and the crate empty.
+- **The computer killer** (`NFBot._sniper`): walks the navigation mesh up the stairs to the rifle,
+  then lies along the front of the roof crawling slowly side to side, and every 2.6-4.8 s fires at the
+  nearest survivor she has a clear line to (hit chance 0.6 - distance/450, at least 0.15).
+- **The car's headlights** (`NFCar`): the light used to sit inside the bonnet, so with shadows on the
+  car's own body blacked it out. Now a wide low beam (`lights`, 40°, 55 m, 22) and a narrow long one
+  (`beam`, 15°, 95 m, 30) start in front of the bumper; the lamps glow (additive billboards, with a
+  2 m glare seen from far off — hidden from the driver's seat) and the tail lamps glow red.
+- `tools/sniper.tscn` tests it; `tools/shot26.tscn` photographs the tower, the stairs, her view, both
+  scopes and the headlights in the dark.

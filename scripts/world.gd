@@ -321,6 +321,8 @@ func configure(id: String, seed := 1, th := "normal") -> void:
 		var gy := _raw_h(g[0], g[1])
 		if id == "beach" and g[1] > 0.0: gy = PIER_Y # out across the lagoon: the gate stands on the pier
 		gate_points.append([Vector3(g[0], gy, g[1]), g[2]])
+	if id == "kuwait" and sniper: # «وضع القنّاص»: the tower stands in front of the north gate
+		sites.append([0.0, (SN_FACE + SN_BACK) / 2.0, 0.0, 19.0])
 	# 9 hooks and 5 possible hatches: anywhere free
 	for hi in 9:
 		var hp := _random_site(rng, 3.5, 22.0, 100.0)
@@ -390,6 +392,8 @@ func near_tree(x: float, z: float, r: float) -> bool:
 
 func spawn_point(role: String, slot: int) -> Vector3:
 	var p := Vector2.ZERO
+	if role == "killer" and map_id == "kuwait" and sniper: # at the foot of the sniper's stairs
+		return Vector3(SN_STAIR_X0 - 2.0, 0.3, SN_FACE - 7.0)
 	if role == "killer":
 		p = Vector2(-52.0, 52.0)
 		# the beach's north side is the lagoon: (-52, 52) was in the water past the wading wall
@@ -435,7 +439,9 @@ func build() -> void:
 	elif map_id == "rubkhali": _build_rubkhali()
 	elif map_id == "garage": _build_garage()
 	elif map_id == "beach": _build_beach()
-	elif map_id == "kuwait": _build_kuwait()
+	elif map_id == "kuwait":
+		_build_kuwait()
+		if sniper: _build_sniper_tower()
 	else: _build_buildings()
 	if map_id == "city": _build_city()
 	_build_objectives()
@@ -1520,7 +1526,9 @@ func _build_kuwait() -> void:
 	# barriers where the road meets the gates and round the car park's ends
 	var bars: Array = []
 	for zs in [-1.0, 1.0]:
-		for x in [-12.0, -8.0, 8.0, 12.0]: bars.append(Transform3D(Basis(Vector3.UP, rng.randf_range(-0.2, 0.2)), Vector3(x, 0.05, zs * 96.0)))
+		for x in [-12.0, -8.0, 8.0, 12.0]:
+			var bb := Transform3D(Basis(Vector3.UP, rng.randf_range(-0.2, 0.2)), Vector3(x, 0.05, zs * 96.0))
+			if not (sniper and zs > 0.0): bars.append(bb)
 		for x in [26.0, 30.0, 38.0, 42.0]: bars.append(Transform3D(Basis(), Vector3(x, 0.05, zs * 104.0)))
 	_kw_many("kw_barrier", bars, Vector3(2.0, 1.4, 0.8), 0.7, 110.0, true)
 	# ---- the sea: sand, rocks along the water, the towers on their point, a warship ----
@@ -5012,3 +5020,245 @@ func _build_garage_props() -> void:
 		_box(body, Vector3(3.2, 0.95, 0.45), Vector3(0, 0.47, 0), barrier)
 		_mesh_box(body, Vector3(3.3, 0.12, 0.6), Vector3(0, 0.98, 0), _flat(Color(0.75, 0.62, 0.1), 0.6))
 		add_child(body)
+
+
+# ---------------- «وضع القنّاص»: the tower, its stairs and the rifle ----------------
+## Kuwait City only. The north gate stays shut behind a 13 m concrete block that fills the end of the
+## Gulf Road; a steel stair runs up its south face in two flights with a landing between, a rail on
+## the open side, to a landing at the roof's corner. Survivors are stopped at the foot by a barrier
+## only their bodies collide with (layer SN_LAYER), the cars by two bollards. On the roof: a low
+## parapet (eye height lying down clears it; an invisible wall stops anyone walking off), sandbags,
+## and the rifle on its crate by the top of the stairs. The whole length of the road lies below it.
+var sniper := false
+const SN_FACE := 96.0        # the tower's south face (z)
+const SN_BACK := 108.0
+const SN_HALF := 15.0        # half its width (x)
+const SN_H := 13.0           # the roof
+const SN_STAIR_W := 2.6
+const SN_STAIR_X0 := 14.0    # the foot of the stairs (x), on the road
+const SN_LAND_X := 3.6       # the first flight ends here, at half height
+const SN_LAND2_X := 0.6      # the second flight starts here
+const SN_TOP_X := -9.8       # and reaches the roof's height here
+const SN_LAYER := 1 << 3     # the barrier only survivors bump into
+const SN_EDGE := 1 << 4      # the roof's invisible edge: every body bumps into it, the rifle's ray does not
+var snipe_rifle := Vector3.INF
+var sn_flights: Array = []   # [from, to] along each flight's walking line
+
+func _sn_z() -> float: return SN_FACE - SN_STAIR_W / 2.0 - 0.05
+
+## On the stairs (a flight or the landing between): for the climbing pace and clip.
+func on_stairs(p: Vector3) -> bool:
+	if not sniper or map_id != "kuwait": return false
+	if absf(p.z - _sn_z()) > SN_STAIR_W / 2.0 + 0.4: return false
+	return p.x < SN_STAIR_X0 + 0.3 and p.x > SN_TOP_X - 0.2 and p.y > 0.25 and p.y < SN_H - 0.2
+
+## Up on the tower's roof (or its top landing).
+func on_roof(p: Vector3) -> bool:
+	if not sniper or map_id != "kuwait": return false
+	return p.y > SN_H - 1.0 and absf(p.x) < SN_HALF + 0.5 and p.z > SN_FACE - SN_STAIR_W - 0.5 and p.z < SN_BACK + 0.5
+
+func _sn_slab(parent: Node3D, a: Vector3, b: Vector3, w: float, mat: Material) -> void:
+	# a flight's walking surface: a sloping slab whose top runs from a to b (collision = a ramp, so
+	# feet and the computer killer walk up it like a slope), and the steps drawn on it
+	var run := absf(b.x - a.x)
+	var rise := b.y - a.y
+	var ln := Vector2(run, rise).length()
+	var ang := atan2(rise, run)
+	var mid := (a + b) / 2.0 + Vector3(-sin(ang) * 0.15 * signf(a.x - b.x), -cos(ang) * 0.15, 0)
+	var body := StaticBody3D.new()
+	var cs := CollisionShape3D.new()
+	var sh := BoxShape3D.new()
+	sh.size = Vector3(ln, 0.3, w)
+	cs.shape = sh
+	cs.position = mid
+	cs.rotation.z = -ang if b.x < a.x else ang
+	body.add_child(cs)
+	parent.add_child(body)
+	# the steps: 0.2 m risers, one MultiMesh per flight
+	var n := ceili(rise / 0.2)
+	var rr := run / float(n)
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	var bm := BoxMesh.new()
+	bm.size = Vector3(rr + 0.04, rise / float(n) + 0.06, w)
+	bm.material = mat
+	mm.mesh = bm
+	mm.instance_count = n
+	var dir := signf(b.x - a.x)
+	for i in n:
+		var x := a.x + dir * rr * (float(i) + 0.5)
+		var y := a.y + rise / float(n) * (float(i) + 0.5) + 0.03
+		mm.set_instance_transform(i, Transform3D(Basis(), Vector3(x, y, a.z)))
+	var mmi := MultiMeshInstance3D.new()
+	mmi.multimesh = mm
+	parent.add_child(mmi)
+	# the stringers under it
+	var str_mat := _flat(Color(0.16, 0.17, 0.18), 0.5, 0.7)
+	for sz in [-1.0, 1.0]:
+		_mesh_box(parent, Vector3(ln, 0.35, 0.12), mid + Vector3(0, -0.05, sz * (w / 2.0 - 0.06)), str_mat, Vector3(0, 0, cs.rotation.z))
+	sn_flights.append([a, b])
+
+func _sn_rail(parent: Node3D, a: Vector3, b: Vector3, z: float) -> void:
+	# the rail on the open side: posts, a handrail and a wall nobody falls through
+	var rail_mat := _flat(Color(0.75, 0.62, 0.12), 0.45, 0.6)
+	var d := Vector3(b.x - a.x, b.y - a.y, 0)
+	var ln := d.length()
+	var ang := atan2(d.y, absf(d.x)) * (1.0 if b.x > a.x else -1.0)
+	var mid := (a + b) / 2.0
+	mid.z = z
+	_mesh_box(parent, Vector3(ln, 0.06, 0.06), mid + Vector3(0, 1.05, 0), rail_mat, Vector3(0, 0, ang))
+	_mesh_box(parent, Vector3(ln, 0.05, 0.05), mid + Vector3(0, 0.55, 0), rail_mat, Vector3(0, 0, ang))
+	var posts := maxi(2, ceili(ln / 1.6))
+	for i in posts + 1:
+		var t := float(i) / float(posts)
+		var p := a.lerp(b, t)
+		_mesh_box(parent, Vector3(0.06, 1.1, 0.06), Vector3(p.x, p.y + 0.55, z), rail_mat)
+	var body := StaticBody3D.new()
+	var cs := CollisionShape3D.new()
+	var sh := BoxShape3D.new()
+	sh.size = Vector3(ln, 2.2, 0.2)
+	cs.shape = sh
+	cs.position = mid + Vector3(0, 1.0, 0)
+	cs.rotation.z = ang
+	body.add_child(cs)
+	parent.add_child(body)
+
+func _build_sniper_tower() -> void:
+	var root := Node3D.new()
+	root.name = "SniperTower"
+	add_child(root)
+	var conc := _pbr(Color(0.34, 0.33, 0.31), Color(0.52, 0.5, 0.47), 0.05, Vector3(2, 2, 2), 0.9)
+	var dark := _flat(Color(0.05, 0.06, 0.07), 0.25, 0.3)
+	var steel := _flat(Color(0.22, 0.23, 0.24), 0.45, 0.75)
+	# the block: solid, an occluder
+	var block := StaticBody3D.new()
+	block.name = "Tower"
+	root.add_child(block)
+	var bz := (SN_FACE + SN_BACK) / 2.0
+	_box(block, Vector3(SN_HALF * 2.0, SN_H, SN_BACK - SN_FACE), Vector3(0, SN_H / 2.0, bz), conc, true)
+	# the face: floor bands and dark window strips
+	for fy in [3.3, 6.6, 9.9]:
+		_mesh_box(root, Vector3(SN_HALF * 2.0 + 0.2, 0.25, SN_BACK - SN_FACE + 0.2), Vector3(0, fy, bz), conc)
+	for fy in [1.7, 5.0, 8.3, 11.5]:
+		for wx in range(-12, 13, 4):
+			if fy < 7.0 and wx > -2: continue # behind the stairs: blank wall
+			_mesh_box(root, Vector3(2.2, 1.3, 0.08), Vector3(float(wx), fy, SN_FACE - 0.04), dark)
+	_mesh_box(root, Vector3(2.0, 2.6, 0.1), Vector3(-6.0, 1.3, SN_FACE - 0.05), steel) # a shut steel door
+	# the stairs: two flights and a landing, along the south face
+	var z := _sn_z()
+	var tread := _flat(Color(0.3, 0.31, 0.32), 0.55, 0.65)
+	var a0 := Vector3(SN_STAIR_X0, 0.0, z)
+	var a1 := Vector3(SN_LAND_X, SN_H / 2.0, z)
+	var b0 := Vector3(SN_LAND2_X, SN_H / 2.0, z)
+	var b1 := Vector3(SN_TOP_X, SN_H, z)
+	_sn_slab(root, a0, a1, SN_STAIR_W, tread)
+	_sn_slab(root, b0, b1, SN_STAIR_W, tread)
+	# the landing between the flights and the one at the top (onto the roof's corner)
+	var land := StaticBody3D.new()
+	root.add_child(land)
+	_box(land, Vector3(SN_LAND_X - SN_LAND2_X + 0.2, 0.3, SN_STAIR_W), Vector3((SN_LAND_X + SN_LAND2_X) / 2.0, SN_H / 2.0 - 0.15, z), tread)
+	_box(land, Vector3(SN_HALF + SN_TOP_X + 0.6, 0.3, SN_STAIR_W), Vector3((SN_TOP_X - SN_HALF) / 2.0 - 0.3, SN_H - 0.15, z), tread)
+	for px in [SN_LAND_X, SN_LAND2_X, SN_TOP_X, -SN_HALF + 0.2, SN_STAIR_X0 - 4.0]: # the columns holding it up
+		var top := SN_H / 2.0 if px >= SN_LAND2_X else SN_H
+		if px == SN_STAIR_X0 - 4.0: top = SN_H / 2.0 * (SN_STAIR_X0 - px) / (SN_STAIR_X0 - SN_LAND_X)
+		_mesh_box(root, Vector3(0.22, top, 0.22), Vector3(px, top / 2.0, z - SN_STAIR_W / 2.0 + 0.12), steel)
+	var rz := z - SN_STAIR_W / 2.0 + 0.05
+	_sn_rail(root, a0 + Vector3(0, 0, 0), a1, rz)
+	_sn_rail(root, a1, b0, rz)
+	_sn_rail(root, b0, b1, rz)
+	_sn_rail(root, b1, Vector3(-SN_HALF - 0.4, SN_H, z), rz)
+	# and a wall at the top landing's west end
+	var west := StaticBody3D.new()
+	var wcs := CollisionShape3D.new()
+	var wsh := BoxShape3D.new()
+	wsh.size = Vector3(0.2, 2.2, SN_STAIR_W + 0.2)
+	wcs.shape = wsh
+	wcs.position = Vector3(-SN_HALF - 0.45, SN_H + 1.0, z)
+	west.add_child(wcs)
+	root.add_child(west)
+	# the foot: a barrier survivors cannot pass (only their bodies collide with SN_LAYER) and two
+	# bollards that keep the cars off
+	var bar := StaticBody3D.new()
+	bar.collision_layer = SN_LAYER
+	bar.collision_mask = 0
+	var bcs := CollisionShape3D.new()
+	var bsh := BoxShape3D.new()
+	bsh.size = Vector3(0.3, 2.4, SN_STAIR_W + 0.4)
+	bcs.shape = bsh
+	bcs.position = Vector3(SN_STAIR_X0 + 0.4, 1.2, z)
+	bar.add_child(bcs)
+	root.add_child(bar)
+	var red := _flat(Color(0.75, 0.06, 0.05), 0.5)
+	var white := _flat(Color(0.9, 0.9, 0.88), 0.5)
+	for k in 4: # a red-and-white arm across the stair foot
+		_mesh_box(root, Vector3(0.08, 0.12, SN_STAIR_W / 4.0), Vector3(SN_STAIR_X0 + 0.4, 1.0, z - SN_STAIR_W / 2.0 + SN_STAIR_W / 8.0 * (2 * k + 1)), red if k % 2 == 0 else white)
+	var bol := StaticBody3D.new()
+	root.add_child(bol)
+	for bz2 in [z - SN_STAIR_W / 2.0 + 0.35, z + SN_STAIR_W / 2.0 - 0.35]:
+		_box(bol, Vector3(0.3, 0.9, 0.3), Vector3(SN_STAIR_X0 + 1.2, 0.45, bz2), _flat(Color(0.95, 0.75, 0.1), 0.5))
+	var sign := Label3D.new()
+	sign.text = "للقنّاصة فقط"
+	sign.font_size = 64
+	sign.pixel_size = 0.006
+	sign.modulate = Color(1.0, 0.3, 0.25)
+	sign.position = Vector3(SN_STAIR_X0 + 0.5, 1.7, z)
+	sign.rotation.y = PI / 2.0
+	root.add_child(sign)
+	# the roof: a low parapet (lying down she sees over it), an invisible wall so nobody walks off,
+	# sandbags, the water tank and the rifle's crate
+	var par := StaticBody3D.new() # (on its own layer: it stops bodies, not her bullets)
+	par.collision_layer = SN_EDGE
+	par.collision_mask = 0
+	root.add_child(par)
+	var edges := [[Vector3(0, SN_H, SN_BACK), Vector3(SN_HALF * 2.0, 0, 0.3)],
+		[Vector3(SN_HALF, SN_H, bz), Vector3(0.3, 0, SN_BACK - SN_FACE)],
+		[Vector3(-SN_HALF, SN_H, bz), Vector3(0.3, 0, SN_BACK - SN_FACE)],
+		[Vector3((SN_TOP_X + 0.3 + SN_HALF) / 2.0, SN_H, SN_FACE), Vector3(SN_HALF - SN_TOP_X - 0.3, 0, 0.3)]] # the south edge, open at the stair landing
+	for e in edges:
+		var c: Vector3 = e[0]
+		var sz: Vector3 = e[1]
+		_mesh_box(root, Vector3(sz.x, 0.3, sz.z), c + Vector3(0, 0.15, 0), conc)
+		var cs := CollisionShape3D.new()
+		var sh := BoxShape3D.new()
+		sh.size = Vector3(sz.x, 2.2, sz.z)
+		cs.shape = sh
+		cs.position = c + Vector3(0, 1.1, 0)
+		par.add_child(cs)
+	var sand := _pbr(Color(0.42, 0.36, 0.25), Color(0.58, 0.5, 0.36), 0.2, Vector3(3, 3, 3), 0.95)
+	for sx in range(-6, 15, 3): # sandbags along the front, where she lies
+		_mesh_box(root, Vector3(1.0, 0.22, 0.45), Vector3(float(sx), SN_H + 0.41, SN_FACE + 0.45), sand, Vector3(0, randf_range(-0.1, 0.1), 0))
+	var tank := StaticBody3D.new()
+	root.add_child(tank)
+	_box(tank, Vector3(3.0, 2.2, 2.4), Vector3(9.0, SN_H + 1.1, SN_BACK - 2.0), _flat(Color(0.62, 0.6, 0.56), 0.6, 0.3))
+	_box(tank, Vector3(2.0, 1.2, 1.6), Vector3(-4.0, SN_H + 0.6, SN_BACK - 2.2), _flat(Color(0.5, 0.52, 0.53), 0.5, 0.6)) # an AC unit
+	_mesh_box(root, Vector3(0.12, 5.0, 0.12), Vector3(13.0, SN_H + 2.5, SN_BACK - 1.0), steel) # the mast
+	var beacon := _emissive(Color(1.0, 0.1, 0.06))
+	beacon.emission_energy_multiplier = 4.0
+	_mesh_box(root, Vector3(0.3, 0.3, 0.3), Vector3(13.0, SN_H + 5.1, SN_BACK - 1.0), beacon)
+	var bl := OmniLight3D.new() # the red light on the mast: everyone can see where the sniper is
+	bl.light_color = Color(1.0, 0.12, 0.08)
+	bl.light_energy = 2.0
+	bl.omni_range = 9.0
+	bl.position = Vector3(13.0, SN_H + 5.0, SN_BACK - 1.0)
+	root.add_child(bl)
+	for lp in [Vector3(SN_LAND_X - 1.5, SN_H / 2.0 + 2.4, SN_FACE - 0.4), Vector3(SN_TOP_X - 2.0, SN_H + 2.4, SN_FACE - 0.4)]:
+		var sl := OmniLight3D.new() # a caged lamp on each landing
+		sl.light_color = Color(1.0, 0.82, 0.55)
+		sl.light_energy = 1.6
+		sl.omni_range = 9.0
+		sl.position = lp
+		root.add_child(sl)
+		_amb_light(sl, false, true)
+		_mesh_box(root, Vector3(0.25, 0.2, 0.2), lp + Vector3(0, 0.1, 0.2), _flat(Color(1.0, 0.85, 0.6), 0.4, 0.0, 3.0))
+	# the rifle on its crate, beside the top of the stairs
+	snipe_rifle = Vector3(SN_TOP_X - 1.0, SN_H, SN_FACE + 2.2)
+	var crate := StaticBody3D.new()
+	root.add_child(crate)
+	_box(crate, Vector3(1.4, 0.6, 0.7), snipe_rifle + Vector3(0, 0.3, 0.6), _mat.wood)
+	rifle_stand = NFSniper.rifle()
+	rifle_stand.position = snipe_rifle + Vector3(0, 0.66, 0.6)
+	rifle_stand.rotation.y = PI / 2.0
+	root.add_child(rifle_stand)
+	_blob(Vector3(0, 0, bz), 16.0)
+
+var rifle_stand: Node3D # the rifle lying on its crate (hidden while she has it)

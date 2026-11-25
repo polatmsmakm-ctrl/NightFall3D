@@ -7,7 +7,7 @@ const RUN := {"killer": 4.6, "survivor": 4.32}    # still under the killer's 4.6
 const CROUCH_SPEED := 1.1
 const CARRY_SPEED := 3.6
 # ground speed each animation was authored for; playback is scaled to it so feet don't slide
-const NATURAL := {"walk": 1.3, "run": 3.7, "sprint": 5.2, "crouchwalk": 1.0, "injured": 1.6}
+const NATURAL := {"walk": 1.3, "run": 3.7, "sprint": 5.2, "crouchwalk": 1.0, "injured": 1.6, "climb": 1.0, "crawl": 0.7}
 const ACCEL := 20.0
 const DECEL := 28.0
 var rain_audio: AudioStreamPlayer
@@ -169,6 +169,13 @@ var esc_popped := {}       # road -> the spikes have been reported
 # the killer's tools: traps on the map, a strip of spikes across an escape road
 var trap_cd := 0.0
 var gun_cd := 0.0          # a beat between two shots of the stun gun
+# «وضع القنّاص»: lying on the tower's roof with the rifle
+var sniping := false
+var scope := 0              # NFSniper.ZOOMS: 0 none, 1 x4, 2 x8
+var snipe_cd := 0.0
+var snipe_kick := 0.0
+var my_rifle: Node3D        # the rifle in my hands, first person
+var stair_ph := 0.0         # the step bob up the stairs
 var my_gun: NFGun          # the pistol in my hand («وضع السلاح»)
 var gun_aim := 0.0         # seconds the gun stays raised after the button
 var gun_pending := -1.0    # the shot leaves once the arms are up
@@ -210,12 +217,14 @@ func _start(c: Dictionary) -> void:
 	loading.setup(str(c.map), theme)
 	add_child(loading)
 	world = NightWorld.new()
+	world.sniper = bool(c.get("sniper", false)) and str(c.map) == "kuwait" # «وضع القنّاص»
 	world.configure(str(c.map), int(c.get("seed", randi() % 1000000) if not offline else randi() % 1000000), theme)
 	add_child(world)
 	world.build() # staged: terrain + buildings + objectives first, the rest over the next frames
 	Gfx.quiet(30.0) # the governor waits until the map is built and the round has settled
 	rules = Rules.new()
 	rules.gun = bool(c.get("gun", false)) # «وضع السلاح»: the host's choice, sent with start
+	rules.sniper = world.sniper
 	rules.setup(world.gen_points.size(), world.gate_points.size(), world.pallet_points.size(), world.hatch_points.size(),
 		c.players, int(c.get("seed", 1)) if not offline else randi() % 1000000, world.door_points.size())
 	rules.has_grid = world.has_power_box() # Kuwait City; every map in Halloween and «بين العصر والمغرب»
@@ -237,6 +246,10 @@ func _start(c: Dictionary) -> void:
 			bot.setup(self, str(p.name), remotes[str(p.name)].node.position)
 	_build_marks()
 	_build_ui()
+	if world.sniper:
+		if my_role == "survivor": body.collision_mask |= NightWorld.SN_LAYER # the barrier at the stairs stops survivors only
+		body.collision_mask |= NightWorld.SN_EDGE # nobody walks off the roof's edge
+		_flash.call_deferred("وضع القنّاص — اطلعي الدرج وخذي القنّاصة من السطح" if my_role == "killer" else "وضع القنّاص — بوابة وحدة جهة الأبراج. انتبهوا من السطح!")
 	if theme == "snow": # cold enough to see everyone's breath
 		if my_role == "survivor": breaths[my_name] = _make_breath(rig)
 		for n in remotes: breaths[n] = _make_breath(remotes[n].rig)
@@ -839,6 +852,116 @@ func _sunset_calls() -> void:
 		else: _flash("غابت الشمس — الظلام لك" if not rules.grid else "غابت الشمس")
 		_feed("غابت الشمس", "moon", Color(1.0, 0.6, 0.4))
 
+# ---------------- «وضع القنّاص» ----------------
+## Her eye: lying down with the rifle it is just over the parapet; up the stairs it rises and dips
+## with every step.
+func _killer_eye(dt: float, v: float) -> void:
+	var eye := 0.55 if sniping else 1.6
+	if not sniping and v > 0.4 and world.on_stairs(body.position):
+		stair_ph += dt * v / 0.32 * PI # a step every 0.32 m along the flight
+		eye += absf(sin(stair_ph)) * 0.07 - 0.03
+	cam_pivot.position.y = lerpf(cam_pivot.position.y, eye, 1.0 - exp(-10.0 * dt))
+	snipe_cd = maxf(snipe_cd - dt, 0.0)
+	snipe_kick = maxf(snipe_kick - dt * 3.0, 0.0)
+	if my_rifle:
+		my_rifle.visible = sniping and scope == 0
+		my_rifle.position = Vector3(0.12, -0.17 - snipe_kick * 0.04, -0.4 + snipe_kick * 0.09)
+		my_rifle.rotation = Vector3(snipe_kick * 0.25, PI, 0)
+
+## Take the rifle from its crate: down on her belly, the rifle in her hands, the scope ready.
+func _snipe_start() -> void:
+	if sniping or my_role != "killer": return
+	sniping = true
+	scope = 0
+	if world.rifle_stand: world.rifle_stand.visible = false
+	if my_rifle == null:
+		my_rifle = NFSniper.rifle()
+		main_cam.add_child(my_rifle)
+	_flash("القنّاصة معك — «سكوب» ×4 و ×8، «اطلق». الرصاصة تطيّح اللي تصيده")
+	NFHaptics.pulse("hook")
+
+func _snipe_stop() -> void:
+	if not sniping: return
+	sniping = false
+	scope = 0
+	main_cam.fov = _base_fov()
+	if my_rifle: my_rifle.visible = false
+	if world.rifle_stand: world.rifle_stand.visible = true
+
+## The shot: straight down the middle of the screen. Whoever the line passes within 0.42 m of (on
+## their feet, nothing in between) is hit; the round's rules drop them.
+func _snipe_fire() -> void:
+	if snipe_cd > 0.0 or not sniping: return
+	snipe_cd = Rules.SNIPE_CD
+	snipe_kick = 1.0
+	var cam := main_cam
+	var from := cam.global_position
+	var dir := -cam.global_basis.z
+	var q := PhysicsRayQueryParameters3D.create(from, from + dir * 600.0, 1) # (the roof's invisible edge does not stop it)
+	q.exclude = [body.get_rid()]
+	var wh := get_world_3d().direct_space_state.intersect_ray(q)
+	var wall_d: float = from.distance_to(wh.position) if not wh.is_empty() else 600.0
+	var hit := ""
+	var hit_d := wall_d
+	for n in remotes:
+		var r = remotes[n]
+		if r.role != "survivor" or not rules.free_now(n) or not r.node.visible: continue
+		var a: Vector3 = (r.node as Node3D).global_position + Vector3(0, 0.15, 0)
+		var b: Vector3 = a + Vector3(0, 1.6, 0)
+		var t := _ray_seg(from, dir, a, b)
+		if t.x < 0.42 and t.y < hit_d:
+			hit = n
+			hit_d = t.y
+	var at := from + dir * hit_d
+	_ev({"k": "snipe", "n": hit, "p": [snappedf(at.x, 0.01), snappedf(at.y, 0.01), snappedf(at.z, 0.01)]})
+	pitch = clampf(pitch + 0.035 / maxf(float(NFSniper.ZOOMS[scope]), 1.0) * 2.0, -0.9, 0.5) # the kick
+	_shake(0.25)
+	NFHaptics.pulse("hit")
+
+## The closest a ray (from o along d) comes to the segment a-b: x the distance, y how far along the ray.
+static func _ray_seg(o: Vector3, d: Vector3, a: Vector3, b: Vector3) -> Vector2:
+	var best := Vector2(INF, INF)
+	for k in 9:
+		var p := a.lerp(b, float(k) / 8.0)
+		var t := maxf((p - o).dot(d), 0.0)
+		var dist := (o + d * t).distance_to(p)
+		if dist < best.x: best = Vector2(dist, t)
+	return best
+
+## Everyone hears it and sees the tracer; the one it dropped gets the blood and the shake.
+func _snipe_fx(by: String, p, n: String) -> void:
+	var to := Vector3.INF
+	if p is Array and (p as Array).size() >= 3: to = Vector3(float(p[0]), float(p[1]), float(p[2]))
+	var mine := by == my_name
+	var from: Vector3
+	if mine: from = main_cam.global_position - main_cam.global_basis.z * 0.95 - main_cam.global_basis.y * 0.12
+	else:
+		var kp := _pos_of(by)
+		var fwd := Basis(Vector3.UP, _yaw_of(by)) * Vector3(0, 0, 1)
+		from = kp + Vector3(0, 0.45, 0) + fwd * 1.5
+	if n != "": to = _pos_of(n) + Vector3(0, 1.15, 0)
+	if to == Vector3.INF: to = from + Vector3(0, 0, -1)
+	_beam(from, to, false, mine)
+	# the rifle's own crack: lower and much louder than the pistol, heard right across the map
+	var a := AudioStreamPlayer.new()
+	a.bus = Aud.SFX
+	a.stream = sounds.get("gunshot")
+	a.pitch_scale = 0.62
+	a.volume_db = 4.0 if mine else clampf(2.0 - body.global_position.distance_to(from) * 0.05, -14.0, 2.0)
+	add_child(a)
+	a.play()
+	a.finished.connect(a.queue_free)
+	if n != "":
+		if blood: blood.splash(to, (to - from).normalized(), _cam_pos())
+		_feed("القنّاصة طيّحت %s" % n, "skull", Color(1.0, 0.35, 0.3))
+		if n == my_name:
+			_flash("انقنصت! طحت — استنى أحد يعالجك")
+			_shake(0.9)
+			NFHaptics.pulse("grab")
+	elif to.distance_to(body.global_position) < 6.0 and my_role == "survivor":
+		_flash("رصاصة جنبك! القنّاصة تشوفك")
+		_shake(0.2)
+
 func _cam_pos() -> Vector3:
 	var c := get_viewport().get_camera_3d()
 	return c.global_position if c else Vector3.INF
@@ -1072,6 +1195,8 @@ func _on_event(e: Dictionary) -> void:
 			if my_role == "killer":
 				_flash("دوّخوك بالمسدس!" if str(e.get("by", "")) == "gun" else "انصعقت!")
 				if str(e.get("by", "")) == "gun": _shake(0.7)
+		"snipe": # «وضع القنّاص»: the rifle fired; n is whoever it dropped
+			_snipe_fx(str(e.get("by", "")), e.get("p", []), str(e.get("n", "")))
 		"shot": # the stun gun: a beam from the shooter, to her if it hit
 			var who := str(e.n)
 			if who != my_name and remotes.has(who):
@@ -1243,8 +1368,9 @@ func _draw_gate(mid: Vector2) -> void:
 		bd = Vector2(best.x - body.position.x, best.z - body.position.z).length()
 		word = "السيارة %d م"
 		if bd < 4.0: return
-	for g in ([] if on_road >= 0 else world.gate_points):
-		var p: Vector3 = g[0]
+	for gi in ([] if on_road >= 0 else range(world.gate_points.size())):
+		if rules.sniper and gi != 0: continue # «وضع القنّاص»: the one gate, on the towers' side
+		var p: Vector3 = world.gate_points[gi][0]
 		var dd := Vector2(p.x - body.position.x, p.z - body.position.z).length()
 		if dd < bd:
 			bd = dd
@@ -1666,13 +1792,21 @@ func _buttons() -> Array:
 				on = c != null
 			"attack":
 				on = attack_cd <= 0.0 and rules.carrying == ""
-				if driving:
+				if sniping:
+					label = "اطلق"
+					icon = "gun"
+					on = snipe_cd <= 0.0
+				elif driving:
 					label = "الكاميرا"
 					icon = "car"
 					on = true
 			"power":
 				on = rules.power_cd <= 0.0 and rules.carrying == ""
-				if driving:
+				if sniping: # one scope, two magnifications
+					label = ["سكوب ×4", "سكوب ×8", "بدون سكوب"][scope]
+					icon = "eye"
+					on = true
+				elif driving:
 					label = "سكّر الراديو" if car.radio_on else "الراديو"
 					icon = "note"
 					on = car.radio != null
@@ -1683,7 +1817,7 @@ func _buttons() -> Array:
 					if bool(tr[2]): armed += 1
 				label = "مسامير" if rd_i >= 0 else "فخ %d/%d" % [armed, Rules.TRAPS]
 				icon = "spike" if rd_i >= 0 else "trap"
-				on = trap_cd <= 0.0 and rules.carrying == "" and not driving and rules.stun <= 0.0 and (rd_i < 0 or int(rules.roads[rd_i].st) <= 1)
+				on = trap_cd <= 0.0 and rules.carrying == "" and not driving and not sniping and rules.stun <= 0.0 and (rd_i < 0 or int(rules.roads[rd_i].st) <= 1)
 			"gun":
 				var ammo := int(rules.s.get(my_name, {}).get("ammo", 0))
 				label = "مسدس %d" % ammo
@@ -1732,6 +1866,10 @@ func _draw_ui() -> void:
 		ui.draw_rect(Rect2(Vector2.ZERO, s), Color(0.5, 0.0, 0.0, 0.18))
 		_text(Vector2(mid.x, s.y - fbar * 0.38), "آخر واحد طاح — %s" % fin_who, 34, Color(1, 0.35, 0.3))
 		return
+	if sniping and scope > 0: NFSniper.draw_scope(ui, s, NFSniper.ZOOMS[scope], snipe_kick)
+	elif sniping: # lying with the rifle, no scope: a plain point where the shot goes
+		ui.draw_circle(mid, 2.5, Color(1.0, 0.2, 0.15, 0.9))
+		ui.draw_arc(mid, 11.0, 0, TAU, 24, Color(1, 1, 1, 0.45), 1.4, true)
 	if rules.gun and my_role == "survivor" and esc_i < 0 and spectating == "" and int(rules.s.get(my_name, {}).get("ammo", 0)) > 0 \
 			and my_state in ["ok", "hurt"]: # «وضع السلاح»: where the shot goes
 		ui.draw_arc(mid, 9.0, 0, TAU, 24, Color(0.6, 0.9, 1.0, 0.7), 1.6, true)
@@ -2056,7 +2194,16 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 		minimap.draw_rect(Rect2(c + Vector2(asm.x - 23.0, asm.z - 40.0) * k, Vector2(46.0, 80.0) * k), Color(0.7, 0.64, 0.52))
 		if big: _map_text(c + Vector2(asm.x - 18.0, asm.z) * k, "مجلس الأمة", 15, Color(0.15, 0.12, 0.08))
 		minimap.draw_circle(c + Vector2(NightWorld.KW_TOWERS.x, NightWorld.KW_TOWERS.z) * k, 5.0 * u, Color(0.4, 0.65, 1.0))
+	if rules.sniper: # «وضع القنّاص»: the tower where the north gate was, the stairs and the rifle
+		minimap.draw_rect(Rect2(c + Vector2(-NightWorld.SN_HALF, NightWorld.SN_FACE) * k, Vector2(NightWorld.SN_HALF * 2.0, NightWorld.SN_BACK - NightWorld.SN_FACE) * k), Color(0.45, 0.43, 0.4))
+		minimap.draw_line(c + Vector2(NightWorld.SN_STAIR_X0, NightWorld.SN_FACE - 1.3) * k, c + Vector2(NightWorld.SN_TOP_X, NightWorld.SN_FACE - 1.3) * k, Color(1.0, 0.8, 0.2), 2.0 * u)
+		var tc := c + Vector2(0.0, (NightWorld.SN_FACE + NightWorld.SN_BACK) / 2.0) * k
+		minimap.draw_arc(tc, 6.0 * u, 0, TAU, 20, Color(1, 0.25, 0.2), 1.6 * u)
+		minimap.draw_line(tc - Vector2(9, 0) * u, tc + Vector2(9, 0) * u, Color(1, 0.25, 0.2), 1.4 * u)
+		minimap.draw_line(tc - Vector2(0, 9) * u, tc + Vector2(0, 9) * u, Color(1, 0.25, 0.2), 1.4 * u)
+		if big: _map_text(tc + Vector2(0, -16) * u, "القنّاصة", 15, Color(1, 0.4, 0.35))
 	for i in world.gate_points.size(): # escape roads + gates
+		if rules.sniper and i != 0: continue # (the north gate stays shut behind the tower)
 		var p: Vector3 = world.gate_points[i][0]
 		var out_dir := signf(p.z)
 		var open: bool = rules.gates[i].open
@@ -2240,7 +2387,7 @@ func _update_ctx() -> void:
 			for i in mini(world.esc_cars.size(), rules.roads.size()):
 				var ec: NFCar = world.esc_cars[i]
 				var est := int(rules.roads[i].st)
-				if est <= 1 and absf(ec.speed) < 3.0 and (rules.roads[i].who as Array).size() < Rules.CAR_SEATS and _near(pos, ec.global_position, 3.8):
+				if est <= 1 and (i == 0 or not rules.sniper) and absf(ec.speed) < 3.0 and (rules.roads[i].who as Array).size() < Rules.CAR_SEATS and _near(pos, ec.global_position, 3.8):
 					ctx.interact = {"kind": "board", "label": "اركب وسوق" if est == 0 else "اركب معهم", "i": i}
 		if not ctx.has("interact"):
 			for i in world.locker_points.size():
@@ -2279,7 +2426,12 @@ func _update_ctx() -> void:
 				for i in world.hook_points.size():
 					if rules.hook_user(i) == "" and _near(pos, world.hook_points[i], 4.0):
 						ctx.interact = {"kind": "car_hook", "label": "انزل وعلّق", "i": i}
+	elif sniping: # lying on the roof with the rifle: the one thing to do is get up
+		ctx.interact = {"kind": "rifle_off", "label": "قوم"}
 	elif rules.stun <= 0.0:
+		if rules.sniper and rules.carrying == "" and world.snipe_rifle != Vector3.INF and _near(pos, world.snipe_rifle, 2.6):
+			ctx.interact = {"kind": "rifle", "label": "خذ القنّاصة"}
+			return
 		if rules.carrying != "":
 			for i in world.hook_points.size():
 				if rules.hook_user(i) == "" and _near(pos, world.hook_points[i], 3.2):
@@ -2318,7 +2470,12 @@ func _door_ctx(pos: Vector3) -> void:
 
 # ---------------- actions ----------------
 ## The round camera's field of view for what I am doing now, plus «مجال الرؤية».
+## Through the scope the view turns slower, as much slower as it is magnified (and a touch more).
+func _look_k() -> float:
+	return 1.0 / (float(NFSniper.ZOOMS[scope]) * 1.15) if (sniping and scope > 0) else 1.0
+
 func _base_fov() -> float:
+	if sniping and scope > 0: return (80.0 + Gfx.fov_add) / float(NFSniper.ZOOMS[scope])
 	if driving: return (78.0 if car_inside else 74.0) + Gfx.fov_add
 	if esc_i >= 0: return 74.0 + Gfx.fov_add
 	return (80.0 if my_role == "killer" else 70.0) + Gfx.fov_add
@@ -2371,6 +2528,9 @@ func _press(id: String, touch: int) -> void:
 			if battery > 0.0 or light_on:
 				light_on = not light_on
 		"attack":
+			if sniping:
+				_snipe_fire()
+				return
 			if driving: # at the wheel this button switches the camera: the seat or behind the car
 				_car_view(not car_inside)
 				return
@@ -2380,6 +2540,11 @@ func _press(id: String, touch: int) -> void:
 				hit_sent = false
 				rig.play("attack", 2.0)
 		"power":
+			if sniping: # x4 -> x8 -> off
+				scope = (scope + 1) % NFSniper.ZOOMS.size()
+				main_cam.fov = _base_fov()
+				NFHaptics.pulse("tick")
+				return
 			if driving: # at the wheel this is the radio
 				if car.radio:
 					car.set_radio(not car.radio_on)
@@ -2417,6 +2582,8 @@ func _press(id: String, touch: int) -> void:
 					if int(c.get("p", -1)) >= 0: world.take_parked(int(c.p)) # a parked car: the two swap
 					_enter_car()
 				"car_out": _exit_car()
+				"rifle": _snipe_start()
+				"rifle_off": _snipe_stop()
 				"car_hook": # the hook first, while the server still has me at the car, then out
 					_ev({"k": "hook", "i": c.i})
 					_exit_car()
@@ -2527,11 +2694,11 @@ func _input(e: InputEvent) -> void:
 			stick_vec = ((e.position - stick_origin) / 70.0).limit_length(1.0)
 			if stick_vec.length() < 0.12: stick_vec = Vector2.ZERO # dead zone
 		elif e.index == look_id:
-			yaw -= e.relative.x * 0.006 * Gfx.look_sens
-			pitch = clampf(pitch - e.relative.y * 0.004 * Gfx.look_sens, -0.9, 0.5)
+			yaw -= e.relative.x * 0.006 * Gfx.look_sens * _look_k()
+			pitch = clampf(pitch - e.relative.y * 0.004 * Gfx.look_sens * _look_k(), -0.9, 0.5)
 	elif e is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		yaw -= e.relative.x * 0.003 * Gfx.look_sens
-		pitch = clampf(pitch - e.relative.y * 0.003 * Gfx.look_sens, -0.9, 0.5)
+		yaw -= e.relative.x * 0.003 * Gfx.look_sens * _look_k()
+		pitch = clampf(pitch - e.relative.y * 0.003 * Gfx.look_sens * _look_k(), -0.9, 0.5)
 
 func me_locker() -> int:
 	return rules.s[my_name].locker if rules.s.has(my_name) else -1
@@ -2660,6 +2827,16 @@ func _process(dt: float) -> void:
 			stride = snappedf(clampf(float(r.spd) / float(NATURAL[anim]), 0.75, 2.6), 0.05)
 		elif anim == "carry" and float(r.spd) > 0.3:
 			stride = snappedf(clampf(float(r.spd) / 1.4, 0.8, 2.6), 0.05)
+		if anim == "crawl" and float(r.spd) < 0.15: stride = 0.0001 # lying still (the sniper aiming)
+		if r.role == "killer" and rules.sniper: # her rifle, in front of her while she lies on the roof
+			var lying: bool = anim == "crawl"
+			if lying and r.get("rifle") == null:
+				r.rifle = NFSniper.rifle()
+				r.rig.add_child(r.rifle)
+				r.rifle.position = Vector3(0.12, 0.3, 0.75)
+				r.rifle.scale = Vector3.ONE * 1.1
+			if r.get("rifle") != null: (r.rifle as Node3D).visible = lying and r.node.visible
+			if world.rifle_stand: world.rifle_stand.visible = not lying
 		if st == "hooked":
 			_hook_pose(r.rig, dt)
 		else:
@@ -3385,7 +3562,7 @@ func _esc_cars(dt: float) -> void:
 		var rd: Dictionary = rules.roads[i]
 		var st := int(rd.st)
 		# behind a shut gate nobody can see or reach it: no drawing, no shadows, no work until then
-		var awake: bool = rules.powered or st > 0
+		var awake: bool = (rules.powered or st > 0) and (i == 0 or not rules.sniper)
 		if ec.visible != awake: ec.visible = awake
 		if not awake: continue
 		if st != int(esc_seen[i]):
@@ -3566,6 +3743,8 @@ func _move(delta: float) -> void:
 	if crouch: speed = CROUCH_SPEED
 	if my_state == "down": speed = 0.45 # crawling
 	if my_role == "killer" and rules.carrying != "": speed = CARRY_SPEED
+	if sniping: speed = 1.0 # crawling on her belly with the rifle
+	elif my_role == "killer" and world.on_stairs(body.position): speed = minf(speed, 2.2) # step by step up the stairs
 	if boost_t > 0.0: speed *= 1.5
 	if Dev.unlocked and Dev.speed > 1.0: speed *= Dev.speed
 	var dir := Basis(Vector3.UP, yaw) * Vector3(move.x, 0, move.y)
@@ -3605,8 +3784,15 @@ func _move(delta: float) -> void:
 				hit_sent = true
 				_ev({"k": "hit", "n": n})
 				break
+	if my_role == "killer" and not driving: _killer_eye(delta, v)
 	# animation (a running flinch keeps the rig until it is done)
 	if hit_anim.get(my_name, 0.0) > 0.0: return
+	if sniping: # prone: the crawl while she moves, held still while she lies and aims
+		rig.play("crawl", clampf(v / NATURAL.crawl, 0.5, 1.6) if v > 0.15 else 0.0001)
+		return
+	if my_role == "killer" and v > 0.25 and world.on_stairs(body.position) and rig.has("climb"):
+		rig.play("climb", clampf(v / NATURAL.climb, 0.7, 2.2))
+		return
 	if my_state == "dead":
 		rig.play("dying")
 	elif my_state == "down":

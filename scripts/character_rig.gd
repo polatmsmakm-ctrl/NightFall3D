@@ -8,7 +8,7 @@ extends Node3D
 const ANIMS := ["idle", "walk", "run", "sprint", "crouchwalk", "hide", "attack", "injured", "dying",
 	"vault", "carry", "carried", "hang", "crawl", "repair", "hit", "fall", "standup", "slump", "drive"]
 const ONCE := ["hit", "fall", "attack", "vault"] # played through once, then back to the state pose
-const LOOPING := ["idle", "walk", "run", "sprint", "crouchwalk", "hide", "injured", "carry", "carried", "hang", "crawl", "repair", "campfire", "wave", "clap", "dance", "cheer", "slump", "drive"]
+const LOOPING := ["climb", "idle", "walk", "run", "sprint", "crouchwalk", "hide", "injured", "carry", "carried", "hang", "crawl", "repair", "campfire", "wave", "clap", "dance", "cheer", "slump", "drive"]
 ## Campfire emotes. There is no Mixamo clip for these in assets/anims, so they are posed here on the
 ## same skeleton: drop wave.glb / clap.glb / dance.glb in and the real clip is used instead.
 const EMOTES := {"wave": 2.4, "clap": 2.2, "dance": 4.0, "slump": 3.0, "drive": 3.0}
@@ -93,8 +93,63 @@ func setup(char_name: String, anims: Array = ANIMS, close_up := false, sss := tr
 				out.track_insert_key(nt, time, v)
 		lib.add_animation(a, out)
 		inst.queue_free()
+	if lib.has_animation("walk") and not lib.has_animation("climb"): # going up stairs (the sniper's tower)
+		lib.add_animation("climb", _climb_anim(lib.get_animation("walk")))
 	player.add_animation_library("", lib)
 	play("idle")
+
+## Climbing stairs, made from the walk (there is no stair clip): every knee lifts higher (the thigh
+## swings forward further, the knee bends deeper — never past straight) and the hips bob more with
+## each step up. A `climb.glb` dropped into assets/anims takes over (it is loaded like any clip).
+func _climb_anim(walk: Animation) -> Animation:
+	var out := walk.duplicate(true) as Animation
+	out.loop_mode = Animation.LOOP_LINEAR
+	for t in out.get_track_count():
+		var p := str(out.track_get_path(t))
+		var bone := p.get_slice(":", p.get_slice_count(":") - 1)
+		var ty := out.track_get_type(t)
+		var n := out.track_get_key_count(t)
+		if ty == Animation.TYPE_POSITION_3D and bone == "mixamorig_Hips" and n > 0:
+			var mean := Vector3.ZERO
+			for k in n: mean += out.track_get_key_value(t, k)
+			mean /= float(n)
+			for k in n:
+				var v: Vector3 = out.track_get_key_value(t, k)
+				out.track_set_key_value(t, k, mean + (v - mean) * 1.6)
+			continue
+		if ty != Animation.TYPE_ROTATION_3D or n == 0: continue
+		var gain := 0.0
+		if bone.ends_with("UpLeg"): gain = 1.55
+		elif bone.ends_with("Leg") and not bone.ends_with("UpLeg"): gain = 1.7
+		if gain == 0.0: continue
+		var bi := skeleton.find_bone(bone)
+		var rest := skeleton.get_bone_rest(bi).basis.get_rotation_quaternion() if bi >= 0 else Quaternion.IDENTITY
+		var ref: Quaternion
+		if bone.ends_with("UpLeg"): # the thigh swings both ways about its average
+			var acc := Vector4.ZERO
+			var first: Quaternion = out.track_get_key_value(t, 0)
+			for k in n:
+				var q: Quaternion = out.track_get_key_value(t, k)
+				if q.dot(first) < 0.0: q = -q
+				acc += Vector4(q.x, q.y, q.z, q.w)
+			ref = Quaternion(acc.x, acc.y, acc.z, acc.w).normalized()
+		else: # the knee bends one way: from its straightest moment
+			var best := INF
+			ref = out.track_get_key_value(t, 0)
+			for k in n:
+				var q: Quaternion = out.track_get_key_value(t, k)
+				var a := (rest.inverse() * q).get_angle()
+				if a < best:
+					best = a
+					ref = q
+		for k in n:
+			var q: Quaternion = out.track_get_key_value(t, k)
+			var d := ref.inverse() * q
+			var ang := d.get_angle()
+			if ang > PI: ang -= TAU
+			if absf(ang) < 0.0001: continue
+			out.track_set_key_value(t, k, (ref * Quaternion(d.get_axis(), ang * gain)).normalized())
+	return out
 
 # ---------------- hand-posed emotes ----------------
 ## The Mixamo rest pose these characters carry is a T-pose in a Z-down skeleton space:

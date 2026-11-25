@@ -52,7 +52,7 @@ func setup(main, name: String, at: Vector3) -> void:
 	body = CharacterBody3D.new()
 	body.name = "BotKiller"
 	body.collision_layer = 1 << 9 # her own layer: players and rays do not bump into her
-	body.collision_mask = 1
+	body.collision_mask = 1 | NightWorld.SN_EDGE # (the sniper tower's roof edge)
 	var cs := CollisionShape3D.new()
 	var cap := CapsuleShape3D.new()
 	cap.radius = 0.4
@@ -132,7 +132,9 @@ func step(dt: float) -> void:
 	pause = maxf(pause - dt, 0.0)
 	sidestep = maxf(sidestep - dt, 0.0)
 	var vel := Vector3.ZERO
-	if m.rules.over or m.rules.stun > 0.0 or pause > 0.0:
+	if m.rules.sniper: # «وضع القنّاص»: up the stairs to the rifle, then down on the roof and shooting
+		vel = _sniper(dt)
+	elif m.rules.over or m.rules.stun > 0.0 or pause > 0.0:
 		anim = "attack" if pause > 0.0 else "idle"
 	else:
 		think -= dt
@@ -351,3 +353,61 @@ func _unstick(dt: float, vel: Vector3) -> void:
 	side_dir = Vector3(-vel.z, 0, vel.x).normalized() * (1.0 if randf() < 0.5 else -1.0)
 	sidestep = 0.6
 	repath = 0.0
+
+
+# ---------------- «وضع القنّاص» ----------------
+## She walks to the stairs (the navigation mesh runs up both flights), climbs to the roof, takes the
+## rifle and lies down along the front of the roof, crawling slowly from one side to the other.
+## Every few seconds she picks the nearest survivor she has a clear line to and fires: the further
+## away, the likelier she misses (a miss lands near them, and they hear it).
+var sn_state := "go"
+var sn_t := 0.0
+var sn_cd := 3.0
+var shots := 0          # (tests)
+
+func _sniper(dt: float) -> Vector3:
+	var w = m.world
+	var me := pos()
+	if m.rules.over:
+		anim = "crawl" if sn_state == "aim" else "idle"
+		return Vector3.ZERO
+	if sn_state == "go":
+		goal = w.snipe_rifle
+		state = "patrol"
+		if _flat(me).distance_to(_flat(w.snipe_rifle)) < 1.8 and me.y > NightWorld.SN_H - 1.0:
+			sn_state = "aim"
+			return Vector3.ZERO
+		var vel := _steer(dt)
+		if w.on_stairs(me): vel = vel.limit_length(2.2)
+		anim = "climb" if (w.on_stairs(me) and vel.length() > 0.2) else ("walk" if vel.length() > 0.2 else "idle")
+		return vel
+	# lying on the roof with the rifle
+	sn_t += dt
+	var want := Vector3(sin(sn_t * 0.07) * 11.0, me.y, NightWorld.SN_FACE + 1.3)
+	var d := want - me
+	d.y = 0.0
+	var vel2 := d.limit_length(0.8) if d.length() > 0.3 else Vector3.ZERO
+	anim = "crawl" # (lying still: other phones freeze the crawl when she does not move)
+	var tgt := ""
+	var td := INF
+	var muzzle := me + Vector3(0, 0.5, 0)
+	for n in m.rules.s:
+		if not m.rules.free_now(n): continue
+		if n == m.my_name and m.vanished: continue
+		var p: Vector3 = m._pos_of(n) + Vector3(0, 1.1, 0)
+		var dd := p.distance_to(muzzle)
+		if dd < td and dd < 230.0 and _clear(muzzle, p):
+			tgt = n
+			td = dd
+	if tgt != "":
+		var tp: Vector3 = m._pos_of(tgt)
+		face = lerp_angle(face, atan2(tp.x - me.x, tp.z - me.z), 1.0 - exp(-4.0 * dt))
+	sn_cd -= dt
+	if sn_cd <= 0.0 and tgt != "":
+		sn_cd = randf_range(2.6, 4.8)
+		shots += 1
+		var chest: Vector3 = m._pos_of(tgt) + Vector3(0, 1.15, 0)
+		var hit := randf() < clampf(0.6 - td / 450.0, 0.15, 0.6)
+		var at := chest if hit else chest + Vector3(randf_range(-1.6, 1.6), randf_range(-1.0, 0.4), randf_range(-1.6, 1.6))
+		_act({"k": "snipe", "n": tgt if hit else "", "p": [at.x, at.y, at.z]})
+	return vel2

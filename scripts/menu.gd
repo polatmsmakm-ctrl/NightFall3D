@@ -26,6 +26,7 @@ var off_char := "killer"
 var off_theme := "normal"
 var prof_name := ""  # whose profile the «profile» page shows ("" = mine)
 var off_gun := false # «وضع السلاح» in trial mode
+var off_sniper := false # «وضع القنّاص» in trial mode (Kuwait City only: it takes the map with it)
 var off_bot := true # trial mode as a survivor: a computer killer hunts you (NFBot)
 var lobby: NFLobby       # the campfire scene, set by main.gd
 var card: Control        # player card in the top corner
@@ -121,7 +122,7 @@ func _on_msg(m: Dictionary) -> void:
 			elif page in ["lobby", "friends", "chars"]: page = "main"
 		"started":
 			start_game.emit({"map": m.map, "players": m.players, "me": Net.username, "offline": false,
-				"seed": int(m.get("seed", 1)), "theme": str(m.get("theme", "normal")), "gun": bool(m.get("gun", false))})
+				"seed": int(m.get("seed", 1)), "theme": str(m.get("theme", "normal")), "gun": bool(m.get("gun", false)), "sniper": bool(m.get("sniper", false))})
 			return
 		"welcome": # an older server does not know the newer maps and silently ignores them
 			var known: Array = m.get("maps", [])
@@ -716,9 +717,12 @@ func _page_lobby() -> void:
 		var gon: bool = r.get("gun", false)
 		var bg := _button("وضع السلاح: %s" % ("شغّال — مسدس صاعق للناجين" if gon else "مطفي"), func(): Net.send({"t": "set", "gun": not gon}), null, true, "gun")
 		if gon: bg.modulate = Color(0.6, 0.9, 1.0)
+		var son: bool = r.get("sniper", false)
+		var bs := _button("وضع القنّاص: %s" % ("شغّال — مدينة الكويت، بوابة وحدة، القاتلة بالسطح" if son else "مطفي"), func(): Net.send({"t": "set", "sniper": not son}), null, true, "gun")
+		if son: bs.modulate = Color(1.0, 0.55, 0.45)
 	else:
 		_label("الخريطة: %s  •  الجو: %s%s" % [MAPS.get(str(r.map), str(r.map)), THEMES.get(str(r.get("theme", "normal")), "عادي"),
-			"  •  وضع السلاح" if r.get("gun", false) else ""], 22)
+			("  •  وضع السلاح" if r.get("gun", false) else "") + ("  •  وضع القنّاص" if r.get("sniper", false) else "")], 22)
 	for p in r.players:
 		var txt := "%s%s — %s" % ["★ " if str(p.name) == str(r.host) else "", str(p.name), CHARS.get(str(p.char), str(p.char))]
 		_label(txt, 20, Color(1, 0.4, 0.4) if str(p.role) == "killer" else Color(0.7, 0.85, 1))
@@ -796,7 +800,11 @@ func _page_offline() -> void:
 	for id in MAPS:
 		if k % 3 == 0 and k > 0: h = _row()
 		k += 1
-		_map_card(id, off_map == id, func(): off_map = id; _refresh(), h)
+		var pick := func():
+			off_map = id
+			if id != "kuwait": off_sniper = false
+			_refresh()
+		_map_card(id, off_map == id, pick, h)
 	var ht := _row()
 	for id in THEMES:
 		if id == "sunset": ht = _row() # a game mode of its own: its own row
@@ -809,6 +817,12 @@ func _page_offline() -> void:
 		if off_bot: bb.modulate = Color(1, 0.6, 0.5)
 	var bgn := _button("وضع السلاح: %s" % ("شغّال — مسدس صاعق للناجين" if off_gun else "مطفي"), func(): off_gun = not off_gun; _refresh(), null, true, "gun")
 	if off_gun: bgn.modulate = Color(0.6, 0.9, 1.0)
+	var sn_toggle := func():
+		off_sniper = not off_sniper
+		if off_sniper: off_map = "kuwait"
+		_refresh()
+	var bsn := _button("وضع القنّاص: %s" % ("شغّال — مدينة الكويت، بوابة وحدة، القاتلة بالسطح" if off_sniper else "مطفي"), sn_toggle, null, true, "gun")
+	if off_sniper: bsn.modulate = Color(1.0, 0.55, 0.45)
 	_button("ابدأ", func():
 		var n := Net.username if Net.username != "" else "Player"
 		var list := [{"name": n, "role": "killer" if off_char.begins_with("killer") else "survivor", "char": off_char, "slot": 0}]
@@ -816,5 +830,5 @@ func _page_offline() -> void:
 		list.append({"name": "دمية", "role": "survivor", "char": "survivor1" if off_char != "survivor1" else "survivor2", "slot": 1, "dummy": true})
 		if not off_char.begins_with("killer") and off_bot: # a computer killer hunting you
 			list.append({"name": "القاتلة", "role": "killer", "char": "killer", "slot": 2, "bot": true})
-		start_game.emit({"map": off_map, "me": n, "offline": true, "theme": off_theme, "gun": off_gun, "players": list}), null, true, "out")
+		start_game.emit({"map": off_map, "me": n, "offline": true, "theme": off_theme, "gun": off_gun, "sniper": off_sniper and off_map == "kuwait", "players": list}), null, true, "out")
 	_button("رجوع", func(): chars_from = "main"; open("main" if Net.username != "" else "name"), null, true, "exit")
