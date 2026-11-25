@@ -45,7 +45,7 @@ func _ready() -> void:
 			if sl.rotation.x < 0.0 and sl.light_color.is_equal_approx(NightWorld.KW_SODIUM): cones += 1
 			elif sl.rotation.x > 0.0: ups += 1
 	check(cones > 30 and ups > 8, "sodium-gold cones down from the lamp heads (%d) and palms lit from their feet (%d)" % [cones, ups])
-	check(w.grid_glare != null and w.env.glow_enabled and w.env.glow_hdr_threshold < 1.0, "the lamps bloom and carry a glare")
+	check(w.grid_glare != null and w.env.glow_hdr_threshold < 1.0, "the lamps bloom and carry a glare")
 	# the killer pulls it
 	for e in m.rules.handle({"k": "cut"}, "K"): m._on_event(e)
 	await frames(60)

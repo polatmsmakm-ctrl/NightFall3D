@@ -1566,16 +1566,32 @@ func _build_mosque() -> void:
 
 ## Kuwait City's night, matched to the owner's photograph: a deep navy sky and shadow, the sea
 ## black-blue, and everything warm comes from the sodium lamps and the floodlights, which bloom.
+var _kw_set := false
 func _kw_look() -> void:
 	if env == null: return
-	# the shadows go navy and a little lower, so the warm pools stand out (not darker than the
-	# owner's own picture: the road there is easy to read)
-	env.ambient_light_color = env.ambient_light_color.lerp(Color(0.16, 0.21, 0.36), 0.7)
-	_amb_base = env.ambient_light_energy * 0.62
-	env.ambient_light_energy = _amb_base * (0.3 if grid_off else 1.0)
-	env.fog_light_color = env.fog_light_color.lerp(Color(0.05, 0.07, 0.14), 0.75)
-	env.fog_density = fog_base * 0.6
-	env.glow_enabled = true
+	if not _kw_set and moon: # once: the settings panel runs this again on every change
+		_kw_set = true
+		# the shadows go navy and a little lower, so the warm pools stand out (not darker than the
+		# owner's own picture: the road there is easy to read)
+		env.ambient_light_color = env.ambient_light_color.lerp(Color(0.15, 0.18, 0.3), 0.7)
+		_amb_base = env.ambient_light_energy * 0.55
+		env.ambient_light_energy = _amb_base * (0.3 if grid_off else 1.0)
+		env.fog_light_color = env.fog_light_color.lerp(Color(0.05, 0.07, 0.14), 0.75)
+		# the screenshots came out under a blue moonlit haze: the photograph has clear dark air and
+		# all its warmth from the lamps. Thin flat fog (the fog event still scales this).
+		fog_base *= 0.35
+		env.fog_density = fog_base
+		env.fog_sky_affect = 0.25
+		if moon:
+			moon.light_color = Color(0.62, 0.7, 0.95)
+			moon.light_volumetric_fog_energy = 0.0 # the moon does not light the air: no blue haze
+			_moon_base = moon.light_energy * 0.32
+			moon.light_energy = _moon_base * (0.35 if grid_off else 1.0)
+	if env.volumetric_fog_enabled: # thin warm-grey air that only the lamps light
+		env.volumetric_fog_density = 0.011
+		env.volumetric_fog_albedo = Color(0.9, 0.82, 0.72)
+		env.volumetric_fog_ambient_inject = 0.0
+		env.volumetric_fog_gi_inject = 0.0
 	env.glow_intensity = 1.1
 	env.glow_strength = 1.1
 	env.glow_bloom = 0.12
@@ -1583,10 +1599,6 @@ func _kw_look() -> void:
 	env.adjustment_enabled = true
 	env.adjustment_saturation = 1.12
 	env.adjustment_contrast = 1.06
-	if moon:
-		moon.light_color = Color(0.58, 0.68, 0.98)
-		_moon_base = moon.light_energy * 0.6
-		moon.light_energy = _moon_base * (0.35 if grid_off else 1.0)
 
 ## The street lights' power box: a grey cabinet on the west sidewalk with a warning plate and a lamp
 ## on top (green while the power is on, red when it has been cut). Drawn on everyone's map.
