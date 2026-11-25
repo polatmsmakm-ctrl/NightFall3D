@@ -153,7 +153,14 @@ func step(dt: float) -> void:
 	body.velocity.x = vel.x
 	body.velocity.z = vel.z
 	body.velocity.y = -2.0 if body.is_on_floor() else body.velocity.y - 22.0 * dt
-	body.move_and_slide()
+	var on_line := Vector3.INF
+	if m.world.sniper and not is_nan(m.world.stair_y(body.global_position)):
+		on_line = m.world.stair_step(body.global_position, vel * dt) # the tower's stairs: the stair line itself
+	if on_line != Vector3.INF:
+		body.global_position = on_line
+		body.velocity.y = 0.0
+	else:
+		body.move_and_slide()
 	if Vector2(vel.x, vel.z).length() > 0.2:
 		face = lerp_angle(face, atan2(vel.x, vel.z), 1.0 - exp(-10.0 * dt))
 	_unstick(dt, vel)
@@ -378,7 +385,7 @@ func _sniper(dt: float) -> Vector3:
 		state = "patrol"
 		if _flat(me).distance_to(_flat(foot)) < 1.2:
 			sn_state = "stairs"
-			sn_way = [Vector3(NightWorld.SN_STAIR_X0 - 0.5, 0.0, w._sn_z()), Vector3(NightWorld.SN_LAND_X, NightWorld.SN_H / 2.0, w._sn_z()),
+			sn_way = [Vector3(NightWorld.SN_STAIR_X0 + 1.9, 0.0, w._sn_z()), Vector3(NightWorld.SN_STAIR_X0 - 0.5, 0.0, w._sn_z()), Vector3(NightWorld.SN_LAND_X, NightWorld.SN_H / 2.0, w._sn_z()),
 				Vector3(NightWorld.SN_LAND2_X, NightWorld.SN_H / 2.0, w._sn_z()), Vector3(NightWorld.SN_TOP_X, NightWorld.SN_H, w._sn_z()),
 				Vector3(-NightWorld.SN_HALF + 2.5, NightWorld.SN_H, w._sn_z()), w.snipe_rifle]
 			return Vector3.ZERO

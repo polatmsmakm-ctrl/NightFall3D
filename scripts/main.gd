@@ -3761,7 +3761,14 @@ func _move(delta: float) -> void:
 	body.velocity.x = hv.x
 	body.velocity.z = hv.z
 	body.velocity.y = -2.0 if grounded else body.velocity.y - 22.0 * delta
-	body.move_and_slide()
+	var on_line := Vector3.INF
+	if my_role == "killer" and world.sniper and not driving and not is_nan(world.stair_y(body.global_position)):
+		on_line = world.stair_step(body.global_position, hv * delta) # the tower's stairs: walk the stair line itself
+	if on_line != Vector3.INF:
+		body.global_position = on_line
+		body.velocity.y = 0.0
+	else:
+		body.move_and_slide()
 	var flat := Vector2(body.velocity.x, body.velocity.z)
 	var v := flat.length()
 	if my_gun and my_gun.visible and my_gun.raise > 0.3: # aiming: she turns to where the camera looks

@@ -5052,6 +5052,35 @@ func on_stairs(p: Vector3) -> bool:
 	if absf(p.z - _sn_z()) > SN_STAIR_W / 2.0 + 0.4: return false
 	return p.x < SN_STAIR_X0 + 0.3 and p.x > SN_TOP_X - 0.2 and p.y > 0.25 and p.y < SN_H - 0.2
 
+## The height of the stair line under `p`, or NAN off it: the two flights and the landing between,
+## from just above the road to the top landing. The killer (and the computer killer) walk this line
+## exactly instead of sliding a capsule over the slope's kinks — physics stopped her at the landing
+## every time. Only within 1.6 m of the line's height, so nobody under the flights is lifted onto it.
+func stair_y(p: Vector3) -> float:
+	if not sniper or map_id != "kuwait": return NAN
+	if absf(p.z - _sn_z()) > SN_STAIR_W / 2.0 + 0.3: return NAN
+	if p.x > SN_STAIR_X0 - 0.15 or p.x < SN_TOP_X - 0.6: return NAN
+	var h: float
+	if p.x >= SN_LAND_X: h = SN_H / 2.0 * (SN_STAIR_X0 - p.x) / (SN_STAIR_X0 - SN_LAND_X)
+	elif p.x >= SN_LAND2_X: h = SN_H / 2.0
+	elif p.x >= SN_TOP_X: h = SN_H / 2.0 + SN_H / 2.0 * (SN_LAND2_X - p.x) / (SN_LAND2_X - SN_TOP_X)
+	else: h = SN_H
+	if absf(p.y - h) > 1.6: return NAN
+	return h
+
+## One step along the stairs: where `from` ends up moving `step` (horizontal), kept inside the stair
+## (the rail on one side, the tower on the other; past the top flight the roof is open), or INF if
+## the step leaves the stair line (the road at the foot, the top landing): physics takes over.
+func stair_step(from: Vector3, step: Vector3) -> Vector3:
+	var np := from + Vector3(step.x, 0.0, step.z)
+	var zc := _sn_z()
+	var hw := SN_STAIR_W / 2.0 - 0.35
+	np.z = clampf(np.z, zc - hw, zc + hw if np.x > SN_TOP_X else SN_BACK)
+	var y := stair_y(Vector3(np.x, from.y, np.z))
+	if is_nan(y): return Vector3.INF
+	np.y = y
+	return np
+
 ## Up on the tower's roof (or its top landing).
 func on_roof(p: Vector3) -> bool:
 	if not sniper or map_id != "kuwait": return false
