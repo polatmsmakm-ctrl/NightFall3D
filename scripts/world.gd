@@ -5196,14 +5196,14 @@ func _build_sniper_tower() -> void:
 	root.add_child(bol)
 	for bz2 in [z - SN_STAIR_W / 2.0 + 0.35, z + SN_STAIR_W / 2.0 - 0.35]:
 		_box(bol, Vector3(0.3, 0.9, 0.3), Vector3(SN_STAIR_X0 + 1.2, 0.45, bz2), _flat(Color(0.95, 0.75, 0.1), 0.5))
-	var sign := Label3D.new()
-	sign.text = "للقنّاصة فقط"
-	sign.font_size = 64
-	sign.pixel_size = 0.006
-	sign.modulate = Color(1.0, 0.3, 0.25)
-	sign.position = Vector3(SN_STAIR_X0 + 0.5, 1.7, z)
-	sign.rotation.y = PI / 2.0
-	root.add_child(sign)
+	var sign_l := Label3D.new()
+	sign_l.text = "للقنّاصة فقط"
+	sign_l.font_size = 64
+	sign_l.pixel_size = 0.006
+	sign_l.modulate = Color(1.0, 0.3, 0.25)
+	sign_l.position = Vector3(SN_STAIR_X0 + 0.5, 1.7, z)
+	sign_l.rotation.y = PI / 2.0
+	root.add_child(sign_l)
 	# the roof: a low parapet (lying down she sees over it), an invisible wall so nobody walks off,
 	# sandbags, the water tank and the rifle's crate
 	var par := StaticBody3D.new() # (on its own layer: it stops bodies, not her bullets)

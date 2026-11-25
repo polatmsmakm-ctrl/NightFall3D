@@ -412,7 +412,8 @@ func tick(dt: float) -> Array:
 		powered = true
 		doom = -1.0 if sniper else DOOM_TIME # (the sniper mode has no moon: it ends when they are all dead or out)
 		for g in gens: g.reps.clear()
-		for gi in gates.size(): if gi == 0 or not sniper: gates[gi].open = true
+		for gi in gates.size():
+			if gi == 0 or not sniper: gates[gi].open = true
 	if powered and doom > 0.0:
 		doom = maxf(doom - dt, 0.0)
 		if doom <= 0.0: # the moon lands: nobody left inside survives (the escape cars are already out)
