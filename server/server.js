@@ -38,12 +38,13 @@ function cleanStats(name, s, old) {
 function where(c) { return c.room ? (c.room.state === 'game' ? 'game' : 'room') : 'menu'; }
 const pending = new Map(); // lowercase name -> [{from, code, at}]: invites to a friend who was offline
 const INVITE_KEEP = 20 * 60 * 1000;
+const STALE_MS = 6000; // a connection silent this long can be replaced by its owner's new one
 
 const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
   res.end(`NightFall server OK. online=${users.size} rooms=${rooms.size}`);
 });
-const wss = new WebSocketServer({ server, maxPayload: 16 * 1024 });
+const wss = new WebSocketServer({ server, maxPayload: 64 * 1024 /* the layout of a big map (doors, hooks) */ });
 
 const send = (c, obj) => { if (c.ws.readyState === 1) c.ws.send(JSON.stringify(obj)); };
 const key = (n) => String(n || '').trim().toLowerCase();
@@ -113,7 +114,17 @@ const handlers = {
     if (c.name) return;
     if (!validName(m.name)) return send(c, { t: 'error', code: 'bad_name' });
     const name = m.name.trim();
-    if (users.has(key(name))) return send(c, { t: 'error', code: 'name_taken' });
+    const old = users.get(key(name));
+    if (old) {
+      // the same phone coming back after its connection dropped (Wi-Fi to 4G, the app in the
+      // background): the server may not have noticed the old socket is dead yet. Same address, or
+      // the old one silent for a while, and the new connection takes the name over; before, the
+      // phone got «name taken» and stopped trying until the game was restarted.
+      const stale = old.ws.readyState !== 1 || Date.now() - old.last > STALE_MS || (old.ip && old.ip === c.ip);
+      if (!stale) return send(c, { t: 'error', code: 'name_taken' });
+      users.delete(key(name));
+      try { old.ws.terminate(); } catch (e) { /* already gone */ }
+    }
     c.name = name;
     users.set(key(name), c);
     if (m.stats && typeof m.stats === 'object') { stats.set(key(name), cleanStats(name, m.stats, stats.get(key(name)))); statsDirty = true; }
@@ -248,16 +259,22 @@ const handlers = {
   ping(c) { send(c, { t: 'pong' }); },
 };
 
-wss.on('connection', (ws) => {
-  const c = { ws, name: null, friends: new Set(), room: null, role: 'survivor', char: 'survivor1', alive: true };
+wss.on('connection', (ws, req) => {
+  // where the phone connects from (Render puts the real address in x-forwarded-for), to tell a
+  // reconnecting phone from somebody else who picked the same name
+  const ip = String((req && req.headers && req.headers['x-forwarded-for']) || (req && req.socket && req.socket.remoteAddress) || '').split(',')[0].trim();
+  const c = { ws, name: null, friends: new Set(), room: null, role: 'survivor', char: 'survivor1', alive: true, ip, last: Date.now() };
+  ws.c = c;
   ws.on('pong', () => { c.alive = true; });
   ws.on('message', (data) => {
+    c.last = Date.now();
     let m;
     try { m = JSON.parse(data.toString()); } catch { return; }
     if (!m || typeof m.t !== 'string') return;
     if (!c.name && m.t !== 'hello') return;
     const h = handlers[m.t];
-    if (h) h(c, m);
+    // one bad message must never take the server (and every room on it) down
+    if (h) { try { h(c, m); } catch (e) { console.error('handler', m.t, e && e.stack); } }
   });
   ws.on('close', () => {
     leaveRoom(c);
@@ -271,9 +288,14 @@ wss.on('connection', (ws) => {
   ws.on('error', () => {});
 });
 
-setInterval(() => {
-  for (const ws of wss.clients) ws.ping();
-}, 25000);
+setInterval(() => { // a phone that did not answer the last ping is gone: close it, so its name and room free up
+  for (const ws of wss.clients) {
+    const c = ws.c;
+    if (c && !c.alive) { try { ws.terminate(); } catch (e) { /* gone */ } continue; }
+    if (c) c.alive = false;
+    try { ws.ping(); } catch (e) { /* closing */ }
+  }
+}, 15000);
 
 // game loop: 10 ticks a second, snapshot 5 times a second (or right after an input)
 let tickN = 0;
@@ -281,11 +303,13 @@ setInterval(() => {
   tickN++;
   for (const r of rooms.values()) {
     if (r.state !== 'game' || !r.rules || !r.rules.ready) continue;
-    for (const e of r.rules.tick(0.1)) broadcast(r, { t: 'ev', n: '', d: e }); // rescues finish inside the tick
-    if (r.dirty || tickN % 2 === 0) {
-      r.dirty = false;
-      broadcast(r, { t: 'ev', n: '', d: r.rules.snapshot() });
-    }
+    try { // a fault in one room's rules stays in that room
+      for (const e of r.rules.tick(0.1)) broadcast(r, { t: 'ev', n: '', d: e }); // rescues finish inside the tick
+      if (r.dirty || tickN % 2 === 0) {
+        r.dirty = false;
+        broadcast(r, { t: 'ev', n: '', d: r.rules.snapshot() });
+      }
+    } catch (e) { console.error('tick', r.code, e && e.stack); }
   }
 }, 100);
 

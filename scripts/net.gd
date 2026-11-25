@@ -34,6 +34,8 @@ var fstats := {}       # friend (lowercase) -> {name, lv, xp, esc, kills, rounds
 
 var _ws: WebSocketPeer
 var _hello := false
+var _had_name := "" # the name the server already accepted from this phone (a reconnect may meet its own old socket)
+var _taken_tries := 0
 var _retry := 0.0
 var _ping := 0.0
 
@@ -302,7 +304,10 @@ func _process(dt: float) -> void:
 
 func _handle(m: Dictionary) -> void:
 	match str(m.t):
-		"welcome": state = "online"
+		"welcome":
+			state = "online"
+			_had_name = username.to_lower()
+			_taken_tries = 0
 		"friends":
 			online = {}
 			status = {}
@@ -330,7 +335,13 @@ func _handle(m: Dictionary) -> void:
 			save()
 		"error":
 			if str(m.get("code", "")) == "name_taken":
-				state = "name_taken"
-				_ws.close()
+				# coming back after a dropped connection, the server may still hold my old one for a
+				# few seconds: try again (a few times) instead of giving up on my own name
+				if _had_name == username.to_lower() and _taken_tries < 6:
+					_taken_tries += 1
+					_ws.close()
+				else:
+					state = "name_taken"
+					_ws.close()
 	changed.emit()
 	message.emit(m)

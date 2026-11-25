@@ -227,6 +227,22 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(sr && sr.ch === 'survivor6' && sr.bio === 'هلا b', 'the profile carries the character and a clean line', JSON.stringify(sr));
   fa.ws.close(); gh.ws.close();
 
+  // --- a phone coming back after its connection dropped: it takes its own name back ---
+  const a1 = client('Mubarak');
+  await a1.ready; await wait(150);
+  let a1closed = false; a1.ws.on('close', () => { a1closed = true; });
+  const a2 = client('Mubarak'); // the same phone (same address), its old socket not noticed dead yet
+  await a2.ready; await wait(250);
+  ok(a2.count('welcome') === 1 && !a2.last('error'), 'a reconnecting phone gets its name back (no «name taken»)');
+  ok(a1closed, 'and the old socket is closed');
+  a2.ws.close();
+  // one bad message does not take the server down
+  host.send({ t: 'layout', d: { g: null } }); host.send({ t: 'set', role: { x: 1 } }); host.send({ t: 'ev', d: { k: 'hit', n: {} } });
+  await wait(200);
+  const after = client('Ali'); await after.ready; await wait(150);
+  ok(after.count('welcome') === 1, 'the server is still up after malformed messages');
+  after.ws.close();
+
   for (const c of [host, mate, third]) c.ws.close();
   srv.kill();
   await wait(150);

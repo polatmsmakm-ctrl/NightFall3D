@@ -66,7 +66,10 @@ class Rules {
   }
   setLayout(l) { // object positions, sent by the clients (they all generate the same map)
     if (this.ready || !l || !Array.isArray(l.g) || !Array.isArray(l.p) || !Array.isArray(l.h)) return;
-    if (l.g.length > 16 || l.p.length > 32 || l.h.length > 48) return; // 9 hooks in the map + 9 along each road
+    // 9 hooks in the map + 9 along each road. Too many is cut down, never refused: a refused layout
+    // left the round with no rules at all (nothing a player did would count)
+    if (l.g.length > 16 || l.p.length > 32 || l.h.length > 48) console.error('layout too long', l.g.length, l.p.length, l.h.length);
+    l.g = l.g.slice(0, 16); l.p = l.p.slice(0, 32); l.h = l.h.slice(0, 48);
     this.layout = l;
     for (let i = 0; i < l.g.length; i++) this.gens.push({ p: 0, done: false, reps: {} });
     for (let i = 0; i < 2; i++) {
