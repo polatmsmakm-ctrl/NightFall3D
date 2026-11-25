@@ -67,7 +67,7 @@ func _ready() -> void:
 	m.body.global_position = Vector3(-NightWorld.KW_ROAD_HALF + 0.3, 0.3, 30.0)
 	await frames(6)
 	check(m.ctx.has("vault"), "at the kerb the jump button lights up")
-	var mosque := w.find_child("KW_kw_mosque", true, false) != null or w.kw_parts > 0
+	var mosque: bool = w.find_child("KW_kw_mosque", true, false) != null or w.kw_parts > 0
 	check(mosque and w.door_points.size() > 0, "the mosque stands where the market was")
 	var snap: Dictionary = m.rules.snapshot()
 	check(snap.has("pb") and (snap.pb as Array).size() == 2, "the snapshot carries the box (online phones follow it)")
