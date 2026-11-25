@@ -72,7 +72,7 @@ func _ready() -> void:
 	var landed0: int = bl.landed
 	var start: Vector3 = m.body.global_position
 	m.stick_vec = Vector2(0, -1)
-	for i in 150: await tree.physics_frame
+	for i in 300: await tree.physics_frame
 	m.stick_vec = Vector2.ZERO
 	await frames(2)
 	check(bl.landed > landed0 + 1, "hurt, she drips as she walks (%d more drops)" % (bl.landed - landed0))

@@ -360,7 +360,8 @@ func _unstick(dt: float, vel: Vector3) -> void:
 ## rifle and lies down along the front of the roof, crawling slowly from one side to the other.
 ## Every few seconds she picks the nearest survivor she has a clear line to and fires: the further
 ## away, the likelier she misses (a miss lands near them, and they hear it).
-var sn_state := "go"
+var sn_state := "go"   # go (to the stairs), stairs, aim
+var sn_way: Array = []
 var sn_t := 0.0
 var sn_cd := 3.0
 var shots := 0          # (tests)
@@ -371,16 +372,32 @@ func _sniper(dt: float) -> Vector3:
 	if m.rules.over:
 		anim = "crawl" if sn_state == "aim" else "idle"
 		return Vector3.ZERO
-	if sn_state == "go":
-		goal = w.snipe_rifle
+	if sn_state == "go": # to the foot of the stairs along the navigation mesh
+		var foot := Vector3(NightWorld.SN_STAIR_X0 + 2.5, 0.0, w._sn_z())
+		goal = foot
 		state = "patrol"
-		if _flat(me).distance_to(_flat(w.snipe_rifle)) < 1.8 and me.y > NightWorld.SN_H - 1.0:
-			sn_state = "aim"
+		if _flat(me).distance_to(_flat(foot)) < 1.2:
+			sn_state = "stairs"
+			sn_way = [Vector3(NightWorld.SN_STAIR_X0 - 0.5, 0.0, w._sn_z()), Vector3(NightWorld.SN_LAND_X, NightWorld.SN_H / 2.0, w._sn_z()),
+				Vector3(NightWorld.SN_LAND2_X, NightWorld.SN_H / 2.0, w._sn_z()), Vector3(NightWorld.SN_TOP_X, NightWorld.SN_H, w._sn_z()),
+				Vector3(-NightWorld.SN_HALF + 2.5, NightWorld.SN_H, w._sn_z()), w.snipe_rifle]
 			return Vector3.ZERO
 		var vel := _steer(dt)
-		if w.on_stairs(me): vel = vel.limit_length(2.2)
-		anim = "climb" if (w.on_stairs(me) and vel.length() > 0.2) else ("walk" if vel.length() > 0.2 else "idle")
+		anim = "walk" if vel.length() > 0.2 else "idle"
 		return vel
+	if sn_state == "stairs": # up the flights, landing by landing, then to the crate
+		if sn_way.is_empty():
+			sn_state = "aim"
+			return Vector3.ZERO
+		var wp: Vector3 = sn_way[0]
+		var dw := wp - me
+		dw.y = 0.0
+		if dw.length() < 0.6:
+			sn_way.pop_front()
+			return Vector3.ZERO
+		var on_st: bool = w.on_stairs(me)
+		anim = "climb" if on_st else "walk"
+		return dw.normalized() * (2.2 if on_st else WALK)
 	# lying on the roof with the rifle
 	sn_t += dt
 	var want := Vector3(sin(sn_t * 0.07) * 11.0, me.y, NightWorld.SN_FACE + 1.3)

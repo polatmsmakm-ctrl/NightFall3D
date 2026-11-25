@@ -5156,7 +5156,8 @@ func _build_sniper_tower() -> void:
 	# the landing between the flights and the one at the top (onto the roof's corner)
 	var land := StaticBody3D.new()
 	root.add_child(land)
-	_box(land, Vector3(SN_LAND_X - SN_LAND2_X + 0.2, 0.3, SN_STAIR_W), Vector3((SN_LAND_X + SN_LAND2_X) / 2.0, SN_H / 2.0 - 0.15, z), tread)
+	# (exactly between the flights: a landing reaching over the slope made a lip that stopped her)
+	_box(land, Vector3(SN_LAND_X - SN_LAND2_X, 0.3, SN_STAIR_W), Vector3((SN_LAND_X + SN_LAND2_X) / 2.0, SN_H / 2.0 - 0.15, z), tread)
 	_box(land, Vector3(SN_HALF + SN_TOP_X + 0.6, 0.3, SN_STAIR_W), Vector3((SN_TOP_X - SN_HALF) / 2.0 - 0.3, SN_H - 0.15, z), tread)
 	for px in [SN_LAND_X, SN_LAND2_X, SN_TOP_X, -SN_HALF + 0.2, SN_STAIR_X0 - 4.0]: # the columns holding it up
 		var top := SN_H / 2.0 if px >= SN_LAND2_X else SN_H
