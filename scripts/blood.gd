@@ -151,7 +151,9 @@ func _ray(a: Vector3, b: Vector3) -> Dictionary:
 	q.collide_with_areas = false
 	return get_world_3d().direct_space_state.intersect_ray(q)
 
+var _pclock := 0.0 # game time as the bodies move (bleed() measures speed and drips by it)
 func _physics_process(dt: float) -> void:
+	_pclock += dt
 	if drops_mm == null: return
 	var i := 0
 	while i < _d_live:
@@ -266,12 +268,16 @@ func _spread(s: Dictionary, i: int) -> float:
 	var t := clampf((_clock - float(s.gs[i])) / float(s.grow[i]), 0.0, 1.0)
 	return lerpf(float(s.from[i]), 1.0, 1.0 - pow(1.0 - t, 3.0))
 
-func _custom(s: Dictionary, i: int) -> void:
+## What a mark shows now: (spread, dryness, what is left, seed) — the shader's INSTANCE_CUSTOM.
+func state(s: Dictionary, i: int) -> Color:
 	var age := _clock - float(s.born[i])
 	var life := MARK_LIFE
 	var dry := clampf((age - life * DRY_FROM) / (life * (1.0 - DRY_FROM - FADE)), 0.0, 1.0)
 	var left := clampf((life - age) / (life * FADE), 0.0, 1.0)
-	(s.mm as MultiMesh).set_instance_custom_data(i, Color(_spread(s, i), dry, left, float(s.seed[i])))
+	return Color(_spread(s, i), dry, left, float(s.seed[i]))
+
+func _custom(s: Dictionary, i: int) -> void:
+	(s.mm as MultiMesh).set_instance_custom_data(i, state(s, i))
 
 func _process(dt: float) -> void:
 	_clock += dt
@@ -321,7 +327,7 @@ func bleed(n: String, feet: Vector3, kind: int, cam: Vector3 = Vector3.INF) -> v
 	if kind == 0:
 		_st.erase(n)
 		return
-	var now := Time.get_ticks_msec() / 1000.0
+	var now := _pclock
 	if not _st.has(n):
 		_st[n] = {"t": randf_range(0.2, 0.8), "last": feet, "at": now, "d": 0.0, "v": Vector3.ZERO}
 	var s: Dictionary = _st[n]

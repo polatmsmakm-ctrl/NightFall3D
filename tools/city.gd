@@ -95,7 +95,7 @@ func _ready() -> void:
 	bl._clock += NFBlood.MARK_LIFE * 0.7
 	bl._tick = 0.0
 	await frames(2)
-	var c: Color = (bl.sets["pool"].mm as MultiMesh).get_instance_custom_data(0)
+	var c: Color = bl.state(bl.sets["pool"], 0)
 	check(c.g > 0.3, "an old pool has dried (%.2f)" % c.g)
 	bl._clock = keep + NFBlood.MARK_LIFE + 1.0
 	bl._tick = 0.0
