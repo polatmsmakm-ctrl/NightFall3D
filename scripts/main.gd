@@ -660,6 +660,7 @@ func _on_net(m: Dictionary) -> void:
 				r.v = int(m.get("v", 0)) == 1 # the developer tools' «Vanish» on that phone
 				r.g = int(m.get("g", 0)) # the gun: 0 put away, 1 lowered, 2 raised
 				r.gp = float(m.get("gp", 0.0)) # where it points, up or down
+		"ev": # the server's referee: the round's state (gs) and what happened
 			var d = m.get("d")
 			if d is Dictionary and str(m.get("n", "?")) == "": # only the server referees
 				if str(d.get("k", "")) == "gs": rules.apply(d)
