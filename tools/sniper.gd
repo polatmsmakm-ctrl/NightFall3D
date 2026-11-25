@@ -56,7 +56,7 @@ func _ready() -> void:
 	check(saw_climb, "on the stairs she plays the climbing clip (made from the walk)")
 	if not climbed:
 		for ci in m.body.get_slide_collision_count():
-			var col := m.body.get_slide_collision(ci)
+			var col: KinematicCollision3D = m.body.get_slide_collision(ci)
 			print("    stuck on ", col.get_collider(), " ", (col.get_collider() as Node).get_path() if col.get_collider() is Node else "", " normal ", col.get_normal(), " at ", col.get_position())
 	check(climbed, "she climbs both flights to the roof (y %.1f, x %.1f)" % [m.body.global_position.y, m.body.global_position.x])
 	check(m.rig.has("climb"), "every rig has «climb»")
