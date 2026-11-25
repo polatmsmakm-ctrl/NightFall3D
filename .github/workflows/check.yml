@@ -26,6 +26,14 @@ jobs:
       - name: Server tests
         run: |
           cd server && npm install --silent --no-audit --no-fund >/dev/null 2>&1 && node test.js 2>&1 | tee ../server.log | tail -60 || echo "::warning::server tests failed"
+      - name: Online round (the real server, this game, and a second phone in node)
+        run: |
+          cd server && (PORT=8099 node server.js > ../srv_online.log 2>&1 &) && cd ..
+          sleep 1
+          rm -f /tmp/code.txt
+          (WS_MODULE=$PWD/server/node_modules/ws node tools/online_bot.js ws://127.0.0.1:8099 > bot_online.log 2>&1 &)
+          NF_URL=ws://127.0.0.1:8099 timeout 300 godot --headless --path . res://tools/online.tscn 2>&1 | grep -E "^O |ERROR|SCRIPT" | head -40 | tee online.log || true
+          sleep 2; cat bot_online.log | head -40; echo "--- server"; tail -20 srv_online.log
       - name: Headless tests
         run: |
           : > all.log
