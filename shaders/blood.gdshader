@@ -10,8 +10,8 @@ render_mode blend_mix, depth_draw_opaque, cull_back, specular_schlick_ggx;
 uniform sampler2D albedo_tex : source_color, filter_linear_mipmap, repeat_disable;
 uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap, repeat_disable;
 uniform bool has_normal = false;
-uniform vec3 fresh : source_color = vec3(0.42, 0.022, 0.028);
-uniform vec3 dried : source_color = vec3(0.15, 0.036, 0.026);
+uniform vec3 fresh : source_color = vec3(0.5, 0.02, 0.026);
+uniform vec3 dried : source_color = vec3(0.2, 0.045, 0.03);
 
 varying vec4 cd;
 varying vec3 wpos;
@@ -30,15 +30,15 @@ void fragment() {
 	vec4 t = texture(albedo_tex, UV);
 	float dry = cd.y;
 	// the bake's own light and dark stay as variation; the colour is taken down to blood, not paint
-	float shade = clamp(0.45 + t.r * 1.15, 0.35, 1.45);
+	float shade = clamp(0.35 + t.r * 0.9, 0.3, 1.1);
 	float n1 = hash(floor(wpos.xz * 9.0) + cd.w * 31.0);
 	vec3 col = mix(fresh, dried, smoothstep(0.0, 1.0, dry)) * shade * (0.9 + 0.2 * n1);
 	// the thin edge dries first and goes brown-black
 	col = mix(col, dried * 0.7, dry * (1.0 - clamp(t.r * 1.4, 0.0, 1.0)) * 0.5);
 	ALBEDO = col;
 	METALLIC = 0.0;
-	SPECULAR = mix(0.75, 0.35, dry);
-	ROUGHNESS = mix(0.035 + 0.05 * n1, 0.62, dry);
+	SPECULAR = mix(0.42, 0.25, dry); // a liquid's reflection (about water's), not a lacquer's
+	ROUGHNESS = mix(0.09 + 0.06 * n1, 0.62, dry);
 	// a fresh pool is still liquid: its surface moves a little
 	vec3 nm = has_normal ? texture(normal_tex, UV).xyz : vec3(0.5, 0.5, 1.0);
 	float wob = (1.0 - dry) * 0.05;
