@@ -1217,7 +1217,7 @@ func _step_sunset(dt: float) -> void:
 	_sky_mat.set_shader_parameter("sun_disc", 1.0 if sun_up else 0.0)
 	moon_now = mel
 	if map_id == "rubkhali": _sky_mat.set_shader_parameter("sun", day) # the sandstorm goes with the sun
-	env.tonemap_exposure = lerpf(0.92, _exp_base, night) * Gfx.brightness
+	env.tonemap_exposure = lerpf(0.8, _exp_base, night) * Gfx.brightness
 	if _vol_base < 0.0: _vol_base = env.volumetric_fog_density
 	if env.volumetric_fog_enabled: # the sun in thick air is a white haze: the air is clear by day
 		env.volumetric_fog_density = _vol_base * lerpf(0.12, 1.0, night)
@@ -1228,7 +1228,7 @@ func _step_sunset(dt: float) -> void:
 	var amb_dusk := Color(0.24, 0.23, 0.36)
 	var night_amb := Color(0.16, 0.2, 0.32).lerp(DARK_AMB, _dk)
 	var col := amb_day.lerp(amb_warm, warm).lerp(amb_dusk, smoothstep(4.0, -3.0, el)).lerp(night_amb, night)
-	var e := lerpf(lerpf(1.45, 0.95, warm), lerpf(1.3, DARK_AMB_E, _dk), night)
+	var e := lerpf(lerpf(1.15, 0.9, warm), lerpf(1.3, DARK_AMB_E, _dk), night)
 	env.ambient_light_color = col
 	env.ambient_light_energy = e
 	var fog_day := Color(0.76, 0.6, 0.38) if desert else Color(0.62, 0.68, 0.78)

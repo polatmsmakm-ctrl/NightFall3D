@@ -10,8 +10,8 @@ render_mode blend_mix, depth_draw_opaque, cull_back, specular_schlick_ggx;
 uniform sampler2D albedo_tex : source_color, filter_linear_mipmap, repeat_disable;
 uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap, repeat_disable;
 uniform bool has_normal = false;
-uniform vec3 fresh : source_color = vec3(0.5, 0.02, 0.026);
-uniform vec3 dried : source_color = vec3(0.2, 0.045, 0.03);
+uniform vec3 fresh : source_color = vec3(0.38, 0.012, 0.018); // dark: in daylight a lighter red tonemaps to pink
+uniform vec3 dried : source_color = vec3(0.14, 0.032, 0.022);
 
 varying vec4 cd;
 varying vec3 wpos;
@@ -30,7 +30,7 @@ void fragment() {
 	vec4 t = texture(albedo_tex, UV);
 	float dry = cd.y;
 	// the bake's own light and dark stay as variation; the colour is taken down to blood, not paint
-	float shade = clamp(0.35 + t.r * 0.9, 0.3, 1.1);
+	float shade = clamp(0.4 + t.r * 0.7, 0.35, 1.0);
 	float n1 = hash(floor(wpos.xz * 9.0) + cd.w * 31.0);
 	vec3 col = mix(fresh, dried, smoothstep(0.0, 1.0, dry)) * shade * (0.9 + 0.2 * n1);
 	// the thin edge dries first and goes brown-black
