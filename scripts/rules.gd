@@ -18,6 +18,12 @@ const GUN_SHOTS := 3
 const GUN_RANGE := 22.0
 const GUN_STUN := 3.0
 var gun := false
+## «وضع القنّاص» (Kuwait City only): one gate (the one on the Kuwait Towers side, gate 0), the
+## killer on a rooftop with a rifle that drops anyone it hits, no moon: the round runs until
+## everybody is dead or out.
+var sniper := false
+const SNIPE_CD := 1.2      # a bolt-action: this long between shots, no limit on them
+var snipe_t := -99.0
 const DOOM_TIME := 120.0 # once the gates have power the moon falls: this long to get out
 const MASH_STEP := 0.03 # each tap on "free yourself"
 const MASH_DECAY := 0.1 # lost per second, so you have to keep hammering the button
@@ -231,7 +237,7 @@ func handle(d: Dictionary, from: String) -> Array:
 					gens[i].p = maxf(gens[i].p - 0.08, 0.0)
 					out.append({"k": "boom", "i": i})
 		"board": # into the escape car past a gate: the first one in drives, the rest ride with them
-			if powered and i >= 0 and i < roads.size() and free_now(from) and int(roads[i].st) <= 1 and (roads[i].who as Array).size() < CAR_SEATS:
+			if powered and i >= 0 and i < roads.size() and (i == 0 or not sniper) and free_now(from) and int(roads[i].st) <= 1 and (roads[i].who as Array).size() < CAR_SEATS:
 				var r: Dictionary = roads[i]
 				if r.st == 0:
 					r.st = 1; r.t = ROAD_TIME; r.drv = from
@@ -314,6 +320,17 @@ func handle(d: Dictionary, from: String) -> Array:
 			if free_now(from) and i >= 0 and i < pallets.size() and pallets[i] == 0:
 				pallets[i] = 1
 				out.append({"k": "pallet", "i": i})
+		"snipe": # the killer's rifle: n = whoever her phone says the bullet hit ("" missed), p = where it struck
+			if sniper and is_killer and clock - snipe_t >= SNIPE_CD:
+				snipe_t = clock
+				var hn := str(d.get("n", ""))
+				var hp = d.get("p", [])
+				var hit := hn != "" and s.has(hn) and free_now(hn)
+				if hit: # down at once, whatever they had (no shield either)
+					s[hn].shield = false
+					_down(hn)
+					add(from, 60.0)
+				out.append({"k": "snipe", "by": from, "n": hn if hit else "", "p": hp if hp is Array else []})
 		"shoot": # the stun gun; the shooter's phone says whether it hit her (and checked the range)
 			if gun and not is_killer and free_now(from) and int(s[from].get("ammo", 0)) > 0:
 				s[from].ammo = int(s[from].ammo) - 1
@@ -393,9 +410,9 @@ func tick(dt: float) -> Array:
 			g.p = 1.0; g.done = true; g.reps.clear()
 	if not powered and done_count() >= NEED:
 		powered = true
-		doom = DOOM_TIME
+		doom = -1.0 if sniper else DOOM_TIME # (the sniper mode has no moon: it ends when they are all dead or out)
 		for g in gens: g.reps.clear()
-		for g in gates: g.open = true
+		for gi in gates.size(): if gi == 0 or not sniper: gates[gi].open = true
 	if powered and doom > 0.0:
 		doom = maxf(doom - dt, 0.0)
 		if doom <= 0.0: # the moon lands: nobody left inside survives (the escape cars are already out)

@@ -20,7 +20,8 @@ const PERK = { survivor1: 'burst', survivor2: 'fix', survivor3: 'lift', survivor
 const MEND_TIME = 45;
 const GRID_CUTS = 2; // the killer may pull the power box twice a round
 const GRID_GAP = 60; // and only this long after the power came back
-const GRID_OFF_GAP = 15; // Halloween: a survivor may switch the power off again this long after it came back
+const GRID_OFF_GAP = 15;
+const SNIPE_CD = 1.2; // the sniper's bolt-action: this long between shots, unlimited // Halloween: a survivor may switch the power off again this long after it came back
 const GRID_FIX = 12; // Kuwait City's power box: one survivor brings the street lights back in 12 s // «تفتّح»: Bloom, hurt and left alone this long, mends herself
 const FIX_MUL = 1.3, MEDIC_MUL = 1.6, LIFT_W = 1.8, RISE_TIME = 20;
 const TRAPS = 4, HELD_TIME = 4; // the killer's traps armed at once; caught in one: held this long
@@ -28,6 +29,9 @@ const TRAPS = 4, HELD_TIME = 4; // the killer's traps armed at once; caught in o
 class Rules {
   constructor(players, seed = 0, opts = {}) {
     this.gun = !!(opts && opts.gun);
+    // «وضع القنّاص» (Kuwait City only): one gate (0), the killer's rifle downs anyone it hits, no moon
+    this.sniper = !!(opts && opts.sniper);
+    this.snipeT = -99;
     // the power box's mode from the room's weather: 1 Halloween (survivors may switch it off too),
     // 2 «بين العصر والمغرب» (the lights start off and come on when someone fixes it)
     this.gridMode = opts && opts.theme === 'halloween' ? 1 : (opts && opts.theme === 'sunset' ? 2 : 0);
@@ -171,7 +175,7 @@ class Rules {
         }
         break;
       case 'board': // into the escape car past a gate: the first one in drives, the rest ride with them
-        if (this.powered && i >= 0 && i < this.roads.length && this.freeNow(from) && this.roads[i].st <= 1 && this.roads[i].who.length < CAR_SEATS && this.near(from, this.carPos(i), 6)) {
+        if (this.powered && i >= 0 && i < this.roads.length && (i === 0 || !this.sniper) && this.freeNow(from) && this.roads[i].st <= 1 && this.roads[i].who.length < CAR_SEATS && this.near(from, this.carPos(i), 6)) {
           const r = this.roads[i];
           if (r.st === 0) { r.st = 1; r.t = ROAD_TIME; r.drv = from; }
           r.who.push(from);
@@ -258,6 +262,16 @@ class Rules {
           this.pallets[i] = 1;
           out.push({ k: 'pallet', i });
           if (this.killer && this.pos[this.killer] && this.near(this.killer, L.p[i], 2.3)) { this.stun = STUN_TIME; this.add(from, 50); out.push({ k: 'stun' }); }
+        }
+        break;
+      case 'snipe': // the killer's rifle: her phone says whom the bullet hit ('' missed) and where it struck
+        if (this.sniper && isKiller && this.clock - this.snipeT >= SNIPE_CD) {
+          this.snipeT = this.clock;
+          const hn = typeof d.n === 'string' ? d.n : '';
+          const hit = hn !== '' && this.s[hn] && this.freeNow(hn);
+          if (hit) { this.s[hn].shield = false; this.down(hn); this.add(from, 60); }
+          const hp = Array.isArray(d.p) && d.p.length >= 3 && d.p.every(Number.isFinite) ? d.p.slice(0, 3) : [];
+          out.push({ k: 'snipe', by: from, n: hit ? hn : '', p: hp });
         }
         break;
       case 'shoot': // a survivor fires the stun gun; their phone says whether it hit her (positions are the phones' anyway)
@@ -359,9 +373,9 @@ class Rules {
     }
     if (!this.powered && this.doneCount() >= NEED) {
       this.powered = true;
-      this.doom = DOOM_TIME;
+      this.doom = this.sniper ? -1 : DOOM_TIME; // (no moon in the sniper mode)
       for (const g of this.gens) g.reps = {};
-      for (const g of this.gates) g.open = true;
+      this.gates.forEach((g, gi) => { if (gi === 0 || !this.sniper) g.open = true; });
     }
     if (this.powered && this.doom > 0) {
       this.doom = Math.max(this.doom - dt, 0);

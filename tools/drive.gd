@@ -300,6 +300,8 @@ func _ready() -> void:
 	for i in 20: await tree.process_frame
 	check(m.danger == 0.0 and not m.heart.playing, "no heartbeat while she drives, even right next to me")
 	check(car.lights.light_energy > 2.0, "headlights on while someone drives")
+	check(car.beam != null and car.beam.light_energy > 10.0 and car.lights.position.z > 2.6 and car.lamp_mat.albedo_color.a > 0.3,
+		"the headlamps start in front of the bumper, a long beam with them, the lamps glow")
 	check(not car.radio_on, "radio off while his f is 0")
 	k.lit = true
 	for i in 10: await tree.process_frame

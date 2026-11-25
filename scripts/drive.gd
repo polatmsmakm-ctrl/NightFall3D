@@ -14,7 +14,8 @@ const BRAKE := 16.0
 const COAST := 3.5
 const TURN := 1.6         # rad/s once it is moving
 const RAM_SPEED := 3.0    # slower than this, touching a survivor is not a hit
-const LIGHT_ENERGY := 15.0
+const LIGHT_ENERGY := 22.0
+const BEAM_ENERGY := 30.0  # the long beam down the road
 # the cabin (assets/props/cabin.glb, the owner's Mud-Caked Toyota Cabin) in the car's own space:
 # its floor on the body's floor, its dashboard against the bottom of the windscreen
 const CABIN_AT := Vector3(0.0, 0.5, 0.15)
@@ -49,6 +50,9 @@ var driven := false       # someone is at the wheel (lights on, engine running)
 var bump := 0.0           # how hard the last crash was (0..1); main reads it and clears it
 var model: Node3D         # the visible car, tilted to the ground under it
 var lights: SpotLight3D
+var beam: SpotLight3D       # the long, narrow beam (the low one lights the road just ahead and the sides)
+var lamp_mat: StandardMaterial3D   # the headlamps and their glare, seen from outside
+var tail_mat: StandardMaterial3D
 var tail: OmniLight3D
 var engine: AudioStreamPlayer3D
 var radio: AudioStreamPlayer3D # the owner's song (assets/sfx/radio.mp3), from the dashboard
@@ -210,17 +214,44 @@ func setup(ps: PackedScene, scale_k: float, cabin_ps: PackedScene = null, dust_c
 	dust_on = dusty
 	dust = _puffs(dust_col, 48, 1.3, 0.55, Vector3(0, 0.25, -2.2))
 	smoke = _puffs(Color(0.32, 0.32, 0.33, 0.5), 14, 0.9, 0.18, Vector3(-0.55, 0.42, -2.25))
-	lights = SpotLight3D.new() # one beam for both headlamps: the mobile renderer counts lights
-	lights.position = Vector3(0, 1.0, 2.25)
-	lights.rotation = Vector3(-0.08, PI, 0) # a spot light shines down its -z; the car's front is +z
-	lights.light_color = Color(1.0, 0.93, 0.78)
-	lights.spot_range = 42.0
-	lights.spot_angle = 33.0
-	lights.spot_attenuation = 0.6
+	# the headlamps (the owner: "make them visible and useful in the dark"). The light used to sit
+	# inside the bonnet at z 2.25, so with shadows on the car's own body blacked it out: both beams
+	# now start in front of the bumper. A wide low beam lights the road and the verges just ahead,
+	# a narrow long one reaches 95 m down the road; the lamps themselves glow, with a glare you see
+	# from far off, and the tail lamps glow red.
+	lights = SpotLight3D.new()
+	lights.position = Vector3(0, 0.85, 2.8)
+	lights.rotation = Vector3(-0.11, PI, 0) # a spot light shines down its -z; the car's front is +z
+	lights.light_color = Color(1.0, 0.94, 0.82)
+	lights.spot_range = 55.0
+	lights.spot_angle = 40.0
+	lights.spot_angle_attenuation = 0.6
+	lights.spot_attenuation = 0.45
 	lights.light_energy = 0.0
 	lights.shadow_enabled = false
 	NFLook.shadows_on(lights)
 	model.add_child(lights)
+	beam = SpotLight3D.new()
+	beam.position = Vector3(0, 1.0, 2.85)
+	beam.rotation = Vector3(-0.035, PI, 0)
+	beam.light_color = Color(1.0, 0.96, 0.88)
+	beam.spot_range = 95.0
+	beam.spot_angle = 15.0
+	beam.spot_angle_attenuation = 0.8
+	beam.spot_attenuation = 0.3
+	beam.light_energy = 0.0
+	beam.shadow_enabled = false
+	beam.light_volumetric_fog_energy = 2.0
+	beam.distance_fade_enabled = true
+	beam.distance_fade_begin = 120.0
+	beam.distance_fade_length = 20.0
+	model.add_child(beam)
+	lamp_mat = _glow_mat(Color(1.0, 0.95, 0.82))
+	tail_mat = _glow_mat(Color(1.0, 0.08, 0.05))
+	for sx in [-1.0, 1.0]:
+		_glow_quad(lamp_mat, Vector3(sx * 0.68, 0.92, 2.45), 0.55)
+		_glow_quad(lamp_mat, Vector3(sx * 0.68, 0.92, 2.5), 2.0, 0.28) # the glare
+		_glow_quad(tail_mat, Vector3(sx * 0.74, 1.02, -2.42), 0.42)
 	tail = OmniLight3D.new()
 	tail.position = Vector3(0, 0.75, -3.0) # behind the bumper: a red patch on the ground, not a red car
 	tail.light_color = Color(1.0, 0.1, 0.06)
@@ -531,6 +562,7 @@ func show_inside(on: bool) -> void:
 	show_cabin = on
 	inside.visible = on or door_open > 0.02
 	if hand_root: hand_root.visible = on # from the seat: the gloves on the wheel (her body is hidden there)
+	for n in _lamp_nodes: (n as Node3D).visible = not on
 
 ## Where a carried survivor's rig stands so their hips land on the passenger seat.
 func seat_spot() -> Vector3:
@@ -737,12 +769,18 @@ func _effects(dt: float) -> void:
 	var on := 1.0 if driven else 0.0
 	lights.light_energy = lerpf(lights.light_energy, LIGHT_ENERGY * on, 1.0 - exp(-6.0 * dt))
 	lights.visible = lights.light_energy > 0.05
+	if beam:
+		beam.light_energy = lights.light_energy * BEAM_ENERGY / LIGHT_ENERGY
+		beam.visible = lights.visible
+		lamp_mat.albedo_color.a = clampf(lights.light_energy / LIGHT_ENERGY, 0.0, 1.0)
+		for g in _glares: (g as StandardMaterial3D).albedo_color.a = lamp_mat.albedo_color.a * float((g as StandardMaterial3D).get_meta("k", 0.3))
 	# brake lights: bright while it slows down hard (on every phone: worked out from the speed)
 	var slowing := clampf((_prev_speed_abs - absf(speed)) / maxf(dt, 0.001) / 6.0, 0.0, 1.0)
 	_prev_speed_abs = absf(speed)
 	braking = lerpf(braking, maxf(slowing, 1.0 if (driven and absf(speed) < 0.4) else 0.0), 1.0 - exp(-10.0 * dt))
 	tail.light_energy = lerpf(tail.light_energy, (0.45 + 1.1 * braking) * on, 1.0 - exp(-12.0 * dt))
 	tail.visible = tail.light_energy > 0.05
+	if tail_mat: tail_mat.albedo_color.a = clampf(tail.light_energy / 1.2, 0.0, 1.0)
 	if reverse_l: # the white reversing light
 		reverse_l.light_energy = lerpf(reverse_l.light_energy, (0.9 if speed < -0.3 else 0.0) * on, 1.0 - exp(-10.0 * dt))
 		reverse_l.visible = reverse_l.light_energy > 0.05
@@ -797,3 +835,34 @@ func _build_flames() -> void:
 	glow.omni_range = 5.0
 	glow.position = Vector3(0, 0, -0.8)
 	flames.add_child(glow)
+
+
+## A lamp seen from outside: an additive, camera-facing soft disc (the glare is a big faint one).
+func _glow_mat(c: Color) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	m.albedo_texture = NFDecor.tex("soft")
+	m.albedo_color = Color(c.r, c.g, c.b, 0.0)
+	return m
+
+func _glow_quad(m: StandardMaterial3D, at: Vector3, size: float, k := 1.0) -> void:
+	var mi := MeshInstance3D.new()
+	var q := QuadMesh.new()
+	q.size = Vector2(size, size)
+	var mm := m
+	if k < 1.0: # the glare: the same lamp, fainter (its own material, following the lamp's)
+		mm = m.duplicate() as StandardMaterial3D
+		mm.set_meta("k", k)
+		_glares.append(mm)
+	q.material = mm
+	mi.mesh = q
+	mi.position = at
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	model.add_child(mi)
+	if at.z > 0.0: _lamp_nodes.append(mi)
+
+var _glares: Array = []
+var _lamp_nodes: Array = [] # hidden from the driver's seat (they would glow on the bonnet in front of her)

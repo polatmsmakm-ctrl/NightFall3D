@@ -51,7 +51,7 @@ const validName = (n) => typeof n === 'string' && n.trim().length >= 2 && n.trim
 
 function roomView(r) {
   return {
-    t: 'room', code: r.code, host: r.host, map: r.map, theme: r.theme, gun: !!r.gun, state: r.state,
+    t: 'room', code: r.code, host: r.host, map: r.map, theme: r.theme, gun: !!r.gun, sniper: !!r.sniper, state: r.state,
     players: r.members.map((m) => ({ name: m.name, role: m.role, char: m.char })),
   };
 }
@@ -158,9 +158,13 @@ const handlers = {
   set(c, m) {
     const r = c.room;
     if (!r || r.state !== 'lobby') return;
-    if (m.map !== undefined && r.host === c.name && MAPS.includes(m.map)) r.map = m.map;
+    if (m.map !== undefined && r.host === c.name && MAPS.includes(m.map)) { r.map = m.map; if (r.map !== 'kuwait') r.sniper = false; }
     if (m.theme !== undefined && r.host === c.name && THEMES.includes(m.theme)) r.theme = m.theme;
     if (m.gun !== undefined && r.host === c.name) r.gun = !!m.gun; // «وضع السلاح»: survivors carry a stun gun
+    if (m.sniper !== undefined && r.host === c.name) { // «وضع القنّاص»: Kuwait City only, so it takes the map with it
+      r.sniper = !!m.sniper;
+      if (r.sniper) r.map = 'kuwait';
+    }
     if (m.role === 'killer' && c.role !== 'killer') {
       if (r.members.some((x) => x.role === 'killer')) return send(c, { t: 'error', code: 'killer_taken' });
       c.role = 'killer'; c.char = 'killer';
@@ -196,8 +200,8 @@ const handlers = {
     r.state = 'game';
     r.seed = Math.floor(Math.random() * 1e9);
     const players = r.members.map((m, i) => ({ name: m.name, role: m.role, char: m.char, slot: i }));
-    r.rules = new Rules(players, r.seed, { gun: !!r.gun, theme: r.theme });
-    broadcast(r, { t: 'started', map: r.map, theme: r.theme || 'normal', gun: !!r.gun, seed: r.seed, players });
+    r.rules = new Rules(players, r.seed, { gun: !!r.gun, theme: r.theme, sniper: !!r.sniper && r.map === 'kuwait' });
+    broadcast(r, { t: 'started', map: r.map, theme: r.theme || 'normal', gun: !!r.gun, sniper: !!r.sniper && r.map === 'kuwait', seed: r.seed, players });
     notifyRoom(r);
   },
   lobby(c) { // host sends everyone back to the lobby
