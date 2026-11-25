@@ -331,7 +331,7 @@ func bleed(n: String, feet: Vector3, kind: int, cam: Vector3 = Vector3.INF) -> v
 	if not _st.has(n):
 		_st[n] = {"t": randf_range(0.2, 0.8), "last": feet, "at": now, "d": 0.0, "v": Vector3.ZERO}
 	var s: Dictionary = _st[n]
-	var dt := clampf(now - float(s.at), 0.0, 0.25)
+	var dt := clampf(now - float(s.at), 0.0, 1.0) # (a slow frame must not swallow the drips)
 	s.at = now
 	var moved: Vector3 = feet - (s.last as Vector3)
 	s.last = feet
