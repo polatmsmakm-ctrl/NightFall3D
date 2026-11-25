@@ -1020,3 +1020,16 @@ photographs it lowered and raised.
   (`assets/props/pumpkin.glb`) is everywhere: 70 about the map (40 on older phones), by every door,
   generator and hook, and down both escape roads — one MultiMesh, a light in every third
   (`pumpkin_lights` are spared by the dark).
+
+## Kuwait City's lights, matched to the owner's photograph
+- **Sodium gold** (`NightWorld.KW_SODIUM`): every street-light head throws a **cone straight down**
+  (`_street_cone`, a `SpotLight3D` on the power grid), so the asphalt gets warm pools under each lamp
+  and darker road between them, as in his picture. The heads glow hot enough to bloom, and each
+  carries a soft glare billboard (`grid_glare`, one MultiMesh) that goes with the power and the dark.
+- The median's palms and every other corniche palm are **uplit from their feet** (`_uplight`).
+- `_kw_look()` (not on Halloween): navy shadows and fog, ambient and moon at ~0.6 of the theme's,
+  stronger bloom (threshold 0.85), a touch more saturation and contrast.
+- `_amb_light` takes any `Light3D` now (spots included; only omnis flicker).
+- **The long ground pieces are cut into 16-32 m pieces** (`_strip`; the markings in 32 m chunks):
+  the Mobile renderer lights a mesh with its 8 nearest lights only, so one 224 m road was lit by
+  8 lamps. All the ground materials are world-space, so the cuts do not show.

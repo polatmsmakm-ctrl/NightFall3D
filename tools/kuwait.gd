@@ -37,12 +37,21 @@ func _ready() -> void:
 	var grid_lights := 0
 	for e in w.amb_lights: if e.size() > 5 and bool(e[5]): grid_lights += 1
 	check(grid_lights > 30, "the street lights hang on it (%d)" % grid_lights)
+	var cones := 0
+	var ups := 0
+	for e in w.amb_lights:
+		if e[0] is SpotLight3D and bool(e[5]):
+			var sl: SpotLight3D = e[0]
+			if sl.rotation.x < 0.0 and sl.light_color.is_equal_approx(NightWorld.KW_SODIUM): cones += 1
+			elif sl.rotation.x > 0.0: ups += 1
+	check(cones > 30 and ups > 8, "sodium-gold cones down from the lamp heads (%d) and palms lit from their feet (%d)" % [cones, ups])
+	check(w.grid_glare != null and w.env.glow_enabled and w.env.glow_hdr_threshold < 1.0, "the lamps bloom and carry a glare")
 	# the killer pulls it
 	for e in m.rules.handle({"k": "cut"}, "K"): m._on_event(e)
 	await frames(60)
 	var lit := 0
 	for e in w.amb_lights:
-		if e.size() > 5 and bool(e[5]) and (e[0] as OmniLight3D).light_energy > 0.05: lit += 1
+		if e.size() > 5 and bool(e[5]) and (e[0] as Light3D).light_energy > 0.05: lit += 1
 	check(not m.rules.grid and w.grid_off and lit == 0, "the killer cuts the power: every street light goes out (%d still lit)" % lit)
 	# a survivor fixes it at the box
 	m.body.global_position = w.power_box + Vector3(1.4, 0.3, 0)
@@ -54,7 +63,7 @@ func _ready() -> void:
 	await frames(60)
 	lit = 0
 	for e in w.amb_lights:
-		if e.size() > 5 and bool(e[5]) and (e[0] as OmniLight3D).light_energy > 0.05: lit += 1
+		if e.size() > 5 and bool(e[5]) and (e[0] as Light3D).light_energy > 0.05: lit += 1
 	check(m.rules.grid and not w.grid_off and lit > 30, "fixed: the street is lit again (%d)" % lit)
 	# twice a round, with a wait between
 	var again: Array = m.rules.handle({"k": "cut"}, "K")

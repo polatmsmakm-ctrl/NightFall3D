@@ -577,10 +577,10 @@ func _make_materials() -> void:
 # ---------------- environment ----------------
 ## Register a light that the blackout, the flicker and the killer can all touch.
 ## `house` lights go out when he walks up to them.
-func _amb_light(l: OmniLight3D, house := false, flick := true, on_grid := false) -> void:
+func _amb_light(l: Light3D, house := false, flick := true, on_grid := false) -> void:
 	amb_lights.append([l, l.light_energy, house, flick, 1.0, on_grid])
 	NFLook.halo(l)
-	if flick: flicker.append(l)
+	if flick and l is OmniLight3D: flicker.append(l)
 
 func _build_environment() -> void:
 	env = Environment.new()
@@ -969,6 +969,7 @@ var grid_off := false
 var grid_mats: Array[StandardMaterial3D] = [] # the lamps' glow: dark while the power is cut
 var _grid_glow: Array[float] = []
 var box_lamp: StandardMaterial3D
+var grid_glare: StandardMaterial3D # the halo round the street lamps (dims with the power)
 var kw_parts := 0
 
 ## Many copies of one of the owner's models as one MultiMesh per sub-mesh (one draw call each),
@@ -1109,6 +1110,52 @@ func _grid_light(at: Vector3, col: Color, energy: float, reach: float) -> void:
 	add_child(l)
 	_amb_light(l, false, false, true)
 
+## Kuwait City's street lights, as in the owner's picture: a cone of sodium-gold light straight down
+## from the head, so each lamp throws a warm pool on the asphalt and lights the trees under it, and
+## the road between the lamps stays darker.
+const KW_SODIUM := Color(1.0, 0.66, 0.3)
+func _street_cone(at: Vector3, energy := 7.0, reach := 15.0, angle := 66.0) -> void:
+	var l := SpotLight3D.new()
+	l.light_color = KW_SODIUM
+	l.light_energy = energy
+	l.spot_range = reach
+	l.spot_angle = angle
+	l.spot_angle_attenuation = 0.85
+	l.spot_attenuation = 0.9
+	l.light_specular = 0.7
+	l.position = at
+	l.rotation.x = -PI / 2.0 # the cone points straight down
+	l.distance_fade_enabled = true
+	l.distance_fade_begin = 60.0 if Gfx.weak else 95.0
+	l.distance_fade_length = 15.0
+	add_child(l)
+	_amb_light(l, false, false, true)
+
+## A warm light from the ground up into a palm's crown, like the photographs of the Gulf Road.
+func _uplight(at: Vector3, energy := 4.0) -> void:
+	var l := SpotLight3D.new()
+	l.light_color = Color(1.0, 0.74, 0.42)
+	l.light_energy = energy
+	l.spot_range = 13.0
+	l.spot_angle = 24.0
+	l.spot_angle_attenuation = 0.7
+	l.position = at
+	l.rotation.x = PI / 2.0 # pointing up
+	l.distance_fade_enabled = true
+	l.distance_fade_begin = 50.0 if Gfx.weak else 80.0
+	l.distance_fade_length = 12.0
+	add_child(l)
+	_amb_light(l, false, false, true)
+
+## A long strip of ground cut into pieces along the road: the Mobile renderer lights each mesh with
+## its 8 nearest lights only, so one 224 m slab would be lit by 8 lamps and dark everywhere else.
+func _strip(size: Vector3, centre: Vector3, mat: Material, seg := 16.0) -> void:
+	var n := maxi(1, ceili(size.z / seg))
+	var seg_len := size.z / float(n)
+	for i in n:
+		var z := centre.z - size.z / 2.0 + seg_len * (float(i) + 0.5)
+		_mesh_box(self, Vector3(size.x, size.y, seg_len), Vector3(centre.x, centre.y, z), mat)
+
 func _grid_glow_of(n: Node) -> void:
 	var mesh: Mesh = null
 	if n is MultiMeshInstance3D: mesh = (n as MultiMeshInstance3D).multimesh.mesh
@@ -1132,8 +1179,11 @@ func set_grid(on: bool) -> void:
 	grid_off = not on
 	for i in grid_mats.size():
 		var tw := create_tween()
-		tw.tween_property(grid_mats[i], "emission_energy_multiplier", _grid_glow[i] if on else 0.0, 0.8 if on else 0.25)
+		tw.tween_property(grid_mats[i], "emission_energy_multiplier", _grid_glow[i] if (on and not blackout) else 0.0, 0.8 if on else 0.25)
 	if box_lamp: box_lamp.emission = Color(0.2, 1.0, 0.35) if on else Color(1.0, 0.15, 0.1)
+	if grid_glare:
+		var tw3 := create_tween()
+		tw3.tween_property(grid_glare, "albedo_color:a", 0.55 if (on and not blackout) else 0.0, 0.8 if on else 0.25)
 
 func _build_kuwait() -> void:
 	_build_buildings() # the kiosks: lockers, doors, windows, generators by their doors
@@ -1143,7 +1193,9 @@ func _build_kuwait() -> void:
 	# ---- the ground: paving on the land, lawns in front of the Assembly ----
 	var pave := _paver_mat(false)
 	var land := KW_SAND + WALL
-	_mesh_box(self, Vector3(land, 0.02, WALL * 2.0), Vector3(-WALL + land / 2.0, 0.0, 0), pave)
+	for xi in 6: # the paving in 28 m tiles (see _strip)
+		var w6 := land / 6.0
+		_strip(Vector3(w6, 0.02, WALL * 2.0), Vector3(-WALL + w6 * (float(xi) + 0.5), 0.0, 0), pave, 28.0)
 	var lawn := _pbr(Color(0.06, 0.14, 0.04), Color(0.18, 0.34, 0.1), 0.05, Vector3(0.6, 0.6, 0.6), 0.95)
 	for lz in [-38.0, -12.0, 14.0, 40.0]:
 		_mesh_box(self, Vector3(20.0, 0.06, 20.0), Vector3(-40.0, 0.06, lz), lawn)
@@ -1154,7 +1206,8 @@ func _build_kuwait() -> void:
 	asphalt.uv1_world_triplanar = true
 	asphalt.uv1_scale = Vector3(0.25, 0.25, 0.25)
 	# flush with the ground the cars roll on (2.5 cm), so a car sits on it instead of in it
-	_mesh_box(self, Vector3(KW_ROAD_HALF * 2.0, 0.02, WALL * 2.0 + 2.0), Vector3(0, 0.015, 0), asphalt)
+	_strip(Vector3(KW_ROAD_HALF, 0.02, WALL * 2.0 + 2.0), Vector3(-KW_ROAD_HALF / 2.0, 0.015, 0), asphalt)
+	_strip(Vector3(KW_ROAD_HALF, 0.02, WALL * 2.0 + 2.0), Vector3(KW_ROAD_HALF / 2.0, 0.015, 0), asphalt)
 	var white := _flat(Color(0.9, 0.9, 0.86), 0.55, 0.0, 0.35)
 	var yellow := _flat(Color(0.95, 0.75, 0.15), 0.55, 0.0, 0.35)
 	var marks := {"w": [], "y": []}
@@ -1168,19 +1221,33 @@ func _build_kuwait() -> void:
 		for cz in [-64.0, 0.0, 64.0]: # zebra crossings
 			for k in 9:
 				marks.w.append(Transform3D(Basis().scaled(Vector3(0.6, 1.0, 4.0)), Vector3(sx * (3.0 + k * 1.4), 0.033, cz)))
-	for key in marks:
-		var mm := MultiMesh.new()
-		mm.transform_format = MultiMesh.TRANSFORM_3D
+	for key in marks: # in 32 m chunks, each lit by its own nearest lamps (the long lines are cut too)
+		var chunks := {}
+		for t in marks[key]:
+			var tt: Transform3D = t
+			var sz := tt.basis.get_scale()
+			if sz.z > 40.0: # a line the length of the road: cut it
+				for zc in range(-112, 112, 32):
+					var piece := Transform3D(Basis().scaled(Vector3(sz.x, 1.0, 32.0)), Vector3(tt.origin.x, tt.origin.y, float(zc) + 16.0))
+					if not chunks.has(zc): chunks[zc] = []
+					chunks[zc].append(piece)
+				continue
+			var ck := int(floor((tt.origin.z + 112.0) / 32.0)) * 32 - 112
+			if not chunks.has(ck): chunks[ck] = []
+			chunks[ck].append(tt)
 		var bm := BoxMesh.new()
 		bm.size = Vector3(1.0, 0.012, 1.0)
 		bm.material = white if key == "w" else yellow
-		mm.mesh = bm
-		mm.instance_count = marks[key].size()
-		for t in marks[key].size(): mm.set_instance_transform(t, marks[key][t])
-		var mmi := MultiMeshInstance3D.new()
-		mmi.multimesh = mm
-		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		add_child(mmi)
+		for ck in chunks:
+			var mm := MultiMesh.new()
+			mm.transform_format = MultiMesh.TRANSFORM_3D
+			mm.mesh = bm
+			mm.instance_count = chunks[ck].size()
+			for t in chunks[ck].size(): mm.set_instance_transform(t, chunks[ck][t])
+			var mmi := MultiMeshInstance3D.new()
+			mmi.multimesh = mm
+			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			add_child(mmi)
 	# kerbs: granite edges, and a walkable ramp of collision so feet and tyres ride up onto them
 	var kerb := _pbr(Color(0.42, 0.41, 0.39), Color(0.62, 0.61, 0.58), 0.6, Vector3(1.2, 1.2, 1.2), 0.7)
 	var walk := _paver_mat(true)
@@ -1188,12 +1255,12 @@ func _build_kuwait() -> void:
 	for sx in [-1.0, 1.0]:
 		# the sidewalk: pavers raised 15 cm, a granite kerb on the road side
 		var cx: float = sx * (KW_ROAD_HALF + KW_WALK / 2.0)
-		_mesh_box(self, Vector3(KW_WALK, 0.15, WALL * 2.0), Vector3(cx, 0.075, 0), walk)
-		_mesh_box(self, Vector3(0.3, 0.17, WALL * 2.0), Vector3(sx * (KW_ROAD_HALF + 0.15), 0.085, 0), kerb)
+		_strip(Vector3(KW_WALK, 0.15, WALL * 2.0), Vector3(cx, 0.075, 0), walk)
+		_strip(Vector3(0.3, 0.17, WALL * 2.0), Vector3(sx * (KW_ROAD_HALF + 0.15), 0.085, 0), kerb, 32.0)
 		_kerb_body(Vector3(cx, 0, 0), KW_WALK, WALL * 2.0, 0.15)
 	# the median: raised, kerbed, ending well before the gates
-	_mesh_box(self, Vector3(4.2, 0.2, med_len), Vector3(0, 0.1, 0), kerb)
-	_mesh_box(self, Vector3(3.6, 0.04, med_len - 0.6), Vector3(0, 0.22, 0), lawn)
+	_strip(Vector3(4.2, 0.2, med_len), Vector3(0, 0.1, 0), kerb, 23.0)
+	_strip(Vector3(3.6, 0.04, med_len - 0.6), Vector3(0, 0.22, 0), lawn, 23.0)
 	_kerb_body(Vector3.ZERO, 4.2, med_len, 0.2)
 	# the median planted: grass all along it round the palms, nothing near the gates
 	var planters: Array = []
@@ -1227,19 +1294,48 @@ func _build_kuwait() -> void:
 			var tt: Transform3D = t
 			tree_plan.append([tt.origin.x, 0.0, tt.origin.z, 1, 1.0, 0.0])
 	# the promenade: warm pavers, raised and kerbed like the walks
-	_mesh_box(self, Vector3(KW_PROM.y - KW_PROM.x, 0.2, WALL * 2.0), Vector3((KW_PROM.x + KW_PROM.y) / 2.0, 0.1, 0), _paver_mat(true, true))
+	_strip(Vector3(KW_PROM.y - KW_PROM.x, 0.2, WALL * 2.0), Vector3((KW_PROM.x + KW_PROM.y) / 2.0, 0.1, 0), _paver_mat(true, true))
 	_kerb_body(Vector3((KW_PROM.x + KW_PROM.y) / 2.0, 0, 0), KW_PROM.y - KW_PROM.x, WALL * 2.0, 0.2)
 	for z in range(-98, 99, 14): lights.append(Transform3D(Basis(Vector3.UP, PI / 2.0), Vector3(KW_PROM.x + 2.0, 0.2, float(z))))
 	# the street lights: his twin heads, burning yellow, each head a glowing lamp and a light
 	_kw_many("kw_light", lights, Vector3(0.4, 9.0, 0.4), 4.5, 170.0, true)
-	var lamp_glow := _flat(Color(1.0, 0.85, 0.4), 0.3, 0.0, 6.0)
+	var lamp_glow := _flat(Color(1.0, 0.72, 0.36), 0.3, 0.0, 12.0) # hot enough to bloom
+	lamp_glow.emission = Color(1.0, 0.68, 0.32)
 	grid_mats.append(lamp_glow)
-	_grid_glow.append(6.0)
+	_grid_glow.append(12.0)
 	var heads: Array = []
 	for t in lights:
 		var tt: Transform3D = t
 		for hx in KW_HEADS: heads.append(Transform3D(Basis(), tt * Vector3(hx, KW_HEAD_Y, 0.42)))
-		_grid_light(tt.origin + Vector3(0, KW_HEAD_Y - 0.4, 0), Color(1.0, 0.76, 0.32), 2.8, 19.0)
+		_street_cone(tt.origin + Vector3(0, KW_HEAD_Y - 0.3, 0))
+	# the glare round every lamp head, as a camera sees a sodium lamp at night
+	var glare := MultiMesh.new()
+	glare.transform_format = MultiMesh.TRANSFORM_3D
+	var gq := QuadMesh.new()
+	gq.size = Vector2(2.2, 2.2)
+	grid_glare = StandardMaterial3D.new()
+	grid_glare.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	grid_glare.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	grid_glare.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	grid_glare.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	grid_glare.albedo_texture = NFDecor.tex("soft")
+	grid_glare.albedo_color = Color(1.0, 0.62, 0.26, 0.55)
+	grid_glare.no_depth_test = false
+	gq.material = grid_glare
+	glare.mesh = gq
+	glare.instance_count = heads.size()
+	for i in heads.size(): glare.set_instance_transform(i, heads[i])
+	var gmi := MultiMeshInstance3D.new()
+	gmi.multimesh = glare
+	gmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(gmi)
+	for t in palms: # the median's palms lit from their feet
+		var tt: Transform3D = t
+		_uplight(tt.origin + Vector3(0.9, 0.3, 0.0))
+	for i in prom_palms.size():
+		if i % 2 == 0:
+			var tt: Transform3D = prom_palms[i]
+			_uplight(tt.origin + Vector3(-0.9, 0.3, 0.0), 3.2)
 	var hm := MultiMesh.new()
 	hm.transform_format = MultiMesh.TRANSFORM_3D
 	var sph := SphereMesh.new()
@@ -1264,7 +1360,7 @@ func _build_kuwait() -> void:
 			top.position.x += 22.0
 	# ---- the car park by the sea: his cars in rows ----
 	var park := _flat(Color(0.06, 0.06, 0.065), 0.6)
-	_mesh_box(self, Vector3(KW_PARK.y - KW_PARK.x, 0.05, WALL * 2.0 - 8.0), Vector3((KW_PARK.x + KW_PARK.y) / 2.0, 0.07, 0), park)
+	_strip(Vector3(KW_PARK.y - KW_PARK.x, 0.05, WALL * 2.0 - 8.0), Vector3((KW_PARK.x + KW_PARK.y) / 2.0, 0.07, 0), park)
 	var bay := MultiMesh.new()
 	bay.transform_format = MultiMesh.TRANSFORM_3D
 	var bm := BoxMesh.new()
@@ -1467,6 +1563,30 @@ func _build_mosque() -> void:
 		l.position = at + mrot * Vector3(-12.0 + k * 6.0, 1.5, 10.5)
 		add_child(l)
 		_amb_light(l, false, false, true)
+
+## Kuwait City's night, matched to the owner's photograph: a deep navy sky and shadow, the sea
+## black-blue, and everything warm comes from the sodium lamps and the floodlights, which bloom.
+func _kw_look() -> void:
+	if env == null: return
+	# the shadows go navy and a little lower, so the warm pools stand out (not darker than the
+	# owner's own picture: the road there is easy to read)
+	env.ambient_light_color = env.ambient_light_color.lerp(Color(0.16, 0.21, 0.36), 0.7)
+	_amb_base = env.ambient_light_energy * 0.62
+	env.ambient_light_energy = _amb_base * (0.3 if grid_off else 1.0)
+	env.fog_light_color = env.fog_light_color.lerp(Color(0.05, 0.07, 0.14), 0.75)
+	env.fog_density = fog_base * 0.6
+	env.glow_enabled = true
+	env.glow_intensity = 1.1
+	env.glow_strength = 1.1
+	env.glow_bloom = 0.12
+	env.glow_hdr_threshold = 0.85
+	env.adjustment_enabled = true
+	env.adjustment_saturation = 1.12
+	env.adjustment_contrast = 1.06
+	if moon:
+		moon.light_color = Color(0.58, 0.68, 0.98)
+		_moon_base = moon.light_energy * 0.6
+		moon.light_energy = _moon_base * (0.35 if grid_off else 1.0)
 
 ## The street lights' power box: a grey cabinet on the west sidewalk with a warning plate and a lamp
 ## on top (green while the power is on, red when it has been cut). Drawn on everyone's map.
@@ -2700,6 +2820,10 @@ func set_blackout(on: bool) -> void:
 	tw.tween_property(env, "ambient_light_energy", (0.45 if on else 1.0) * _amb_base, 1.2)
 	for m in garage_panels: # the strip lights go dead with everything else
 		tw.parallel().tween_property(m, "emission_energy_multiplier", 0.05 if on else 3.2, 1.0)
+	var lit := not on and not grid_off # Kuwait City's lamp heads and their glare go dark too
+	for i in grid_mats.size():
+		tw.parallel().tween_property(grid_mats[i], "emission_energy_multiplier", _grid_glow[i] if lit else 0.0, 0.6)
+	if grid_glare: tw.parallel().tween_property(grid_glare, "albedo_color:a", 0.55 if lit else 0.0, 0.6)
 	if map_id == "rubkhali": # broad daylight: what hits you is a wall of sand, not the dark
 		tw.parallel().tween_property(env, "fog_density", fog_base * (2.3 if on else 1.0), 1.2)
 
@@ -3591,6 +3715,7 @@ func _apply_quality() -> void:
 	var sh := Gfx.eff_shadows()
 	env.glow_enabled = fx >= 1
 	NFLook.apply(env, look_kind())
+	if map_id == "kuwait" and theme != "halloween": _kw_look()
 	if dust:
 		var da: int = [40, 90, 160][fx]
 		if map_id == "rubkhali": da = [90, 170, 280][fx] # the storm needs grains, not motes
@@ -3616,7 +3741,7 @@ func _process(_dt: float) -> void:
 	if not animals.is_empty(): _step_animals(_dt)
 	for i in amb_lights.size():
 		var e: Array = amb_lights[i]
-		var l: OmniLight3D = e[0]
+		var l: Light3D = e[0]
 		var want := 0.0 if (blackout or (grid_off and e.size() > 5 and bool(e[5])) or (theme == "halloween" and not pumpkin_lights.has(l))) else 1.0
 		# a house light shies away when the killer is almost on top of it
 		if want > 0.0 and bool(e[2]) and killer_at.distance_to(l.global_position) < 25.0: want = 0.12
