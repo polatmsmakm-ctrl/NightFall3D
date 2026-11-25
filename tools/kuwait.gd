@@ -70,7 +70,7 @@ func _ready() -> void:
 	var mosque: bool = w.find_child("KW_kw_mosque", true, false) != null or w.kw_parts > 0
 	check(mosque and w.door_points.size() > 0, "the mosque stands where the market was")
 	var snap: Dictionary = m.rules.snapshot()
-	check(snap.has("pb") and (snap.pb as Array).size() == 2, "the snapshot carries the box (online phones follow it)")
+	check(snap.has("pb") and (snap.pb as Array).size() >= 4, "the snapshot carries the box (online phones follow it)")
 	m.queue_free()
 	await frames(5)
 	# Halloween: dark, not red; every lamp out all round; his pumpkins everywhere
