@@ -90,6 +90,7 @@ var carrying := ""
 var stun := 0.0
 var power_cd := 0.0
 var healers := {} # healer -> target
+var beast := false # the killer is «الوحش» (killer2): his second hook is not let go (eaten)
 var rescuers := {} # rescuer -> the hooked survivor they are lifting
 var last_hit := {}
 var powered := false
@@ -141,12 +142,19 @@ func setup(n_gens: int, n_gates: int, n_pallets: int, hatches: int, players: Arr
 	for pl in players:
 		roles[str(pl.name)] = str(pl.role)
 		score[str(pl.name)] = 0.0
-		if str(pl.role) == "killer": killer = str(pl.name)
+		if str(pl.role) == "killer":
+			killer = str(pl.name)
+			beast = str(pl.get("char", "")) == "killer2"
 		else:
 			var pk: String = "aid" if str(pl.get("perk", "")) == "aid" else PERK.get(str(pl.get("char", "")), "") # a picked perk («المسعف») replaces the character's
 			perk[str(pl.name)] = pk
 			s[str(pl.name)] = {"hp": "ok", "hooks": 0, "hook_i": -1, "t": 0.0, "heal": 0.0, "locker": -1, "item": true, "esc": 0.0, "resc": 0.0, "car": -1,
 				"held": 0.0, "shield": pk == "tough", "risen": false, "rt": 0.0, "ammo": GUN_SHOTS if gun else 0}
+
+## «الوحش» eats whoever hangs on his hook for the second time (scripts/feast.gd draws it): from then on
+## nobody can lift them off — the hook's clock runs out and only the head is left.
+func eaten(name: String) -> bool:
+	return beast and s.has(name) and s[name].hp == "hooked" and int(s[name].hooks) >= 2
 
 func add(name: String, pts: float) -> void:
 	if score.has(name): score[name] += pts
@@ -306,7 +314,7 @@ func handle(d: Dictionary, from: String) -> Array:
 				out.append({"k": "hooked", "n": carrying, "s": p.hp})
 				carrying = ""
 		"rescue": # hold it: two survivors on the same hook get them down twice as fast
-			if d.get("on", false) and free_now(from) and hp(n) == "hooked": rescuers[from] = n
+			if d.get("on", false) and free_now(from) and hp(n) == "hooked" and not eaten(n): rescuers[from] = n
 			else: rescuers.erase(from)
 		"struggle": # one tap on "free yourself": only on the first hook, and the bar drains unless you keep tapping
 			if hp(from) == "hooked" and s[from].hooks == 1:

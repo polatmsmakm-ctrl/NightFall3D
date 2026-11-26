@@ -60,7 +60,7 @@ class Rules {
     for (const p of players) {
       this.roles[p.name] = p.role;
       this.score[p.name] = 0;
-      if (p.role === 'killer') this.killer = p.name;
+      if (p.role === 'killer') { this.killer = p.name; this.beast = p.char === 'killer2'; }
       else {
         const pk = p.perk === 'aid' ? 'aid' : (PERK[p.char] || ''); // a picked perk («المسعف») replaces the character's
         this.perk[p.name] = pk;
@@ -140,6 +140,8 @@ class Rules {
   freeNow(n) { const p = this.s[n]; return !!p && (p.hp === 'ok' || p.hp === 'hurt') && p.locker < 0 && p.car < 0; }
   lockerUser(i) { return Object.keys(this.s).find((n) => this.s[n].locker === i) || ''; }
   hookUser(i) { return Object.keys(this.s).find((n) => this.s[n].hp === 'hooked' && this.s[n].hook_i === i) || ''; }
+  // «الوحش» eats whoever hangs on his hook a second time: nobody can lift them off (rules.gd eaten())
+  eaten(n) { const p = this.s[n]; return !!this.beast && !!p && p.hp === 'hooked' && p.hooks >= 2; }
   drop(n) { for (const g of this.gens) delete g.reps[n]; delete this.healers[n]; delete this.rescuers[n]; }
   down(n) { const p = this.s[n]; p.hp = 'down'; p.t = BLEED_TIME; p.heal = 0; this.drop(n); }
 
@@ -242,7 +244,7 @@ class Rules {
         }
         break;
       case 'rescue': // hold it: two survivors on the same hook get them down twice as fast
-        if (d.on && this.freeNow(from) && this.hp(n) === 'hooked' && this.near(from, L.h[this.s[n].hook_i])) this.rescuers[from] = n;
+        if (d.on && this.freeNow(from) && this.hp(n) === 'hooked' && !this.eaten(n) && this.near(from, L.h[this.s[n].hook_i])) this.rescuers[from] = n;
         else delete this.rescuers[from];
         break;
       case 'struggle': { // one tap; first hook only; ignores taps faster than a human thumb

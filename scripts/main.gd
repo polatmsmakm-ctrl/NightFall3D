@@ -14,6 +14,10 @@ var rain_audio: AudioStreamPlayer
 var _text_hint := "" # a line under the middle of the screen for the killer (the power box cooling)
 var ravens: NFRavens
 var catdog: NFCatDog # the cat at the first generator, and the dog (scripts/catdog.gd)
+const FeastScript := preload("res://scripts/feast.gd")
+const GorillaScript := preload("res://scripts/gorilla.gd")
+var feast: Node3D   # «الوحش» eating whoever is on his hook a second time (scripts/feast.gd)
+var gorilla: Node3D # the owner's gorilla and the horse, after the cat and the dog (scripts/gorilla.gd)
 const SFX := ["knife1", "knife2", "knife3", "knife4", "gunshot", "scream_beast", "crow", "raven", "gate", "heart", "breath", "steps_out", "steps_in", "gen_run", "chase", "ambient", "doom", "rope", "male_pain", "scream1", "scream2", "oof1", "oof2", "oof3",
 	# the owner's sound pack (November): see «The owner's sound pack» in CLAUDE.md
 	"heart_fast", "breath_hurt", "breath_hide", "whimper", "steps_killer", "steps_beast", "steps_hurt", "power_hum", "terror",
@@ -446,6 +450,32 @@ func _build_audio() -> void:
 		a.max_distance = 8.0 if my_role == "killer" else 45.0
 		add_child(a)
 		gen_audio.append(a)
+
+## Being eaten (or what is left) on «الوحش»'s hook: main keeps them hanging there.
+func _kept(n: String) -> bool:
+	return feast != null and feast.keeps(n)
+
+func _hook_at(n: String) -> int:
+	var i: int = feast.hook_of(n) if _kept(n) else -1
+	if i < 0 and rules.s.has(n): i = int(rules.s[n].hook_i)
+	return clampi(i, 0, world.hook_points.size() - 1)
+
+func _rig_of(n: String) -> Variant:
+	if n == my_name: return rig
+	var r = remotes.get(n)
+	return r.rig if r != null else null
+
+## One bite of «الوحش»'s meal (scripts/feast.gd): the crunch, their cry (not on the last), the camera
+## and the phone for whoever is being eaten, a shake for anyone close.
+func _feast_bite(n: String, at: Vector3, stage: int, last: bool) -> void:
+	_sfx("knife%d" % (1 + randi() % 4), at, 7.0, randf_range(0.62, 0.74))
+	if stage < 4 and not last: _voice_hit(n)
+	if n == my_name:
+		_shake(0.55)
+		NFHaptics.pulse("hit")
+	elif body.position.distance_to(at) < 12.0:
+		_shake(0.18)
+	if last: _feed("%s was eaten" % n, "skull", Color(0.9, 0.25, 0.2))
 
 ## A hit: the victim cries out in their own voice (3D for everyone else, plain for the victim).
 func _voice_hit(n: String) -> void:
@@ -1824,11 +1854,11 @@ func _update_esp() -> void:
 	for n in esp_nodes:
 		var e: Dictionary = esp_nodes[n]
 		var r = remotes.get(n)
-		var on: bool = Dev.esp and r != null and r.node.visible
+		var on: bool = Dev.esp and r != null and r.node.visible and not _kept(n)
 		# survivors know each other: a name over every teammate still in the round, and their body seen
 		# through walls (the killer's phone never gets either)
 		var team: bool = my_role == "survivor" and r != null and r.role == "survivor" and r.node.visible \
-			and rules.hp(n) in ["ok", "hurt", "down", "hooked", "carried"]
+			and rules.hp(n) in ["ok", "hurt", "down", "hooked", "carried"] and not _kept(n)
 		var ov: Material = e.mat if on else (e.tmat if team else null)
 		for mi in e.meshes:
 			if is_instance_valid(mi) and mi.material_overlay != ov: mi.material_overlay = ov
@@ -2656,7 +2686,7 @@ func _update_ctx() -> void:
 		for n in rules.s:
 			var p: Dictionary = rules.s[n]
 			if n == my_name: continue
-			if p.hp == "hooked" and _near(pos, world.hook_points[p.hook_i], 2.9):
+			if p.hp == "hooked" and not rules.eaten(n) and _near(pos, world.hook_points[p.hook_i], 2.9):
 				ctx.interact = {"kind": "rescue", "label": "Rescue", "n": n, "need": -1.0}
 			if p.hp in ["hurt", "down"] and p.locker < 0 and rules.car_of(n) < 0 and _near(pos, _pos_of(n), 2.6):
 				ctx.heal = {"kind": "heal", "n": n, "need": -1.0}
@@ -3128,6 +3158,16 @@ func _process(dt: float) -> void:
 		catdog.name = "CatDog"
 		world.add_child(catdog)
 		catdog.setup(world, rules, blood, _cam_pos, _survivor_spots, [body.get_rid()])
+	if gorilla == null and catdog != null: # then his gorilla tears the head off a horse and eats it
+		gorilla = GorillaScript.new()
+		gorilla.name = "Gorilla"
+		world.add_child(gorilla)
+		gorilla.setup(world, catdog, blood, _cam_pos, [body.get_rid()])
+	if feast == null and blood != null:
+		feast = FeastScript.new()
+		feast.name = "Feast"
+		world.add_child(feast)
+		feast.setup(world, rules, blood, _cam_pos, _rig_of, _feast_bite)
 	if ravens == null and world.ready_done and world.map_id != "garage": # the owner's ravens
 		ravens = NFRavens.new()
 		ravens.name = "Ravens"
@@ -3186,8 +3226,8 @@ func _process(dt: float) -> void:
 		elif st == "carried":
 			target = _carry_spot(); lift = 0.12; anim = "carried"
 			face = _yaw_of(rules.killer) + PI / 2.0
-		elif st == "hooked":
-			target = world.hook_points[rules.s[n].hook_i] + Vector3(0, 0, 0.9)
+		elif st == "hooked" or _kept(n): # (what «الوحش» left of them stays on his hook)
+			target = world.hook_points[_hook_at(n)] + Vector3(0, 0, 0.9)
 		elif anim == "drive": pass # seated at the wheel (placed below, once the car has moved)
 		elif anim in ["edrive", "eride"]: anim = "drive" # in an escape car (placed below)
 		elif st == "dead" or (st == "down" and anim != "crawl"): anim = "dying"
@@ -3213,7 +3253,7 @@ func _process(dt: float) -> void:
 				r.rifle.scale = Vector3.ONE * 1.1
 			if r.get("rifle") != null: (r.rifle as Node3D).visible = lying and r.node.visible
 			if world.rifle_stand: world.rifle_stand.visible = not lying
-		if st == "hooked":
+		if st == "hooked" or _kept(n):
 			_hook_pose(r.rig, dt)
 		elif _climbing(n): # up the helicopter's rope ladder, on every phone the same
 			_climb_pose(n, r.node, r.rig, dt)
@@ -3241,6 +3281,7 @@ func _process(dt: float) -> void:
 				var gr := ("groan%d" if chars.get(n, "") in MALE else "oof%d") % randi_range(1, 3)
 				_sfx(gr, r.node.position + Vector3(0, 1.5, 0), 2.0)
 		r.node.visible = st != "escaped" and not (rules.s.has(n) and rules.s[n].locker >= 0)
+		if _kept(n): r.node.visible = true
 		if r.role == "killer" and car and (r.anim == "drive") != car_remote: # he got in / out: the door opens and shuts here too
 			car_remote = r.anim == "drive"
 			if car_remote and Vector2(car.position.x - r.pos.x, car.position.z - r.pos.z).length() > 2.5:
@@ -3497,6 +3538,9 @@ func _physics_process(delta: float) -> void:
 		rig.position.y = 0.12
 		rig.rotation.y = _yaw_of(rules.killer) + PI / 2.0
 		rig.play("carried")
+	elif my_state == "dead" and _kept(my_name): # what «الوحش» left of me, on his hook
+		body.position = world.hook_points[_hook_at(my_name)] + Vector3(0, 0, 0.9)
+		_hook_pose(rig, delta)
 	elif my_state == "hooked":
 		if last_state != "hooked": hook_cam = 2.6
 		body.position = world.hook_points[me.hook_i] + Vector3(0, 0, 0.9)
@@ -4220,7 +4264,9 @@ func _move(delta: float) -> void:
 	if my_role == "killer" and v > 0.25 and world.on_stairs(body.position) and rig.has("climb"):
 		rig.play("climb", clampf(v / NATURAL.climb, 0.7, 2.2))
 		return
-	if my_state == "dead":
+	if my_state == "dead" and _kept(my_name):
+		rig.play("hang", 0.6)
+	elif my_state == "dead":
 		rig.play("dying")
 	elif my_state == "down":
 		if v > 0.1: rig.play("crawl", 1.0)
