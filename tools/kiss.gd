@@ -68,6 +68,11 @@ func _ready() -> void:
 		await tree.process_frame
 		var x: Dictionary = m.kiss.now.values()[0] if m.kiss.now.size() > 0 else {}
 		if x.is_empty(): break
+		if absf(float(x.t) - 2.0) < 0.02 or absf(float(x.t) - 0.5) < 0.02:
+			var u: Vector3 = x.u
+			print("    t %.2f sep %.3f u %s  body %s node %s  rigA %s rigB %s  rotA %.2f rotB %.2f  lipsA %s lipsB %s  headA %s headB %s" % [x.t, x.sep, u,
+				m.body.global_position, d.node.global_position, me.global_position, her.global_position, me.global_rotation.y, her.global_rotation.y,
+				m.kiss._lips(me, u), m.kiss._lips(her, -u), me.bone_at("mixamorig_Head"), her.bone_at("mixamorig_Head")])
 		if float(x.t) > 1.6 and float(x.t) < 3.4:
 			amt = maxf(amt, float(m.kiss.mods[me.get_instance_id()].amt))
 			# my hands on her back, hers on mine: how far the IK left the wrists from those points
