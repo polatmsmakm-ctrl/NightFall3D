@@ -59,7 +59,8 @@ func _ready() -> void:
 	check(m.kiss.busy("P") and m.kiss.busy("D") and m.kiss_mode == 0.0, "the two of them are in the kiss")
 	var me: CharacterRig = m.rig
 	var her: CharacterRig = d.rig
-	var mid_reach := 9.0
+	var mid_reach := 0.0
+	var faced := 0.0
 	var amt := 0.0
 	var froze := true
 	var t0 := Time.get_ticks_msec()
@@ -69,13 +70,12 @@ func _ready() -> void:
 		if x.is_empty(): break
 		if float(x.t) > 1.6 and float(x.t) < 3.4:
 			amt = maxf(amt, float(m.kiss.mods[me.get_instance_id()].amt))
-			# my hands on her back, hers on mine
-			var hb := her.bone_at("mixamorig_Spine2")
-			mid_reach = minf(mid_reach, maxf(me.bone_at("mixamorig_LeftHand").distance_to(hb), me.bone_at("mixamorig_RightHand").distance_to(hb)))
-	var faced: float = absf(wrapf(me.rotation.y - her.rotation.y - PI, -PI, PI))
+			# my hands on her back, hers on mine: how far the IK left the wrists from those points
+			mid_reach = maxf(mid_reach, maxf(me.reach_mod.miss if me.reach_mod else 9.0, her.reach_mod.miss if her.reach_mod else 9.0))
+			faced = maxf(faced, absf(wrapf(me.rotation.y - her.rotation.y - PI, -PI, PI)))
 	print("    closest lips %.3f m, hands to her back %.2f m, lean %.2f" % [m.kiss.closest, mid_reach, amt])
 	check(m.kiss.closest < 0.07, "their lips meet (%.3f m)" % m.kiss.closest)
-	check(mid_reach < 0.3, "my arms round her (hands %.2f m from her upper back)" % mid_reach)
+	check(mid_reach < 0.12, "arms round each other (wrists within %.2f m of the other's back)" % mid_reach)
 	check(amt > 0.95, "leaning in, heads tipped")
 	check(faced < 0.2, "face to face")
 	check(not m.kiss.busy("P") and m.kiss.now.is_empty(), "and they let go")

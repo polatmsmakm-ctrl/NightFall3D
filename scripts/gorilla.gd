@@ -16,6 +16,7 @@ extends Node3D
 ## it starts a few seconds after the dog has gone, from the same generator and the map's seed.
 ## No class_name (an in-game update can carry it).
 
+const Probe := preload("res://scripts/pose_probe.gd")
 const GS := 1.9              # the gorilla's size against the cast's 1.95 m: a titan
 const HORSE := "res://assets/animals/arabian-horse.glb"
 const DELAY := 6.0           # after the dog has gone
@@ -120,6 +121,7 @@ func _build() -> bool:
 	rig.hunch = NFHunch.new() # bent like an ape over every clip, as «الوحش» is
 	rig.skeleton.add_child(rig.hunch)
 	rig.skeleton.move_child(rig.hunch, 0)
+	Probe.of(rig)
 	for gi in rig.find_children("*", "GeometryInstance3D", true, false):
 		(gi as GeometryInstance3D).visibility_range_end = 120.0
 	horse = Node3D.new()
@@ -217,13 +219,13 @@ func _turn_to(p: Vector3, dt: float, rate := 5.0) -> void:
 func _hb(sk: Skeleton3D, bone: String) -> Transform3D:
 	return sk.global_transform * sk.get_bone_global_pose(sk.find_bone(bone))
 
+## Where its hand really is, after the hunch and the IK (pose_probe.gd).
 func _hand(right: bool) -> Transform3D:
-	var b := rig.skeleton.find_bone("mixamorig_RightHand" if right else "mixamorig_LeftHand")
-	return rig.skeleton.global_transform * rig.skeleton.get_bone_global_pose(b)
+	return Probe.xf(rig, "mixamorig_RightHand" if right else "mixamorig_LeftHand")
 
 func _mouth() -> Vector3:
 	var fwd := _dir(rig.rotation.y)
-	return rig.bone_at("mixamorig_Head") + fwd * 0.14 * GS + Vector3(0, 0.03 * GS, 0)
+	return Probe.xf(rig, "mixamorig_Head").origin + fwd * 0.14 * GS + Vector3(0, 0.03 * GS, 0)
 
 func _process(dt: float) -> void:
 	if state == 3 or catdog == null: return
@@ -276,7 +278,7 @@ func _phase(n: int) -> void:
 func _step(dt: float) -> void:
 	ph_t += dt
 	var c := _cam()
-	var hpos := horse.global_position
+	var hpos: Vector3 = horse.global_position if is_instance_valid(horse) and not horse.is_queued_for_deletion() else rig.position
 	var gdist := Vector2(rig.position.x - hpos.x, rig.position.z - hpos.z).length()
 	match ph:
 		0:
@@ -461,7 +463,7 @@ func _flesh(r: float) -> MeshInstance3D:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = Color(0.26, 0.015, 0.012)
 	mat.roughness = 0.18
-	mat.specular = 0.75
+	mat.metallic_specular = 0.75
 	m.material_override = mat
 	m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	return m

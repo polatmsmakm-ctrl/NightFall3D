@@ -40,6 +40,7 @@ func setup(w: NightWorld, r: Rules, b: NFBlood, cam_cb: Callable, rig_cb: Callab
 	cam = cam_cb
 	rig_of = rig_cb
 	on_bite = bite_cb
+	process_priority = 1000 # after main has hung everyone this frame
 	chew = AudioStreamPlayer3D.new()
 	chew.bus = Aud.SFX
 	chew.unit_size = 7.0

@@ -14,6 +14,7 @@ extends Node3D
 ## IK); the hug is `NFReach` (the hands to points on the other's back). No class_name.
 
 const KissMod := preload("res://scripts/kiss_mod.gd")
+const Probe := preload("res://scripts/pose_probe.gd")
 const TIME := 4.4
 const SEP0 := 0.62      # where the servo starts: a little apart
 const LIPS_UP := 0.075  # the lips, from the head bone (the base of the skull): up and forward
@@ -32,6 +33,7 @@ var rules: Rules
 
 func setup(rig_cb: Callable, node_cb: Callable, r: Rules = null) -> void:
 	rules = r
+	process_priority = 1000 # after main has placed and turned everyone this frame
 	rig_of = rig_cb
 	node_of = node_cb
 	if ResourceLoader.exists("res://assets/sfx/kiss.ogg"): snd_s = load("res://assets/sfx/kiss.ogg")
@@ -94,6 +96,7 @@ func _mod(r: CharacterRig):
 		if r.skeleton.get_child(i) is NFHunch: at = i + 1
 	r.skeleton.move_child(m, at)
 	mods[id] = m
+	Probe.of(r)
 	return m
 
 func _release(x: Dictionary) -> void:
@@ -104,8 +107,9 @@ func _release(x: Dictionary) -> void:
 		var m = mods.get((r as CharacterRig).get_instance_id())
 		if m != null and is_instance_valid(m): m.amt = 0.0
 
+## The lips, from the head as the kiss modifier left it (pose_probe.gd: after every modifier).
 func _lips(r: CharacterRig, fwd: Vector3) -> Vector3:
-	return r.bone_at("mixamorig_Head") + Vector3(0, LIPS_UP, 0) + fwd * LIPS_FWD
+	return Probe.xf(r, "mixamorig_Head").origin + Vector3(0, LIPS_UP, 0) + fwd * LIPS_FWD
 
 func _process(dt: float) -> void:
 	for k in now.keys():
