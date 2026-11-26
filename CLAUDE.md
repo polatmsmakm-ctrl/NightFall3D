@@ -986,6 +986,17 @@ photographs it lowered and raised.
   the distance. On every map view the box is a ⚡ square, yellow, blinking red while cut, with its
   name on the big map and in the legend. Feed lines and a flash for each side.
 - `tools/kuwait.tscn` tests it; `tools/shot24.tscn` photographs it from the picture's angle.
+- **Bloom's face** (the owner: "raise the details of Bloom's face"): her sculpt's face is 70k triangles
+  and it shared the head's budget with her hair, so the round model kept a few hundred of them (a
+  faceted nose, flat lips and eyelids). Re-rigged with her own face budget, like «حارسة الليل»:
+  `python3 tools/rig_character.py bloom.glb assets/chars/survivor9.glb --faces 30000 --tex 2048
+  --face-faces 9000 --chest 0.12 --hair 85 --sleeves 0.4 --arms 0.235,0.49,0.745 --hair-density 0.85
+  --fringe --bake --external` (40k triangles) and `... survivor9_hi.glb --faces 100000 --tex 4096
+  --face-faces 40000 ...` (140k; the bake is within 0.4 mm of the sculpt on average). The light
+  streaks on her fringe and the grey on her nose tip are in the sculpt's own colours. Her skin masks
+  (`survivor9[_hi]_skin.png`) are new: she had none, so no subsurface skin until now.
+  **`tools/face_shot.py OUT.png a.glb b.glb[@yaw]`** renders a head front on with no Godot (colour,
+  colour lit by the mesh, the bare mesh) to compare a rig's face with its sculpt.
 - **Bloom's hands**: re-rigged with `--arms 0.235,0.49,0.745` (her bare shoulders and wide sleeves
   fooled the automatic arm fit, which put the shoulder joint at 0.315 m and turned the hands out).
 
