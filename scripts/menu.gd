@@ -75,7 +75,7 @@ func _ready() -> void:
 	card.draw.connect(_draw_card)
 	add_child(card)
 	version = Label.new()
-	version.text = VERSION
+	version.text = VERSION + (" · تحديث %d" % Patch.applied if Patch.applied > 0 else "")
 	version.add_theme_font_size_override("font_size", 15)
 	version.add_theme_color_override("font_color", Color(0.55, 0.55, 0.58))
 	version.mouse_filter = Control.MOUSE_FILTER_STOP

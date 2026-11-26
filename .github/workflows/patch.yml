@@ -1,0 +1,79 @@
+name: Patch (in-game update)
+# Packs everything changed since the IPA everyone has installed into one in-game update
+# (tools/make_patch.gd, scripts/patch.gd) and puts it in server/patches on main. Then: Render ->
+# Manual Deploy, and every phone downloads it the next time the game opens. No IPA, no Sideloadly.
+on:
+  workflow_dispatch:
+    inputs:
+      note:
+        description: 'what is new (Arabic, shown in the game)'
+        default: ''
+      base:
+        description: 'the IPA build commit (empty = the last successful Build IPA)'
+        default: ''
+env:
+  GODOT_VERSION: "4.5-stable"
+permissions:
+  contents: write
+  actions: read
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Install Godot
+        run: |
+          curl -sL "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_linux.x86_64.zip" -o godot.zip
+          unzip -q godot.zip
+          sudo mv Godot_v${GODOT_VERSION}_linux.x86_64 /usr/local/bin/godot
+      - name: Restore the import
+        uses: actions/cache/restore@v4
+        with:
+          path: .godot
+          key: godot-import-${{ env.GODOT_VERSION }}-${{ hashFiles('assets/**', '**/*.import', 'project.godot') }}
+          restore-keys: godot-import-${{ env.GODOT_VERSION }}-
+      - name: Import
+        run: godot --headless --path . --import 2>&1 | tail -20 || true
+      - name: Make the patch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTE: ${{ github.event.inputs.note }}
+        run: |
+          BASE="${{ github.event.inputs.base }}"
+          if [ -z "$BASE" ]; then
+            BASE=$(gh api "repos/${{ github.repository }}/actions/workflows/build-ipa.yml/runs?status=success&per_page=1" -q '.workflow_runs[0].head_sha')
+          fi
+          echo "base: $BASE"
+          git diff --name-only --diff-filter=AMR "$BASE" HEAD > changed.txt
+          echo "changed since the IPA:"; cat changed.txt
+          PREV=$(python3 -c "import json;print(json.load(open('server/patches/patch.json')).get('ver',0))" 2>/dev/null || echo 0)
+          VER=$((PREV + 1))
+          set +e
+          godot --headless --path . --script res://tools/make_patch.gd -- "$PWD/changed.txt" "$PWD/patch_$VER.pck" 2>&1 | tee make.log
+          RC=${PIPESTATUS[0]}
+          set -e
+          if [ "$RC" = "2" ]; then echo "::error::these changes need a new IPA (project.godot / a scene / the export settings)"; exit 1; fi
+          if [ "$RC" = "3" ]; then echo "::notice::nothing in the game changed since the IPA"; exit 0; fi
+          [ "$RC" = "0" ] || { echo "::error::make_patch failed ($RC)"; exit 1; }
+          mkdir -p server/patches
+          git rm -q --ignore-unmatch server/patches/*.pck
+          mv "patch_$VER.pck" server/patches/
+          python3 - "$BASE" "$VER" <<'PY'
+          import hashlib, json, os, sys, datetime
+          base, ver = sys.argv[1], int(sys.argv[2])
+          f = 'server/patches/patch_%d.pck' % ver
+          b = open(f, 'rb').read()
+          json.dump({'base': base, 'ver': ver, 'file': os.path.basename(f), 'size': len(b),
+                     'sha256': hashlib.sha256(b).hexdigest(), 'note': os.environ.get('NOTE', ''),
+                     'date': datetime.datetime.utcnow().isoformat(timespec='seconds') + 'Z'},
+                    open('server/patches/patch.json', 'w'), ensure_ascii=False, indent=1)
+          print('patch %d: %.1f MB' % (ver, len(b) / 1048576))
+          PY
+          git add server/patches
+          git -c user.name=patch -c user.email=patch@users.noreply.github.com commit -qm "In-game update $VER (since ${BASE:0:7}) [skip ci]"
+          git push origin HEAD:main
+          echo "::notice::update $VER is on main: Render -> Manual Deploy, then every phone gets it"

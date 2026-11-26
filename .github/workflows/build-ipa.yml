@@ -24,6 +24,8 @@ jobs:
           mkdir -p "$TDIR"
           unzip -q tpl.tpz -d tplx
           mv tplx/templates/* "$TDIR/"
+      - name: Stamp the build (in-game updates are made for this commit: scripts/patch.gd)
+        run: echo "$GITHUB_SHA" > build_id.txt
       - name: Import assets
         run: /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --import || true
       - name: Export Xcode project

@@ -11,3 +11,4 @@ server/node_modules/
 !assets/animals/*.jpg.import
 server/stats.json
 __pycache__/
+build_id.txt
