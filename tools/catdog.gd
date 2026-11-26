@@ -69,7 +69,7 @@ func _ready() -> void:
 	cd2.setup(m.world, m.rules, m.blood, Callable(), Callable(), [m.body.get_rid()])
 	cd2.set_process(false)
 	cd2._start_cat(g)
-	check(cd2.cat.position.distance_to(start) < 0.05, "another phone starts it at the same spot")
+	check(cd2.cat.position.distance_to(start) < 0.6 and absf(wrapf(cd2.ang - cd.ang, -PI, PI)) < 0.01, "another phone starts it at the same spot (%.2f m: the first has walked a few frames)" % cd2.cat.position.distance_to(start))
 	cd2.queue_free()
 	var t0 := Time.get_ticks_msec()
 	var near := 0
