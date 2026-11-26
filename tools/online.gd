@@ -110,14 +110,22 @@ func _as_killer(m, d) -> void:
 func _as_survivor(m, d) -> void:
 	var w = m.world
 	check(m.my_role == "survivor", "I am a survivor, the bot is the killer (%s)" % m.rules.killer)
-	var g: Vector3 = w.gen_points[0]
-	m.body.position = g + Vector3(1.4, 0.3, 0.6); m.body.velocity = Vector3.ZERO
-	await frames(20)
-	check(m.ctx.has("interact") and str(m.ctx.interact.get("kind", "")) == "rep", "by generator 0: «تصليح»")
+	# stand by a generator (the map changes with the server's seed: try sides until «تصليح» shows)
+	var gi := -1
+	for k in w.gen_points.size():
+		for off in [Vector3(1.4, 0.3, 0.6), Vector3(-1.4, 0.3, 0.6), Vector3(0.6, 0.3, 1.4), Vector3(0.6, 0.3, -1.4)]:
+			m.body.position = w.gen_points[k] + off; m.body.velocity = Vector3.ZERO
+			await frames(12)
+			if m.ctx.has("interact") and str(m.ctx.interact.get("kind", "")) == "rep" and int(m.ctx.interact.get("i", -1)) == k:
+				gi = k
+				break
+		if gi >= 0: break
+	check(gi >= 0, "by a generator: «تصليح» (%d)" % gi)
+	if gi < 0: gi = 0
 	m._press("interact", 7)
-	var p0: float = m.rules.gens[0].p
+	var p0: float = m.rules.gens[gi].p
 	await frames(240)
-	check(m.rules.gens[0].p > p0, "my repair counted by the server and back on my phone (%.3f)" % m.rules.gens[0].p)
+	check(m.rules.gens[gi].p > p0, "my repair counted by the server and back on my phone (%.3f)" % m.rules.gens[gi].p)
 	# the bot (the killer) walks to me and swings: the blow comes from the server
 	var hurt := false
 	for i in 3000: # it may have to cross the whole map to me
