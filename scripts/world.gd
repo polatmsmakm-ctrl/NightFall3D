@@ -1046,6 +1046,9 @@ var police: Array = []                # [node, light, red mat, blue mat, siren, 
 var sirens_on := false
 var boats: Array = []                 # [node, x, z, base yaw, draft]
 
+const POLICE_K := 1.2 # the police cars and the corniche benches, scaled to 1.9 m people
+const BENCH_K := 1.3
+
 func _build_kw_extras() -> void:
 	# ---- the billboard: just behind the west walk, square to the road, the trees cleared in front ----
 	var bill := _kw_one("billboard", KW_BILL, PI / 2.0, 1.0, Vector3(1.6, 4.0, 1.6), 2.0)
@@ -1092,8 +1095,9 @@ func _build_kw_extras() -> void:
 	if sniper: spots.resize(2) # the north end is the sniper's tower
 	var k := 0
 	for sp in spots:
-		var tall := 1.7 if str(sp[0]) == "police_suv" else 1.55
-		var n := _kw_one(str(sp[0]), sp[1], float(sp[2]), 1.0, Vector3(2.0, tall, 4.6), tall / 2.0)
+		# his police cars are true to size, but our people are 1.9 m: at 1.0 they looked like toys beside them
+		var tall := (1.7 if str(sp[0]) == "police_suv" else 1.55) * POLICE_K
+		var n := _kw_one(str(sp[0]), sp[1], float(sp[2]), POLICE_K, Vector3(2.0, tall / POLICE_K, 4.6), tall / POLICE_K / 2.0)
 		if n == null: continue
 		var bb := Basis(Vector3.UP, float(sp[2]))
 		var at: Vector3 = sp[1]
@@ -1102,10 +1106,10 @@ func _build_kw_extras() -> void:
 		for side in [[-0.38, red], [0.38, blue]]: # the bar's two halves flash in turn
 			var lm := MeshInstance3D.new()
 			var bx := BoxMesh.new()
-			bx.size = Vector3(0.62, 0.1, 0.22)
+			bx.size = Vector3(0.62, 0.1, 0.22) * POLICE_K
 			bx.material = side[1]
 			lm.mesh = bx
-			lm.transform = Transform3D(bb, at + bb * Vector3(float(side[0]), tall + 0.02, -0.15))
+			lm.transform = Transform3D(bb, at + bb * Vector3(float(side[0]) * POLICE_K, tall + 0.02, -0.15 * POLICE_K))
 			lm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			add_child(lm)
 		var l := OmniLight3D.new()
@@ -1126,7 +1130,7 @@ func _build_kw_extras() -> void:
 		police.append([n, l, red, blue, sp3, k * 0.37])
 		k += 1
 	# ---- the bus stop on the east walk, open to the road ----
-	_kw_one("bus_stop", KW_BUS, -PI / 2.0)
+	_kw_one("bus_stop", KW_BUS, -PI / 2.0, 1.2) # its seat to the size of our people too
 	# ---- drains along both kerbs ----
 	var drains: Array = []
 	for sx in [-1.0, 1.0]:
@@ -1699,7 +1703,7 @@ func _build_kuwait() -> void:
 	_build_kw_extras()
 	# ---- the corniche: benches facing the water, his white car on its deck, a frost of lights in snow ----
 	var benches: Array = []
-	for z in range(-95, 96, 15): benches.append(Transform3D(Basis(Vector3.UP, PI / 2.0), Vector3(KW_PROM.y - 4.5, 0.05, float(z) + 5.0)))
+	for z in range(-95, 96, 15): benches.append(Transform3D(Basis(Vector3.UP, PI / 2.0).scaled(Vector3.ONE * BENCH_K), Vector3(KW_PROM.y - 4.5, 0.05, float(z) + 5.0)))
 	_kw_many("kw_bench", benches, Vector3(1.8, 0.9, 0.6), 0.45, 90.0, true)
 	_kw_one("kw_white", Vector3(KW_PROM.x + 6.0, 0.05, 40.0), -PI / 2.0, 1.0, Vector3(5.2, 1.4, 2.4), 0.7)
 	if theme == "snow":
