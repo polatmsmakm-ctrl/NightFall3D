@@ -153,7 +153,7 @@ func _pose(x: Dictionary, ra: CharacterRig, rb: CharacterRig, na: Node3D, nb: No
 	var la := _lips(ra, u)
 	var lb := _lips(rb, -u)
 	var gap := (lb - la).dot(u)
-	if lean > 0.5: x.sep = clampf(sep + (gap - 0.012) * minf(1.0, dt * 6.0), 0.26, 0.8)
+	if lean > 0.5: x.sep = clampf(sep - (gap - 0.012) * minf(1.0, dt * 6.0), 0.26, 0.8)
 	elif t < 0.6: x.sep = lerpf(sep, 0.5, minf(1.0, dt * 3.0)) # close in while they step up
 	if lean > 0.9: closest = minf(closest, la.distance_to(lb))
 	# the heads: the taller one nods down, the shorter one lifts; both tip to their own right
