@@ -14,7 +14,15 @@ var rain_audio: AudioStreamPlayer
 var _text_hint := "" # a line under the middle of the screen for the killer (the power box cooling)
 var ravens: NFRavens
 var catdog: NFCatDog # the cat at the first generator, and the dog (scripts/catdog.gd)
-const SFX := ["knife1", "knife2", "knife3", "knife4", "gunshot", "scream_beast", "crow", "raven", "gate", "heart", "breath", "steps_out", "steps_in", "gen_run", "chase", "ambient", "doom", "rope", "male_pain", "scream1", "scream2", "oof1", "oof2", "oof3"]
+const SFX := ["knife1", "knife2", "knife3", "knife4", "gunshot", "scream_beast", "crow", "raven", "gate", "heart", "breath", "steps_out", "steps_in", "gen_run", "chase", "ambient", "doom", "rope", "male_pain", "scream1", "scream2", "oof1", "oof2", "oof3",
+	# the owner's sound pack (November): see «The owner's sound pack» in CLAUDE.md
+	"heart_fast", "breath_hurt", "breath_hide", "whimper", "steps_killer", "steps_beast", "steps_hurt", "power_hum", "terror",
+	"moon_rumble", "amb_night", "amb_sea", "amb_garage", "amb_storm", "amb_cold", "swing1", "swing2", "gen_done", "gen_boom",
+	"trap_snap", "vault", "fall1", "fall2", "fall3", "groan1", "groan2", "groan3", "struggle1", "struggle2", "struggle3", "scare",
+	"impact", "final", "warn", "hook_sting", "chime", "healed", "torch", "locker", "thunder"]
+const SFX_LOOPS := ["heart", "heart_fast", "breath", "breath_hurt", "breath_hide", "whimper", "steps_out", "steps_in", "steps_killer",
+	"steps_beast", "steps_hurt", "gen_run", "chase", "ambient", "power_hum", "terror", "moon_rumble", "amb_night", "amb_sea",
+	"amb_garage", "amb_storm", "amb_cold"]
 const MALE := ["survivor2", "survivor3", "killer2"] # the other characters (the killer «البركة القرمزية» too) use the female voice clips
 const TERROR_RADIUS := 24.0 # survivors start to feel the killer inside this distance
 const CHASE_NEAR := 16.0     # the chase music plays when she is this close on foot, even unseen (never while she drives)
@@ -400,9 +408,13 @@ func _loop_player(stream_name: String, db: float, autoplay := false, bus := Aud.
 	return a
 
 func _build_audio() -> void:
-	for n in SFX: sounds[n] = load("res://assets/sfx/%s.mp3" % n)
-	for n in ["heart", "breath", "steps_out", "steps_in", "gen_run", "chase", "ambient"]:
-		(sounds[n] as AudioStreamMP3).loop = true
+	for n in SFX: # OGG where there is one (it loops without a gap), else the MP3
+		var path := "res://assets/sfx/%s.ogg" % n
+		if not ResourceLoader.exists(path): path = "res://assets/sfx/%s.mp3" % n
+		if ResourceLoader.exists(path): sounds[n] = load(path)
+	for n in SFX_LOOPS:
+		if sounds.get(n) != null: sounds[n].set("loop", true)
+	_build_beds()
 	amb = _loop_player("ambient", -13.0, true, Aud.MUSIC)
 	if world.theme == "rain" and ResourceLoader.exists("res://assets/sfx/rain.ogg"): # «مطر»: the owner's rain, looped
 		var rs: AudioStream = load("res://assets/sfx/rain.ogg")
@@ -478,6 +490,7 @@ func _make_breath(parent: Node3D) -> GPUParticles3D:
 func _start_scare() -> void:
 	if rules.killer == "" or not remotes.has(rules.killer): return
 	scare_t = 0.62
+	_sfx("scare", null, 0.0)
 	if scare_cam == null:
 		scare_cam = Camera3D.new()
 		scare_cam.fov = 48.0
@@ -590,17 +603,20 @@ func _update_bleed(b: Node3D, hooked: bool, dt: float) -> void:
 	pool.scale = Vector3(k, 0.3, k)
 
 ## Loop the right footstep recording for the ground under `at`; faster/louder when running, silent when still.
-func _steps(a: Node, at: Vector3, moving: bool, running: bool, base_db: float) -> void:
+func _steps(a: Node, at: Vector3, moving: bool, running: bool, base_db: float, kind := "") -> void:
 	if not moving:
 		if a.playing: a.stop()
 		return
 	var surf := world.surface_at(at)
 	var want: AudioStream = sounds.steps_in if surf == "indoor" else sounds.steps_out
+	if kind != "" and sounds.get("steps_" + kind) != null: want = sounds["steps_" + kind] # her heavy tread, his, a limp
 	if a.stream != want:
 		a.stream = want
 		a.play()
 	elif not a.playing: a.play()
 	a.pitch_scale = (1.25 if running else 0.9) * (0.82 if surf == "sand" else 1.0) # sand: duller, softer
+	if kind == "hurt": a.pitch_scale = 1.15 if running else 1.0 # the recording is a slow, dragging walk
+	elif kind != "": a.pitch_scale = 1.35 if running else 1.0
 	a.volume_db = base_db + (0.0 if running else -9.0) + (-4.0 if surf == "sand" else 0.0)
 
 func _line_of_sight(to: Vector3) -> bool:
@@ -608,6 +624,83 @@ func _line_of_sight(to: Vector3) -> bool:
 	var q := PhysicsRayQueryParameters3D.create(from, to + Vector3(0, 1.2, 0))
 	q.exclude = [body.get_rid()]
 	return get_world_3d().direct_space_state.intersect_ray(q).is_empty()
+
+## The owner's sound pack: the night around the map (its own bed per map and weather), the sea along
+## the shore, the killer's low drone as she closes in, the moon's rumble as it comes down, the power
+## box humming while it is on, thunder after the lightning, and my own whimper while I hang.
+var beds := {}           # name -> AudioStreamPlayer / AudioStreamPlayer3D
+var _bolts_seen := 0
+var _thunder_in := -1.0
+
+func _bed(n: String, db: float, at = null) -> Node:
+	if sounds.get(n) == null: return null
+	var a: Node
+	if at == null:
+		a = AudioStreamPlayer.new()
+	else:
+		a = AudioStreamPlayer3D.new()
+		a.position = at
+		a.unit_size = 5.0
+		a.max_distance = 40.0
+	a.bus = Aud.SFX
+	a.stream = sounds[n]
+	a.volume_db = db
+	add_child(a)
+	beds[n] = a
+	return a
+
+func _build_beds() -> void:
+	var m := world.map_id
+	var amb := "amb_night"
+	if m == "garage": amb = "amb_garage"
+	elif m == "rubkhali": amb = "amb_storm"
+	elif world.theme == "snow": amb = "amb_cold"
+	var a := _bed(amb, -16.0)
+	if a: a.play()
+	if m in ["beach", "kuwait"]:
+		var s := _bed("amb_sea", -60.0)
+		if s: s.play()
+	_bed("terror", -60.0)
+	_bed("moon_rumble", -60.0)
+	_bed("whimper", -60.0)
+	if world.has_power_box() and world.power_box != Vector3.INF:
+		var h := _bed("power_hum", -6.0, world.power_box + Vector3(0, 1.0, 0))
+		if h: h.play()
+
+func _bed_vol(n: String, db: float, dt: float, rate := 3.0) -> void:
+	var a = beds.get(n)
+	if a == null: return
+	var on := db > -55.0
+	if on and not a.playing: a.play()
+	a.volume_db = lerpf(a.volume_db, db, 1.0 - exp(-rate * dt))
+	if not on and a.playing and a.volume_db < -54.0: a.stop()
+
+func _step_beds(dt: float, danger: float) -> void:
+	# the sea: loud on the sand, gone a long way inland (the shore runs north on the beach, east in Kuwait City)
+	if beds.has("amb_sea"):
+		var d := 0.0
+		if world.map_id == "beach": d = NightWorld.BEACH_SHORE - body.position.z
+		else: d = NightWorld.KW_SHORE - body.position.x
+		_bed_vol("amb_sea", lerpf(-12.0, -60.0, clampf(d / 70.0, 0.0, 1.0)), dt, 1.5)
+	# her drone under the heartbeat, only when the chase music is not already carrying it
+	var chasing: bool = chase_music != null and chase_music.playing and chase_music.volume_db > -30.0
+	_bed_vol("terror", lerpf(-30.0, -12.0, danger) if danger > 0.05 and not chasing else -60.0, dt)
+	# the moon (or the sun) coming down: a rumble that grows over the last two minutes
+	var doom_k := 0.0
+	if rules.doom > 0.0 and rules.powered: doom_k = 1.0 - clampf(rules.doom / Rules.DOOM_TIME, 0.0, 1.0)
+	_bed_vol("moon_rumble", lerpf(-26.0, -4.0, doom_k) if doom_k > 0.0 and impact_t < 0.0 else -60.0, dt, 1.0)
+	# me on the hook
+	_bed_vol("whimper", -14.0 if my_state == "hooked" else -60.0, dt)
+	# the power box hums while it is on
+	var hum = beds.get("power_hum")
+	if hum: hum.volume_db = lerpf(hum.volume_db, -6.0 if rules.grid else -60.0, 1.0 - exp(-3.0 * dt))
+	# thunder: a moment after each flash
+	if world.bolts != _bolts_seen:
+		_bolts_seen = world.bolts
+		_thunder_in = randf_range(0.4, 1.8)
+	if _thunder_in >= 0.0:
+		_thunder_in -= dt
+		if _thunder_in < 0.0: _sfx("thunder", null, randf_range(-6.0, 0.0), randf_range(0.9, 1.05))
 
 func _sfx(n: String, at = null, db := 0.0, pitch_scale := 1.0) -> void:
 	var a: Node
@@ -619,6 +712,9 @@ func _sfx(n: String, at = null, db := 0.0, pitch_scale := 1.0) -> void:
 		a.unit_size = 6.0
 		a.max_distance = 60.0
 	a.bus = Aud.SFX
+	if sounds.get(n) == null:
+		a.free()
+		return
 	a.stream = sounds[n]
 	a.volume_db = db
 	a.pitch_scale = pitch_scale
@@ -654,6 +750,12 @@ func _drop_mark(at: Vector3) -> void:
 	m.node.scale = Vector3.ONE
 
 # ---------------- networking ----------------
+## Sounds that come with another player's animation starting: her swing, a vault over a window.
+func _anim_sound(r: Dictionary, na: String) -> void:
+	var at: Vector3 = (r.node as Node3D).global_position + Vector3(0, 1.2, 0)
+	if na == "attack" and r.role == "killer": _sfx("swing%d" % randi_range(1, 2), at, 4.0, randf_range(0.95, 1.05))
+	elif na == "vault": _sfx("vault", at, 2.0)
+
 func _on_net(m: Dictionary) -> void:
 	if not started: return
 	match str(m.t):
@@ -662,8 +764,12 @@ func _on_net(m: Dictionary) -> void:
 			if r:
 				r.pos = Vector3(m.p[0], m.p[1], m.p[2])
 				r.yaw = float(m.p[3])
-				r.anim = str(m.a)
-				r.lit = int(m.get("f", 0)) == 1
+				var na := str(m.a)
+				if na != r.anim and r.node.visible and not bool(r.get("v", false)): _anim_sound(r, na)
+				r.anim = na
+				var nl := int(m.get("f", 0)) == 1
+				if nl != r.lit and r.role == "survivor" and r.node.visible: _sfx("torch", (r.node as Node3D).global_position + Vector3(0, 1.3, 0), -4.0)
+				r.lit = nl
 				r.v = int(m.get("v", 0)) == 1 # the developer tools' «Vanish» on that phone
 				r.g = int(m.get("g", 0)) # the gun: 0 put away, 1 lowered, 2 raised
 				r.gp = float(m.get("gp", 0.0)) # where it points, up or down
@@ -1177,6 +1283,7 @@ func _on_event(e: Dictionary) -> void:
 	match str(e.get("k", "")):
 		"boom":
 			boom_t[int(e.i)] = 4.0
+			if int(e.i) >= 0 and int(e.i) < world.gen_points.size(): _sfx("gen_boom", world.gen_points[int(e.i)] + Vector3(0, 1, 0), 8.0)
 			if my_role == "killer": _flash("أحد غلط في تصليح مولد!")
 		"hurt":
 			if str(e.s) == "down": _final_check(str(e.n))
@@ -1198,6 +1305,7 @@ func _on_event(e: Dictionary) -> void:
 			_sfx("rope", _pos_of(str(e.n)) + Vector3(0, 2, 0), 8.0)
 			NFHaptics.pulse("hook")
 			if str(e.n) == my_name: _sfx("rope", null, 0.0)
+			elif my_role == "survivor" and str(e.s) == "hooked": _sfx("hook_sting", null, -8.0)
 			_flash("%s %s" % [str(e.n), "انعلّق على الخطاف" if str(e.s) == "hooked" else "مات"])
 			if str(e.s) == "hooked": _feed("%s على الخطاف" % str(e.n), "hook", Color(1.0, 0.35, 0.3))
 		"rescued":
@@ -1308,6 +1416,7 @@ func _on_event(e: Dictionary) -> void:
 			if my_role == "killer": _flash("حطّيتي فخ")
 		"snap":
 			var at := _pos_of(str(e.n))
+			_sfx("trap_snap", null if str(e.n) == my_name else at + Vector3(0, 0.3, 0), 0.0 if str(e.n) == my_name else 8.0)
 			_feed("%s انصاد بفخ!" % str(e.n), "trap", Color(1.0, 0.45, 0.3))
 			if str(e.n) == my_name:
 				_flash("انصدت بفخ!")
@@ -1343,6 +1452,10 @@ func _feed(t: String, icon: String, col: Color) -> void:
 
 ## The feed's other half: what changes in the round's state rather than arriving as an event
 ## (the same on every phone, offline and online, since both read the same snapshot).
+var struggle_snd := 0 # when the next hook-struggle grunt may come
+var feed_lk := {}     # name -> locker, for the locker door sound
+var feed_gd: Array = [] # each generator done or not, for its sound
+
 func _feed_watch(dt: float) -> void:
 	for f in feed: f.life = float(f.life) - dt
 	feed = feed.filter(func(f: Dictionary) -> bool: return float(f.life) > 0.0)
@@ -1351,11 +1464,24 @@ func _feed_watch(dt: float) -> void:
 		var hp: String = rules.s[n].hp
 		var was: String = feed_hp.get(n, hp)
 		if hp != was:
+			var who_at = null if n == my_name else _pos_of(n) + Vector3(0, 0.5, 0)
+			if hp == "down" and was in ["ok", "hurt"]: _sfx("fall%d" % randi_range(1, 3), who_at, 0.0 if n == my_name else 6.0)
+			if (was == "hurt" and hp == "ok") or (was == "down" and hp == "hurt"): _sfx("healed", who_at, -6.0 if n == my_name else 0.0)
 			match hp:
 				"down": _feed("%s طاح" % n, "down", Color(1.0, 0.62, 0.3))
 				"escaped": _feed("%s هرب!" % n, "out", Color(0.5, 0.85, 1.0))
 				"dead": _feed("%s مات" % n, "skull", Color(0.75, 0.75, 0.78))
 		feed_hp[n] = hp
+	for n in rules.s: # in or out of a locker: its door
+		var lk: int = rules.s[n].get("locker", -1)
+		if feed_lk.has(n) and int(feed_lk[n]) != lk: _sfx("locker", null if n == my_name else _pos_of(n) + Vector3(0, 1.0, 0), -4.0 if n == my_name else 4.0)
+		feed_lk[n] = lk
+	for i in rules.gens.size(): # a generator done: it roars into life where it stands, and a chime for everyone
+		var gd: bool = rules.gens[i].done
+		if i < feed_gd.size() and gd and not feed_gd[i]:
+			_sfx("gen_done", world.gen_points[i] + Vector3(0, 1, 0), 8.0)
+			_sfx("chime", null, -10.0)
+	feed_gd = rules.gens.map(func(g: Dictionary) -> bool: return bool(g.done))
 	var dc := rules.done_count()
 	if feed_gens >= 0 and dc > feed_gens:
 		_feed("اشتغل مولد — %d من %d" % [mini(dc, Rules.NEED), Rules.NEED], "wrench", Color(1.0, 0.88, 0.4))
@@ -1733,6 +1859,7 @@ func _round_event(dt: float) -> void:
 			elif my_role == "killer": msg = "إنذار! انكشف %s" % rules.ev_n
 			else: msg = "إنذار! انكشف مكان %s" % rules.ev_n
 		_flash(msg)
+		_sfx("warn", null, -4.0)
 		NFHaptics.pulse("tick")
 	if live != ev_on:
 		ev_on = live
@@ -2639,6 +2766,7 @@ func _press(id: String, touch: int) -> void:
 		"light":
 			if battery > 0.0 or light_on:
 				light_on = not light_on
+				_sfx("torch", null, -8.0)
 		"attack":
 			if sniping:
 				_snipe_fire()
@@ -2649,6 +2777,7 @@ func _press(id: String, touch: int) -> void:
 			if attack_cd <= 0.0 and rules.stun <= 0.0 and rules.carrying == "" and not driving:
 				attack_t = 1.1
 				attack_cd = 2.4
+				_sfx("swing%d" % randi_range(1, 2), null, -4.0, randf_range(0.95, 1.05))
 				hit_sent = false
 				rig.play("attack", 2.0)
 		"power":
@@ -2671,7 +2800,11 @@ func _press(id: String, touch: int) -> void:
 			var c = ctx.get(id)
 			if c == null or not hold.is_empty(): return
 			match str(c.kind):
-				"struggle": _ev({"k": "struggle"})
+				"struggle":
+					_ev({"k": "struggle"})
+					if Time.get_ticks_msec() > struggle_snd: # a grunt now and then, not on every tap
+						struggle_snd = Time.get_ticks_msec() + randi_range(700, 1300)
+						_sfx("struggle%d" % randi_range(1, 3), null, -6.0)
 				"locker_in": _ev({"k": "locker", "i": c.i, "on": true})
 				"locker_out": _ev({"k": "locker", "i": c.i, "on": false})
 				"pallet": _ev({"k": "pallet", "i": c.i})
@@ -2765,6 +2898,7 @@ func _kerb_ctx(pos: Vector3) -> void:
 
 func _start_vault(c: Dictionary) -> void:
 	if not vault.is_empty() or attack_t > 0.0: return
+	_sfx("vault", null, -6.0)
 	var center: Vector3 = c.c
 	var normal: Vector3 = c.n
 	var side := 1.0 if (body.position - center).dot(normal) >= 0.0 else -1.0
@@ -3053,11 +3187,12 @@ func _process(dt: float) -> void:
 			var seen := vc.is_position_in_frustum(rp) or dc < 4.0
 			(r.rig as CharacterRig).set_anim_rate(1 if (seen and dc < 30.0) else (2 if (seen and dc < 70.0) else (4 if seen else 6)))
 		# women gasp "oof" now and then while limping around injured
-		if st == "hurt" and r.node.visible and anim in ["walk", "injured", "run"] and not (chars.get(n, "") in MALE):
+		if st == "hurt" and r.node.visible and anim in ["walk", "injured", "run"]:
 			oof_t[n] = oof_t.get(n, 1.5) - dt
 			if oof_t[n] <= 0.0:
 				oof_t[n] = randf_range(2.2, 4.0)
-				_sfx("oof%d" % randi_range(1, 3), r.node.position + Vector3(0, 1.5, 0), 2.0)
+				var gr := ("groan%d" if chars.get(n, "") in MALE else "oof%d") % randi_range(1, 3)
+				_sfx(gr, r.node.position + Vector3(0, 1.5, 0), 2.0)
 		r.node.visible = st != "escaped" and not (rules.s.has(n) and rules.s[n].locker >= 0)
 		if r.role == "killer" and car and (r.anim == "drive") != car_remote: # he got in / out: the door opens and shuts here too
 			car_remote = r.anim == "drive"
@@ -3107,7 +3242,10 @@ func _process(dt: float) -> void:
 		# footsteps are 3D and depend on the ground; the killer also gets scratch marks and the detection indicator
 		var moving: bool = r.node.visible and anim in ["run", "walk", "injured", "carry"]
 		var ghost: bool = rules.perk.get(n, "") == "ghost" and my_role == "killer" # «خطوة شبح»
-		_steps(r.steps, r.node.position, moving, anim == "run", 4.0 if r.role == "killer" else (-14.0 if ghost else 0.0))
+		var sk := ""
+		if r.role == "killer": sk = "beast" if chars.get(n, "killer") == "killer2" else "killer"
+		elif st == "hurt": sk = "hurt"
+		_steps(r.steps, r.node.position, moving, anim == "run", 4.0 if r.role == "killer" else (-14.0 if ghost else 0.0), sk)
 		if anim == "run" and r.node.visible and my_role == "killer" and r.role == "survivor" and not ghost:
 			r.step -= dt
 			if r.step <= 0.0:
@@ -3190,13 +3328,26 @@ func _process(dt: float) -> void:
 			heart_beat = 1.0
 			NFHaptics.pulse_scaled("beat", danger)
 	var fade := 1.0 - exp(-4.0 * dt)
+	var want_heart: AudioStream = sounds.get("heart_fast") if danger > 0.6 and sounds.get("heart_fast") else sounds.heart
+	if heart.stream != want_heart:
+		heart.stream = want_heart
+		if danger > 0.0: heart.play()
 	if danger > 0.0 and not heart.playing: heart.play()
 	heart.volume_db = lerpf(heart.volume_db, lerpf(-16.0, 4.0, danger) if danger > 0.0 else -60.0, fade)
-	heart.pitch_scale = lerpf(0.92, 1.3, danger)
+	heart.pitch_scale = lerpf(0.92, 1.12, danger) if heart.stream == sounds.heart else lerpf(0.95, 1.1, danger)
 	if heart.playing and danger <= 0.0 and heart.volume_db < -50.0: heart.stop()
-	var panting: bool = danger > 0.55
+	var hiding: bool = my_role == "survivor" and rules.s.has(my_name) and rules.s[my_name].locker >= 0
+	var panting: bool = danger > 0.55 or (hiding and danger > 0.2) or (my_state == "hurt" and my_role == "survivor")
+	var want_breath: AudioStream = sounds.breath
+	if hiding and sounds.get("breath_hide"): want_breath = sounds.breath_hide
+	elif my_state == "hurt" and danger <= 0.55 and sounds.get("breath_hurt"): want_breath = sounds.breath_hurt
+	if breath.stream != want_breath:
+		breath.stream = want_breath
+		if panting: breath.play()
 	if panting and not breath.playing: breath.play()
-	breath.volume_db = lerpf(breath.volume_db, lerpf(-8.0, 3.0, (danger - 0.55) / 0.45) if panting else -60.0, fade)
+	var b_db := lerpf(-8.0, 3.0, (danger - 0.55) / 0.45) if danger > 0.55 else (-12.0 if hiding else -14.0)
+	breath.volume_db = lerpf(breath.volume_db, b_db if panting else -60.0, fade)
+	_step_beds(dt, danger)
 	if breath.playing and not panting and breath.volume_db < -50.0: breath.stop()
 	# chase music: the killer sees a survivor / a survivor is seen by the killer
 	los_t -= dt
@@ -3233,6 +3384,7 @@ func _process(dt: float) -> void:
 		if near > 0.45: NFHaptics.pulse_scaled("rumble", (near - 0.45) / 0.55) # it keeps getting closer
 		if rules.doom <= 0.0 and impact_t < 0.0:
 			impact_t = 0.0
+			_sfx("impact", null, 2.0)
 			NFHaptics.pulse("impact")
 			_shake(1.0)
 			_flash("القمر ضرب الأرض")
@@ -3342,12 +3494,15 @@ func _physics_process(delta: float) -> void:
 		else: flash_light.light_energy = 7.0
 	_update_bleed(my_bleed, my_state == "hooked", delta)
 	var spd := Vector2(body.velocity.x, body.velocity.z).length()
-	if my_state == "hurt" and spd > 0.5 and not pinned and not (chars.get(my_name, "") in MALE):
+	if my_state == "hurt" and spd > 0.5 and not pinned:
 		oof_t[my_name] = oof_t.get(my_name, 1.5) - delta
 		if oof_t[my_name] <= 0.0:
 			oof_t[my_name] = randf_range(2.2, 4.0)
-			_sfx("oof%d" % randi_range(1, 3), null, -3.0)
-	_steps(my_steps, body.position, not pinned and spd > 0.4 and not crouch and body.is_on_floor(), spd > 2.6, -8.0)
+			_sfx(("groan%d" if chars.get(my_name, "") in MALE else "oof%d") % randi_range(1, 3), null, -3.0)
+	var my_sk := ""
+	if my_role == "killer": my_sk = "beast" if chars.get(my_name, "killer") == "killer2" else "killer"
+	elif my_state == "hurt": my_sk = "hurt"
+	_steps(my_steps, body.position, not pinned and spd > 0.4 and not crouch and body.is_on_floor(), spd > 2.6, -8.0, my_sk)
 	last_state = my_state
 	if not offline and spectating == "" and my_state != "escaped": # spectators stop reporting a position
 		send_t -= delta
@@ -3564,6 +3719,7 @@ func _final_check(who: String) -> void:
 	if rules.s.size() < 2 and not offline: return
 	fin_done = true
 	fin_who = who
+	_sfx("final", null, -2.0)
 	fin_t = FIN_TIME
 	fin_ang = _yaw_of(who) + PI * 0.6
 	if fin_cam == null:

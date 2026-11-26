@@ -1207,3 +1207,29 @@ photographs it lowered and raised.
   sound `dog_eat_dark.ogg` (cut from his clip, 2.8-8.8 s) — and runs off. Once a round. **No server change**: it starts from the generators in
   the snapshot, every place and choice comes from `layout_seed` and the generator's number.
   `tools/catdog.tscn` tests it, `tools/shot28.tscn` photographs it.
+
+## The owner's sound pack (November, 61 ElevenLabs clips + his three "exhausted footsteps" recordings)
+His file names were cut short, so each clip was identified from its spectrum, rhythm and voice pitch
+(`/tmp/spec` pictures at the time). **Music, the campfire and the radio's song were left alone**, at
+his request (`ambient chase doom campfire radio adhan`); there is no scream in the pack, so
+`scream1/2`, `male_pain`, `scream_beast`, the gunshot, the siren and the car pass-by are still the
+old ones. Everything is OGG (loops without a gap) unless the code already named an `.mp3`; `main`
+loads `<name>.ogg` first, then `.mp3` (`SFX`, `SFX_LOOPS`).
+- Loops: `heart` (slow) / `heart_fast` (danger > 0.6), `breath` (frightened panting) / `breath_hurt` /
+  `breath_hide` (in a locker), `whimper` (me on the hook), `steps_killer` / `steps_beast` (killer2) /
+  `steps_hurt` (his recordings: hurt survivors), `gen_run`, `power_hum` (at the power box while on),
+  `terror` (a drone under the heartbeat when the chase music is not playing), `moon_rumble` (grows
+  over the moon's two minutes), `heli`, `engine`, `rain`, and the night around each map
+  (`amb_night`; `amb_garage`; `amb_storm` on the Empty Quarter; `amb_cold` in snow; `amb_sea` near the
+  water on the beach and Kuwait City) — `main._build_beds` / `_step_beds`.
+- One-shots: `knife1-4` (hits), `swing1/2` (every swing, mine and hers), `rope` (the hook), `gate`,
+  `gen_done` + `chime`, `gen_boom`, `trap_snap`, `vault`, `fall1-3` (someone goes down), `oof1-3`
+  (women) and `groan1-3` (men) while limping, `struggle1-3` (on the hook), `scare` (jumpscare),
+  `impact` (the moon lands), `final` (the final shot), `warn` (the round's event), `hook_sting`,
+  `healed`, `torch`, `locker`, `thunder` (after each lightning: `world.bolts`), `ui_click`, and in
+  `NFCar` `car_start`, `car_door`, `brake`, `radio_on`.
+- Not used (could not be told apart, or the fire he said to leave): Extremely_realistic #2/#3 (heavy
+  breathing), Realistic_short_huma #3 (4), Deep_unsettling_hum (the second), A_premium_dark_horro #3,
+  A_realistic_handheld #1, Create_an_ultra-real #2 (fire?) / #4, Ultra-realistic_surv #2,
+  Heavy_slow_and_inti #3 (a second take of her steps), Realistic_powerful_m #1, Realistic_cinematic #2
+  is the final shot, Realistic_automatic #2 is the locker. `tools/sounds.tscn` tests it.

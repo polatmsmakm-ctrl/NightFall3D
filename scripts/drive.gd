@@ -276,6 +276,9 @@ func setup(ps: PackedScene, scale_k: float, cabin_ps: PackedScene = null, dust_c
 			engine = _snd(st, 6.0, 60.0)
 	if ResourceLoader.exists("res://assets/sfx/car_start.mp3"): starter = _snd(load("res://assets/sfx/car_start.mp3"), 7.0, 70.0)
 	if ResourceLoader.exists("res://assets/sfx/car_pass.mp3"): passer = _snd(load("res://assets/sfx/car_pass.mp3"), 9.0, 45.0)
+	# the owner's sound pack: the door, the tyres under hard braking, the radio's static as it comes on
+	for f in [["car_door", 5.0], ["brake", 7.0], ["radio_on", 4.0]]:
+		if ResourceLoader.exists("res://assets/sfx/%s.ogg" % f[0]): extra[f[0]] = _snd(load("res://assets/sfx/%s.ogg" % f[0]), f[1], 50.0)
 	# the radio: a real 3D sound in the car, so survivors hear it coming (muffled and fading with
 	# distance) and the driver hears it up close
 	if ResourceLoader.exists("res://assets/sfx/radio.mp3"):
@@ -364,6 +367,10 @@ func _door_clips() -> void:
 	door_anim.add_animation_library("", lib)
 
 ## The method key at the end of "get_in": door shut, he is in, the key turns.
+var extra := {}          # car_door / brake / radio_on players
+var _brake_cd := 0.0
+var _radio_was := false
+
 func _turn_key() -> void:
 	if running: return
 	running = true
@@ -378,6 +385,7 @@ func begin(kind: String) -> void:
 		if starter and starter.playing: starter.stop()
 	door_anim.stop()
 	door_anim.play("get_in" if kind == "in" else "get_out")
+	if extra.has("car_door"): extra.car_door.play()
 
 ## How far through getting in he is: 0 at the door .. 1 in the seat with the door shut.
 func seated() -> float:
@@ -778,12 +786,18 @@ func _effects(dt: float) -> void:
 	var slowing := clampf((_prev_speed_abs - absf(speed)) / maxf(dt, 0.001) / 6.0, 0.0, 1.0)
 	_prev_speed_abs = absf(speed)
 	braking = lerpf(braking, maxf(slowing, 1.0 if (driven and absf(speed) < 0.4) else 0.0), 1.0 - exp(-10.0 * dt))
+	_brake_cd = maxf(_brake_cd - dt, 0.0)
+	if slowing > 0.7 and absf(speed) > 6.0 and _brake_cd <= 0.0 and extra.has("brake"):
+		_brake_cd = 4.0
+		extra.brake.play()
 	tail.light_energy = lerpf(tail.light_energy, (0.45 + 1.1 * braking) * on, 1.0 - exp(-12.0 * dt))
 	tail.visible = tail.light_energy > 0.05
 	if tail_mat: tail_mat.albedo_color.a = clampf(tail.light_energy / 1.2, 0.0, 1.0)
 	if reverse_l: # the white reversing light
 		reverse_l.light_energy = lerpf(reverse_l.light_energy, (0.9 if speed < -0.3 else 0.0) * on, 1.0 - exp(-10.0 * dt))
 		reverse_l.visible = reverse_l.light_energy > 0.05
+	if radio_on and not _radio_was and extra.has("radio_on"): extra.radio_on.play()
+	_radio_was = radio_on
 	if radio:
 		var want := radio_on # left on, it keeps playing in the parked car
 		if want and not _radio_started:

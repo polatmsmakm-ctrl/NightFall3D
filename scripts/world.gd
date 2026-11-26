@@ -4029,11 +4029,14 @@ func _build_scenery() -> void:
 
 ## The rain night's lightning: every 9-25 s the sky and the whole map flash white twice, quickly.
 ## (No thunder until the owner sends a sound: nothing is synthesized.)
+var bolts := 0 # lightning strikes so far (main rolls the thunder)
+
 func _step_lightning(dt: float) -> void:
 	_bolt_t -= dt
 	if _bolt_t <= 0.0:
 		_bolt_t = randf_range(9.0, 25.0)
 		_bolt = 1.0
+		bolts += 1 # main plays the thunder a moment later
 	if _bolt <= 0.0: return
 	_bolt = maxf(_bolt - dt * 2.6, 0.0)
 	# two strokes: bright, a dip, bright again, fading
