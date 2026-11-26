@@ -1051,14 +1051,16 @@ func _build_kw_extras() -> void:
 	var bill := _kw_one("billboard", KW_BILL, PI / 2.0, 1.0, Vector3(1.6, 4.0, 1.6), 2.0)
 	if bill:
 		var b := Basis(Vector3.UP, PI / 2.0)
-		ad_at = KW_BILL + b * Vector3(0, 7.45, 0.36)
+		# his billboard is a deep light-box (its face 1.09 m in front of its middle): the screen sits just
+		# in front of that face, or the box hides it (it was at 0.36, inside the box: a black board on the phone)
+		ad_at = KW_BILL + b * Vector3(0, 7.45, 1.15)
 		# the screen inside the frame (4.6 x 3.3 m): black behind, his 16:9 picture across its width
 		var back := MeshInstance3D.new()
 		var bq := QuadMesh.new()
 		bq.size = Vector2(4.6, 3.3)
 		bq.material = _flat(Color(0.01, 0.01, 0.012), 0.9)
 		back.mesh = bq
-		back.transform = Transform3D(b, KW_BILL + b * Vector3(0, 7.45, 0.33))
+		back.transform = Transform3D(b, KW_BILL + b * Vector3(0, 7.45, 1.12))
 		back.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(back)
 		ad_mat = StandardMaterial3D.new()
@@ -1080,7 +1082,7 @@ func _build_kw_extras() -> void:
 		glow.light_color = Color(1.0, 0.9, 0.8)
 		glow.light_energy = 1.2
 		glow.omni_range = 11.0
-		glow.position = KW_BILL + b * Vector3(0, 6.0, 2.2)
+		glow.position = KW_BILL + b * Vector3(0, 6.0, 3.0)
 		add_child(glow)
 	# ---- police: lights going round from the start, sirens only once the gates open ----
 	var siren: AudioStream = load("res://assets/sfx/siren.ogg") if ResourceLoader.exists("res://assets/sfx/siren.ogg") else null

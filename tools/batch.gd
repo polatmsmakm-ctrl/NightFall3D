@@ -91,7 +91,7 @@ func _ready() -> void:
 	for z in [20.0, 34.0, 48.0]:
 		var q2 := PhysicsRayQueryParameters3D.create(Vector3(0, 7.0, z), scr.global_position)
 		var hit := space.intersect_ray(q2)
-		if hit.is_empty() or (hit.position as Vector3).distance_to(scr.global_position) < 2.5: clear += 1
+		if hit.is_empty() or (hit.position as Vector3).distance_to(scr.global_position) < 0.4: clear += 1 # (2.5 m let the billboard's own box hide it)
 	check(clear == 3, "seen from the road, nothing stands in front of it (%d/3)" % clear)
 	var before = w.ad_mat.albedo_texture
 	w.play_ad(true)
