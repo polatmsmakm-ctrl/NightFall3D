@@ -1131,3 +1131,24 @@ photographs it lowered and raised.
   2 m glare seen from far off — hidden from the driver's seat) and the tail lamps glow red.
 - `tools/sniper.tscn` tests it; `tools/shot26.tscn` photographs the tower, the stairs, her view, both
   scopes and the headlights in the dark.
+
+## The online fix (November: "generators and hits do nothing online")
+- **The cause**: the Vanish change replaced the `"ev":` line in `main._on_net` with its own line, so the
+  server's `ev` messages (the snapshot `gs` and every event) fell inside the `st` branch and were never
+  read: positions moved, nothing the rules decided reached any phone. Restored; never fold a `match`
+  branch into the one above it.
+- **Server hardening** (`server.js`): every handler and every room's tick run inside try/catch (one
+  bad message or room cannot take the server down); a socket that misses a ping (15 s) is closed; a
+  phone coming back after a dropped connection takes its own name over (`STALE_MS` 6 s silent, or the
+  same address) instead of getting «name taken» — and `Net` retries its own name a few times instead
+  of stopping for good; an oversized layout is cut, not refused (a refused layout meant no rules at
+  all); `maxPayload` 64 KB.
+- **A struck survivor lets go** of repair / heal / unhook / the power box on their phone too
+  (`_end_hold()` on my `hurt` and `snipe`): the rules had already dropped it.
+- **CI online round** (`check.yml`): the real server, this game headless (`tools/online.tscn`,
+  `NF_MODE` forest / forest-surv / kuwait-sniper) and a second phone in node (`tools/online_bot.js`),
+  with `O ok` / `O FAIL` checks; its output is at the top of `all.log` on `check-log`. Manual runs take
+  `tests`, `shots`, `shotlist` and `online` inputs; push with `[skip ci]` when dispatching.
+- **The sniper stairs**: physics stopped her at the landing every time, so the killer and the
+  computer killer now walk the stair line itself (`world.stair_y` / `stair_step`); the walk surface
+  is on `SN_EDGE` (bodies only) so bullets pass over the top landing.
