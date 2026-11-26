@@ -136,7 +136,9 @@ func _on_msg(m: Dictionary) -> void:
 		"emote": # someone at the fire waved / danced / clapped
 			if lobby and is_instance_valid(lobby): lobby.emote(str(m.get("n", "")), int(m.get("k", 0)))
 			return
-		"error": toast = ERRORS.get(str(m.code), str(m.code))
+		"error":
+			toast = ERRORS.get(str(m.code), str(m.code))
+			if str(m.code) == "killer_taken": want_char = "" # someone else is the killer: back to what the room says
 	_refresh()
 
 # ---------- helpers ----------
@@ -279,12 +281,10 @@ func _my_role() -> String:
 	return str(me.get("role", "")) if not me.is_empty() else ""
 
 func _char_list() -> Array:
+	# every character, online too: picking one of the killers on the stand makes you the killer, picking
+	# a survivor makes you a survivor (the owner could not find «الوحش» while he was a survivor in a room)
 	var out := []
-	var trial := _offline_flow()
-	var killer_now := not trial and _my_role() == "killer"
 	for id in CHARS:
-		# online the role button picks the killer; then the stand shows the two killers to choose from
-		if id.begins_with("killer") != killer_now and not trial: continue
 		if id == SECRET and not Net.has_secret(): continue
 		out.append(id)
 	return out
@@ -382,7 +382,10 @@ func _step(d: int) -> void:
 	if _offline_flow(): off_char = id
 	else:
 		want_char = id # the room answers with a new player list; show it now so it feels instant
-		Net.send({"t": "set", "char": id})
+		var msg := {"t": "set", "char": id}
+		var want_role := "killer" if id.begins_with("killer") else "survivor"
+		if _my_role() != want_role: msg["role"] = want_role # the role comes with the character
+		Net.send(msg)
 	_sync_lobby(float(d))
 	_refresh()
 
@@ -544,7 +547,7 @@ func _page_settings() -> void:
 func _open_editor() -> void:
 	if _editor and is_instance_valid(_editor): return
 	_editor = NFControlsEdit.new()
-	_editor.role = "killer" if _my_char() == "killer" else "survivor"
+	_editor.role = "killer" if _my_char().begins_with("killer") else "survivor"
 	_editor.closed.connect(func(): _editor = null)
 	add_child(_editor)
 
