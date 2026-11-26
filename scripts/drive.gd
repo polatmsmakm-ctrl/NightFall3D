@@ -277,7 +277,7 @@ func setup(ps: PackedScene, scale_k: float, cabin_ps: PackedScene = null, dust_c
 	if ResourceLoader.exists("res://assets/sfx/car_start.mp3"): starter = _snd(load("res://assets/sfx/car_start.mp3"), 7.0, 70.0)
 	if ResourceLoader.exists("res://assets/sfx/car_pass.mp3"): passer = _snd(load("res://assets/sfx/car_pass.mp3"), 9.0, 45.0)
 	# the owner's sound pack: the door, the tyres under hard braking, the radio's static as it comes on
-	for f in [["car_door", 5.0], ["brake", 7.0], ["radio_on", 4.0]]:
+	for f in [["car_door", 5.0], ["brake", 7.0], ["radio_on", 4.0], ["car_fast", 7.0]]:
 		if ResourceLoader.exists("res://assets/sfx/%s.ogg" % f[0]): extra[f[0]] = _snd(load("res://assets/sfx/%s.ogg" % f[0]), f[1], 50.0)
 	# the radio: a real 3D sound in the car, so survivors hear it coming (muffled and fading with
 	# distance) and the driver hears it up close
@@ -797,6 +797,14 @@ func _effects(dt: float) -> void:
 		reverse_l.light_energy = lerpf(reverse_l.light_energy, (0.9 if speed < -0.3 else 0.0) * on, 1.0 - exp(-10.0 * dt))
 		reverse_l.visible = reverse_l.light_energy > 0.05
 	if radio_on and not _radio_was and extra.has("radio_on"): extra.radio_on.play()
+	if extra.has("car_fast"): # the owner's engine flat out, over the running loop as the speed climbs
+		var fp: AudioStreamPlayer3D = extra.car_fast
+		if fp.stream and not bool(fp.stream.get("loop")): fp.stream.set("loop", true)
+		var k := clampf((absf(speed) - 9.0) / 10.0, 0.0, 1.0) if running else 0.0
+		if k > 0.01 and not fp.playing: fp.play()
+		fp.volume_db = lerpf(fp.volume_db, lerpf(-40.0, 0.0, k) if k > 0.01 else -60.0, 1.0 - exp(-4.0 * dt))
+		fp.pitch_scale = lerpf(0.9, 1.15, k)
+		if k <= 0.01 and fp.playing and fp.volume_db < -50.0: fp.stop()
 	_radio_was = radio_on
 	if radio:
 		var want := radio_on # left on, it keeps playing in the parked car

@@ -1228,8 +1228,14 @@ loads `<name>.ogg` first, then `.mp3` (`SFX`, `SFX_LOOPS`).
   `impact` (the moon lands), `final` (the final shot), `warn` (the round's event), `hook_sting`,
   `healed`, `torch`, `locker`, `thunder` (after each lightning: `world.bolts`), `ui_click`, and in
   `NFCar` `car_start`, `car_door`, `brake`, `radio_on`.
-- Not used (could not be told apart, or the fire he said to leave): Extremely_realistic #2/#3 (heavy
-  breathing), Realistic_short_huma #3 (4), Deep_unsettling_hum (the second), A_premium_dark_horro #3,
-  A_realistic_handheld #1, Create_an_ultra-real #2 (fire?) / #4, Ultra-realistic_surv #2,
-  Heavy_slow_and_inti #3 (a second take of her steps), Realistic_powerful_m #1, Realistic_cinematic #2
-  is the final shot, Realistic_automatic #2 is the locker. `tools/sounds.tscn` tests it.
+- **His second answer** (he named the ones I could not place, and asked that men and women sound
+  apart): `breath_m` / `breath_f` (Extremely_realistic #2 / #3: the panting by the character's sex,
+  `MALE`), `breath_hurt_m` (the male injured moan: hurt breathing and the hook for men; women keep
+  `breath_hurt` and `whimper`), `struggle_m1-3` (Realistic_short_huma ...407159) / `struggle_f1-3`
+  (...487450), `heal_other` (Create_an_ultra-real #2) and `heal_self` (Ultra-realistic_surv #2) — mine
+  from my hold, others' from a survivor in `repair` with no generator or power box near
+  (`main._heal_remotes`), `torch_on` (A_realistic_handheld) / `torch_off` (A_handheld_flashligh),
+  `car_fast` (Realistic_powerful_m, over the engine above 9 m/s in `NFCar`), `steps_approach`
+  (Heavy_slow_and_inti #3: her steps on a survivor's phone inside the terror radius) and `ui_click`
+  (A_premium_dark_horro #3). Still unused: Deep_unsettling_hum (the second take),
+  Create_an_ultra-real #4, Premium_modern_horro #2 (the old click).

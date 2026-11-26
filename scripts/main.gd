@@ -18,11 +18,13 @@ const SFX := ["knife1", "knife2", "knife3", "knife4", "gunshot", "scream_beast",
 	# the owner's sound pack (November): see «The owner's sound pack» in CLAUDE.md
 	"heart_fast", "breath_hurt", "breath_hide", "whimper", "steps_killer", "steps_beast", "steps_hurt", "power_hum", "terror",
 	"moon_rumble", "amb_night", "amb_sea", "amb_garage", "amb_storm", "amb_cold", "swing1", "swing2", "gen_done", "gen_boom",
-	"trap_snap", "vault", "fall1", "fall2", "fall3", "groan1", "groan2", "groan3", "struggle1", "struggle2", "struggle3", "scare",
-	"impact", "final", "warn", "hook_sting", "chime", "healed", "torch", "locker", "thunder"]
+	"trap_snap", "vault", "fall1", "fall2", "fall3", "groan1", "groan2", "groan3", "scare",
+	"struggle_m1", "struggle_m2", "struggle_m3", "struggle_f1", "struggle_f2", "struggle_f3", "breath_m", "breath_f", "breath_hurt_m",
+	"heal_other", "heal_self", "torch_on", "torch_off", "steps_approach",
+	"impact", "final", "warn", "hook_sting", "chime", "healed", "locker", "thunder"]
 const SFX_LOOPS := ["heart", "heart_fast", "breath", "breath_hurt", "breath_hide", "whimper", "steps_out", "steps_in", "steps_killer",
 	"steps_beast", "steps_hurt", "gen_run", "chase", "ambient", "power_hum", "terror", "moon_rumble", "amb_night", "amb_sea",
-	"amb_garage", "amb_storm", "amb_cold"]
+	"amb_garage", "amb_storm", "amb_cold", "breath_m", "breath_f", "breath_hurt_m", "heal_other", "heal_self", "steps_approach"]
 const MALE := ["survivor2", "survivor3", "killer2"] # the other characters (the killer «البركة القرمزية» too) use the female voice clips
 const TERROR_RADIUS := 24.0 # survivors start to feel the killer inside this distance
 const CHASE_NEAR := 16.0     # the chase music plays when she is this close on foot, even unseen (never while she drives)
@@ -662,10 +664,48 @@ func _build_beds() -> void:
 		if s: s.play()
 	_bed("terror", -60.0)
 	_bed("moon_rumble", -60.0)
-	_bed("whimper", -60.0)
+	var w := _bed("whimper", -60.0)
+	if w and chars.get(my_name, "") in MALE and sounds.get("breath_hurt_m"): w.stream = sounds.breath_hurt_m
+	_bed("heal_other", -60.0)
+	_bed("heal_self", -60.0)
 	if world.has_power_box() and world.power_box != Vector3.INF:
 		var h := _bed("power_hum", -6.0, world.power_box + Vector3(0, 1.0, 0))
 		if h: h.play()
+
+## Others healing (online the snapshot does not say whom: a survivor working with nothing to repair
+## near them is healing). Offline the rules say it outright.
+var heal_snd := {} # name -> AudioStreamPlayer3D
+
+func _heal_remotes(dt: float) -> void:
+	for n in remotes:
+		var r: Dictionary = remotes[n]
+		var on := false
+		var self_h := false
+		if r.role == "survivor" and r.anim == "repair" and (r.node as Node3D).visible:
+			var p: Vector3 = (r.node as Node3D).global_position
+			on = true
+			for g in world.gen_points:
+				if _near(p, g, 2.6): on = false
+			if world.power_box != Vector3.INF and _near(p, world.power_box, 2.6): on = false
+			self_h = on and rules.s.has(n) and rules.s[n].hp == "hurt" and rules.healers.get(n, "") in ["", n]
+		if not on and not heal_snd.has(n): continue
+		if not heal_snd.has(n):
+			var a := AudioStreamPlayer3D.new()
+			a.bus = Aud.SFX
+			a.unit_size = 4.0
+			a.max_distance = 30.0
+			a.volume_db = -60.0
+			(r.node as Node3D).add_child(a)
+			a.position = Vector3(0, 1.0, 0)
+			heal_snd[n] = a
+		var hs: AudioStreamPlayer3D = heal_snd[n]
+		var want: AudioStream = sounds.get("heal_self" if self_h else "heal_other")
+		if on and hs.stream != want:
+			hs.stream = want
+			hs.play()
+		if on and not hs.playing: hs.play()
+		hs.volume_db = lerpf(hs.volume_db, 0.0 if on else -60.0, 1.0 - exp(-6.0 * dt))
+		if not on and hs.playing and hs.volume_db < -54.0: hs.stop()
 
 func _bed_vol(n: String, db: float, dt: float, rate := 3.0) -> void:
 	var a = beds.get(n)
@@ -691,6 +731,12 @@ func _step_beds(dt: float, danger: float) -> void:
 	_bed_vol("moon_rumble", lerpf(-26.0, -4.0, doom_k) if doom_k > 0.0 and impact_t < 0.0 else -60.0, dt, 1.0)
 	# me on the hook
 	_bed_vol("whimper", -14.0 if my_state == "hooked" else -60.0, dt)
+	# healing: a friend, or myself with the kit
+	var healing: bool = hold.get("kind", "") == "heal"
+	var self_heal: bool = healing and str(hold.get("n", "")) == my_name
+	_bed_vol("heal_self", -8.0 if self_heal else -60.0, dt, 6.0)
+	_bed_vol("heal_other", -8.0 if healing and not self_heal else -60.0, dt, 6.0)
+	_heal_remotes(dt)
 	# the power box hums while it is on
 	var hum = beds.get("power_hum")
 	if hum: hum.volume_db = lerpf(hum.volume_db, -6.0 if rules.grid else -60.0, 1.0 - exp(-3.0 * dt))
@@ -768,7 +814,7 @@ func _on_net(m: Dictionary) -> void:
 				if na != r.anim and r.node.visible and not bool(r.get("v", false)): _anim_sound(r, na)
 				r.anim = na
 				var nl := int(m.get("f", 0)) == 1
-				if nl != r.lit and r.role == "survivor" and r.node.visible: _sfx("torch", (r.node as Node3D).global_position + Vector3(0, 1.3, 0), -4.0)
+				if nl != r.lit and r.role == "survivor" and r.node.visible: _sfx("torch_on" if nl else "torch_off", (r.node as Node3D).global_position + Vector3(0, 1.3, 0), -4.0)
 				r.lit = nl
 				r.v = int(m.get("v", 0)) == 1 # the developer tools' «Vanish» on that phone
 				r.g = int(m.get("g", 0)) # the gun: 0 put away, 1 lowered, 2 raised
@@ -2766,7 +2812,7 @@ func _press(id: String, touch: int) -> void:
 		"light":
 			if battery > 0.0 or light_on:
 				light_on = not light_on
-				_sfx("torch", null, -8.0)
+				_sfx("torch_on" if light_on else "torch_off", null, -8.0)
 		"attack":
 			if sniping:
 				_snipe_fire()
@@ -2804,7 +2850,7 @@ func _press(id: String, touch: int) -> void:
 					_ev({"k": "struggle"})
 					if Time.get_ticks_msec() > struggle_snd: # a grunt now and then, not on every tap
 						struggle_snd = Time.get_ticks_msec() + randi_range(700, 1300)
-						_sfx("struggle%d" % randi_range(1, 3), null, -6.0)
+						_sfx(("struggle_m%d" if chars.get(my_name, "") in MALE else "struggle_f%d") % randi_range(1, 3), null, -6.0)
 				"locker_in": _ev({"k": "locker", "i": c.i, "on": true})
 				"locker_out": _ev({"k": "locker", "i": c.i, "on": false})
 				"pallet": _ev({"k": "pallet", "i": c.i})
@@ -3243,7 +3289,9 @@ func _process(dt: float) -> void:
 		var moving: bool = r.node.visible and anim in ["run", "walk", "injured", "carry"]
 		var ghost: bool = rules.perk.get(n, "") == "ghost" and my_role == "killer" # «خطوة شبح»
 		var sk := ""
-		if r.role == "killer": sk = "beast" if chars.get(n, "killer") == "killer2" else "killer"
+		if r.role == "killer":
+			sk = "beast" if chars.get(n, "killer") == "killer2" else "killer"
+			if sk == "killer" and my_role == "survivor" and body.position.distance_to(r.node.position) < TERROR_RADIUS: sk = "approach" # coming for me
 		elif st == "hurt": sk = "hurt"
 		_steps(r.steps, r.node.position, moving, anim == "run", 4.0 if r.role == "killer" else (-14.0 if ghost else 0.0), sk)
 		if anim == "run" and r.node.visible and my_role == "killer" and r.role == "survivor" and not ghost:
@@ -3338,9 +3386,10 @@ func _process(dt: float) -> void:
 	if heart.playing and danger <= 0.0 and heart.volume_db < -50.0: heart.stop()
 	var hiding: bool = my_role == "survivor" and rules.s.has(my_name) and rules.s[my_name].locker >= 0
 	var panting: bool = danger > 0.55 or (hiding and danger > 0.2) or (my_state == "hurt" and my_role == "survivor")
-	var want_breath: AudioStream = sounds.breath
+	var male: bool = chars.get(my_name, "") in MALE # the owner: men and women each have their own breathing
+	var want_breath: AudioStream = sounds.get("breath_m" if male else "breath_f", sounds.breath)
 	if hiding and sounds.get("breath_hide"): want_breath = sounds.breath_hide
-	elif my_state == "hurt" and danger <= 0.55 and sounds.get("breath_hurt"): want_breath = sounds.breath_hurt
+	elif my_state == "hurt" and danger <= 0.55: want_breath = sounds.get("breath_hurt_m" if male else "breath_hurt", want_breath)
 	if breath.stream != want_breath:
 		breath.stream = want_breath
 		if panting: breath.play()
