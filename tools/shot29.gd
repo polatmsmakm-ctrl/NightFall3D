@@ -15,6 +15,7 @@ func frames(n: int) -> void:
 		_aim()
 
 func _aim() -> void:
+	if follow == null: return
 	if follow and is_instance_valid(follow) and cam:
 		var p := follow.global_position
 		cam.global_position = cam.global_position.lerp(p + off, 0.35)
@@ -60,6 +61,30 @@ func _ready() -> void:
 	fill.shadow_enabled = false
 	cam.add_child(fill)
 	m.ui.visible = false
+	# ---- the kiss and the hug
+	var d = m.remotes["D"]
+	var here: Vector3 = m.body.global_position
+	d.pos = here + Vector3(0.9, 0, 0.6)
+	d.node.global_position = d.pos
+	m.rules.s["D"].hp = "hurt"
+	await frames(10)
+	m._kiss_ready()
+	await frames(3)
+	m._press("interact", 0)
+	var mid: Vector3 = (here + d.pos) * 0.5
+	var u: Vector3 = (d.pos - here).normalized()
+	var side := Vector3(-u.z, 0, u.x)
+	follow = null
+	for k in [[0.5, "29_kiss_1_step_in", 2.6, 1.4], [1.9, "29_kiss_2_side", 2.1, 1.6], [2.6, "29_kiss_3_faces", 0.9, 1.65], [3.2, "29_kiss_4_over_shoulder", 1.6, 1.8]]:
+		while m.kiss.now.size() > 0 and float(m.kiss.now.values()[0].t) < float(k[0]): await tree.process_frame
+		var at: Vector3 = mid + Vector3(0, float(k[3]), 0)
+		var from: Vector3 = at + side * float(k[2]) + Vector3(0, 0.05, 0)
+		if str(k[1]) == "29_kiss_4_over_shoulder": from = at - u * 1.4 + side * 0.5 + Vector3(0, 0.2, 0)
+		cam.global_position = from
+		cam.look_at(at)
+		await shot(str(k[1]))
+	await frames(80)
+	m.rules.s["D"].hp = "ok"
 	# ---- the meal on the hook
 	var D: Dictionary = m.rules.s["D"]
 	D.hp = "hooked"; D.hooks = 2; D.hook_i = 1; D.t = Rules.HOOK_TIME[1]

@@ -30,7 +30,8 @@ var e := {}               # name -> {hook, prog, rig, mats, tip, lift, drip, bit
 var bites := 0            # for the tests
 var chew: AudioStreamPlayer3D
 var chew_s: AudioStream
-var _crunch: Array = []
+var own := false          # his sound: played in step with the meal (a late phone starts it part way)
+var chew_at := 0.0
 
 func setup(w: NightWorld, r: Rules, b: NFBlood, cam_cb: Callable, rig_cb: Callable, bite_cb: Callable) -> void:
 	world = w
@@ -45,7 +46,13 @@ func setup(w: NightWorld, r: Rules, b: NFBlood, cam_cb: Callable, rig_cb: Callab
 	chew.max_distance = 55.0
 	chew.pitch_scale = 0.72
 	add_child(chew)
-	if ResourceLoader.exists("res://assets/sfx/dog_eat.ogg"):
+	if ResourceLoader.exists("res://assets/sfx/beast_feast.ogg"): # the owner's own 30 s: the hook's whole clock
+		chew_s = load("res://assets/sfx/beast_feast.ogg")
+		chew.pitch_scale = 1.0
+		chew.volume_db = 4.0
+		chew.stream = chew_s
+		own = true
+	elif ResourceLoader.exists("res://assets/sfx/dog_eat.ogg"):
 		chew_s = load("res://assets/sfx/dog_eat.ogg")
 		if chew_s is AudioStreamOggVorbis: (chew_s as AudioStreamOggVorbis).loop = true
 		chew.stream = chew_s
@@ -124,7 +131,9 @@ func _process(dt: float) -> void:
 		if x.prog < 1.0:
 			eating = true
 			chew.global_position = Vector3(head_c.x, cut, head_c.z)
-	if eating and chew_s and not chew.playing: chew.play()
+			chew_at = float(x.prog) * float(Rules.HOOK_TIME[1])
+	if eating and chew_s and not chew.playing:
+		chew.play(minf(chew_at, chew_s.get_length() - 0.5) if own else 0.0)
 	elif not eating and chew.playing: chew.stop()
 
 ## How many bites have fallen by `prog`.

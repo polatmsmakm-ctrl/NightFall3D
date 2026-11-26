@@ -76,6 +76,9 @@ var roar_s: AudioStream
 var chew_s: AudioStream
 var dark_s: AudioStream
 var hit_s: Array = []
+var feast_s: AudioStream     # the owner's own sound for this scene (assets/sfx/gorilla_feast.ogg, 30 s)
+var rage: AudioStreamPlayer3D
+var rage_fade := 0.0
 var thud_s: Array = []
 # for the tests
 var rips := 0
@@ -96,6 +99,7 @@ func setup(w: NightWorld, cd: NFCatDog, b: NFBlood, cam_cb: Callable, skip_rids:
 	roar_s = _load("scream_beast.mp3")
 	chew_s = _load("dog_eat.ogg")
 	dark_s = _load("dog_eat_dark.ogg")
+	feast_s = _load("gorilla_feast.ogg")
 	for i in 4: hit_s.append(_load("knife%d.mp3" % (i + 1)))
 	for i in 3: thud_s.append(_load("fall%d.ogg" % (i + 1)))
 	# read the two models in the background now, so the scene does not stall the round when it starts
@@ -137,6 +141,7 @@ func _build() -> bool:
 	chew = _snd(rig, 9.0, 60.0)
 	dark = _snd(rig, 12.0, 70.0)
 	hsnd = _snd(pivot, 8.0, 60.0)
+	rage = _snd(rig, 16.0, 110.0)
 	return true
 
 func _snd(n: Node3D, unit: float, reach: float) -> AudioStreamPlayer3D:
@@ -311,13 +316,14 @@ func _step(dt: float) -> void:
 				if blood:
 					blood.splash(hit, (hit - rig.global_position).normalized(), c)
 					splashes += 1
-				_play(hsnd, hit_s[randi() % hit_s.size()], 0.55, 8.0)
+				if feast_s: _play(rage, feast_s, 1.0, 6.0) # his sound runs from the blow to the swallow
+				else: _play(hsnd, hit_s[randi() % hit_s.size()], 0.55, 8.0)
 			if fall_t >= 0.0:
 				fall_t += dt
 				var k := clampf(fall_t / 0.65, 0.0, 1.0)
-				var ease := k * k # it topples, faster as it goes
-				pivot.rotation.z = fall_side * 1.47 * ease
-				pivot.position.y = lerpf(PIVOT_Y, 0.36, ease) + (0.06 * sin(clampf((fall_t - 0.65) / 0.3, 0.0, 1.0) * PI) if fall_t > 0.65 else 0.0)
+				var drop := k * k # it topples, faster as it goes
+				pivot.rotation.z = fall_side * 1.47 * drop
+				pivot.position.y = lerpf(PIVOT_Y, 0.36, drop) + (0.06 * sin(clampf((fall_t - 0.65) / 0.3, 0.0, 1.0) * PI) if fall_t > 0.65 else 0.0)
 				if fall_t - dt < 0.65 and fall_t >= 0.65:
 					_play(hsnd, thud_s[randi() % thud_s.size()], 0.6, 10.0)
 			if ph_t > 1.5:
@@ -352,6 +358,10 @@ func _step(dt: float) -> void:
 		8:
 			_swallow(dt)
 		9:
+			if rage_fade > 0.0: # his sound fades out as it walks away
+				rage_fade -= dt
+				rage.volume_db = 6.0 + linear_to_db(clampf(rage_fade / 2.5, 0.001, 1.0))
+				if rage_fade <= 0.0: rage.stop()
 			rig.reach_clear()
 			lunge = 0.0
 			rig.rotation.x = 0.0
@@ -438,7 +448,7 @@ func _rip() -> void:
 		blood.splash(neck_xf.origin, (neck_xf.origin - _hb(hsk, "Chest").origin).normalized(), c)
 		blood.splash(neck_xf.origin, Vector3(0, 1, 0), c)
 		splashes += 2
-	_play(hsnd, hit_s[randi() % hit_s.size()], 0.45, 10.0)
+	if not feast_s: _play(hsnd, hit_s[randi() % hit_s.size()], 0.45, 10.0)
 
 func _flesh(r: float) -> MeshInstance3D:
 	var m := MeshInstance3D.new()
@@ -523,7 +533,7 @@ func _bites(dt: float) -> void:
 	var side := rig.global_basis.x.normalized()
 	rig.reach(top + side * 0.55 - up_side * 0.2, top - side * 0.55 + up_side * 0.2,
 		rig.bone_at("mixamorig_LeftArm") + side * 0.8 - Vector3(0, 0.5, 0), rig.bone_at("mixamorig_RightArm") - side * 0.8 - Vector3(0, 0.5, 0))
-	if not chew.playing and chew_s: _play(chew, chew_s, 0.55, 4.0)
+	if not chew.playing and chew_s and not feast_s: _play(chew, chew_s, 0.55, 4.0)
 	bite_t -= dt
 	lunge = 0.42 if bite_t < 0.3 and bite_t > 0.0 else 0.12
 	if bite_t <= 0.0:
@@ -534,14 +544,15 @@ func _bites(dt: float) -> void:
 		if blood:
 			blood.splash(at, (at - rig.global_position).normalized() + Vector3(0, 0.3, 0), _cam())
 			splashes += 1
-		_play(hsnd, hit_s[randi() % hit_s.size()], rng.randf_range(0.5, 0.62), 9.0)
+		if not feast_s: _play(hsnd, hit_s[randi() % hit_s.size()], rng.randf_range(0.5, 0.62), 9.0)
 		_wound(at)
 	if ph_t > BITE:
 		lunge = 0.0
 		swallow_from = pivot.global_transform
 		_phase(8)
-		_play(chew, chew_s, 0.5, 6.0)
-		_play(dark, dark_s, 1.0, 4.0)
+		if not feast_s:
+			_play(chew, chew_s, 0.5, 6.0)
+			_play(dark, dark_s, 1.0, 4.0)
 
 ## A torn place on the body where a bite was: dark, wet flesh that stays on it.
 func _wound(at: Vector3) -> void:
@@ -584,6 +595,7 @@ func _swallow(dt: float) -> void:
 			blood.splash(mouth, fwd, _cam())
 			splashes += 1
 		_play(snd, roar_s, 0.6, 7.0)
+		rage_fade = 2.5
 		horse.queue_free()
 		hsk = null
 		_phase(9)

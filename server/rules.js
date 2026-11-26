@@ -4,6 +4,7 @@ const BLEED_TIME = 120, HIT_COOLDOWN = 1.5, POWER_CD = 20, STUN_TIME = 2.5;
 // «وضع السلاح» (the host's choice): every survivor carries a stun gun with GUN_SHOTS shots for the round;
 // a hit within GUN_RANGE leaves the killer dizzy for GUN_STUN seconds (she drops whoever she carries)
 const GUN_SHOTS = 3, GUN_RANGE = 22, GUN_STUN = 3;
+const KISS_CD = 25; // seconds before either of the two can kiss again (rules.gd KISS_CD)
 const GATE_DELAY = 10; // the generators are done: the gates open this long after
 const DOOM_TIME = 120; // once the gates have power the moon falls: this long to get out
 const MASH_STEP = 0.03, MASH_DECAY = 0.1;
@@ -42,7 +43,7 @@ class Rules {
     this.gridMode = opts && opts.theme === 'halloween' ? 1 : (opts && opts.theme === 'sunset' ? 2 : 0);
     this.gens = []; this.gates = []; this.pallets = []; this.s = {}; this.roles = {};
     this.killer = ''; this.carrying = ''; this.stun = 0; this.powerCd = 0;
-    this.healers = {}; this.rescuers = {}; this.lastHit = {}; this.powered = false; this.gateT = -1; this.heli = { st: 0, t: 0, who: '', p: 0, hp0: '' }; this.doom = -1; this.over = false; this.clock = 0;
+    this.healers = {}; this.rescuers = {}; this.kissedAt = {}; this.lastHit = {}; this.powered = false; this.gateT = -1; this.heli = { st: 0, t: 0, who: '', p: 0, hp0: '' }; this.doom = -1; this.over = false; this.clock = 0;
     this.pos = {}; this.layout = null; this.ready = false; this.hatch = -1; this.score = {};
     this.doors = [];                        // every doorway: true when the leaf is shut
     // the escape car behind each gate: st 0 waiting, 1 on the road, 2 caught, 3 through the last gate
@@ -257,6 +258,15 @@ class Rules {
         }
         break;
       }
+      case 'kiss': // «Kiss» (three shakes of the phone): face to face; it heals the one kissed (rules.gd)
+        if (n !== from && this.freeNow(from) && this.freeNow(n) && this.nearPlayer(from, n, 2.5)
+            && this.clock - (this.kissedAt[from] ?? -999) >= KISS_CD && this.clock - (this.kissedAt[n] ?? -999) >= KISS_CD) {
+          this.kissedAt[from] = this.clock; this.kissedAt[n] = this.clock;
+          if (this.s[n].hp === 'hurt') { this.s[n].hp = 'ok'; this.s[n].heal = 0; }
+          this.add(from, 25);
+          out.push({ k: 'kiss', n: from, to: n });
+        }
+        break;
       case 'heal':
         if (d.on && this.freeNow(from)) {
           const p = this.s[n];

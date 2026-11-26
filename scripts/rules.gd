@@ -90,6 +90,8 @@ var carrying := ""
 var stun := 0.0
 var power_cd := 0.0
 var healers := {} # healer -> target
+const KISS_CD := 25.0 # seconds before either of the two can kiss again
+var kissed_at := {}  # survivor -> the clock when they last kissed or were kissed
 var beast := false # the killer is «الوحش» (killer2): his second hook is not let go (eaten)
 var rescuers := {} # rescuer -> the hooked survivor they are lifting
 var last_hit := {}
@@ -323,6 +325,16 @@ func handle(d: Dictionary, from: String) -> Array:
 					s[from].hp = "hurt"; s[from].hook_i = -1; s[from].heal = 0.0; s[from].esc = 0.0
 					add(from, 30.0)
 					out.append({"k": "rescued", "n": from, "by": from})
+		"kiss": # «Kiss» (three shakes of the phone): two survivors on their feet, face to face; it heals the one kissed
+			if n != from and free_now(from) and free_now(n) and clock - float(kissed_at.get(from, -999.0)) >= KISS_CD \
+					and clock - float(kissed_at.get(n, -999.0)) >= KISS_CD:
+				kissed_at[from] = clock
+				kissed_at[n] = clock
+				if s[n].hp == "hurt":
+					s[n].hp = "ok"
+					s[n].heal = 0.0
+				add(from, 25.0)
+				out.append({"k": "kiss", "n": from, "to": n})
 		"heal":
 			if d.get("on", false) and free_now(from):
 				if n == from:

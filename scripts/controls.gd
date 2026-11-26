@@ -41,7 +41,7 @@ const ICON := {
 const CTX_ICON := {
 	"rep": "wrench", "rescue": "rescue", "locker_in": "door", "locker_out": "out", "pallet": "plank",
 	"struggle": "fist", "hook": "hook", "pickup": "carry", "search": "search", "break": "axe",
-	"vault": "jump", "heal": "heal", "car_in": "car", "car_out": "out", "board": "car", "disarm": "trap",
+	"vault": "jump", "heal": "heal", "car_in": "car", "car_out": "out", "board": "car", "disarm": "trap", "kiss": "heart",
 }
 
 const MIN_R := 26.0

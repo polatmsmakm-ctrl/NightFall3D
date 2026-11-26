@@ -17,6 +17,15 @@ var catdog: NFCatDog # the cat at the first generator, and the dog (scripts/catd
 const FeastScript := preload("res://scripts/feast.gd")
 const GorillaScript := preload("res://scripts/gorilla.gd")
 var feast: Node3D   # «الوحش» eating whoever is on his hook a second time (scripts/feast.gd)
+const KissScript := preload("res://scripts/kiss.gd")
+var kiss: Node3D    # «Kiss»: shake the phone three times, then face a teammate (scripts/kiss.gd)
+var kiss_mode := 0.0 # seconds the Kiss button stays on offer after the three shakes
+const KISS_OFFER := 20.0
+const SHAKE_G := 1.35 # a shake: the phone's own acceleration (gravity taken out) above this many g
+var shake_n := 0
+var shake_last := -9.0
+var shake_hi := false
+var kiss_cd := {}   # survivor -> when (msec) their last kiss happened, from the events
 var gorilla: Node3D # the owner's gorilla and the horse, after the cat and the dog (scripts/gorilla.gd)
 const SFX := ["knife1", "knife2", "knife3", "knife4", "gunshot", "scream_beast", "crow", "raven", "gate", "heart", "breath", "steps_out", "steps_in", "gen_run", "chase", "ambient", "doom", "rope", "male_pain", "scream1", "scream2", "oof1", "oof2", "oof3",
 	# the owner's sound pack (November): see «The owner's sound pack» in CLAUDE.md
@@ -460,6 +469,51 @@ func _hook_at(n: String) -> int:
 	if i < 0 and rules.s.has(n): i = int(rules.s[n].hook_i)
 	return clampi(i, 0, world.hook_points.size() - 1)
 
+func _node_of(n: String) -> Variant:
+	if n == my_name: return body
+	var r = remotes.get(n)
+	return r.node if r != null else null
+
+func _kissing(n: String) -> bool:
+	return kiss != null and kiss.busy(n)
+
+## Three quick shakes of the phone: the Kiss button is on offer for a while (survivors, in a round).
+func _shake_watch(dt: float) -> void:
+	kiss_mode = maxf(kiss_mode - dt, 0.0)
+	if my_role != "survivor" or not rules.free_now(my_name): return
+	var g := Input.get_gravity()
+	var unit := g.length() if g.length() > 0.5 else 9.81
+	var a := Input.get_accelerometer() - g
+	var hi := a.length() / unit > SHAKE_G
+	var now := Time.get_ticks_msec() / 1000.0
+	if hi and not shake_hi and now - shake_last > 0.16: # one peak of the shake
+		if now - shake_last > 1.3: shake_n = 0
+		shake_n += 1
+		shake_last = now
+		if shake_n >= 3:
+			shake_n = 0
+			_kiss_ready()
+	shake_hi = hi
+
+func _kiss_ready() -> void:
+	kiss_mode = KISS_OFFER
+	NFHaptics.pulse("tick")
+	_flash("Kiss is ready — go up to a teammate")
+
+## A teammate close enough to kiss: on their feet, not in a kiss, neither of us kissed lately.
+func _kiss_target(pos: Vector3) -> String:
+	if kiss_mode <= 0.0 or _kissing(my_name) or Time.get_ticks_msec() - int(kiss_cd.get(my_name, -999999)) < int(Rules.KISS_CD * 1000.0): return ""
+	var best := ""
+	var bd := 2.2
+	for n in rules.s:
+		if n == my_name or not rules.free_now(n) or _kissing(n): continue
+		if Time.get_ticks_msec() - int(kiss_cd.get(n, -999999)) < int(Rules.KISS_CD * 1000.0): continue
+		var d := pos.distance_to(_pos_of(n))
+		if d < bd and absf(pos.y - _pos_of(n).y) < 1.0:
+			bd = d
+			best = n
+	return best
+
 func _rig_of(n: String) -> Variant:
 	if n == my_name: return rig
 	var r = remotes.get(n)
@@ -468,7 +522,7 @@ func _rig_of(n: String) -> Variant:
 ## One bite of «الوحش»'s meal (scripts/feast.gd): the crunch, their cry (not on the last), the camera
 ## and the phone for whoever is being eaten, a shake for anyone close.
 func _feast_bite(n: String, at: Vector3, stage: int, last: bool) -> void:
-	_sfx("knife%d" % (1 + randi() % 4), at, 7.0, randf_range(0.62, 0.74))
+	_sfx("knife%d" % (1 + randi() % 4), at, 0.0, randf_range(0.62, 0.74)) # under his eating sound (scripts/feast.gd)
 	if stage < 4 and not last: _voice_hit(n)
 	if n == my_name:
 		_shake(0.55)
@@ -1384,6 +1438,16 @@ func _on_event(e: Dictionary) -> void:
 			elif my_role == "survivor" and str(e.s) == "hooked": _sfx("hook_sting", null, -8.0)
 			_flash("%s %s" % [str(e.n), "is on the hook" if str(e.s) == "hooked" else "died"])
 			if str(e.s) == "hooked": _feed("%s is on the hook" % str(e.n), "hook", Color(1.0, 0.35, 0.3))
+		"kiss": # two survivors kiss and hug; the one kissed is healed (scripts/kiss.gd)
+			var kis := str(e.n)
+			var kd := str(e.get("to", ""))
+			kiss_cd[kis] = Time.get_ticks_msec()
+			kiss_cd[kd] = Time.get_ticks_msec()
+			if kiss: kiss.start(kis, kd)
+			if kis == my_name or kd == my_name:
+				NFHaptics.pulse("tick")
+				_flash("%s kissed you — you feel better" % kis if kd == my_name else "You kissed %s" % kd)
+			_feed("%s kissed %s" % [kis, kd], "heart", Color(1.0, 0.45, 0.6))
 		"rescued":
 			NFHaptics.pulse("tick")
 			if str(e.n) == my_name and _perk() == "burst": boost_t = 3.0
@@ -2690,6 +2754,9 @@ func _update_ctx() -> void:
 				ctx.interact = {"kind": "rescue", "label": "Rescue", "n": n, "need": -1.0}
 			if p.hp in ["hurt", "down"] and p.locker < 0 and rules.car_of(n) < 0 and _near(pos, _pos_of(n), 2.6):
 				ctx.heal = {"kind": "heal", "n": n, "need": -1.0}
+		if not ctx.has("interact"): # «Kiss» (after three shakes of the phone)
+			var kt := _kiss_target(pos)
+			if kt != "": ctx.interact = {"kind": "kiss", "label": "Kiss", "n": kt}
 		if not ctx.has("interact"): # a trap within reach (but not under my feet): spring it with a stick
 			for i in rules.traps.size():
 				var tr: Array = rules.traps[i]
@@ -2900,6 +2967,9 @@ func _press(id: String, touch: int) -> void:
 					_ev({"k": "disarm", "i": c.i})
 					NFHaptics.pulse("tick")
 				"pickup": _ev({"k": "pickup", "n": c.n})
+				"kiss":
+					_ev({"k": "kiss", "n": c.n})
+					kiss_mode = 0.0
 				"hook": _ev({"k": "hook", "i": c.i})
 				"search": _ev({"k": "search", "i": c.i})
 				"vault": _start_vault(c)
@@ -3163,6 +3233,11 @@ func _process(dt: float) -> void:
 		gorilla.name = "Gorilla"
 		world.add_child(gorilla)
 		gorilla.setup(world, catdog, blood, _cam_pos, [body.get_rid()])
+	if kiss == null and world.ready_done:
+		kiss = KissScript.new()
+		kiss.name = "Kiss"
+		world.add_child(kiss)
+		kiss.setup(_rig_of, _node_of, rules)
 	if feast == null and blood != null:
 		feast = FeastScript.new()
 		feast.name = "Feast"
@@ -3186,6 +3261,7 @@ func _process(dt: float) -> void:
 	snap_sent = maxf(snap_sent - dt, 0.0)
 	sense_t += dt
 	_feed_watch(dt)
+	_shake_watch(dt)
 	if scare_t > 0.0: # short close-up of the killer's face, then back to my own camera
 		scare_t -= dt
 		if scare_t <= 0.0: _end_scare()
@@ -4197,7 +4273,7 @@ func _draw_road(i: int, mid: Vector2) -> void:
 				_text(c + Vector2(0, 104), "The killer is behind you!", 24, Color(1, 0.35, 0.3))
 
 func _move(delta: float) -> void:
-	var frozen: bool = rules.over or my_state in ["dead", "escaped"] or not hold.is_empty() or (my_role == "killer" and rules.stun > 0.0) or _held() > 0.0
+	var frozen: bool = rules.over or my_state in ["dead", "escaped"] or not hold.is_empty() or _kissing(my_name) or (my_role == "killer" and rules.stun > 0.0) or _held() > 0.0
 	var move := stick_vec
 	if move == Vector2.ZERO:
 		move = Vector2(float(Input.is_key_pressed(KEY_D)) - float(Input.is_key_pressed(KEY_A)),

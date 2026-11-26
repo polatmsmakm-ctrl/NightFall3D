@@ -1279,3 +1279,48 @@ strings: buttons, HUD, flashes, feed, menus, help, tips, perks, map and characte
 signs); the tests in `tools/` that compare labels were changed the same way. Comments are still
 partly Arabic. The blackout event now shows no line at all (`EVENT_NAME[0]` is empty; the owner
 took «انطفت الأضوية» out). The Cairo font's Latin half (`cairo-lat.woff2`) draws the English.
+
+## The gorilla and the horse (`scripts/gorilla.gd`), «الوحش»'s meal on the hook (`scripts/feast.gd`)
+- **His gorilla** («Shadowback Titan», 4.2 M triangles, unrigged) went in as a *character*:
+  `python3 tools/rig_character.py src.glb assets/chars/gorilla.glb --faces 36000 --tex 2048
+  --arms 0.31,0.78,1.25 --hair 5 --bake --external`, so it moves with the Mixamo clips; `NFHunch`
+  bends it like an ape and it is drawn at `GS` 1.9 (a 3.7 m titan).
+- **The scene** (no class_name, preloaded by `main`; no network message): `DELAY` 6 s after the dog
+  has gone (`catdog.ph == 6`), near the same generator. A horse (`arabian-horse.glb`, its own clips)
+  walks in and grazes; the gorilla comes from `DEN_R` 30 m; the horse rears; the charge; one blow
+  and the horse topples onto its side (its player paused, a `pivot` at its middle rolled); crouched
+  at the head (`repair` + `NFReach` on both hands) it tugs and **tears the head off** (`_rip`: the
+  body's `Neck3` bone scaled to nothing, a second copy of the horse with everything but the head
+  folded away — `Hips` x0.001, `Neck3` x1000 — put in its right hand; raw ends on both); it holds the
+  head up and roars, throws it (ballistic, lands on its side and stays for the round); bites the
+  body (`BITE` 6 s, a wound left at each bite); lifts it over its face neck-first and **swallows it**
+  (`SWALLOW` 6 s, the dog's eating sound at 0.5 pitch + his dark sound); walks off. The models are
+  read in the background at setup and only built when it starts.
+- **«الوحش» eats the second hook**: with killer2 as the killer (`Rules.beast`, both rules files),
+  `Rules.eaten(n)` (hooked, `hooks >= 2`) blocks the rescue — **server change: Render deploy**. The
+  hook's 30 s are the meal: five stages (legs, thighs, stomach, chest, neck) of three bites, each a
+  jump of the cut (`feast._cut` from the bones' heights), a splash, a crunch, a cry; the body is cut
+  by `shaders/eaten.gdshader` (the character's own maps; nothing under `cut_y`, ragged wet edge,
+  flesh on the back faces; on the last stage only a ball round the head). Dead, the head is pulled
+  up onto the hook (`lift`) and stays there (`main._kept` keeps them hanging, also when they are
+  me), dripping into a pool. No see-through outline while eaten.
+- `tools/gorilla.tscn` tests both; `tools/shot29.tscn` photographs both.
+- **His three sounds for these** (identified from their spectra): `assets/sfx/gorilla_feast.ogg` (30 s,
+  roars and tearing: played on the gorilla from the blow and faded out as it walks off; with it the
+  scene's own knife / chew / dark sounds are off), `beast_feast.ogg` (30 s of wet eating: the hook's
+  whole meal, started part way on a phone that comes in late) and `kiss.ogg` (4 s).
+
+## «Kiss» (`scripts/kiss.gd`, `scripts/kiss_mod.gd`; no class_name)
+- **Three shakes of the phone** (`main._shake_watch`: the phone's own acceleration — gravity taken
+  out — over `SHAKE_G` 1.35 g, three peaks within 1.3 s) put «Kiss» on offer for `KISS_OFFER` 20 s
+  (`_kiss_ready`). Next to a teammate on their feet (2.2 m) the interact button is «Kiss» (heart).
+- **Rules** (both files, server deploy): input `kiss {n}`; both on their feet, not the killer,
+  within 2.5 m on the server, neither kissed in the last `KISS_CD` 25 s; the one kissed goes hurt ->
+  ok, +25 points; event `kiss {n, to}`.
+- **Every phone plays it** from the event (`NFKiss` under the world, runs after main): the two step in
+  face to face, A's hands on B's upper back, B's round A's waist (`NFReach`), backs lean in, heads
+  nod toward each other's height and tip to their own right (`kiss_mod.gd`, a `SkeletonModifier3D`
+  after the hunch and before the IK), the distance between them servoed every frame until the lips
+  meet; a slow sway, then they let go (4.4 s). Input frozen meanwhile; struck / carried ends it.
+- `tools/kiss.tscn` tests it; `tools/shot29.tscn` photographs it (step in, side, the faces close up,
+  over the shoulder).
