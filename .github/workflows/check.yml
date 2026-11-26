@@ -16,6 +16,9 @@ on:
       online:
         description: 'online rounds to run (forest kuwait-sniper ...)'
         default: 'forest'
+      shotlist:
+        description: 'only these screenshot scenes (e.g. shot26); empty = all'
+        default: ''
 env:
   GODOT_VERSION: "4.5-stable"
 permissions:
@@ -103,6 +106,14 @@ jobs:
         if: always() && github.event.inputs.shots != 'false'
         run: |
           mkdir -p shots
+          SL="${{ github.event.inputs.shotlist }}"
+          if [ -n "$SL" ]; then
+            for sc in $SL; do
+              NF_SHOTS=$PWD/shots timeout 1500 xvfb-run -a godot --rendering-driver vulkan --resolution 1564x720 --path . res://tools/$sc.tscn 2>&1 | tee -a all.log | grep -v "^\s*at:" | tail -25 || true
+            done
+            ls -la shots
+            exit 0
+          fi
           for sc in ${NF_SHOT_SCENES:-}; do # the old software-GL screenshots, when asked for
             [ -f tools/$sc.tscn ] && NF_SHOTS=$PWD/shots LIBGL_ALWAYS_SOFTWARE=1 timeout 1500 xvfb-run -a godot --rendering-driver opengl3 --resolution 1564x720 --path . res://tools/$sc.tscn 2>&1 | tee -a all.log | tail -40 || true
           done
