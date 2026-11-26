@@ -130,7 +130,7 @@ func _ready() -> void:
 	var lifted := 0.0
 	while go.state == 2 and Time.get_ticks_msec() - t0 < 90000:
 		await tree.process_frame
-		if go.head_state == 1 and go.head_sk: in_hand = in_hand or go._hb(go.head_sk, "Neck3").origin.distance_to(go._hand(true).origin) < 0.7
+		if go.head_state == 1 and go.head_sk: in_hand = in_hand or go._hb(go.head_sk, "Head").origin.distance_to(go._hand(true).origin) < 0.5
 		if go.ph == 8 and is_instance_valid(go.pivot): lifted = maxf(lifted, go.pivot.global_position.y - h0.y)
 	Engine.time_scale = 1.0
 	print("    phases ", go.phases.keys(), " rips ", go.rips, " bites ", go.bites, " splashes ", go.splashes)

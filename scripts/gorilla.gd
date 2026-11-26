@@ -435,14 +435,19 @@ func _rip() -> void:
 	var in_root := head.global_transform.affine_inverse() * head_sk.global_transform * head_sk.get_bone_global_pose(head_sk.find_bone("Neck3"))
 	in_root.basis = in_root.basis.orthonormalized()
 	head.global_transform = neck_xf * in_root.affine_inverse()
-	head_off = _hand(true).affine_inverse() * head.global_transform
+	# into the fist: the skull's middle (between its own Head bone and the muzzle) on the hand
+	var hand := _hand(true)
+	var grab := _hb(head_sk, "Head").origin
+	head.global_position += hand.origin - grab
+	head_off = hand.affine_inverse() * head.global_transform
 	# both torn ends: raw and wet
-	stump = _flesh(0.16)
+	stump = _flesh(0.12)
 	pivot.add_child(stump)
 	stump.global_position = neck_xf.origin
-	var cap := _flesh(0.15)
+	var cap := _flesh(0.1)
 	head.add_child(cap)
 	cap.position = in_root.origin
+	cap.scale = Vector3(1.0, 0.6, 1.0)
 	head_state = 1
 	spurt = 9.0
 	var c := _cam()
