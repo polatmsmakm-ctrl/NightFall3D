@@ -1168,3 +1168,41 @@ photographs it lowered and raised.
   Tags cannot be pushed from the agent's machine (the proxy refuses them): tag it on GitHub if wanted.
   Known flaky test: `drive`'s garage leg ("drove down the ramp") fails when the roof car is placed
   turned away from the ramp (its spot depends on where the roof generator and hook fell).
+
+## The November batch, second round (the owner's list)
+- **Sunset** over four minutes (`SUNSET_TIME` 240). **No chase music while vanished.** **Gate countdown**:
+  `GATE_DELAY` 10 s after the last generator before the gates get power (`gate_t`, snapshot `gt`; tests
+  set `rules.gate_delay = 0`), shown on the HUD (`main._draw_gate_count`).
+- **The sea** (`shaders/ocean.gdshader`, `world.ocean_mat`, `wave_y`): Kuwait City's sea and the beach's
+  lagoon on subdivided planes with moving waves.
+- **Kuwait City** (`world._build_kw_extras`, `_step_kw`): his billboard with his ad picture always on
+  (`AdScreen`), his promo video (`assets/ads/promo.ogv`, Theora: Godot plays nothing else) only from the
+  developer tools' button, for everyone (`{t:"ad", on}` relayed by the server); the police cars with
+  their light bars on and the siren (`assets/sfx/siren.ogg`) only once the gates open
+  (`world.set_sirens`); a bus stop, drains, boats along the coast; his new cars in the parking, never two
+  of a kind side by side.
+- **His new rifle** in the sniper mode (the scope is unchanged).
+- **«المسعف»** (perk `aid`): a player picks it on the character page (`Net.perk`, sent with `set {perk}`);
+  it replaces the character's own perk and he carries the first-aid kit: heals others at `AID_MUL` 2x,
+  heals himself in `AID_SELF` 8 s and keeps the kit.
+- **The rescue helicopter** (`scripts/heli.gd`, `NFHeli`; both rules files, snapshot `hl`): when one
+  survivor is left it flies to `world.heli_spot` and lets a rope ladder down; climbing (`ladder`) takes
+  `CLIMB_TIME`, the killer cannot hit past `CLIMB_SAFE`; downed before the ladder, it leaves.
+
+## The cat and the dog (`scripts/animal.gd` `NFAnimal`, `scripts/catdog.gd` `NFCatDog`)
+- His two Meshy models (no skeleton) went through `prop_bake.py` and then **`tools/rig_animal.py`**:
+  `python3 tools/rig_animal.py baked.glb tools/rig/<cat|dog>_joints.json assets/animals/<cat|dog>.glb`
+  (`--sheet out.png` draws the grid pictures the joints are read from). Bones: root, hips, spine1-2,
+  chest, neck1-2, head, jaw, tail1-5, each leg top/mid/low/paw; weights by region (legs, tail, head,
+  jaw, body), smoothed on the welded surface. `tools/animal_poses.py rig.glb out.png cat|dog` renders
+  rest / walk / mouth / sit or stalk / shake with no Godot. Maps moved out with `glb_external.py`
+  (ASTC 4x4). Cat 60k triangles, dog 70k.
+- `NFAnimal.pose(dt)` animates in code from `speed` (walk / trot / gallop, stride sized from the
+  speed), `look`, `sit`, `crouch`, `pounce`, `swipe`, `jaw`, `shake`, `swallow`, `wag`, `limp`.
+- `NFCatDog` (made by `main` once the blood is ready): the first generator anyone repairs brings the
+  cat (circles the people there, sits, washes, pounces, bats, meows — `assets/sfx/meow0-5.ogg` cut from
+  his clip); when that generator is done the dog stalks in from 15 m, freezes, barks
+  (`dog_bark.ogg`), sprints, bites, shakes it 2.4 s with his blood (`NFBlood.splash`), swallows it 3.2 s
+  (`dog_eat.ogg`) and runs off. Once a round. **No server change**: it starts from the generators in
+  the snapshot, every place and choice comes from `layout_seed` and the generator's number.
+  `tools/catdog.tscn` tests it, `tools/shot28.tscn` photographs it.

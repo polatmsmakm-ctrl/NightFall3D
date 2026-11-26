@@ -277,7 +277,7 @@ func _cat_step(dt: float) -> void:
 		"play": # crouch, wiggle, spring forward, bat the air
 			cat.wag = 0.8
 			var a := act_t
-			cat.crouch = clampf(a / 0.7, 0.0, 1.0) if a < 1.0 else maxf(1.0 - (a - 1.0) * 3.0, 0.25 * float(a < 3.0))
+			cat.crouch = clampf(a / 0.7, 0.0, 1.0) if a < 1.0 else maxf(1.0 - (a - 1.0) * 3.0, (0.25 if a < 3.0 else 0.0))
 			cat.pounce = sin(clampf((a - 1.0) / 0.3, 0.0, 1.0) * PI)
 			var hop := 0.12 * cat.pounce
 			if a > 1.0 and a < 1.3:

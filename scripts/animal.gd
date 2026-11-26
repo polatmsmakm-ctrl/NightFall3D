@@ -131,7 +131,7 @@ func pose(dt: float) -> void:
 			var q := (p - 0.6) / 0.4
 			sw = lerpf(-1.0, 1.0, smoothstep(0.0, 1.0, q))
 			lift = sin(q * PI)
-		var front := leg[0] == "f"
+		var front: bool = leg[0] == "f"
 		var a := -sw * amp * moving # negative pitch takes the paw forward
 		var bend := lift * moving * (0.9 + 0.25 * _gait)
 		var top := a

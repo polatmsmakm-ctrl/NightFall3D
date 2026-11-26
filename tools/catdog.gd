@@ -31,9 +31,9 @@ func _ready() -> void:
 		for i in 20: a.pose(0.05)
 		check(not a.skel.get_bone_pose_rotation(a.bi["fl_top"]).is_equal_approx(rest), "%s: the legs move with the speed" % k)
 		if k == "dog":
-			var m := a.point_on("head", NFCatDog.DOG_MOUTH)
-			var hz := Vector2(m.x, m.z).length()
-			check(hz > 0.45 and hz < 0.95 and m.y > 0.45, "dog: the mouth is at the front of the head (%.2f m out, %.2f up)" % [hz, m.y])
+			var mo := a.point_on("head", NFCatDog.DOG_MOUTH)
+			var hz := Vector2(mo.x, mo.z).length()
+			check(hz > 0.45 and hz < 0.95 and mo.y > 0.45, "dog: the mouth is at the front of the head (%.2f m out, %.2f up)" % [hz, mo.y])
 		a.queue_free()
 	# in a round
 	var m = load("res://scenes/main.tscn").instantiate()
@@ -85,7 +85,7 @@ func _ready() -> void:
 		last = c
 		var hd := Vector2(c.x - gp.x, c.z - gp.z).length()
 		if hd > 1.2 and hd < 3.6: near += 1
-		var gy := m.world.height(c.x, c.z)
+		var gy: float = m.world.height(c.x, c.z)
 		if absf(c.y - gy) > 0.35: ground_bad += 1
 		samples += 1
 	check(near > samples / 2, "it stays round the people at the generator (%d of %d)" % [near, samples])
