@@ -135,11 +135,11 @@ func _ready() -> void:
 	g.rules.ev_at = 99999.0 # (the jumps in the clock below would set off the round's own event)
 	check(gw.power_box != Vector3.INF and g.rules.has_grid and not g.rules.grid, "the street lights start off, a power box on the map")
 	check(gw.moon.light_energy > 1.2 and gw.env.ambient_light_energy > 1.0 and gw.moon.global_basis.z.y > 0.3, "it is afternoon: the sun is high (%.2f)" % gw.moon.light_energy)
-	g.rules.clock = 200.0
+	g.rules.clock = NightWorld.SUNSET_TIME * 0.66
 	await frames(6)
 	var mid_sun: float = gw.moon.light_energy
 	check(mid_sun < 1.9 and gw._sky_mat.get_shader_parameter("warm") > 0.3, "an hour later it is going down, red-gold (%.2f)" % mid_sun)
-	g.rules.clock = 301.0
+	g.rules.clock = NightWorld.SUNSET_TIME + 1.0 # (the moon rises after that)
 	await frames(70)
 	check(gw.night_fell() and gw.moon.light_energy < 0.05 and gw.env.ambient_light_energy < NightWorld.DARK_AMB_E + 0.05, "five minutes: the sun is gone and it is pitch dark (%.2f)" % gw.env.ambient_light_energy)
 	g.body.global_position = gw.power_box + Vector3(1.4, 0.3, 0)
