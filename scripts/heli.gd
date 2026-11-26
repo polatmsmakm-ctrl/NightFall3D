@@ -97,13 +97,79 @@ func setup(at: Vector3, dir: Vector3) -> void:
 		sound = AudioStreamPlayer3D.new()
 		sound.stream = s
 		sound.bus = "SFX"
-		sound.unit_size = 34.0
-		sound.max_distance = 520.0
-		sound.volume_db = 4.0
+		sound.unit_size = 60.0 # (the owner: louder) heard across the whole map
+		sound.max_distance = 800.0
+		sound.volume_db = 10.0
+		sound.max_db = 12.0 # (the default 3 dB cap would swallow the boost)
 		body.add_child(sound)
+	_lights()
 	visible = false
 
 ## Where the ladder's rungs are in the world: its foot and its top (the climber goes between them).
+## The owner: a helicopter's own lights and a police light bar. Navigation lights (red port, green
+## starboard, white tail), a red anti-collision beacon on top and below, a double white strobe, and red /
+## blue police lights either side of the nose flashing in turn, each with a little light of its own.
+var lamps: Array = [] # [mesh material, light or null, kind, colour]
+
+func _lamp(at: Vector3, col: Color, kind: String, r := 0.16, light_range := 0.0) -> void:
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.albedo_color = col
+	m.emission_enabled = true
+	m.emission = col
+	m.emission_energy_multiplier = 6.0
+	var mi := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = r
+	sm.height = r * 2.0
+	sm.radial_segments = 10
+	sm.rings = 5
+	sm.material = m
+	mi.mesh = sm
+	mi.position = at
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	body.add_child(mi)
+	var l: OmniLight3D = null
+	if light_range > 0.0:
+		l = OmniLight3D.new()
+		l.light_color = col
+		l.omni_range = light_range
+		l.light_energy = 0.0
+		l.shadow_enabled = false
+		l.position = at
+		body.add_child(l)
+	lamps.append([m, l, kind, col])
+
+func _lights() -> void:
+	# (the model: nose toward +z, its left side toward +x, the cabin 1.2 .. 3.2 m up)
+	_lamp(Vector3(1.55, 1.9, 0.6), Color(1.0, 0.05, 0.05), "nav", 0.13, 4.0)   # port, red
+	_lamp(Vector3(-1.55, 1.9, 0.6), Color(0.1, 1.0, 0.25), "nav", 0.13, 4.0)  # starboard, green
+	_lamp(Vector3(0.0, 2.6, -9.6), Color(1, 1, 1), "nav", 0.12)                # tail, white
+	_lamp(Vector3(0.0, 3.7, -1.2), Color(1.0, 0.08, 0.04), "beacon", 0.2, 14.0) # anti-collision, top
+	_lamp(Vector3(0.0, 0.15, 0.5), Color(1.0, 0.08, 0.04), "beacon", 0.18, 10.0) # and below
+	_lamp(Vector3(0.0, 2.9, -6.0), Color(1, 1, 1), "strobe", 0.16, 22.0)       # white strobe
+	_lamp(Vector3(0.75, 0.75, 3.9), Color(1.0, 0.06, 0.06), "police_r", 0.24, 22.0)
+	_lamp(Vector3(-0.75, 0.75, 3.9), Color(0.1, 0.3, 1.0), "police_b", 0.24, 22.0)
+	_lamp(Vector3(1.6, 1.3, -2.5), Color(1.0, 0.06, 0.06), "police_r", 0.18, 0.0)
+	_lamp(Vector3(-1.6, 1.3, -2.5), Color(0.1, 0.3, 1.0), "police_b", 0.18, 0.0)
+
+func _flash_lights() -> void:
+	for lp in lamps:
+		var k := 1.0
+		match str(lp[2]):
+			"beacon": k = 1.0 if fmod(t, 1.1) < 0.14 else 0.08
+			"strobe":
+				var ph := fmod(t + 0.4, 1.3)
+				k = 1.0 if (ph < 0.05 or (ph > 0.12 and ph < 0.17)) else 0.0
+			"police_r": k = 1.0 if fmod(t * 3.2, 2.0) < 1.0 else 0.06
+			"police_b": k = 1.0 if fmod(t * 3.2, 2.0) >= 1.0 else 0.06
+		var m: StandardMaterial3D = lp[0]
+		m.emission_energy_multiplier = 0.4 + 9.0 * k
+		var c: Color = (lp[3] as Color) * (0.25 + 2.75 * k) # over 1: it blooms
+		c.a = 1.0
+		m.albedo_color = c
+		if lp[1]: (lp[1] as OmniLight3D).light_energy = k * (3.0 if str(lp[2]).begins_with("police") else 2.0)
+
 func ladder_foot() -> Vector3: return ladder.global_transform * Vector3(0, -ladder_len, 0)
 func ladder_top() -> Vector3: return ladder.global_transform * Vector3(0, 0, 0)
 ## The way a climber faces the ladder (toward the helicopter's side).
@@ -160,6 +226,7 @@ func step(dt: float, h: Dictionary, come_time: float) -> void:
 	else: pos = pos.lerp(want, 1.0 - exp(-3.0 * dt))
 	body.global_transform = Transform3D(Basis.from_euler(Vector3(pitch, yaw, roll)), pos)
 	if rotor: rotor.rotate_object_local(Vector3.UP, dt * 26.0)
+	_flash_lights()
 	if tail: tail.rotate_object_local(Vector3.RIGHT, dt * 40.0)
 	# the ladder swings under the hover, a little more while someone climbs it
 	ladder.rotation = Vector3(sin(t * 1.3) * (0.05 if st == 3 else 0.03), 0, sin(t * 1.1 + 0.6) * (0.06 if st == 3 else 0.035))

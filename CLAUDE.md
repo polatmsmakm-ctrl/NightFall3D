@@ -1188,6 +1188,10 @@ photographs it lowered and raised.
 - **The rescue helicopter** (`scripts/heli.gd`, `NFHeli`; both rules files, snapshot `hl`): when one
   survivor is left it flies to `world.heli_spot` and lets a rope ladder down; climbing (`ladder`) takes
   `CLIMB_TIME`, the killer cannot hit past `CLIMB_SAFE`; downed before the ladder, it leaves.
+  It carries a helicopter's lights and a police light bar (`NFHeli._lights`: red / green navigation
+  lights, a white tail light, red beacons top and bottom, a double white strobe, red and blue police
+  lamps flashing in turn either side of the nose and on the flanks) and its sound is louder (10 dB,
+  heard to 800 m, `max_db` 12 so the boost is not capped).
 
 ## The cat and the dog (`scripts/animal.gd` `NFAnimal`, `scripts/catdog.gd` `NFCatDog`)
 - His two Meshy models (no skeleton) went through `prop_bake.py` and then **`tools/rig_animal.py`**:

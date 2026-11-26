@@ -136,6 +136,9 @@ func _ready() -> void:
 	for e in m.rules.tick(0.1): m._on_event(e)
 	await frames(5)
 	check(int(m.rules.heli.st) == 1 and m.heli != null and m.heli.visible, "the helicopter flies in")
+	if m.heli:
+		check(m.heli.lamps.size() >= 10, "with its own lights and a police light bar (%d lamps)" % m.heli.lamps.size())
+		check(m.heli.sound == null or (m.heli.sound.volume_db >= 10.0 and m.heli.sound.max_db >= 10.0), "and louder")
 	m.rules.heli.t = 0.05
 	await frames(150)
 	check(int(m.rules.heli.st) == 2 and m.heli.ladder.visible, "it hovers, the ladder down")
