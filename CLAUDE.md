@@ -1272,3 +1272,10 @@ Deploy. Every phone on that IPA downloads it the next time the game opens.
   the top, the box comes after it). The menu's version text shows «تحديث N».
 - `tools/updater.tscn` tests the mount, make_patch, the download from the real server, the checksum
   refusal, the next start and a new IPA.
+
+## The game is in English (the owner, November 26)
+Every on-screen string in `scripts/*.gd` was translated from Arabic to English in one pass (591
+strings: buttons, HUD, flashes, feed, menus, help, tips, perks, map and character names, in-world
+signs); the tests in `tools/` that compare labels were changed the same way. Comments are still
+partly Arabic. The blackout event now shows no line at all (`EVENT_NAME[0]` is empty; the owner
+took «انطفت الأضوية» out). The Cairo font's Latin half (`cairo-lat.woff2`) draws the English.

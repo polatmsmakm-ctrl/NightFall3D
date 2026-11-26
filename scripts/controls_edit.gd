@@ -28,7 +28,7 @@ func _ready() -> void:
 	top.add_theme_constant_override("separation", 10)
 	top.position = Vector2(safe.x + 18.0, 14.0)
 	add_child(top)
-	for r in [["survivor", "أزرار الناجي"], ["killer", "أزرار القاتل"]]:
+	for r in [["survivor", "Survivor buttons"], ["killer", "Killer buttons"]]:
 		var b := Button.new()
 		b.text = r[1]
 		b.custom_minimum_size = Vector2(190, 48)
@@ -49,7 +49,7 @@ func _ready() -> void:
 	slider.value_changed.connect(_resize)
 	bottom.add_child(slider)
 	var rst := Button.new()
-	rst.text = "إرجاع الأصلي"
+	rst.text = "Reset to default"
 	rst.custom_minimum_size = Vector2(190, 48)
 	rst.pressed.connect(func() -> void:
 		lay = NFControls.reset(role).duplicate(true)
@@ -58,7 +58,7 @@ func _ready() -> void:
 	NFUI.dress(rst, "exit")
 	bottom.add_child(rst)
 	var done := Button.new()
-	done.text = "تم"
+	done.text = "Done"
 	done.custom_minimum_size = Vector2(130, 48)
 	done.pressed.connect(func() -> void:
 		NFControls.save(role, lay)
@@ -121,8 +121,8 @@ func _draw_pad() -> void:
 		pad.draw_line(Vector2(0, s.y * i / 8.0), Vector2(s.x, s.y * i / 8.0), Color(1, 1, 1, 0.045), 1.0)
 	var stick := Vector2(rect.position.x + rect.size.x * 0.2, s.y * 0.72)
 	pad.draw_arc(stick, 70.0, 0, TAU, 40, Color(1, 1, 1, 0.1), 2.0)
-	_say(Vector2(stick.x, stick.y + 92.0), "مكان عصا الحركة — ما ينتقل", 18, Color(1, 1, 1, 0.3))
-	_say(Vector2(s.x / 2.0, 44.0), "اسحب أي زر لمكانه، واستخدم الشريط لتكبيره", 22, Color(1, 0.85, 0.55))
+	_say(Vector2(stick.x, stick.y + 92.0), "Joystick spot — fixed", 18, Color(1, 1, 1, 0.3))
+	_say(Vector2(s.x / 2.0, 44.0), "Drag any button into place, use the slider to resize it", 22, Color(1, 0.85, 0.55))
 	for id in lay:
 		var e: Dictionary = lay[id]
 		var c := NFControls.center_of(e, rect)

@@ -119,17 +119,17 @@ func _on_done(result: int, code: int, _headers: PackedStringArray, body: PackedB
 		DirAccess.make_dir_recursive_absolute(DIR)
 		_http.download_file = DIR + "/download.tmp"
 		if _http.request(base_url() + "/patches/" + str(j.file)) != OK:
-			_fail("ما قدرت أبدأ التحميل")
+			_fail("Couldn't start the download")
 		return
 	if state == "downloading":
 		_http.download_file = ""
 		var tmp := DIR + "/download.tmp"
 		if result != HTTPRequest.RESULT_SUCCESS or code != 200:
-			_fail("انقطع التحميل — يرجع يحاول المرة الجاية")
+			_fail("Download interrupted — it will try again next time")
 			return
 		var got := FileAccess.get_sha256(tmp)
 		if str(_manifest.get("sha256", "")) != "" and got != str(_manifest.sha256):
-			_fail("الملف وصل ناقص — يرجع يحاول المرة الجاية")
+			_fail("The file arrived incomplete — it will try again next time")
 			return
 		var fname := str(_manifest.file)
 		var d := DirAccess.open(DIR)
@@ -168,9 +168,9 @@ func _draw_bar() -> void:
 		var t := ""
 		if state == "downloading":
 			_bar.draw_rect(Rect2(r.position + Vector2(4, 30), Vector2((w - 8.0) * progress, 6.0)), Color(0.9, 0.2, 0.15))
-			t = "تحديث جديد — %d%%  (%.1f MB)" % [int(progress * 100.0), size / 1048576.0]
+			t = "New update — %d%%  (%.1f MB)" % [int(progress * 100.0), size / 1048576.0]
 		elif state == "error": t = err
-		else: t = "التحديث جاهز — يتركّب أول ما تخلص الجولة"
+		else: t = "Update ready — it installs when the round ends"
 		_bar.draw_string(font, Vector2(r.position.x, r.position.y + 24.0), t, HORIZONTAL_ALIGNMENT_CENTER, w, 18, Color(1, 0.92, 0.88))
 		return
 	# ready, in the menu: a box in the middle with one button
@@ -179,12 +179,12 @@ func _draw_bar() -> void:
 	var box := Rect2(Vector2((s.x - bw) / 2.0, s.y * 0.3), Vector2(bw, 240.0))
 	_bar.draw_rect(box, Color(0.05, 0.03, 0.04, 0.97))
 	_bar.draw_rect(box, Color(0.75, 0.12, 0.1), false, 3.0)
-	_bar.draw_string(font, box.position + Vector2(0, 52), "التحديث %d نزل" % offered, HORIZONTAL_ALIGNMENT_CENTER, bw, 30, Color(1, 0.95, 0.9))
+	_bar.draw_string(font, box.position + Vector2(0, 52), "Update %d downloaded" % offered, HORIZONTAL_ALIGNMENT_CENTER, bw, 30, Color(1, 0.95, 0.9))
 	if note != "": _bar.draw_string(font, box.position + Vector2(20, 96), note, HORIZONTAL_ALIGNMENT_CENTER, bw - 40.0, 19, Color(0.85, 0.82, 0.8))
-	_bar.draw_string(font, box.position + Vector2(0, 140), "سكّر اللعبة وافتحها عشان يشتغل", HORIZONTAL_ALIGNMENT_CENTER, bw, 21, Color(1, 0.85, 0.5))
+	_bar.draw_string(font, box.position + Vector2(0, 140), "Close and reopen the game to apply it", HORIZONTAL_ALIGNMENT_CENTER, bw, 21, Color(1, 0.85, 0.5))
 	var btn := Rect2(box.position + Vector2(bw / 2.0 - 120.0, 166.0), Vector2(240.0, 52.0))
 	_bar.draw_rect(btn, Color(0.55, 0.08, 0.07))
-	_bar.draw_string(font, btn.position + Vector2(0, 35), "سكّر اللعبة الحين", HORIZONTAL_ALIGNMENT_CENTER, 240.0, 22, Color.WHITE)
+	_bar.draw_string(font, btn.position + Vector2(0, 35), "Close the game now", HORIZONTAL_ALIGNMENT_CENTER, 240.0, 22, Color.WHITE)
 	_btn = btn
 
 var _btn := Rect2()

@@ -29,15 +29,15 @@ const MALE := ["survivor2", "survivor3", "killer2"] # the other characters (the 
 const TERROR_RADIUS := 24.0 # survivors start to feel the killer inside this distance
 const CHASE_NEAR := 16.0     # the chase music plays when she is this close on foot, even unseen (never while she drives)
 ## quick signals: what the three buttons say, their icon, and how they look on a team-mate's screen
-const SIG_TEXT := ["تعال هني", "القاتل هني", "قاعد أصلّح", "باب", "فخ"]  # the last two are local only: a door somebody heard, a trap that shut
+const SIG_TEXT := ["Come here", "Killer here", "I'm repairing", "Door", "Trap"]  # the last two are local only: a door somebody heard, a trap that shut
 const SIG_ICON := ["pin", "skull", "wrench", "door", "trap"]
 ## the one random event of the round
-const EVENT_NAME := ["انطفت الأضوية!", "ضباب كثيف!", "إنذار!"]
+const EVENT_NAME := ["", "Thick fog!", "Alarm!"]
 const SIG_LIFE := 7.0
 const STATE_COL := {"ok": Color(0.55, 1.0, 0.6), "hurt": Color(1.0, 0.68, 0.25), "down": Color(1.0, 0.42, 0.28),
 	"carried": Color(1.0, 0.42, 0.28), "hooked": Color(1.0, 0.25, 0.25), "dead": Color(0.5, 0.5, 0.52), "escaped": Color(0.45, 0.8, 1.0)}
 const STATE_ICON := {"hurt": "drop", "down": "down", "carried": "carry", "hooked": "hook", "dead": "skull", "escaped": "out"}
-const STATE_WORD := {"ok": "سليم", "hurt": "مصاب", "down": "طايح", "carried": "محمول", "hooked": "خطاف", "dead": "ميت", "escaped": "هرب"}
+const STATE_WORD := {"ok": "Healthy", "hurt": "Hurt", "down": "Down", "carried": "Carried", "hooked": "Hooked", "dead": "Dead", "escaped": "Escaped"}
 
 var menu: GameMenu
 var world: NightWorld
@@ -265,7 +265,7 @@ func _start(c: Dictionary) -> void:
 	if world.sniper:
 		if my_role == "survivor": body.collision_mask |= NightWorld.SN_LAYER # the barrier at the stairs stops survivors only
 		body.collision_mask |= NightWorld.SN_EDGE # nobody walks off the roof's edge
-		_flash.call_deferred("وضع القنّاص — اطلعي الدرج وخذي القنّاصة من السطح" if my_role == "killer" else "وضع القنّاص — بوابة وحدة جهة الأبراج. انتبهوا من السطح!")
+		_flash.call_deferred("Sniper mode — climb the stairs and take the rifle from the roof" if my_role == "killer" else "Sniper mode — one gate, by the towers. Watch the roof!")
 	if theme == "snow": # cold enough to see everyone's breath
 		if my_role == "survivor": breaths[my_name] = _make_breath(rig)
 		for n in remotes: breaths[n] = _make_breath(remotes[n].rig)
@@ -895,7 +895,7 @@ func _shoot() -> void:
 	_shake(0.3) # the kick of it
 	NFHaptics.pulse("hit" if hit else "tick")
 	_ev({"k": "shoot", "hit": hit})
-	if hit: _flash("صبتها! دايخة ٣ ثواني — اهرب")
+	if hit: _flash("Got her! Stunned for 3 seconds — run")
 
 ## A short bright beam for a shot: blue when it hit, pale when it missed. Gone in a fifth of a second.
 ## A shot from the pistol, on every phone: the owner's gunshot, a flash at the muzzle that lights
@@ -1007,12 +1007,12 @@ func _sunset_calls() -> void:
 	var left := world.sun_left()
 	if _sun_said == 0 and left <= 60.0 and left > 0.0:
 		_sun_said = 1
-		_flash("الشمس بتغيب بعد دقيقة — جهّزوا الكشافات" if my_role == "survivor" else "الشمس بتغيب بعد دقيقة")
+		_flash("The sun sets in a minute — get your torches ready" if my_role == "survivor" else "The sun sets in a minute")
 	elif _sun_said <= 1 and left <= 0.0:
 		_sun_said = 2
-		if my_role == "survivor": _flash("غابت الشمس! شغّلوا الأنوار من صندوق الكهرباء ⚡" if not rules.grid else "غابت الشمس — الأنوار شغّالة")
-		else: _flash("غابت الشمس — الظلام لك" if not rules.grid else "غابت الشمس")
-		_feed("غابت الشمس", "moon", Color(1.0, 0.6, 0.4))
+		if my_role == "survivor": _flash("The sun is down! Turn the lights on at the power box ⚡" if not rules.grid else "The sun is down — the lights are on")
+		else: _flash("The sun is down — the dark is yours" if not rules.grid else "The sun is down")
+		_feed("The sun is down", "moon", Color(1.0, 0.6, 0.4))
 
 # ---------------- «وضع القنّاص» ----------------
 ## Her eye: lying down with the rifle it is just over the parapet; up the stairs it rises and dips
@@ -1039,7 +1039,7 @@ func _snipe_start() -> void:
 	if my_rifle == null:
 		my_rifle = NFSniper.rifle()
 		main_cam.add_child(my_rifle)
-	_flash("القنّاصة معك — «سكوب» ×4 و ×8، «اطلق». الرصاصة تطيّح اللي تصيده")
+	_flash("You have the rifle — «Scope» x4 and x8, «Fire». One bullet drops whoever it hits")
 	NFHaptics.pulse("hook")
 
 func _snipe_stop() -> void:
@@ -1115,13 +1115,13 @@ func _snipe_fx(by: String, p, n: String) -> void:
 	a.finished.connect(a.queue_free)
 	if n != "":
 		if blood: blood.splash(to, (to - from).normalized(), _cam_pos())
-		_feed("القنّاصة طيّحت %s" % n, "skull", Color(1.0, 0.35, 0.3))
+		_feed("The sniper dropped %s" % n, "skull", Color(1.0, 0.35, 0.3))
 		if n == my_name:
-			_flash("انقنصت! طحت — استنى أحد يعالجك")
+			_flash("Sniped! You're down — wait for someone to heal you")
 			_shake(0.9)
 			NFHaptics.pulse("grab")
 	elif to.distance_to(body.global_position) < 6.0 and my_role == "survivor":
-		_flash("رصاصة جنبك! القنّاصة تشوفك")
+		_flash("A bullet right by you! The sniper can see you")
 		_shake(0.2)
 
 ## Where the survivors stand (the cat looks up at the nearest one at its generator).
@@ -1330,7 +1330,7 @@ func _on_event(e: Dictionary) -> void:
 		"boom":
 			boom_t[int(e.i)] = 4.0
 			if int(e.i) >= 0 and int(e.i) < world.gen_points.size(): _sfx("gen_boom", world.gen_points[int(e.i)] + Vector3(0, 1, 0), 8.0)
-			if my_role == "killer": _flash("أحد غلط في تصليح مولد!")
+			if my_role == "killer": _flash("Someone messed up a generator repair!")
 		"hurt":
 			if str(e.s) == "down": _final_check(str(e.n))
 			_voice_hit(str(e.n))
@@ -1345,30 +1345,30 @@ func _on_event(e: Dictionary) -> void:
 				boost_t = 3.5 if _perk() == "burst" else 2.0 # «نفس ثاني»
 				_shake(0.5 if str(e.s) == "hurt" else 0.85)
 				NFHaptics.pulse("hit")
-				_flash("انضربت! اهرب" if str(e.s) == "hurt" else "طحت")
-			elif my_role == "killer": _flash("أصبت %s" % str(e.n))
+				_flash("You got hit! Run" if str(e.s) == "hurt" else "You're down")
+			elif my_role == "killer": _flash("You hit %s" % str(e.n))
 		"hooked":
 			_sfx("rope", _pos_of(str(e.n)) + Vector3(0, 2, 0), 8.0)
 			NFHaptics.pulse("hook")
 			if str(e.n) == my_name: _sfx("rope", null, 0.0)
 			elif my_role == "survivor" and str(e.s) == "hooked": _sfx("hook_sting", null, -8.0)
-			_flash("%s %s" % [str(e.n), "انعلّق على الخطاف" if str(e.s) == "hooked" else "مات"])
-			if str(e.s) == "hooked": _feed("%s على الخطاف" % str(e.n), "hook", Color(1.0, 0.35, 0.3))
+			_flash("%s %s" % [str(e.n), "is on the hook" if str(e.s) == "hooked" else "died"])
+			if str(e.s) == "hooked": _feed("%s is on the hook" % str(e.n), "hook", Color(1.0, 0.35, 0.3))
 		"rescued":
 			NFHaptics.pulse("tick")
 			if str(e.n) == my_name and _perk() == "burst": boost_t = 3.0
-			if str(e.by) == str(e.n): _flash("%s فك نفسه من الخطاف!" % str(e.n))
-			elif int(e.get("hands", 1)) > 1: _flash("أنقذوا %s سوا!" % str(e.n))
-			else: _flash("%s أنقذ %s" % [str(e.by), str(e.n)])
-			_feed("%s فك نفسه" % str(e.n) if str(e.by) == str(e.n) else "%s أنقذ %s" % [str(e.by), str(e.n)], "rescue", Color(0.45, 1.0, 0.55))
+			if str(e.by) == str(e.n): _flash("%s got off the hook alone!" % str(e.n))
+			elif int(e.get("hands", 1)) > 1: _flash("They saved %s together!" % str(e.n))
+			else: _flash("%s saved %s" % [str(e.by), str(e.n)])
+			_feed("%s freed themselves" % str(e.n) if str(e.by) == str(e.n) else "%s saved %s" % [str(e.by), str(e.n)], "rescue", Color(0.45, 1.0, 0.55))
 		"grabbed":
-			_flash("القاتل طلّع %s من الخزانة" % str(e.n))
-			_feed("القاتل طلّع %s من الخزانة" % str(e.n), "search", Color(1.0, 0.55, 0.35))
+			_flash("The killer pulled %s out of a locker" % str(e.n))
+			_feed("The killer pulled %s out of a locker" % str(e.n), "search", Color(1.0, 0.55, 0.35))
 		"empty":
-			if my_role == "killer": _flash("الخزانة فاضية")
+			if my_role == "killer": _flash("The locker is empty")
 		"stun":
 			if my_role == "killer":
-				_flash("دوّخوك بالمسدس!" if str(e.get("by", "")) == "gun" else "انصعقت!")
+				_flash("They stunned you with the pistol!" if str(e.get("by", "")) == "gun" else "Stunned!")
 				if str(e.get("by", "")) == "gun": _shake(0.7)
 		"snipe": # «وضع القنّاص»: the rifle fired; n is whoever it dropped
 			if str(e.get("n", "")) == my_name: _end_hold()
@@ -1383,106 +1383,106 @@ func _on_event(e: Dictionary) -> void:
 					from = (rg as NFGun).muzzle()
 				var to: Vector3 = (_pos_of(rules.killer) + Vector3(0, 1.3, 0)) if bool(e.hit) else from + Vector3(sin(remotes[who].yaw), 0, cos(remotes[who].yaw)) * 18.0
 				_beam(from, to, bool(e.hit))
-			if bool(e.hit): _feed("%s دوّخ القاتلة بالمسدس!" % who, "gun", Color(0.5, 0.9, 1.0))
+			if bool(e.hit): _feed("%s stunned the killer with the pistol!" % who, "gun", Color(0.5, 0.9, 1.0))
 		"power":
 			if my_role == "killer":
 				boost_t = 3.5
-				_flash("اندفاع!")
+				_flash("Rush!")
 		"board":
 			var who := str(e.n)
 			if bool(e.get("drv", false)):
-				_feed("%s ركب سيارة الهروب ويسوق" % who, "car", Color(0.5, 0.95, 1.0))
-				if my_role == "killer": _flash("ركبوا سيارة الهروب! الحقهم بسيارتك")
-			else: _feed("%s ركب معهم" % who, "car", Color(0.5, 0.95, 1.0))
+				_feed("%s got in the escape car and is driving" % who, "car", Color(0.5, 0.95, 1.0))
+				if my_role == "killer": _flash("They're in the escape car! Chase them in yours")
+			else: _feed("%s got in with them" % who, "car", Color(0.5, 0.95, 1.0))
 		"arrive":
 			NFHaptics.pulse("escape")
-			_feed("وصلوا البوابة الأخيرة! (%s)" % "، ".join(PackedStringArray(e.get("who", []))), "out", Color(0.5, 1.0, 0.6))
-			if my_role == "killer": _flash("فلتوا منك — وصلوا البوابة الأخيرة")
+			_feed("They reached the last gate! (%s)" % ", ".join(PackedStringArray(e.get("who", []))), "out", Color(0.5, 1.0, 0.6))
+			if my_role == "killer": _flash("They got away — they reached the last gate")
 		"caught":
 			var who_c: Array = e.get("who", [])
 			if not who_c.is_empty(): _final_check(str(who_c[0]))
 			var why := str(e.get("why", ""))
 			var mine: bool = my_name in (e.get("who", []) as Array)
-			_feed("خلص وقت سيارة الهروب — طاحوا" if why == "time" else "القاتلة صدمت سيارة الهروب!", "car", Color(1.0, 0.4, 0.3))
+			_feed("The escape car's time ran out — they're down" if why == "time" else "The killer rammed the escape car!", "car", Color(1.0, 0.4, 0.3))
 			if mine:
-				_flash("خلص الوقت! وقفت السيارة وطحتوا" if why == "time" else "صدمتكم! طحتوا من السيارة")
+				_flash("Time's up! The car stopped and you're down" if why == "time" else "She rammed you! You fell out of the car")
 				NFHaptics.pulse("impact")
-			elif my_role == "killer": _flash("مسكتهم! علّقهم على الخطاطيف اللي على الطريق" if why == "ram" else "خلص وقتهم — طاحوا على الطريق، علّقهم")
+			elif my_role == "killer": _flash("Caught them! Hang them on the hooks along the road" if why == "ram" else "Their time ran out — they're down on the road, hook them")
 		"shield": # «جلد قاسي»
-			_feed("%s صدّ الضربة (جلد قاسي)" % str(e.n), "shield", Color(0.6, 0.85, 1.0))
+			_feed("%s blocked the hit (Tough Skin)" % str(e.n), "shield", Color(0.6, 0.85, 1.0))
 			if str(e.n) == my_name:
-				_flash("جلد قاسي — الضربة ما أثرت!")
+				_flash("Tough Skin — the hit did nothing!")
 				_shake(0.3)
 				boost_t = 1.5
-			elif my_role == "killer": _flash("ما أثرت الضربة! جلده قاسي")
+			elif my_role == "killer": _flash("The hit did nothing! Tough skin")
 		"grid": # Kuwait City's power box
 			var on := bool(e.get("on", true))
 			world.set_grid(on)
 			if on:
-				_feed("انولعت أنوار الشارع" if rules.grid_mode == 2 else "رجعت الكهرباء — الشارع منوّر", "bolt", Color(1.0, 0.9, 0.4))
-				if my_role == "killer": _flash("صلّحوا الكهرباء!")
+				_feed("The street lights are on" if rules.grid_mode == 2 else "Power's back — the street is lit", "bolt", Color(1.0, 0.9, 0.4))
+				if my_role == "killer": _flash("Fix the power!")
 			elif bool(e.get("sv", false)): # Halloween: one of the survivors switched it off
-				_feed("%s طفّى الكهرباء — الدنيا ظلام" % str(e.get("by", "")), "bolt", Color(0.7, 0.75, 1.0))
-				if my_role == "killer": _flash("طفّوا الأنوار! دوّرهم بالظلام")
-				elif str(e.get("by", "")) != my_name: _flash("%s طفّى الأنوار — الكشاف بس" % str(e.get("by", "")))
+				_feed("%s turned the power off — it's dark" % str(e.get("by", "")), "bolt", Color(0.7, 0.75, 1.0))
+				if my_role == "killer": _flash("They turned the lights off! Hunt them in the dark")
+				elif str(e.get("by", "")) != my_name: _flash("%s turned the lights off — torches only" % str(e.get("by", "")))
 			else:
-				_feed("القاتل قطع الكهرباء!", "bolt", Color(1.0, 0.45, 0.3))
-				if my_role == "survivor": _flash("انقطعت الكهرباء! الكشاف بس — صلّحوا الصندوق ⚡")
+				_feed("The killer cut the power!", "bolt", Color(1.0, 0.45, 0.3))
+				if my_role == "survivor": _flash("The power is cut! Torches only — fix the box ⚡")
 				_shake(0.15)
 		"heli": # the rescue helicopter for the last survivor
 			var hn := str(e.get("n", ""))
 			match int(e.get("st", 0)):
 				1:
-					_feed("طيارة إنقاذ جاية لـ %s" % hn, "star", Color(0.6, 0.85, 1.0))
-					if hn == my_name: _flash("أنت آخر واحد — طيارة الإنقاذ جاية! بعد %d ثانية" % int(Rules.HELI_COME))
-					elif my_role == "killer": _flash("طيارة إنقاذ جاية لآخر واحد — امسكه قبل يطلع!")
+					_feed("A rescue helicopter is coming for %s" % hn, "star", Color(0.6, 0.85, 1.0))
+					if hn == my_name: _flash("You're the last one — a rescue helicopter is coming! %d seconds" % int(Rules.HELI_COME))
+					elif my_role == "killer": _flash("A rescue helicopter is coming for the last one — catch them before they climb!")
 				2:
 					if hn == my_name:
-						_flash("وصلت طيارة الإنقاذ! روح للسلم واطلع")
+						_flash("The rescue helicopter is here! Go to the ladder and climb")
 						NFHaptics.pulse("hook")
-					elif my_role == "killer": _flash("الطيارة نزّلت السلم — امسكه!")
-				3: _feed("%s ماسك السلم ويطلع!" % hn, "star", Color(0.6, 0.85, 1.0))
+					elif my_role == "killer": _flash("The helicopter dropped the ladder — grab it!")
+				3: _feed("%s grabbed the ladder and is climbing!" % hn, "star", Color(0.6, 0.85, 1.0))
 				4:
-					_feed("%s طلع بالطيارة — نجا!" % hn, "star", Color(0.45, 1.0, 0.55))
+					_feed("%s got away in the helicopter!" % hn, "star", Color(0.45, 1.0, 0.55))
 					if hn == my_name:
-						_flash("طلعت بالطيارة — نجوت!")
+						_flash("You got away in the helicopter!")
 						NFHaptics.pulse("escape")
 				5:
-					_feed("طيارة الإنقاذ راحت بدون %s" % hn, "skull", Color(1.0, 0.5, 0.4))
-					if hn == my_name: _flash("انمسكت — الطيارة راحت وخلّتك")
+					_feed("The rescue helicopter left without %s" % hn, "skull", Color(1.0, 0.5, 0.4))
+					if hn == my_name: _flash("You got caught — the helicopter left without you")
 		"mend": # «تفتّح» (Bloom)
-			_feed("%s تفتّحت ورجعت سليمة" % str(e.n), "heal", Color(0.75, 0.55, 1.0))
-			if str(e.n) == my_name: _flash("تفتّح — رجعتي سليمة!")
+			_feed("%s bloomed and is healthy again" % str(e.n), "heal", Color(0.75, 0.55, 1.0))
+			if str(e.n) == my_name: _flash("Bloom — you're healthy again!")
 		"rise": # «جناح الفالكيري»
-			_feed("%s قامت بروحها!" % str(e.n), "star", Color(1.0, 0.55, 0.6))
+			_feed("%s got up on her own!" % str(e.n), "star", Color(1.0, 0.55, 0.6))
 			if str(e.n) == my_name:
-				_flash("جناح الفالكيري — قمتي بروحك!")
+				_flash("Valkyrie Wing — you got up on your own!")
 				NFHaptics.pulse("escape")
 		"trap":
-			if my_role == "killer": _flash("حطّيتي فخ")
+			if my_role == "killer": _flash("You set a trap")
 		"snap":
 			var at := _pos_of(str(e.n))
 			_sfx("trap_snap", null if str(e.n) == my_name else at + Vector3(0, 0.3, 0), 0.0 if str(e.n) == my_name else 8.0)
-			_feed("%s انصاد بفخ!" % str(e.n), "trap", Color(1.0, 0.45, 0.3))
+			_feed("%s stepped in a trap!" % str(e.n), "trap", Color(1.0, 0.45, 0.3))
 			if str(e.n) == my_name:
-				_flash("انصدت بفخ!")
+				_flash("You stepped in a trap!")
 				_shake(0.6)
 				NFHaptics.pulse("hit")
 			elif my_role == "killer":
-				_flash("فخك صاد %s!" % str(e.n))
+				_flash("Your trap caught %s!" % str(e.n))
 				_add_sig(str(e.n), 4, at) # an arrow to it on her screen
 				NFHaptics.pulse("hook")
 		"disarm":
-			if my_role == "killer": _feed("%s فكّ فخ" % str(e.n), "trap", Color(0.8, 0.8, 0.8))
+			if my_role == "killer": _feed("%s disarmed a trap" % str(e.n), "trap", Color(0.8, 0.8, 0.8))
 		"spike":
-			if my_role == "killer": _flash("حطّيتي مسامير على الطريق")
+			if my_role == "killer": _flash("You laid spikes on the road")
 		"pop":
-			_feed("المسامير فجّرت كفرات سيارة الهروب!", "spike", Color(1.0, 0.5, 0.3))
+			_feed("The spikes burst the escape car's tyres!", "spike", Color(1.0, 0.5, 0.3))
 			if esc_i == int(e.i):
-				_flash("انفجرت الكفرات! السيارة صارت بطيئة")
+				_flash("The tyres burst! The car is slow now")
 				_shake(0.8)
 				NFHaptics.pulse("impact")
-			elif my_role == "killer": _flash("فجّرتي كفراتهم! الحقيهم")
+			elif my_role == "killer": _flash("You burst their tyres! Chase them")
 		"door":
 			world.set_door(int(e.i), bool(e.on))
 			var at: Vector3 = world.door_points[int(e.i)][0]
@@ -1514,9 +1514,9 @@ func _feed_watch(dt: float) -> void:
 			if hp == "down" and was in ["ok", "hurt"]: _sfx("fall%d" % randi_range(1, 3), who_at, 0.0 if n == my_name else 6.0)
 			if (was == "hurt" and hp == "ok") or (was == "down" and hp == "hurt"): _sfx("healed", who_at, -6.0 if n == my_name else 0.0)
 			match hp:
-				"down": _feed("%s طاح" % n, "down", Color(1.0, 0.62, 0.3))
-				"escaped": _feed("%s هرب!" % n, "out", Color(0.5, 0.85, 1.0))
-				"dead": _feed("%s مات" % n, "skull", Color(0.75, 0.75, 0.78))
+				"down": _feed("%s is down" % n, "down", Color(1.0, 0.62, 0.3))
+				"escaped": _feed("%s escaped!" % n, "out", Color(0.5, 0.85, 1.0))
+				"dead": _feed("%s died" % n, "skull", Color(0.75, 0.75, 0.78))
 		feed_hp[n] = hp
 	for n in rules.s: # in or out of a locker: its door
 		var lk: int = rules.s[n].get("locker", -1)
@@ -1530,9 +1530,9 @@ func _feed_watch(dt: float) -> void:
 	feed_gd = rules.gens.map(func(g: Dictionary) -> bool: return bool(g.done))
 	var dc := rules.done_count()
 	if feed_gens >= 0 and dc > feed_gens:
-		_feed("اشتغل مولد — %d من %d" % [mini(dc, Rules.NEED), Rules.NEED], "wrench", Color(1.0, 0.88, 0.4))
+		_feed("Generator done — %d of %d" % [mini(dc, Rules.NEED), Rules.NEED], "wrench", Color(1.0, 0.88, 0.4))
 	feed_gens = dc
-	if rules.powered and not feed_pw: _feed("البوابات اشتغلت — اهربوا!", "door", Color(0.45, 1.0, 0.55))
+	if rules.powered and not feed_pw: _feed("The gates have power — get out!", "door", Color(0.45, 1.0, 0.55))
 	feed_pw = rules.powered
 
 func _draw_feed(s: Vector2) -> void:
@@ -1576,12 +1576,12 @@ func _draw_gate(mid: Vector2) -> void:
 	var best := Vector3.INF
 	var bd := INF
 	var on_road := world.road_at(body.position)
-	var word := "البوابة %d م"
+	var word := "Gate %d m"
 	if on_road >= 0: # past the gate: the arrow shows the escape car, while it is still waiting
 		if on_road >= world.esc_cars.size() or int(rules.roads[on_road].st) > 1: return
 		best = (world.esc_cars[on_road] as NFCar).global_position
 		bd = Vector2(best.x - body.position.x, best.z - body.position.z).length()
-		word = "السيارة %d م"
+		word = "Car %d m"
 		if bd < 4.0: return
 	for gi in ([] if on_road >= 0 else range(world.gate_points.size())):
 		if rules.sniper and gi != 0: continue # «وضع القنّاص»: the one gate, on the towers' side
@@ -1655,7 +1655,7 @@ func _build_ui() -> void:
 	layer.add_child(minimap)
 	minimap.draw.connect(_draw_minimap)
 	var leave := Button.new()
-	leave.text = "إنهاء الجولة" if (not offline and str(Net.room.get("host", "")) == my_name) else "خروج"
+	leave.text = "End round" if (not offline and str(Net.room.get("host", "")) == my_name) else "Exit"
 	leave.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
 	leave.offset_left = -312 - _safe().y; leave.offset_right = -152 - _safe().y
 	leave.offset_top = 12; leave.offset_bottom = 64
@@ -1671,7 +1671,7 @@ func _build_dev_ui(layer: CanvasLayer) -> void:
 	var safe := _safe()
 	# a real button now (it was a faint dot in the corner nobody could find): «أدوات» on the left edge
 	dev_dot = Button.new()
-	dev_dot.text = "أدوات المطوّر"
+	dev_dot.text = "Developer tools"
 	dev_dot.focus_mode = Control.FOCUS_NONE
 	dev_dot.theme = NFUI.theme()
 	NFUI.dress(dev_dot, "gear")
@@ -1696,34 +1696,34 @@ func _build_dev_ui(layer: CanvasLayer) -> void:
 	v.add_theme_constant_override("separation", 8)
 	m.add_child(v)
 	var esp_btn := Button.new()
-	esp_btn.text = "رؤية اللاعبين: %s" % ("شغّال" if Dev.esp else "مطفي")
+	esp_btn.text = "See players: %s" % ("On" if Dev.esp else "Off")
 	esp_btn.custom_minimum_size.y = 46
 	esp_btn.pressed.connect(func() -> void:
 		Dev.set_esp(not Dev.esp)
-		esp_btn.text = "رؤية اللاعبين: %s" % ("شغّال" if Dev.esp else "مطفي"))
+		esp_btn.text = "See players: %s" % ("On" if Dev.esp else "Off"))
 	NFUI.dress(esp_btn, "next")
 	v.add_child(esp_btn)
 	var van_btn := Button.new() # the «Vanish» button on the screen, from here too
-	van_btn.text = "زر Vanish: %s" % ("شغّال" if Dev.vanish_tool else "مطفي")
+	van_btn.text = "Vanish button: %s" % ("On" if Dev.vanish_tool else "Off")
 	van_btn.custom_minimum_size.y = 46
 	van_btn.pressed.connect(func() -> void:
 		Dev.set_vanish_tool(not Dev.vanish_tool)
 		if not Dev.vanish_tool: vanished = false
-		van_btn.text = "زر Vanish: %s" % ("شغّال" if Dev.vanish_tool else "مطفي"))
+		van_btn.text = "Vanish button: %s" % ("On" if Dev.vanish_tool else "Off"))
 	NFUI.dress(van_btn, "ghost")
 	v.add_child(van_btn)
 	if world and world.map_id == "kuwait": # Kuwait City's billboard: his video, only when pressed here, on every phone
 		var ad_btn := Button.new()
-		ad_btn.text = "شغّل فيديو الإعلان"
+		ad_btn.text = "Play the ad video"
 		ad_btn.custom_minimum_size.y = 46
 		ad_btn.pressed.connect(func() -> void:
 			if offline: world.play_ad(true)
 			else: Net.send({"t": "ad", "on": true})
-			_flash("فيديو الإعلان يشتغل على اللوحة"))
+			_flash("The ad video is playing on the billboard"))
 		NFUI.dress(ad_btn, "star")
 		v.add_child(ad_btn)
 		var ad_stop := Button.new()
-		ad_stop.text = "وقّف الفيديو (ترجع الصورة)"
+		ad_stop.text = "Stop the video (picture comes back)"
 		ad_stop.custom_minimum_size.y = 46
 		ad_stop.pressed.connect(func() -> void:
 			if offline: world.play_ad(false)
@@ -1731,7 +1731,7 @@ func _build_dev_ui(layer: CanvasLayer) -> void:
 		NFUI.dress(ad_stop, "exit")
 		v.add_child(ad_stop)
 	var lbl := Label.new()
-	lbl.text = "السرعة ×%.2f" % Dev.speed
+	lbl.text = "Speed x%.2f" % Dev.speed
 	v.add_child(lbl)
 	var sl := HSlider.new()
 	sl.min_value = 1.0; sl.max_value = 2.0; sl.step = 0.05
@@ -1739,7 +1739,7 @@ func _build_dev_ui(layer: CanvasLayer) -> void:
 	sl.set_value_no_signal(Dev.speed)
 	sl.value_changed.connect(func(val: float) -> void:
 		Dev.set_speed(val)
-		lbl.text = "السرعة ×%.2f" % Dev.speed)
+		lbl.text = "Speed x%.2f" % Dev.speed)
 	v.add_child(sl)
 
 ## True while a touch belongs to the hidden panel, so the round ignores it.
@@ -1837,11 +1837,11 @@ func _update_esp() -> void:
 		if nt.visible:
 			nt.position = r.node.position + Vector3(0, 2.2 * r.node.scale.y, 0)
 			var dist := roundi(body.position.distance_to(r.node.position))
-			nt.text = n if dist < 12 else "%s  %d م" % [n, dist]
+			nt.text = n if dist < 12 else "%s  %d m" % [n, dist]
 		e.mark.visible = on
 		if on:
 			e.mark.position = r.node.position
-			e.label.text = "%s   %d م" % [n, roundi(body.position.distance_to(r.node.position))]
+			e.label.text = "%s   %d m" % [n, roundi(body.position.distance_to(r.node.position))]
 
 ## End of the round: the cast lines up on a dark stage (scripts/results.gd).
 func _show_results() -> void:
@@ -1851,9 +1851,9 @@ func _show_results() -> void:
 		if rules.s[n].hp == "escaped": escaped += 1
 		elif rules.s[n].hp == "dead": dead += 1
 	var title := ""
-	if my_role == "killer": title = "انتهت الجولة — هرب %d من %d" % [escaped, rules.s.size()]
-	else: title = "تم الهروب بنجاح!" if rules.hp(my_name) == "escaped" else "ما نجوت"
-	var stats := "مدة الجولة %d:%02d  •  المولدات %d/%d  •  هرب %d من %d" % [int(match_time) / 60, int(match_time) % 60, rules.done_count(), Rules.NEED, escaped, rules.s.size()]
+	if my_role == "killer": title = "Round over — %d of %d escaped" % [escaped, rules.s.size()]
+	else: title = "You escaped!" if rules.hp(my_name) == "escaped" else "You didn't make it"
+	var stats := "Round %d:%02d  •  Generators %d/%d  •  Escaped %d of %d" % [int(match_time) / 60, int(match_time) % 60, rules.done_count(), Rules.NEED, escaped, rules.s.size()]
 	var names: Array = rules.score.keys()
 	names.sort_custom(func(x, y): return rules.score[x] > rules.score[y])
 	var rows := []
@@ -1881,7 +1881,7 @@ func _show_results() -> void:
 	results.setup({"rows": rows, "victory": out_rows, "title": title, "stats": stats, "xp_from": xp_from, "xp_to": xp_from + gain,
 		"escapes": Net.escapes, "kills": Net.kills,
 		# "play again" puts everyone back in the SAME room with the same settings
-		"again_text": "العب مرة ثانية" if (offline or host) else "رجوع للغرفة",
+		"again_text": "Play again" if (offline or host) else "Back to the room",
 		"on_again": func() -> void:
 			if offline:
 				Net.replay = cfg.duplicate(true) # same map, theme and players, new layout seed
@@ -1899,13 +1899,14 @@ func _round_event(dt: float) -> void:
 		ev_shown = rules.ev_kind
 		var msg: String = EVENT_NAME[rules.ev_kind]
 		if world.map_id == "rubkhali" and rules.ev_kind < 2: # daylight out there: it is the storm, not the dark
-			msg = "عجاج ثقيل!" if rules.ev_kind == 0 else "العاصفة اشتدت!"
+			msg = "Heavy sandstorm!" if rules.ev_kind == 0 else "The storm got worse!"
 		if rules.ev_kind == 2:
-			if rules.ev_n == my_name: msg = "إنذار! انكشف مكانك"
-			elif my_role == "killer": msg = "إنذار! انكشف %s" % rules.ev_n
-			else: msg = "إنذار! انكشف مكان %s" % rules.ev_n
-		_flash(msg)
-		_sfx("warn", null, -4.0)
+			if rules.ev_n == my_name: msg = "Alarm! Your position is revealed"
+			elif my_role == "killer": msg = "Alarm! %s is revealed" % rules.ev_n
+			else: msg = "Alarm! %s's position is revealed" % rules.ev_n
+		if msg != "": # (the blackout comes with no line: the owner took «the lights went out» out)
+			_flash(msg)
+			_sfx("warn", null, -4.0)
 		NFHaptics.pulse("tick")
 	if live != ev_on:
 		ev_on = live
@@ -2008,7 +2009,7 @@ func _buttons() -> Array:
 	var out := []
 	if spectating != "":
 		if _others_alive().size() > 1:
-			out.append([rect.position + rect.size - Vector2(130, 120), 62.0, "التالي", "next", true, "next"])
+			out.append([rect.position + rect.size - Vector2(130, 120), 62.0, "Next", "next", true, "next"])
 		return out
 	var c = ctx.get("interact")
 	var lay := NFControls.layout("killer" if my_role == "killer" else "survivor")
@@ -2021,27 +2022,27 @@ func _buttons() -> Array:
 		var on := true
 		match id:
 			"interact": # the interact button becomes whatever is in reach
-				label = str(c.label) if c else ("حمل" if my_role == "killer" else "تفاعل")
+				label = str(c.label) if c else ("Carry" if my_role == "killer" else "Use")
 				icon = str(NFControls.CTX_ICON.get(str(c.kind), "hand")) if c else "hand"
 				on = c != null
 			"attack":
 				on = attack_cd <= 0.0 and rules.carrying == ""
 				if sniping:
-					label = "اطلق"
+					label = "Fire"
 					icon = "gun"
 					on = snipe_cd <= 0.0
 				elif driving:
-					label = "الكاميرا"
+					label = "Camera"
 					icon = "car"
 					on = true
 			"power":
 				on = rules.power_cd <= 0.0 and rules.carrying == ""
 				if sniping: # one scope, two magnifications
-					label = ["سكوب ×4", "سكوب ×8", "بدون سكوب"][scope]
+					label = ["Scope x4", "Scope x8", "No scope"][scope]
 					icon = "eye"
 					on = true
 				elif driving:
-					label = "سكّر الراديو" if car.radio_on else "الراديو"
+					label = "Radio off" if car.radio_on else "Radio"
 					icon = "note"
 					on = car.radio != null
 			"trap": # a trap at her feet, or on an escape road a strip of spikes
@@ -2049,12 +2050,12 @@ func _buttons() -> Array:
 				var armed := 0
 				for tr in rules.traps:
 					if bool(tr[2]): armed += 1
-				label = "مسامير" if rd_i >= 0 else "فخ %d/%d" % [armed, Rules.TRAPS]
+				label = "Spikes" if rd_i >= 0 else "Trap %d/%d" % [armed, Rules.TRAPS]
 				icon = "spike" if rd_i >= 0 else "trap"
 				on = trap_cd <= 0.0 and rules.carrying == "" and not driving and not sniping and rules.stun <= 0.0 and (rd_i < 0 or int(rules.roads[rd_i].st) <= 1)
 			"gun":
 				var ammo := int(rules.s.get(my_name, {}).get("ammo", 0))
-				label = "مسدس %d" % ammo
+				label = "Pistol %d" % ammo
 				on = ammo > 0 and gun_cd <= 0.0 and rules.free_now(my_name) and _held() <= 0.0
 			"vault": on = ctx.has("vault")
 			"heal": on = ctx.has("heal")
@@ -2063,14 +2064,14 @@ func _buttons() -> Array:
 			"sig": on = my_state in ["ok", "hurt", "down", "hooked"]
 		out.append([NFControls.center_of(e, rect), float(e.r) * Gfx.btn_scale, label, id, on, icon])
 	if Dev.unlocked and Dev.vanish_tool and spectating == "": # the developer tools' «Vanish» (this phone only has it)
-		out.append([Vector2(rect.end.x - 58.0, rect.position.y + rect.size.y * 0.42), 40.0, "Vanish" if not vanished else "ظاهر", "vanish", true, "ghost"])
+		out.append([Vector2(rect.end.x - 58.0, rect.position.y + rect.size.y * 0.42), 40.0, "Vanish" if not vanished else "Visible", "vanish", true, "ghost"])
 	if driving and car: # the gearbox, beside the speedometer: first (40 km/h), second (70) or third (90)
 		var vs := get_viewport().get_visible_rect().size
-		out.append([Vector2(vs.x / 2.0 + 190.0, vs.y - 104.0), 44.0, "غيار %d" % car.gear, "gear", true, "shift"])
+		out.append([Vector2(vs.x / 2.0 + 190.0, vs.y - 104.0), 44.0, "Gear %d" % car.gear, "gear", true, "shift"])
 	if esc_i >= 0 and rules.roads[esc_i].drv == my_name and int(rules.roads[esc_i].st) == 1: # the escape car's one nitro
 		var vs := get_viewport().get_visible_rect().size
 		var used: bool = esc_nitro.get(esc_i, false)
-		out.append([Vector2(vs.x / 2.0 + 196.0, vs.y - 104.0), 52.0, "خلص" if used else "نيترو", "nitro", not used, "nitro"])
+		out.append([Vector2(vs.x / 2.0 + 196.0, vs.y - 104.0), 52.0, "Used" if used else "Nitro", "nitro", not used, "nitro"])
 	return out
 
 ## The three quick messages, stacked above the signal button. Each: rect, index.
@@ -2098,7 +2099,7 @@ func _draw_ui() -> void:
 		ui.draw_rect(Rect2(0, 0, s.x, fbar), Color(0, 0, 0, 0.92))
 		ui.draw_rect(Rect2(0, s.y - fbar, s.x, fbar), Color(0, 0, 0, 0.92))
 		ui.draw_rect(Rect2(Vector2.ZERO, s), Color(0.5, 0.0, 0.0, 0.18))
-		_text(Vector2(mid.x, s.y - fbar * 0.38), "آخر واحد طاح — %s" % fin_who, 34, Color(1, 0.35, 0.3))
+		_text(Vector2(mid.x, s.y - fbar * 0.38), "The last one is down — %s" % fin_who, 34, Color(1, 0.35, 0.3))
 		return
 	if sniping and scope > 0: NFSniper.draw_scope(ui, s, NFSniper.ZOOMS[scope], snipe_kick)
 	elif sniping: # lying with the rifle, no scope: a plain point where the shot goes
@@ -2125,7 +2126,7 @@ func _draw_ui() -> void:
 		for k in 4: # darker red toward the edges
 			ui.draw_rect(Rect2(Vector2.ZERO, s), Color(0.9, 0.03, 0.03, danger * 0.13 * pulse), false, 30.0 + k * 34.0)
 	if scare_t > 0.0: # his face fills the screen: no buttons, no map, nothing else
-		_text(Vector2(mid.x, s.y * 0.86), "القاتل شايلك!", 34, Color(1, 0.35, 0.3))
+		_text(Vector2(mid.x, s.y * 0.86), "The killer is carrying you!", 34, Color(1, 0.35, 0.3))
 		return
 	if stick_id >= 0:
 		ui.draw_circle(stick_origin, 70, Color(1, 1, 1, 0.12))
@@ -2160,43 +2161,43 @@ func _draw_ui() -> void:
 		_draw_gate_count(Vector2(mid.x, 120.0), rules.gate_t)
 	elif doom_up:
 		_draw_moon(Vector2(mid.x, 120.0))
-		var falling := "ينزل القمر" # the moon on every map now, the Empty Quarter too
-		if my_role == "killer": _text(Vector2(mid.x, 214), "امنعهم من الهرب قبل لا %s" % falling, 22, Color(1, 0.5, 0.4))
-		elif my_state in ["escaped", "dead"]: _text(Vector2(mid.x, 214), "باقي %d من ربعك داخل" % _others_alive().size(), 22, Color(1, 0.9, 0.6))
-		else: _text(Vector2(mid.x, 214), "اهرب قبل لا %s!" % falling, 24, Color(1, 0.45, 0.35))
+		var falling := "the moon falls" # the moon on every map now, the Empty Quarter too
+		if my_role == "killer": _text(Vector2(mid.x, 214), "Stop them escaping before %s" % falling, 22, Color(1, 0.5, 0.4))
+		elif my_state in ["escaped", "dead"]: _text(Vector2(mid.x, 214), "%d of your team still inside" % _others_alive().size(), 22, Color(1, 0.9, 0.6))
+		else: _text(Vector2(mid.x, 214), "Get out before %s!" % falling, 24, Color(1, 0.45, 0.35))
 	elif my_role == "survivor" and my_state in ["escaped", "dead"]:
-		_text(top, "باقي %d من ربعك داخل" % _others_alive().size(), 24, Color(1, 0.9, 0.6))
+		_text(top, "%d of your team still inside" % _others_alive().size(), 24, Color(1, 0.9, 0.6))
 	else:
-		_text(top, "المولدات %d/%d" % [rules.done_count(), Rules.NEED], 26, Color(1, 0.9, 0.6))
+		_text(top, "Generators %d/%d" % [rules.done_count(), Rules.NEED], 26, Color(1, 0.9, 0.6))
 	if theme == "sunset" and road < 0: # «بين العصر والمغرب»: how long until the sun is gone
 		var tr := Vector2(mid.x + 250.0, 96.0)
 		if not world.night_fell():
 			var left := int(world.sun_left())
-			_text(tr, "☀ المغرب بعد %d:%02d" % [left / 60, left % 60], 22, Color(1.0, 0.75, 0.4) if left > 60 else Color(1.0, 0.45, 0.3))
+			_text(tr, "☀ Sunset in %d:%02d" % [left / 60, left % 60], 22, Color(1.0, 0.75, 0.4) if left > 60 else Color(1.0, 0.45, 0.3))
 		elif rules.has_grid and not rules.grid:
-			_text(tr, "ظلام — شغّلوا الأنوار ⚡" if my_role == "survivor" else "الظلام لك", 22, Color(1.0, 0.55, 0.4))
+			_text(tr, "Dark — turn the lights on ⚡" if my_role == "survivor" else "The dark is yours", 22, Color(1.0, 0.55, 0.4))
 	var sub := Vector2(mid.x, 242.0) if doom_up else top + Vector2(0, 32)
 	if my_role == "survivor":
 		var me: Dictionary = rules.s.get(my_name, {})
 		match my_state:
-			"hurt": _text(sub, "مصاب", 22, Color(1, 0.5, 0.35))
-			"down": _text(sub, "طايح — استنى أحد يعالجك (%d)" % int(me.t), 22, Color(1, 0.4, 0.35))
-			"carried": _text(sub, "القاتل شايلك", 22, Color(1, 0.4, 0.35))
+			"hurt": _text(sub, "Hurt", 22, Color(1, 0.5, 0.35))
+			"down": _text(sub, "Down — wait for someone to heal you (%d)" % int(me.t), 22, Color(1, 0.4, 0.35))
+			"carried": _text(sub, "The killer is carrying you", 22, Color(1, 0.4, 0.35))
 			"hooked":
-				_text(sub, "معلّق على الخطاف — %d ث" % int(me.t), 22, Color(1, 0.4, 0.35))
+				_text(sub, "On the hook — %d s" % int(me.t), 22, Color(1, 0.4, 0.35))
 				if me.hooks == 1:
 					var bar := Rect2(mid.x - 200, s.y - 96, 400, 22)
 					ui.draw_rect(bar, Color(0, 0, 0, 0.65))
 					ui.draw_rect(Rect2(bar.position, Vector2(400 * clampf(me.esc, 0.0, 1.0), 22)), Color(0.9, 0.15, 0.1))
 					ui.draw_rect(bar, Color(1, 1, 1, 0.7), false, 2.0)
-					_text(Vector2(mid.x, s.y - 108), "اضغط «فك نفسك» بسرعة وبدون توقف!", 20, Color(1, 0.85, 0.5))
-				else: _text(sub + Vector2(0, 28), "ما تقدر تفك نفسك هالمرة — استنى أحد ينقذك", 20, Color(1, 0.7, 0.5))
-			"dead": _text(sub, "متّ — تتفرج على %s" % spectating if spectating != "" else "متّ", 22, Color(1, 0.4, 0.35))
-			"escaped": _text(sub, "هربت بنجاح — تتفرج على %s" % spectating if spectating != "" else "هربت بنجاح", 22, Color(0.5, 1, 0.6))
+					_text(Vector2(mid.x, s.y - 108), "Tap «Free yourself» fast and don't stop!", 20, Color(1, 0.85, 0.5))
+				else: _text(sub + Vector2(0, 28), "You can't free yourself this time — wait for a rescue", 20, Color(1, 0.7, 0.5))
+			"dead": _text(sub, "You died — watching %s" % spectating if spectating != "" else "You died", 22, Color(1, 0.4, 0.35))
+			"escaped": _text(sub, "You escaped — watching %s" % spectating if spectating != "" else "You escaped", 22, Color(0.5, 1, 0.6))
 		if escape_banner > 0.0:
-			_text(mid + Vector2(0, -40), "تم الهروب بنجاح!", 54, Color(0.5, 1, 0.6))
-			_text(mid + Vector2(0, 10), "+150 نقطة — استنى ربعك يطلعون", 24, Color(0.85, 1, 0.9))
-		if not me.is_empty() and me.locker >= 0: _text(sub + Vector2(0, 28), "مختبئ بالخزانة", 20, Color(0.7, 0.85, 1))
+			_text(mid + Vector2(0, -40), "You escaped!", 54, Color(0.5, 1, 0.6))
+			_text(mid + Vector2(0, 10), "+150 points — wait for your team to get out", 24, Color(0.85, 1, 0.9))
+		if not me.is_empty() and me.locker >= 0: _text(sub + Vector2(0, 28), "Hiding in a locker", 20, Color(0.7, 0.85, 1))
 	else:
 		# detection indicator: how loud the nearest running survivor is, and where
 		var c := sub + Vector2(0, 8)
@@ -2206,9 +2207,9 @@ func _draw_ui() -> void:
 			ui.draw_circle(c, 6.0 + 12.0 * noise, Color(1, 0.3, 0.2, 0.4 + 0.5 * noise))
 			var ang := -PI / 2.0 + noise_dir
 			ui.draw_line(c + Vector2(cos(ang), sin(ang)) * 24.0, c + Vector2(cos(ang), sin(ang)) * 40.0, Color(1, 0.4, 0.3), 5.0)
-			_text(c + Vector2(0, 52), "صوت ركض قريب", 18, Color(1, 0.6, 0.5))
-		if rules.stun > 0.0: _text(mid + Vector2(0, -60), "مصعوق", 30, Color(1, 0.9, 0.3))
-		if rules.carrying != "": _text(sub + Vector2(0, 84), "شايل %s — ودّه للخطاف" % rules.carrying, 20, Color(1, 0.7, 0.5))
+			_text(c + Vector2(0, 52), "Running nearby", 18, Color(1, 0.6, 0.5))
+		if rules.stun > 0.0: _text(mid + Vector2(0, -60), "Stunned", 30, Color(1, 0.9, 0.3))
+		if rules.carrying != "": _text(sub + Vector2(0, 84), "Carrying %s — take them to a hook" % rules.carrying, 20, Color(1, 0.7, 0.5))
 		if _text_hint != "": _text(sub + Vector2(0, 116), _text_hint, 20, Color(1.0, 0.85, 0.4))
 		if attack_t > 0.55: # first person: show the swing
 			ui.draw_arc(mid + Vector2(0, 120), 260, -PI * 0.75, -PI * 0.25, 24, Color(1, 1, 1, 0.35), 14.0)
@@ -2231,7 +2232,7 @@ func _draw_ui() -> void:
 		ui.draw_rect(bar, Color(0, 0, 0, 0.6))
 		ui.draw_rect(Rect2(bar.position, Vector2(360 * clampf(p, 0.0, 1.0), 18)), Color(1, 0.85, 0.3))
 		ui.draw_rect(bar, Color(1, 1, 1, 0.6), false, 2.0)
-		if hands > 1: _text(Vector2(mid.x, s.y - 100), "%d يشيلونه سوا — أسرع!" % hands, 20, Color(0.6, 1, 0.7))
+		if hands > 1: _text(Vector2(mid.x, s.y - 100), "%d lifting together — faster!" % hands, 20, Color(0.6, 1, 0.7))
 	if not skill.is_empty():
 		var z: float = skill.zone
 		ui.draw_circle(mid, 78, Color(0, 0, 0, 0.55))
@@ -2239,7 +2240,7 @@ func _draw_ui() -> void:
 		ui.draw_arc(mid, 64, (z - 0.07) * TAU - PI / 2.0, (z + 0.07) * TAU - PI / 2.0, 12, Color(0.3, 1, 0.4), 10.0)
 		var ang: float = skill.t / 1.2 * TAU - PI / 2.0
 		ui.draw_line(mid, mid + Vector2(cos(ang), sin(ang)) * 72, Color(1, 0.3, 0.3), 4.0)
-		_text(mid + Vector2(0, 118), "اضغط الشاشة لما المؤشر بالأخضر", 20)
+		_text(mid + Vector2(0, 118), "Tap the screen when the needle is in the green", 20)
 	if flash_t > 0.0: _text(Vector2(mid.x, s.y * 0.37), flash, 30, Color(1, 0.85, 0.5))
 	_draw_sigs(mid)
 	_draw_perk()
@@ -2256,7 +2257,7 @@ func _draw_ui() -> void:
 		var at: Vector2 = mid + dir * minf(mid.y * 0.78, 270.0)
 		var sd := Vector2(-dir.y, dir.x)
 		ui.draw_colored_polygon(PackedVector2Array([at + dir * 26.0, at - sd * 15.0, at + sd * 15.0]), Color(1.0, 0.2, 0.15, pulse))
-		_text(at + Vector2(0, 34.0), "%s  %d م" % [rules.ev_n, roundi(Vector2(to.x, to.z).length())], 19, Color(1, 0.4, 0.3, pulse), 300.0)
+		_text(at + Vector2(0, 34.0), "%s  %d m" % [rules.ev_n, roundi(Vector2(to.x, to.z).length())], 19, Color(1, 0.4, 0.3, pulse), 300.0)
 	for sb in _sig_buttons(): # the three quick messages
 		var r2: Rect2 = sb[0]
 		var i: int = sb[1]
@@ -2325,7 +2326,7 @@ func _draw_speedo(c: Vector2, cr: NFCar) -> void:
 	ui.draw_circle(c, 9.0, Color(0.15, 0.03, 0.03))
 	ui.draw_arc(c, 9.0, 0.0, TAU, 24, Color(1.0, 0.3, 0.2), 2.0, true)
 	_text(c + Vector2(0, 48), "%d" % roundi(speedo_kmh), 30, Color(1, 0.95, 0.88))
-	_text(c + Vector2(0, 70), "كم/س", 13, Color(0.8, 0.75, 0.7))
+	_text(c + Vector2(0, 70), "km/h", 13, Color(0.8, 0.75, 0.7))
 	var gear := "R" if cr.speed < -0.3 else str(cr.gear)
 	_text(c + Vector2(r + 34.0, 10), gear, 26, Color(1.0, 0.35, 0.25) if gear == "R" else Color(0.5, 1.0, 0.6))
 
@@ -2341,10 +2342,10 @@ func _draw_heli(mid: Vector2) -> void:
 	if not mine and my_role != "killer": return
 	var col := Color(0.6, 0.85, 1.0)
 	var y := 250.0
-	if st == 1: _text(Vector2(mid.x, y), ("طيارة الإنقاذ توصل بعد %d ثانية" if mine else "طيارة إنقاذ جاية — توصل بعد %d") % ceili(float(rules.heli.t)), 26, col)
-	elif st == 2: _text(Vector2(mid.x, y), ("الطيارة تنتظرك — تروح بعد %d ثانية!" if mine else "السلم نازل — يروح بعد %d، امسكه") % ceili(float(rules.heli.t)), 26, Color(1.0, 0.85, 0.4) if mine else Color(1.0, 0.5, 0.4))
+	if st == 1: _text(Vector2(mid.x, y), ("The rescue helicopter arrives in %d seconds" if mine else "A rescue helicopter is coming — arrives in %d") % ceili(float(rules.heli.t)), 26, col)
+	elif st == 2: _text(Vector2(mid.x, y), ("The helicopter is waiting — it leaves in %d seconds!" if mine else "The ladder is down — it leaves in %d, grab it") % ceili(float(rules.heli.t)), 26, Color(1.0, 0.85, 0.4) if mine else Color(1.0, 0.5, 0.4))
 	else:
-		_text(Vector2(mid.x, y), "اطلع! اطلع!" if mine else "يطلع السلم — الحقه!", 28, col)
+		_text(Vector2(mid.x, y), "Climb! Climb!" if mine else "They're climbing the ladder — catch them!", 28, col)
 		var w := 320.0
 		ui.draw_rect(Rect2(mid.x - w / 2.0, y + 18.0, w, 12.0), Color(0, 0, 0, 0.6))
 		ui.draw_rect(Rect2(mid.x - w / 2.0, y + 18.0, w * clampf(heli_p, 0.0, 1.0), 12.0), col)
@@ -2362,7 +2363,7 @@ func _draw_heli(mid: Vector2) -> void:
 	var tip := at + d * 35.0
 	var sd := Vector2(-d.y, d.x)
 	ui.draw_colored_polygon(PackedVector2Array([tip + d * 13.0, tip - sd * 9.0, tip + sd * 9.0]), c2)
-	_text(at + Vector2(0, 48), "الطيارة %d م" % int(bd), 18, c2)
+	_text(at + Vector2(0, 48), "Helicopter %d m" % int(bd), 18, c2)
 
 func _draw_gate_count(c: Vector2, left: float) -> void:
 	var f := clampf(left / Rules.GATE_DELAY, 0.0, 1.0)
@@ -2371,8 +2372,8 @@ func _draw_gate_count(c: Vector2, left: float) -> void:
 	ui.draw_circle(c, r + 8.0, Color(0, 0, 0, 0.55))
 	ui.draw_arc(c, r, -PI / 2.0, -PI / 2.0 + TAU * f, 64, Color(1.0, 0.62, 0.1), 7.0, true)
 	_text(c + Vector2(0, 14), "%d" % ceili(left), int(44 * beat), Color(1.0, 0.85, 0.4))
-	var msg := "البوابات تفتح بعد %d ثواني — جهّزوا" % ceili(left)
-	if my_role == "killer": msg = "البوابات تفتح بعد %d — روح لها قبلهم" % ceili(left)
+	var msg := "The gates open in %d seconds — get ready" % ceili(left)
+	if my_role == "killer": msg = "The gates open in %d — get there first" % ceili(left)
 	_text(c + Vector2(0, 92), msg, 24, Color(1.0, 0.75, 0.35))
 
 func _draw_moon(c: Vector2) -> void:
@@ -2415,7 +2416,7 @@ func _draw_roof_ramp(c: Vector2, k: float, u: float, big: bool) -> void:
 		var w: float = r.size.x * 0.32
 		minimap.draw_polyline(PackedVector2Array([Vector2(cx - w, cy - w * 0.6), Vector2(cx, cy), Vector2(cx + w, cy - w * 0.6)]),
 			ROOF_COL, 1.4 * u)
-	if big: _map_text(r.position + Vector2(r.size.x + 6.0, r.size.y * 0.6), "السطح ↑", 16, ROOF_COL)
+	if big: _map_text(r.position + Vector2(r.size.x + 6.0, r.size.y * 0.6), "Roof ↑", 16, ROOF_COL)
 
 ## A small cyan "up" triangle beside anything that is on the roof.
 func _roof_badge(at: Vector2, u: float) -> void:
@@ -2438,7 +2439,7 @@ func _draw_sigs(mid: Vector2) -> void:
 		var sd := Vector2(-dir.y, dir.x)
 		ui.draw_colored_polygon(PackedVector2Array([tip + dir * 12.0, tip - sd * 8.0, tip + sd * 8.0]), col)
 		var who := str(sg.n)
-		var label := "%s — %s (%d م)" % [who, SIG_TEXT[int(sg.k)], roundi(flat.length())] if who != "" else "%s (%d م)" % [SIG_TEXT[int(sg.k)], roundi(flat.length())]
+		var label := "%s — %s (%d m)" % [who, SIG_TEXT[int(sg.k)], roundi(flat.length())] if who != "" else "%s (%d m)" % [SIG_TEXT[int(sg.k)], roundi(flat.length())]
 		_text(at + Vector2(0, 26.0), label, 17, col, 300.0)
 
 func _draw_minimap() -> void:
@@ -2475,7 +2476,7 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 		minimap.draw_rect(Rect2(c + Vector2(NightWorld.KW_PARK.x * k, -wl), Vector2((NightWorld.KW_PARK.y - NightWorld.KW_PARK.x) * k, wl * 2.0)), Color(0.22, 0.22, 0.24))
 		var asm: Vector3 = NightWorld.KW_ASSEMBLY
 		minimap.draw_rect(Rect2(c + Vector2(asm.x - 23.0, asm.z - 40.0) * k, Vector2(46.0, 80.0) * k), Color(0.7, 0.64, 0.52))
-		if big: _map_text(c + Vector2(asm.x - 18.0, asm.z) * k, "مجلس الأمة", 15, Color(0.15, 0.12, 0.08))
+		if big: _map_text(c + Vector2(asm.x - 18.0, asm.z) * k, "National Assembly", 15, Color(0.15, 0.12, 0.08))
 		minimap.draw_circle(c + Vector2(NightWorld.KW_TOWERS.x, NightWorld.KW_TOWERS.z) * k, 5.0 * u, Color(0.4, 0.65, 1.0))
 	if rules.sniper: # «وضع القنّاص»: the tower where the north gate was, the stairs and the rifle
 		minimap.draw_rect(Rect2(c + Vector2(-NightWorld.SN_HALF, NightWorld.SN_FACE) * k, Vector2(NightWorld.SN_HALF * 2.0, NightWorld.SN_BACK - NightWorld.SN_FACE) * k), Color(0.45, 0.43, 0.4))
@@ -2484,7 +2485,7 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 		minimap.draw_arc(tc, 6.0 * u, 0, TAU, 20, Color(1, 0.25, 0.2), 1.6 * u)
 		minimap.draw_line(tc - Vector2(9, 0) * u, tc + Vector2(9, 0) * u, Color(1, 0.25, 0.2), 1.4 * u)
 		minimap.draw_line(tc - Vector2(0, 9) * u, tc + Vector2(0, 9) * u, Color(1, 0.25, 0.2), 1.4 * u)
-		if big: _map_text(tc + Vector2(0, -16) * u, "القنّاصة", 15, Color(1, 0.4, 0.35))
+		if big: _map_text(tc + Vector2(0, -16) * u, "Sniper", 15, Color(1, 0.4, 0.35))
 	for i in world.gate_points.size(): # escape roads + gates
 		if rules.sniper and i != 0: continue # (the north gate stays shut behind the tower)
 		var p: Vector3 = world.gate_points[i][0]
@@ -2530,10 +2531,10 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 		minimap.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		if world.map_id == "kuwait":
 			minimap.draw_circle(c + Vector2(mk.pos.x - 5.0, mk.pos.z) * k, 7.0 * u, Color(0.85, 0.72, 0.35))
-			if big: _map_text(c + Vector2(mk.pos.x + 8.0, mk.pos.z + 3.0) * k, "المسجد", 16, Color(1, 0.88, 0.5))
+			if big: _map_text(c + Vector2(mk.pos.x + 8.0, mk.pos.z + 3.0) * k, "Mosque", 16, Color(1, 0.88, 0.5))
 		else:
 			_map_pic(c + Vector2(mk.pos.x, mk.pos.z) * k, "market", 18.0 * u)
-			if big: _map_text(c + Vector2(mk.pos.x + 8.0, mk.pos.z + 3.0) * k, "السوق", 16, Color(1, 0.7, 0.7))
+			if big: _map_text(c + Vector2(mk.pos.x + 8.0, mk.pos.z + 3.0) * k, "Market", 16, Color(1, 0.7, 0.7))
 	for i in world.hook_points.size():
 		if i >= world.road_hook0: break # the ones along the roads are off the map
 		var hp: Vector3 = world.hook_points[i]
@@ -2583,7 +2584,7 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 			cp + (-cf * 5.0 - cs * 2.6) * u, cp + (-cf * 5.0 + cs * 2.6) * u]), CAR_COL)
 		minimap.draw_line(cp + (cf * 2.6 + cs * 2.3) * u, cp + (cf * 2.6 - cs * 2.3) * u, Color(0.1, 0.1, 0.1), 1.4 * u) # windscreen
 		if world.map_id == "garage" and car.position.y > 3.0: _roof_badge(cp + Vector2(0, -10) * u, u)
-		if big: _map_text(cp + Vector2(9, 5) * u, "سيارتك", 15, CAR_COL)
+		if big: _map_text(cp + Vector2(9, 5) * u, "Your car", 15, CAR_COL)
 	for n in remotes: # survivors see their team; the killer never sees players here
 		var r = remotes[n]
 		if my_role == "survivor" and r.role == "survivor" and r.node.visible:
@@ -2603,25 +2604,25 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 		minimap.draw_rect(Rect2(bp - Vector2(7, 7) * u, Vector2(14, 14) * u), Color(0.05, 0.05, 0.05, 0.9))
 		minimap.draw_rect(Rect2(bp - Vector2(7, 7) * u, Vector2(14, 14) * u), bc, false, 1.6 * u)
 		NFIcons.draw(minimap, "bolt", bp, 11.0 * u, bc)
-		if big: _map_text(bp + Vector2(10, 5) * u, "الكهرباء" if on else "الكهرباء مقطوعة!", 16, bc)
+		if big: _map_text(bp + Vector2(10, 5) * u, "Power" if on else "Power cut!", 16, bc)
 	if world.map_id == "garage" and body.position.y > 3.0: # standing on the roof
 		minimap.draw_arc(me, 11.0 * u, 0, TAU, 20, ROOF_COL, 1.6 * u)
-		_map_text(o + Vector2(side / 2.0 - (40.0 if big else 26.0), 18.0 if big else 14.0), "على السطح",
+		_map_text(o + Vector2(side / 2.0 - (40.0 if big else 26.0), 18.0 if big else 14.0), "On the roof",
 			20 if big else 13, ROOF_COL)
 	if big:
 		var ly := o.y + side + 22.0
 		# each entry: [drawn icon or "" + glyph, colour, name]
-		var items := [["@gen_off", Color(1, 0.85, 0.2), "مولد"], ["@gen_on", Color(0.4, 1, 0.5), "شغّال"], ["@hook", Color(0.8, 0.35, 0.35), "خطاف"],
-			["@gate_n", Color(1, 0.3, 0.25), "الشمالية"], ["@gate_s", Color(0.3, 0.6, 1), "الجنوبية"], ["locker", Color(0.6, 0.7, 0.8), "خزانة"], ["plank", Color(0.85, 0.62, 0.35), "لوح"]]
-		if my_role == "survivor": items.append(["@hatch", Color(0.5, 1, 0.7), "فتحة"])
+		var items := [["@gen_off", Color(1, 0.85, 0.2), "Generator"], ["@gen_on", Color(0.4, 1, 0.5), "On"], ["@hook", Color(0.8, 0.35, 0.35), "Hooked"],
+			["@gate_n", Color(1, 0.3, 0.25), "North"], ["@gate_s", Color(0.3, 0.6, 1), "South"], ["locker", Color(0.6, 0.7, 0.8), "Locker"], ["plank", Color(0.85, 0.62, 0.35), "Pallet"]]
+		if my_role == "survivor": items.append(["@hatch", Color(0.5, 1, 0.7), "Hatch"])
 		if world.map_id == "garage":
-			items.append(["■", Color(0.45, 0.45, 0.48), "درج"]) # the stair cores
-			items.append(["▲", ROOF_COL, "فوق السطح"])
-		else: items.append(["■", Color(0.8, 0.25, 0.25), "السوق"])
-		if world.power_box != Vector3.INF: items.append(["bolt", Color(1.0, 0.85, 0.2), "صندوق الكهرباء"])
+			items.append(["■", Color(0.45, 0.45, 0.48), "Stairs"]) # the stair cores
+			items.append(["▲", ROOF_COL, "On the roof"])
+		else: items.append(["■", Color(0.8, 0.25, 0.25), "Market"])
+		if world.power_box != Vector3.INF: items.append(["bolt", Color(1.0, 0.85, 0.2), "Power box"])
 		if my_role == "killer":
-			items.append(["trap", Color(1, 0.5, 0.35), "فخاخك"])
-			if car: items.append(["■", CAR_COL, "سيارتك"])
+			items.append(["trap", Color(1, 0.5, 0.35), "Your traps"])
+			if car: items.append(["■", CAR_COL, "Your car"])
 		var lx := o.x
 		for it in items:
 			if str(it[0]).begins_with("@"): _map_pic(Vector2(lx + 7, ly - 6), str(it[0]).substr(1), 18.0)
@@ -2630,7 +2631,7 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 			_map_text(Vector2(lx + 20, ly), it[2], 14, Color(0.9, 0.9, 0.9))
 			lx += side / items.size()
 	else:
-		_map_text(o + Vector2(4, side + 16), "اضغط للتكبير", 13, Color(1, 1, 1, 0.45))
+		_map_text(o + Vector2(4, side + 16), "Tap to enlarge", 13, Color(1, 1, 1, 0.45))
 
 # ---------------- context: what each button would do right now ----------------
 ## Close enough to touch: flat distance, and no more than a storey apart — the car park has a
@@ -2647,16 +2648,16 @@ func _update_ctx() -> void:
 		var me: Dictionary = rules.s.get(my_name, {})
 		if me.is_empty(): return
 		if me.locker >= 0:
-			ctx.interact = {"kind": "locker_out", "label": "اطلع", "i": me.locker}
+			ctx.interact = {"kind": "locker_out", "label": "Climb", "i": me.locker}
 			return
 		if my_state == "hooked" and me.hooks == 1: # first hook only: hammer the button to pull yourself off
-			ctx.interact = {"kind": "struggle", "label": "فك نفسك"}
+			ctx.interact = {"kind": "struggle", "label": "Free yourself"}
 		if not (my_state in ["ok", "hurt"]) or esc_i >= 0: return
 		for n in rules.s:
 			var p: Dictionary = rules.s[n]
 			if n == my_name: continue
 			if p.hp == "hooked" and _near(pos, world.hook_points[p.hook_i], 2.9):
-				ctx.interact = {"kind": "rescue", "label": "أنقذ", "n": n, "need": -1.0}
+				ctx.interact = {"kind": "rescue", "label": "Rescue", "n": n, "need": -1.0}
 			if p.hp in ["hurt", "down"] and p.locker < 0 and rules.car_of(n) < 0 and _near(pos, _pos_of(n), 2.6):
 				ctx.heal = {"kind": "heal", "n": n, "need": -1.0}
 		if not ctx.has("interact"): # a trap within reach (but not under my feet): spring it with a stick
@@ -2665,33 +2666,33 @@ func _update_ctx() -> void:
 				if not bool(tr[2]): continue
 				var dd := Vector2(float(tr[0]) - pos.x, float(tr[1]) - pos.z).length()
 				if dd < 2.0 and dd > 0.8:
-					ctx.interact = {"kind": "disarm", "label": "فك الفخ", "i": i}
+					ctx.interact = {"kind": "disarm", "label": "Disarm trap", "i": i}
 		if not ctx.has("interact") and heli and int(rules.heli.st) == 2 and str(rules.heli.who) == my_name and _near(pos, heli.ladder_foot(), 2.8):
-			ctx.interact = {"kind": "ladder", "label": "امسك السلم واطلع", "i": 0}
+			ctx.interact = {"kind": "ladder", "label": "Grab the ladder and climb", "i": 0}
 		if not ctx.has("interact") and rules.powered: # the escape car past the gate: first one in drives
 			for i in mini(world.esc_cars.size(), rules.roads.size()):
 				var ec: NFCar = world.esc_cars[i]
 				var est := int(rules.roads[i].st)
 				if est <= 1 and (i == 0 or not rules.sniper) and absf(ec.speed) < 3.0 and (rules.roads[i].who as Array).size() < Rules.CAR_SEATS and _near(pos, ec.global_position, 3.8):
-					ctx.interact = {"kind": "board", "label": "اركب وسوق" if est == 0 else "اركب معهم", "i": i}
+					ctx.interact = {"kind": "board", "label": "Get in and drive" if est == 0 else "Ride with them", "i": i}
 		if not ctx.has("interact"):
 			for i in world.locker_points.size():
 				if _near(pos, world.locker_points[i][0], 1.9) and rules.locker_user(i) == "":
-					ctx.interact = {"kind": "locker_in", "label": "اختبئ", "i": i}
+					ctx.interact = {"kind": "locker_in", "label": "Hide", "i": i}
 		if not ctx.has("interact"):
 			for i in world.pallet_points.size():
 				if rules.pallets[i] == 0 and _near(pos, world.pallet_points[i][0], 2.2):
-					ctx.interact = {"kind": "pallet", "label": "اسقط", "i": i}
+					ctx.interact = {"kind": "pallet", "label": "Drop", "i": i}
 		if not ctx.has("interact"): _door_ctx(pos)
 		if not ctx.has("interact") and rules.has_grid and not rules.grid and world.power_box != Vector3.INF and _near(pos, world.power_box, 2.6):
-			ctx.interact = {"kind": "pfix", "label": "شغّل أنوار الشارع" if rules.grid_mode == 2 else "صلّح الكهرباء", "i": 0, "need": -1.0}
+			ctx.interact = {"kind": "pfix", "label": "Turn on the street lights" if rules.grid_mode == 2 else "Fix the power", "i": 0, "need": -1.0}
 		if not ctx.has("interact") and rules.has_grid and rules.grid and rules.grid_mode == 1 and world.power_box != Vector3.INF and _near(pos, world.power_box, 2.6):
-			if rules.grid_wait > Rules.GRID_GAP - Rules.GRID_OFF_GAP: _text_hint = "الصندوق يبرد — بعد %d ث" % ceili(rules.grid_wait - (Rules.GRID_GAP - Rules.GRID_OFF_GAP))
-			else: ctx.interact = {"kind": "off", "label": "اطفي الكهرباء", "i": 0}
+			if rules.grid_wait > Rules.GRID_GAP - Rules.GRID_OFF_GAP: _text_hint = "The box is cooling — %d s" % ceili(rules.grid_wait - (Rules.GRID_GAP - Rules.GRID_OFF_GAP))
+			else: ctx.interact = {"kind": "off", "label": "Switch off the power", "i": 0}
 		if not ctx.has("interact") and not rules.powered:
 			for i in world.gen_points.size():
 				if not rules.gens[i].done and _near(pos, world.gen_points[i], 2.5):
-					ctx.interact = {"kind": "rep", "label": "تصليح", "i": i, "need": -1.0}
+					ctx.interact = {"kind": "rep", "label": "Repair", "i": i, "need": -1.0}
 		for w in world.window_points:
 			if _near(pos, w[0], 1.7): ctx.vault = {"kind": "vault", "c": w[0], "n": w[1]}
 		if not ctx.has("vault"): _kerb_ctx(pos)
@@ -2706,43 +2707,43 @@ func _update_ctx() -> void:
 		if rules.hatch >= 0 and _near(pos, world.hatch_points[rules.hatch], 1.5): _ev({"k": "escape", "h": true})
 	elif driving:
 		if rules.stun <= 0.0:
-			ctx.interact = {"kind": "car_out", "label": "انزل"}
+			ctx.interact = {"kind": "car_out", "label": "Get out"}
 			if rules.carrying != "": # a survivor in the back: pull up at a hook and hang them straight away
 				for i in world.hook_points.size():
 					if rules.hook_user(i) == "" and _near(pos, world.hook_points[i], 4.0):
-						ctx.interact = {"kind": "car_hook", "label": "انزل وعلّق", "i": i}
+						ctx.interact = {"kind": "car_hook", "label": "Get out and hook", "i": i}
 	elif sniping: # lying on the roof with the rifle: the one thing to do is get up
-		ctx.interact = {"kind": "rifle_off", "label": "قوم"}
+		ctx.interact = {"kind": "rifle_off", "label": "Stand up"}
 	elif rules.stun <= 0.0:
 		if rules.sniper and rules.carrying == "" and world.snipe_rifle != Vector3.INF and _near(pos, world.snipe_rifle, 2.6):
-			ctx.interact = {"kind": "rifle", "label": "خذ القنّاصة"}
+			ctx.interact = {"kind": "rifle", "label": "Take the rifle"}
 			return
 		if rules.carrying != "":
 			for i in world.hook_points.size():
 				if rules.hook_user(i) == "" and _near(pos, world.hook_points[i], 3.2):
-					ctx.interact = {"kind": "hook", "label": "علّق", "i": i}
+					ctx.interact = {"kind": "hook", "label": "Hook", "i": i}
 			if not ctx.has("interact") and car and _car_near(pos) > -2: # throw them in the back
-				ctx.interact = {"kind": "car_in", "label": "حطّه بالسيارة", "p": _car_near(pos)}
+				ctx.interact = {"kind": "car_in", "label": "Put them in the car", "p": _car_near(pos)}
 			return
 		for n in rules.s:
-			if rules.s[n].hp == "down" and _near(pos, _pos_of(n), 2.7): ctx.interact = {"kind": "pickup", "label": "احمل", "n": n}
+			if rules.s[n].hp == "down" and _near(pos, _pos_of(n), 2.7): ctx.interact = {"kind": "pickup", "label": "Pick up", "n": n}
 		if not ctx.has("interact"):
 			for i in world.locker_points.size():
-				if _near(pos, world.locker_points[i][0], 2.1): ctx.interact = {"kind": "search", "label": "فتّش", "i": i}
+				if _near(pos, world.locker_points[i][0], 2.1): ctx.interact = {"kind": "search", "label": "Search", "i": i}
 		if not ctx.has("interact"):
 			for i in world.pallet_points.size():
 				if rules.pallets[i] == 1 and _near(pos, world.pallet_points[i][0], 2.4):
-					ctx.interact = {"kind": "break", "label": "اكسر", "i": i, "need": 2.0}
+					ctx.interact = {"kind": "break", "label": "Break", "i": i, "need": 2.0}
 		if not ctx.has("interact"):
 			for w in world.window_points:
-				if _near(pos, w[0], 1.7): ctx.interact = {"kind": "vault", "label": "اقفز", "c": w[0], "n": w[1]}
+				if _near(pos, w[0], 1.7): ctx.interact = {"kind": "vault", "label": "Vault", "c": w[0], "n": w[1]}
 		if not ctx.has("interact"): _door_ctx(pos)
 		if not ctx.has("interact") and rules.has_grid and rules.grid and world.power_box != Vector3.INF and _near(pos, world.power_box, 2.6):
 			if rules.grid_cuts >= Rules.GRID_CUTS: pass # both cuts used
-			elif rules.grid_wait > 0.0: _text_hint = "الصندوق يبرد — بعد %d ث" % ceili(rules.grid_wait)
-			else: ctx.interact = {"kind": "cut", "label": "اقطع الكهرباء (%d/%d)" % [rules.grid_cuts + 1, Rules.GRID_CUTS], "i": 0}
+			elif rules.grid_wait > 0.0: _text_hint = "The box is cooling — %d s" % ceili(rules.grid_wait)
+			else: ctx.interact = {"kind": "cut", "label": "Cut the power (%d/%d)" % [rules.grid_cuts + 1, Rules.GRID_CUTS], "i": 0}
 		if not ctx.has("interact") and car and _car_near(pos) > -2:
-			ctx.interact = {"kind": "car_in", "label": "اركب", "p": _car_near(pos)}
+			ctx.interact = {"kind": "car_in", "label": "Get in", "p": _car_near(pos)}
 
 ## A doorway within reach becomes the interact button.
 func _door_ctx(pos: Vector3) -> void:
@@ -2750,7 +2751,7 @@ func _door_ctx(pos: Vector3) -> void:
 		if i >= world.door_nodes.size() or world.door_nodes[i] == null: continue
 		if not _near(pos, world.door_points[i][0], 2.0): continue
 		var shut: bool = rules.doors[i] if i < rules.doors.size() else false
-		ctx.interact = {"kind": "door", "label": "افتح الباب" if shut else "سكّر الباب", "i": i, "on": not shut}
+		ctx.interact = {"kind": "door", "label": "Open the door" if shut else "Shut the door", "i": i, "on": not shut}
 		return
 
 # ---------------- actions ----------------
@@ -2781,7 +2782,7 @@ func _press(id: String, touch: int) -> void:
 				ecn.nitro = NFCar.NITRO_TIME
 				_shake(0.45)
 				NFHaptics.pulse("impact")
-				_flash("نيترو!")
+				_flash("Nitro!")
 		"gun": # up with it, then the shot once the arms are there (at once if it is already up)
 			if my_gun and my_gun.visible and my_gun.raise < 0.8:
 				gun_aim = maxf(gun_aim, 1.6)
@@ -2790,7 +2791,7 @@ func _press(id: String, touch: int) -> void:
 		"vanish":
 			if Dev.unlocked and Dev.vanish_tool:
 				vanished = not vanished
-				_flash("مختفي — محد يشوفك" if vanished else "رجعت تبان")
+				_flash("Vanished — nobody can see you" if vanished else "You're visible again")
 				NFHaptics.pulse("tick")
 		"trap":
 			if my_role == "killer" and trap_cd <= 0.0 and rules.carrying == "" and not driving:
@@ -2804,7 +2805,7 @@ func _press(id: String, touch: int) -> void:
 		"gear":
 			if driving and car:
 				car.gear = car.gear % NFCar.GEAR_TOP.size() + 1 # 1 -> 2 -> 3 -> back to 1
-				_flash(["الغيار الأول — لين 40 كم/س", "الغيار الثاني — لين 70 كم/س", "الغيار الثالث — لين 90 كم/س"][car.gear - 1])
+				_flash(["First gear — up to 40 km/h", "Second gear — up to 70 km/h", "Third gear — up to 90 km/h"][car.gear - 1])
 				NFHaptics.pulse("hook")
 		"next":
 			var alive := _others_alive()
@@ -2835,7 +2836,7 @@ func _press(id: String, touch: int) -> void:
 			if driving: # at the wheel this is the radio
 				if car.radio:
 					car.set_radio(not car.radio_on)
-					_flash("الراديو شغّال — الكل يسمعه إذا قرّبت" if car.radio_on else "سكّرت الراديو")
+					_flash("Radio on — everyone hears it when you get close" if car.radio_on else "Radio off")
 			else: _ev({"k": "power"})
 		"sig": # open / close the three quick messages
 			sig_open = not sig_open
@@ -2918,14 +2919,14 @@ func _update_hold(delta: float) -> void:
 			skill.t += delta
 			if skill.t > 1.2:
 				_ev({"k": "skill", "i": hold.i, "ok": false})
-				_flash("فاتك! انفجر المولد")
+				_flash("Missed! The generator blew")
 				skill = {}
 				next_skill = randf_range(4.0, 8.0)
 
 func _skill_tap() -> void:
 	var ok: bool = absf(float(skill.t) / 1.2 - float(skill.zone)) <= 0.07
 	_ev({"k": "skill", "i": hold.i, "ok": ok})
-	_flash("ممتاز!" if ok else "غلط! انفجر المولد")
+	_flash("Great!" if ok else "Wrong! The generator blew")
 	skill = {}
 	next_skill = randf_range(4.0, 8.0)
 
@@ -3164,7 +3165,7 @@ func _process(dt: float) -> void:
 	if car == null and world.drive_car: car = world.drive_car
 	if car and my_role == "killer" and not car_told and loading == null:
 		car_told = true
-		_flash("سيارتك تنتظرك فوق السطح — اطلع لها من المنحدر" if world.map_id == "garage" else "سيارتك قريبة منك — اركبها وادعسهم")
+		_flash("Your car is waiting on the roof — go up the ramp to it" if world.map_id == "garage" else "Your car is close — get in and run them down")
 	_car_pass(dt)
 	if car and not driving and not (rules.killer != "" and remotes.has(rules.killer) and remotes[rules.killer].anim == "drive"):
 		car.driven = false # nobody at the wheel: lights off, it stays where it was left
@@ -3329,7 +3330,7 @@ func _process(dt: float) -> void:
 		last_hatch = rules.hatch
 		world.set_hatch(rules.hatch)
 		if rules.hatch >= 0:
-			_flash("انفتحت فتحة هروب! دوّر عليها" if my_role == "survivor" else "انفتحت فتحة هروب — لا تخليه يوصلها")
+			_flash("An escape hatch opened! Find it" if my_role == "survivor" else "An escape hatch opened — don't let them reach it")
 	world.set_market_dark(rules.killer != "" and world.in_market(kpos))
 	world.set_killer_at(kpos if rules.killer != "" else Vector3(9999, 0, 9999))
 	_round_event(dt)
@@ -3338,7 +3339,7 @@ func _process(dt: float) -> void:
 	if rules.gate_t >= 0.0 and not rules.powered:
 		world.gate_warn(rules.gate_t)
 		if gate_count_last < 0.0:
-			_flash("المولدات خلصت — البوابات بتفتح بعد %d ثواني" % ceili(rules.gate_t))
+			_flash("Generators done — the gates open in %d seconds" % ceili(rules.gate_t))
 			for g in world.gate_points: _sfx("gate", g[0] + Vector3(0, 3, 0), 2.0)
 		if gate_count_last >= 0.0 and ceili(rules.gate_t) < ceili(gate_count_last): NFHaptics.pulse("tick")
 		gate_count_last = rules.gate_t
@@ -3353,8 +3354,8 @@ func _process(dt: float) -> void:
 		_sfx("gate", null, -12.0)
 		doom_music.play()
 		if my_role == "survivor": # past each gate an escape car waits; the last gate is 600 m down the road
-			_flash("البوابات انفتحت — اركبوا سيارة الهروب ورا البوابة، والبوابة الأخيرة بعد 600 م")
-		else: _flash("البوابات انفتحت — بيهربون بالسيارة ورا البوابة، الحقهم بسيارتك")
+			_flash("The gates are open — get in the escape car behind the gate; the last gate is 600 m on")
+		else: _flash("The gates are open — they'll escape by car behind the gate, chase them in yours")
 	# survivors feel the killer coming: heartbeat inside the terror radius, heavy breathing when he is very close
 	danger = 0.0
 	var kdist := 999.0
@@ -3436,7 +3437,7 @@ func _process(dt: float) -> void:
 			_sfx("impact", null, 2.0)
 			NFHaptics.pulse("impact")
 			_shake(1.0)
-			_flash("القمر ضرب الأرض")
+			_flash("The moon hit the ground")
 	if impact_t >= 0.0: impact_t += dt
 	amb.volume_db = minf(amb.volume_db, -40.0) if doom_music.playing else amb.volume_db
 	if rules.over and results == null and (impact_t < 0.0 or impact_t > 3.5): _show_results()
@@ -3826,13 +3827,13 @@ func _draw_perk() -> void:
 	var col := Color(0.6, 0.6, 0.62) if spent else Color(1.0, 0.82, 0.45)
 	ui.draw_rect(box, Color(col, 0.6), false, 1.5)
 	NFIcons.draw(ui, str(info[2]), at + Vector2(152.0, 17.0), 20.0, col)
-	_text(at + Vector2(74.0, 24.0), str(info[0]) + ("  (مستخدمة)" if spent else ""), 16, col, 140.0)
+	_text(at + Vector2(74.0, 24.0), str(info[0]) + ("  (used)" if spent else ""), 16, col, 140.0)
 	var held := _held()
 	if held > 0.0: # caught in a trap: a ring that empties
 		var mid := get_viewport().get_visible_rect().size / 2.0
 		ui.draw_arc(mid + Vector2(0, 90), 34.0, -PI / 2.0, -PI / 2.0 + TAU * held / Rules.HELD_TIME, 32, Color(1, 0.4, 0.3), 6.0, true)
 		NFIcons.draw(ui, "trap", mid + Vector2(0, 90), 34.0, Color(1, 0.5, 0.4))
-		_text(mid + Vector2(0, 148), "انصدت بفخ — %.0f" % ceilf(held), 22, Color(1, 0.6, 0.5))
+		_text(mid + Vector2(0, 148), "Caught in a trap — %.0f" % ceilf(held), 22, Color(1, 0.6, 0.5))
 
 ## «عين الليل»: while she is within SENSE_R, a red arrow on the ring points at her, pulsing.
 func _draw_sense(mid: Vector2) -> void:
@@ -3849,7 +3850,7 @@ func _draw_sense(mid: Vector2) -> void:
 	var tip := at + d * 30.0
 	var sd := Vector2(-d.y, d.x)
 	ui.draw_colored_polygon(PackedVector2Array([tip + d * 12.0, tip - sd * 8.0, tip + sd * 8.0]), col)
-	_text(at + Vector2(0, 38.0), "%d م" % roundi(dd), 16, col, 120.0)
+	_text(at + Vector2(0, 38.0), "%d m" % roundi(dd), 16, col, 120.0)
 
 ## The traps and the spike strips, on every phone: a node per slot shown where the rules say;
 ## survivors only see a trap from close by (the killer sees all of hers). My own phone tells the
@@ -4021,8 +4022,8 @@ func _esc_enter(i: int) -> void:
 	pitch = -0.24
 	car_look = 1.0
 	NFHaptics.pulse("hook")
-	if rules.roads[i].drv == my_name: _flash("أنت السايق — دوس للبوابة الأخيرة، %d م وعندكم دقيقتين" % roundi(NightWorld.ROAD_LEN))
-	else: _flash("ركبت معهم — %s يسوق" % str(rules.roads[i].drv))
+	if rules.roads[i].drv == my_name: _flash("You're driving — floor it to the last gate, %d m and two minutes" % roundi(NightWorld.ROAD_LEN))
+	else: _flash("You're riding — %s is driving" % str(rules.roads[i].drv))
 
 ## Out of it: through the last gate (escaped), or thrown onto the road beside it when caught.
 func _esc_leave(i: int) -> void:
@@ -4125,16 +4126,16 @@ func _draw_road(i: int, mid: Vector2) -> void:
 	if urgent: col = Color(1.0, 0.45 + 0.25 * sin(Time.get_ticks_msec() / 160.0), 0.3)
 	ui.draw_rect(box, Color(col, 0.75), false, 2.0)
 	if my_role == "killer":
-		_text(c + Vector2(0, -28), "سيارة الهروب — باقي لهم", 18, Color(1, 0.6, 0.5))
+		_text(c + Vector2(0, -28), "Escape car — distance left", 18, Color(1, 0.6, 0.5))
 	else:
-		_text(c + Vector2(0, -28), "للبوابة الأخيرة", 18, Color(0.85, 1, 0.88))
-	_text(c + Vector2(0, 20), "%d م" % roundi(left), 50, col)
+		_text(c + Vector2(0, -28), "to the last gate", 18, Color(0.85, 1, 0.88))
+	_text(c + Vector2(0, 20), "%d m" % roundi(left), 50, col)
 	var clock := "%d:%02d" % [int(ceil(t)) / 60, int(ceil(t)) % 60]
 	match st:
-		0: _text(c + Vector2(0, 50), "السيارة تنتظر — أول واحد يركب يسوق", 17, Color(0.85, 0.95, 0.9))
-		1: _text(c + Vector2(0, 50), "الوقت %s" % clock, 24, col)
-		2: _text(c + Vector2(0, 50), "انمسكت السيارة" if str(rd.why) == "ram" else "خلص الوقت", 22, Color(1, 0.4, 0.3))
-		3: _text(c + Vector2(0, 50), "وصلوا!", 22, Color(0.5, 1, 0.6))
+		0: _text(c + Vector2(0, 50), "The car is waiting — the first one in drives", 17, Color(0.85, 0.95, 0.9))
+		1: _text(c + Vector2(0, 50), "Time %s" % clock, 24, col)
+		2: _text(c + Vector2(0, 50), "The car was caught" if str(rd.why) == "ram" else "Time's up", 22, Color(1, 0.4, 0.3))
+		3: _text(c + Vector2(0, 50), "They made it!", 22, Color(0.5, 1, 0.6))
 	# the strip: gate on the right (Arabic reads that way), the last gate on the left
 	var a := Vector2(c.x + 200.0, c.y + 64.0)
 	var b := Vector2(c.x - 200.0, c.y + 64.0)
@@ -4149,7 +4150,7 @@ func _draw_road(i: int, mid: Vector2) -> void:
 			var kf := clampf(1.0 - world.road_left(i, kp) / NightWorld.ROAD_LEN, 0.0, 1.0)
 			ui.draw_circle(a.lerp(b, kf), 7.0, Color(1.0, 0.25, 0.2))
 			if my_role == "survivor" and in_car and kf > f - 0.06 and kf <= f + 0.01:
-				_text(c + Vector2(0, 104), "القاتلة وراكم!", 24, Color(1, 0.35, 0.3))
+				_text(c + Vector2(0, 104), "The killer is behind you!", 24, Color(1, 0.35, 0.3))
 
 func _move(delta: float) -> void:
 	var frozen: bool = rules.over or my_state in ["dead", "escaped"] or not hold.is_empty() or (my_role == "killer" and rules.stun > 0.0) or _held() > 0.0

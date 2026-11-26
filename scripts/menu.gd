@@ -5,16 +5,16 @@ extends CanvasLayer
 
 signal start_game(cfg: Dictionary)
 
-const MAPS := {"forest": "الغابة", "village": "القرية المهجورة", "fareej": "الفريج", "rubkhali": "الربع الخالي",
-	"garage": "المواقف", "beach": "الشاطئ", "city": "City Life", "kuwait": "مدينة الكويت"}
-const THEMES := {"normal": "ليل", "fog": "ضباب", "rain": "مطر", "snow": "ثلج", "halloween": "هالوين", "sunset": "بين العصر والمغرب"}
+const MAPS := {"forest": "The Forest", "village": "The Abandoned Village", "fareej": "The Fareej", "rubkhali": "The Empty Quarter",
+	"garage": "The Car Park", "beach": "The Beach", "city": "City Life", "kuwait": "Kuwait City"}
+const THEMES := {"normal": "Night", "fog": "Fog", "rain": "Rain", "snow": "Snow", "halloween": "Halloween", "sunset": "Late Afternoon"}
 const THEME_ICON := {"normal": "moon", "fog": "fog", "rain": "rain", "snow": "star", "halloween": "skull", "sunset": "sun"}
 const VERSION := "v1.4"
-const CHARS := {"killer": "القاتل", "survivor1": "الناجية", "survivor2": "الرحّال", "survivor3": "الشريف", "survivor4": "الفالكيري القرمزية", "survivor5": "المحاربة الجريحة", "survivor6": "حارسة الليل", "survivor7": "الباحثة", "survivor8": "وردة الليل", "survivor9": "Bloom", "killer2": "الوحش"}
+const CHARS := {"killer": "The Killer", "survivor1": "The Survivor", "survivor2": "The Nomad", "survivor3": "The Sheriff", "survivor4": "Crimson Valkyrie", "survivor5": "Battle-Scarred", "survivor6": "Night Sentinel", "survivor7": "The Researcher", "survivor8": "Night Rose", "survivor9": "Bloom", "killer2": "The Beast"}
 const SECRET := "survivor4" # hidden: only on phones Net.has_secret() is true for
-const ERRORS := {"no_room": "ما في غرفة بهالكود", "room_full": "الغرفة ممتلئة", "in_game": "اللعبة بدأت بالغرفة",
-	"killer_taken": "في قاتل بالغرفة", "offline": "صديقك مو متصل", "invite_later": "صديقك مو متصل — توصله الدعوة أول ما يدخل (لين ٢٠ دقيقة)", "bad_name": "الاسم لازم 2 إلى 16 حرف بدون مسافات",
-	"name_taken": "الاسم مستخدم الحين، اختر غيره"}
+const ERRORS := {"no_room": "No room with that code", "room_full": "The room is full", "in_game": "The game in this room has started",
+	"killer_taken": "There's already a killer in the room", "offline": "Your friend is offline", "invite_later": "Your friend is offline — the invite reaches them when they come on (up to 20 minutes)", "bad_name": "Names must be 2 to 16 characters with no spaces",
+	"name_taken": "That name is in use right now, pick another"}
 
 var page := ""
 var box: VBoxContainer
@@ -75,7 +75,7 @@ func _ready() -> void:
 	card.draw.connect(_draw_card)
 	add_child(card)
 	version = Label.new()
-	version.text = VERSION + (" · تحديث %d" % Patch.applied if Patch.applied > 0 else "")
+	version.text = VERSION + (" · update %d" % Patch.applied if Patch.applied > 0 else "")
 	version.add_theme_font_size_override("font_size", 15)
 	version.add_theme_color_override("font_color", Color(0.55, 0.55, 0.58))
 	version.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -116,7 +116,7 @@ func _on_msg(m: Dictionary) -> void:
 			if str(m.get("code", "")) != "":
 				if _invite_after != "": # the room I made for the friend I tapped at the fire
 					Net.send({"t": "invite", "to": _invite_after})
-					toast = "انرسلت الدعوة لـ" + _invite_after
+					toast = "Invite sent to " + _invite_after
 					_invite_after = ""
 				if not (page in ["friends", "chars", "controls"]): page = "lobby"
 			elif page in ["lobby", "friends", "chars"]: page = "main"
@@ -128,11 +128,11 @@ func _on_msg(m: Dictionary) -> void:
 			var known: Array = m.get("maps", [])
 			for id in MAPS:
 				if not known.has(id):
-					toast = "السيرفر قديم وما يعرف كل الخرايط — حدّث السيرفر"
+					toast = "The server is old and doesn't know every map — update the server"
 					break
 		"invite": invite = m
 		"gift":
-			toast = ("%s فتح لك شخصية سرية: الفالكيري القرمزية" if bool(m.get("on", true)) else "%s قفل الشخصية السرية") % str(m.get("from", ""))
+			toast = ("%s unlocked a secret character for you: Crimson Valkyrie" if bool(m.get("on", true)) else "%s locked the secret character") % str(m.get("from", ""))
 		"emote": # someone at the fire waved / danced / clapped
 			if lobby and is_instance_valid(lobby): lobby.emote(str(m.get("n", "")), int(m.get("k", 0)))
 			return
@@ -217,10 +217,10 @@ func _row() -> HBoxContainer:
 
 func _status() -> String:
 	match Net.state:
-		"online": return "متصل ✓  (%s)" % Net.username
-		"connecting": return "جاري الاتصال بالسيرفر... (أول مرة ممكن تاخذ دقيقة)"
-		"name_taken": return "الاسم مستخدم الحين، غيّره من الإعدادات"
-	return "غير متصل"
+		"online": return "Connected ✓  (%s)" % Net.username
+		"connecting": return "Connecting to the server... (the first time can take a minute)"
+		"name_taken": return "That name is in use right now, change it in the settings"
+	return "Offline"
 
 ## The camp follows the weather the host picked, so the start screen shows the round's mood.
 func _weather_changed() -> void:
@@ -241,11 +241,11 @@ func _refresh() -> void:
 		box.add_child(lg)
 	else: _label("NightFall", 44, Color(0.85, 0.1, 0.12))
 	if not invite.is_empty():
-		_label("%s يدعوك لغرفته" % str(invite.from), 24, Color(1, 0.85, 0.4))
+		_label("%s invites you to their room" % str(invite.from), 24, Color(1, 0.85, 0.4))
 		var h := _row()
-		_button("قبول", func():
+		_button("Accept", func():
 			Net.send({"t": "join", "code": invite.code}); invite = {}; _refresh(), h, true, "out")
-		_button("رفض", func(): invite = {}; _refresh(), h, true, "exit")
+		_button("Decline", func(): invite = {}; _refresh(), h, true, "exit")
 	if toast != "":
 		_label(toast, 22, Color(1, 0.5, 0.4))
 		toast = ""
@@ -346,7 +346,7 @@ func _on_camp_tap(e: InputEvent) -> void:
 	_invite_after = n
 	NFUI.click()
 	Net.send({"t": "create", "map": "forest"})
-	toast = "أسوي غرفة وأدعو %s..." % n
+	toast = "Making a room and inviting %s..." % n
 	_refresh()
 
 ## The opening shot: the poster over everything, thinning out as the camera comes down.
@@ -410,12 +410,12 @@ func _draw_card() -> void:
 	NFUI.scratches(card, s, 7331, false)
 	NFIcons.portrait(card, Vector2(s.x - 32.0, 36.0), 42.0, NFUI.char_col(_my_char()))
 	card.draw_arc(Vector2(s.x - 32.0, 36.0), 24.0, 0, TAU, 28, Color(0.8, 0.2, 0.2, 0.9), 2.0)
-	var nm := Net.username if Net.username != "" else "لاعب"
+	var nm := Net.username if Net.username != "" else "Player"
 	card.draw_string(f, Vector2(12.0, 30.0), nm, HORIZONTAL_ALIGNMENT_RIGHT, s.x - 70.0, 24, Color(0.95, 0.93, 0.9))
-	card.draw_string(f, Vector2(12.0, 54.0), "المستوى %d  •  %s" % [Net.level(), Net.title()], HORIZONTAL_ALIGNMENT_RIGHT, s.x - 70.0, 18, Color(1, 0.85, 0.45))
+	card.draw_string(f, Vector2(12.0, 54.0), "Level %d  •  %s" % [Net.level(), Net.title()], HORIZONTAL_ALIGNMENT_RIGHT, s.x - 70.0, 18, Color(1, 0.85, 0.45))
 	var br := Rect2(Vector2(12.0, 64.0), Vector2(s.x - 70.0, 12.0))
 	NFUI.bar(card, br, Net.level_progress(), Color(0.8, 0.12, 0.12), Color(1, 1, 1, 0.3))
-	card.draw_string(f, Vector2(12.0, 90.0), "خبرة %d/%d" % [Net.xp, Net.level_xp(Net.level() + 1)],
+	card.draw_string(f, Vector2(12.0, 90.0), "XP %d/%d" % [Net.xp, Net.level_xp(Net.level() + 1)],
 		HORIZONTAL_ALIGNMENT_RIGHT, s.x - 70.0, 15, Color(0.7, 0.7, 0.72))
 	NFIcons.draw(card, "out", Vector2(26.0, 104.0), 18.0, Color(0.5, 0.85, 1.0))
 	card.draw_string(f, Vector2(38.0, 110.0), "%d" % Net.escapes, HORIZONTAL_ALIGNMENT_LEFT, 60.0, 17, Color(0.6, 0.9, 1.0))
@@ -424,15 +424,15 @@ func _draw_card() -> void:
 	var lr: Dictionary = Net.last_round # the last round, on the same line
 	var res := str(lr.get("res", ""))
 	if res != "":
-		var line := "آخر جولة: %s +%d" % [{"escaped": "هربت", "killer": "قاتل"}.get(res, "ما نجوت"), int(lr.get("score", 0))]
+		var line := "Last round: %s +%d" % [{"escaped": "escaped", "killer": "killer"}.get(res, "You didn't make it"), int(lr.get("score", 0))]
 		var lc := Color(0.6, 0.9, 1.0) if res == "escaped" else (Color(1.0, 0.55, 0.5) if res == "killer" else Color(0.9, 0.5, 0.45))
 		card.draw_string(f, Vector2(160.0, 110.0), line, HORIZONTAL_ALIGNMENT_RIGHT, s.x - 172.0, 15, lc)
 
 # ---------- pages ----------
 func _page_name() -> void:
-	_label("اختر اسمك (يوزر) — أصدقاؤك يضيفونك فيه")
-	_edit("name", "الاسم بالإنجليزي أو العربي بدون مسافات")
-	_button("متابعة", func():
+	_label("Choose your username — friends add you with it")
+	_edit("name", "English or Arabic, no spaces")
+	_button("Continue", func():
 		var n: String = typed.get("name", "").strip_edges()
 		if n.length() < 2 or n.length() > 16 or n.contains(" "):
 			toast = ERRORS.bad_name
@@ -440,27 +440,27 @@ func _page_name() -> void:
 			return
 		Net.configure(n, "")
 		open("main"), null, true, "out")
-	_button("النمط التجريبي (بدون نت)", func(): chars_from = "offline"; open("offline"), null, true, "star")
+	_button("Trial mode (offline)", func(): chars_from = "offline"; open("offline"), null, true, "star")
 
 func _page_main() -> void:
 	_label(_status(), 20, Color(0.6, 0.9, 0.6) if Net.state == "online" else Color(0.8, 0.8, 0.8))
 	var dy: Dictionary = Net.daily() # today's challenge, and a line that changes with the date
-	_label(("✓ تحدي اليوم: %s" if bool(dy.done) else "تحدي اليوم: %s") % str(dy.text) + "  (%d/%d)" % [int(dy.have), int(dy.need)],
+	_label(("✓ Daily challenge: %s" if bool(dy.done) else "Daily challenge: %s") % str(dy.text) + "  (%d/%d)" % [int(dy.have), int(dy.need)],
 		19, Color(0.55, 1.0, 0.6) if bool(dy.done) else Color(1, 0.85, 0.45))
 	_label("«%s»" % str(dy.whisper), 16, Color(0.72, 0.72, 0.76))
 	var on := Net.state == "online"
-	_button("إنشاء غرفة", func(): Net.send({"t": "create", "map": "forest"}), null, on, "star")
+	_button("Create room", func(): Net.send({"t": "create", "map": "forest"}), null, on, "star")
 	var h := _row()
-	_edit("code", "كود الغرفة", h)
-	_button("دخول", func(): Net.send({"t": "join", "code": typed.get("code", "")}), h, on, "out")
-	_button("الأصدقاء (%d)" % Net.friends.size(), func(): open("friends"), null, true, "chat")
-	_button("النمط التجريبي (بدون نت)", func(): chars_from = "offline"; open("offline"), null, true, "star")
-	_button("الصوت والإعدادات", func(): Gfx.open_settings(), null, true, "gear")
-	_button("طريقة اللعب", func(): open("help"), null, true, "note")
+	_edit("code", "Room code", h)
+	_button("Join", func(): Net.send({"t": "join", "code": typed.get("code", "")}), h, on, "out")
+	_button("Friends (%d)" % Net.friends.size(), func(): open("friends"), null, true, "chat")
+	_button("Trial mode (offline)", func(): chars_from = "offline"; open("offline"), null, true, "star")
+	_button("Sound and settings", func(): Gfx.open_settings(), null, true, "gear")
+	_button("How to play", func(): open("help"), null, true, "note")
 	if Dev.unlocked: # this phone has the hidden tools: straight to them
-		var db := _button("أدوات المطوّر", func(): open("dev"), null, true, "gear")
+		var db := _button("Developer tools", func(): open("dev"), null, true, "gear")
 		db.modulate = Color(1, 0.85, 0.5)
-	_button("الاسم والسيرفر", func():
+	_button("Name and server", func():
 		typed["name"] = Net.username; typed["url"] = Net.url; open("settings"), null, true, "gear")
 	_emote_row()
 
@@ -469,44 +469,44 @@ var help_tab := "survivor"
 var board_by := "esc" # the friends' board: sorted by escapes, kills or level
 const HELP := {
 	"survivor": [
-		["wrench", "صلّح المولدات", "5 مولدات تشغّل البوابات. انتبه لاختبار المهارة: الغلطة تفجّر المولد والقاتل يسمعها."],
-		["out", "اهرب من البوابة", "لما تشتغل البوابات يطلع لك سهم أخضر لأقرب بوابة. اطلع قبل لا ينزل القمر (دقيقتين)."],
-		["car", "سيارة الهروب", "ورا كل بوابة سيارة وحدة للكل: أول واحد يركب يسوق والباقي يركبون معاه. البوابة الأخيرة بعد 600 م وعندكم دقيقتين. إذا صدمتكم القاتلة بسيارتها أو خلص الوقت، تطيحون على الطريق وتعلّقكم."],
-		["rescue", "أنقذ ربعك", "المعلّق على الخطاف شيلوه سوا: كل واحد يمسك معاك يسرّع الإنقاذ. أسماء ربعك فوق روسهم وتشوفونهم ورا الجدران."],
-		["gun", "وضع السلاح", "إذا شغّله صاحب الغرفة: معاك مسدس صاعق فيه 3 طلقات. وجّه الكاميرا عليها وهي لين 22 م — الطلقة تدوّخها 3 ثواني وتطيّح اللي شايلته."],
-		["heart", "انتبه لنبضك", "دقات القلب والحواف الحمراء تعني القاتل قريب. القوس الأحمر يوريك من وين انضربت."],
-		["search", "تخبّى", "الخزانات تخبيك، بس القاتل يقدر يفتّشها ويطلّعك."],
-		["plank", "الطبليات والشبابيك", "طيّح الطبلية على القاتل وهو وراك يندهش، واقفز من الشبابيك عشان تبعد."],
-		["chat", "الإشارات", "زر الإشارة يرسل لربعك بس: تعال هني، القاتل هني، قاعد أصلّح."],
-		["hand", "الفتحة", "إذا بقيت آخر واحد، دوّر الفتحة واهرب منها."],
-		["star", "قدرة شخصيتك", "كل ناجي له قدرة: تشوفها تحت اسمه لما تختار الشخصية، وتحت الخريطة وقت اللعب."],
-		["nitro", "النيترو", "سواق سيارة الهروب عنده نيترو مرة وحدة: يطير السيارة 3 ثواني ونص. استخدمه لما تكون القاتلة وراكم."],
-		["trap", "الفخاخ", "القاتلة تحط فخاخ على الأرض: اللي يدوس فخ يمسكه 4 ثواني. إذا شفته (يلمع شوي) فكّه من زر التفاعل."],
+		["wrench", "Repair generators", "5 generators power the gates. Watch the skill check: a mistake blows the generator and the killer hears it."],
+		["out", "Escape through a gate", "When the gates have power a green arrow points to the nearest one. Get out before the moon falls (two minutes)."],
+		["car", "The escape car", "Behind each gate there's one car for everyone: the first one in drives and the rest ride along. The last gate is 600 m away and you have two minutes. If the killer rams you with her car or time runs out, you're down on the road and she hooks you."],
+		["rescue", "Save your team", "Lift someone off the hook together: everyone who helps makes the rescue faster. Your team's names are over their heads and you can see them through walls."],
+		["gun", "Gun mode", "If the host turns it on: you carry a stun pistol with 3 shots. Aim the camera at her within 22 m — a shot stuns her for 3 seconds and she drops whoever she's carrying."],
+		["heart", "Watch your heartbeat", "A heartbeat and red edges mean the killer is close. The red arc shows where a hit came from."],
+		["search", "Hide", "Lockers hide you, but the killer can search them and pull you out."],
+		["plank", "Pallets and windows", "Drop a pallet on the killer when she's behind you to stun her, and vault through windows to get away."],
+		["chat", "Signals", "The signal button only reaches your team: Come here, Killer here, I'm repairing."],
+		["hand", "The hatch", "If you're the last one left, find the hatch and escape through it."],
+		["star", "Your character's perk", "Every survivor has a perk: you see it under their name when you pick the character, and under the map while you play."],
+		["nitro", "Nitro", "The escape car's driver has one nitro: the car flies for three and a half seconds. Use it when the killer is behind you."],
+		["trap", "Traps", "The killer lays traps on the ground: stepping in one holds you for 4 seconds. If you see one (it glints a little), disarm it with the use button."],
 	],
 	"killer": [
-		["attack", "اضرب", "الضربة الأولى تجرح والثانية تطيّح. بعد كل ضربة لازم تنتظر شوي."],
-		["carry", "شيل وعلّق", "شيل الطايح وودّه لأقرب خطاف. إذا انضربت بطبلية يطيح منك."],
-		["power", "الاندفاع", "زر القوة يسرّعك فترة قصيرة، وبعدها يحتاج وقت يرجع."],
-		["car", "السيارة", "اركب أي سيارة واقفة. دوّس الناجين، وحط الطايح بالكرسي اللي جنبك وودّه للخطاف. فيها ثلاث غيارات (لين 90 كم/س) وراديو."],
-		["out", "الطريق الطويل", "إذا ركبوا سيارة الهروب، الحقهم بسيارتك (الغيار الثاني والثالث أسرع منهم) واصدمهم قبل البوابة الأخيرة. يطيحون على الطريق، وعلى طول الطريق خطاطيف."],
-		["search", "فتّش الخزانات", "الناجين يتخبّون فيها: افتحها وطلّعهم."],
-		["plank", "اكسر الطبليات", "الطبلية الطايحة تسد الطريق: اكسرها."],
-		["door", "الأبواب", "سكّر الأبواب وراك. اللي بعيد يسمع صوتها."],
-		["trap", "الفخاخ", "زر الفخ يحط فخ تحت رجولك (4 بالكثير، الخامس ياخذ مكان أقدمهم). اللي يدوسه ينمسك 4 ثواني ويطلع لك سهم له."],
-		["spike", "المسامير", "على طريق الهروب نفس الزر يحط مسامير بعرض نص الطريق: إذا مرّت عليها سيارتهم تنفجر كفراتها وتبطّي."],
+		["attack", "Strike", "The first hit wounds, the second puts them down. After each hit you have to wait a moment."],
+		["carry", "Carry and hook", "Pick up someone who's down and take them to the nearest hook. A pallet to the face makes you drop them."],
+		["power", "Rush", "The power button speeds you up for a moment, then it needs time to come back."],
+		["car", "The car", "Get in any parked car. Run survivors down, put the downed one in the seat next to you and take them to a hook. Three gears (up to 90 km/h) and a radio."],
+		["out", "The long road", "If they get in the escape car, chase them in yours (second and third gear are faster than them) and ram them before the last gate. They fall on the road, and there are hooks all along it."],
+		["search", "Search lockers", "Survivors hide in them: open them and pull them out."],
+		["plank", "Break pallets", "A dropped pallet blocks the way: break it."],
+		["door", "Doors", "Shut doors behind you. Anyone far away hears them."],
+		["trap", "Traps", "The trap button lays a trap at your feet (4 at most, a fifth replaces the oldest). Whoever steps in it is held for 4 seconds and you get an arrow to them."],
+		["spike", "Spikes", "On the escape road the same button lays spikes across half the road: if their car drives over them its tyres burst and it slows down."],
 	],
 }
 
 func _page_help() -> void:
-	_label("طريقة اللعب", 30, Color(0.95, 0.25, 0.22))
+	_label("How to play", 30, Color(0.95, 0.25, 0.22))
 	var tabs := _row()
-	for t in [["survivor", "الناجين", "rescue"], ["killer", "القاتل", "attack"]]:
+	for t in [["survivor", "Survivors", "rescue"], ["killer", "The Killer", "attack"]]:
 		var b := _button(str(t[1]), func(): help_tab = str(t[0]); _refresh(), tabs, true, str(t[2]))
 		if help_tab == str(t[0]): b.modulate = Color(1, 0.75, 0.55)
 	for it in HELP[help_tab]:
 		_tip(str(it[0]), str(it[1]), str(it[2]))
-	_label("الخيول: \"Horses\" by vinish.dev — CC BY 4.0", 14, Color(0.6, 0.6, 0.62)) # their licence asks for the credit
-	_button("رجوع", func(): open("main"), null, true, "exit")
+	_label("Horses: \"Horses\" by vinish.dev — CC BY 4.0", 14, Color(0.6, 0.6, 0.62)) # their licence asks for the credit
+	_button("Back", func(): open("main"), null, true, "exit")
 
 func _tip(icon: String, title: String, text: String) -> void:
 	var h := _row()
@@ -534,15 +534,15 @@ func _tip(icon: String, title: String, text: String) -> void:
 	h.add_child(pic)
 
 func _page_settings() -> void:
-	_label("الاسم")
-	_edit("name", "الاسم")
-	_label("رابط السيرفر")
+	_label("Name")
+	_edit("name", "Name")
+	_label("Server address")
 	_edit("url", "wss://...")
-	_button("حفظ", func():
+	_button("Save", func():
 		Net.configure(typed.get("name", Net.username), typed.get("url", Net.url)); open("main"), null, true, "star")
-	_button("الصوت والجرافيكس", func(): Gfx.open_settings(), null, true, "gear")
-	_button("أزرار التحكم (مكان وحجم)", _open_editor, null, true, "gear")
-	_button("رجوع", func(): open("main"), null, true, "exit")
+	_button("Sound and graphics", func(): Gfx.open_settings(), null, true, "gear")
+	_button("Button layout (position and size)", _open_editor, null, true, "gear")
+	_button("Back", func(): open("main"), null, true, "exit")
 
 func _open_editor() -> void:
 	if _editor and is_instance_valid(_editor): return
@@ -552,15 +552,15 @@ func _open_editor() -> void:
 	add_child(_editor)
 
 func _page_friends() -> void:
-	_label("الأصدقاء")
+	_label("Friends")
 	var h := _row()
-	_edit("friend", "يوزر صديقك", h)
-	_button("إضافة", func():
+	_edit("friend", "Friend's username", h)
+	_button("Add", func():
 		Net.add_friend(typed.get("friend", "")); typed["friend"] = ""; _refresh(), h, true, "chat")
-	if Net.friends.is_empty(): _label("ما أضفت أحد للحين", 20, Color(0.7, 0.7, 0.7))
+	if Net.friends.is_empty(): _label("You haven't added anyone yet", 20, Color(0.7, 0.7, 0.7))
 	var top := _row()
-	_button("ملفي", func(): prof_name = ""; open("profile"), top, true, "star")
-	_button("الترتيب وسجل جولاتي", func(): open("board"), top, true, "star")
+	_button("My profile", func(): prof_name = ""; open("profile"), top, true, "star")
+	_button("Rankings and my rounds", func(): open("board"), top, true, "star")
 	# online first, then by name
 	var sorted: Array = Net.friends.duplicate()
 	sorted.sort_custom(func(a, b) -> bool:
@@ -577,36 +577,36 @@ func _page_friends() -> void:
 		nb.add_theme_color_override("font_color", sc)
 		nb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		if stt != "game": # in the menus, in a room or offline (the invite waits for him): ask him over
-			var b := _button("دعوة", func(): _invite(name), r, true, "chat")
+			var b := _button("Invite", func(): _invite(name), r, true, "chat")
 			b.size_flags_horizontal = Control.SIZE_SHRINK_END
 		if Dev.unlocked: # the owner's phone: open or shut the hidden character for this friend
 			var has := Net.gifted.has(name.to_lower())
-			var g := _button("اقفل السرية" if has else "افتح السرية", func():
+			var g := _button("Lock secret" if has else "Unlock secret", func():
 				Net.gift(name, not has)
-				toast = ("انقفلت عن " + name) if has else ("كود %s: %s — يكتبه بصفحة الأصدقاء عنده" % [name, Net.secret_code(name)])
+				toast = ("Locked for " + name) if has else ("%s's code: %s — they type it on their friends page" % [name, Net.secret_code(name)])
 				_refresh(), r, true, "star")
 			g.size_flags_horizontal = Control.SIZE_SHRINK_END
 			if has: g.modulate = Color(1, 0.75, 0.3)
-		var d := _button("حذف", func(): Net.remove_friend(name), r, true, "exit")
+		var d := _button("Remove", func(): Net.remove_friend(name), r, true, "exit")
 		d.size_flags_horizontal = Control.SIZE_SHRINK_END
 	if not Net.has_secret(): # a friend with a code from the owner types it here
 		var hc := _row()
-		_edit("code", "كود الشخصية السرية", hc)
-		_button("تفعيل", func():
-			toast = "انفتحت الشخصية السرية: الفالكيري القرمزية" if Net.redeem(typed.get("code", "")) else "الكود غلط"
+		_edit("code", "Secret character code", hc)
+		_button("Activate", func():
+			toast = "Secret character unlocked: Crimson Valkyrie" if Net.redeem(typed.get("code", "")) else "Wrong code"
 			typed["code"] = ""; _refresh(), hc, true, "star")
-	_button("رجوع", func(): open("lobby" if Net.in_room() else "main"), null, true, "exit")
+	_button("Back", func(): open("lobby" if Net.in_room() else "main"), null, true, "exit")
 
 ## Ask a friend over: to my room, or to a new one if I have none. An offline friend gets it when he
 ## comes online (the server keeps it for 20 minutes while the room is open).
 func _invite(name: String) -> void:
 	if Net.in_room():
 		Net.send({"t": "invite", "to": name})
-		toast = ("انرسلت الدعوة لـ" + name) if Net.is_online(name) else ""
+		toast = ("Invite sent to " + name) if Net.is_online(name) else ""
 	else:
 		_invite_after = name
 		Net.send({"t": "create", "map": "forest"})
-		toast = "أسوي غرفة وأدعو %s..." % name
+		toast = "Making a room and inviting %s..." % name
 	_refresh()
 
 ## A player's profile: portrait in their character's colour, name, where they are now, level and
@@ -628,43 +628,43 @@ func _page_profile() -> void:
 		card.draw_arc(Vector2(cx, 70), 64, 0, TAU, 48, ring, 4.0, true))
 	box.add_child(card)
 	_label(who, 34, Color(1, 0.9, 0.7))
-	_label("أنت" if mine else Net.status_text(who), 20, Color(0.7, 0.9, 0.7) if mine or Net.is_online(who) else Color(0.65, 0.65, 0.68))
+	_label("You" if mine else Net.status_text(who), 20, Color(0.7, 0.9, 0.7) if mine or Net.is_online(who) else Color(0.65, 0.65, 0.68))
 	if row.is_empty() or (not mine and not row.has("lv")):
-		_label("ما وصلتنا أرقامه للحين — تبان أول ما يلعب جولة وهو متصل", 18, Color(0.7, 0.7, 0.72))
+		_label("No numbers for them yet — they show after they play a round online", 18, Color(0.7, 0.7, 0.72))
 	else:
 		var lv := int(row.get("lv", 0))
-		_label("المستوى %d%s" % [lv, ("  •  " + Net.title()) if mine else ""], 22, Color(1, 0.82, 0.45))
-		if ch != "": _label("شخصيته: %s" % CHARS.get(ch, ch), 20, col.lightened(0.3))
-		_label("هروب %d  •  قتل %d  •  جولات %d" % [int(row.get("esc", 0)), int(row.get("kills", 0)), int(row.get("rounds", 0))], 22, Color(0.88, 0.9, 0.95))
+		_label("Level %d%s" % [lv, ("  •  " + Net.title()) if mine else ""], 22, Color(1, 0.82, 0.45))
+		if ch != "": _label("Character: %s" % CHARS.get(ch, ch), 20, col.lightened(0.3))
+		_label("Escapes %d  •  Kills %d  •  Rounds %d" % [int(row.get("esc", 0)), int(row.get("kills", 0)), int(row.get("rounds", 0))], 22, Color(0.88, 0.9, 0.95))
 		var b := str(row.get("bio", ""))
 		if b != "" and not mine: _label("«%s»" % b, 20, Color(0.85, 0.85, 0.95))
 	if mine:
 		var h := _row()
-		var e := _edit("bio", "سطر عنك (يشوفه ربعك)", h)
+		var e := _edit("bio", "A line about you (your friends see it)", h)
 		if not typed.has("bio"): e.text = Net.bio
 		e.max_length = 60
-		_button("حفظ", func():
+		_button("Save", func():
 			Net.set_bio(str(typed.get("bio", Net.bio)))
 			typed.erase("bio")
-			toast = "انحفظ"
+			toast = "Saved"
 			_refresh(), h, true, "star")
 	else:
 		var h2 := _row()
 		var known := false
 		for f in Net.friends: known = known or str(f).to_lower() == who.to_lower()
 		if known:
-			if Net.status_of(who) != "game": _button("دعوة", func(): _invite(who), h2, true, "chat")
-			_button("حذف", func(): Net.remove_friend(who); open("friends"), h2, true, "exit")
-		else: _button("أضفه صديق", func(): Net.add_friend(who); _refresh(), h2, true, "chat")
-	_button("رجوع", func(): open("friends"), null, true, "exit")
+			if Net.status_of(who) != "game": _button("Invite", func(): _invite(who), h2, true, "chat")
+			_button("Remove", func(): Net.remove_friend(who); open("friends"), h2, true, "exit")
+		else: _button("Add as friend", func(): Net.add_friend(who); _refresh(), h2, true, "chat")
+	_button("Back", func(): open("friends"), null, true, "exit")
 
 ## The friends' board (me and every friend the server has numbers for, best first) and my own
 ## last rounds. Numbers come from each phone; a friend who has not been online since the server
 ## started shows dashes until he is.
 func _page_board() -> void:
-	_label("الترتيب بين الربع", 30, Color(1, 0.82, 0.45))
+	_label("Rankings among friends", 30, Color(1, 0.82, 0.45))
 	var tabs := _row()
-	for t in [["esc", "الهروب", "out"], ["kills", "القتل", "skull"], ["lv", "المستوى", "star"]]:
+	for t in [["esc", "Escapes", "out"], ["kills", "Kills", "skull"], ["lv", "Level", "star"]]:
 		var b := _button(str(t[1]), func(): board_by = str(t[0]); _refresh(), tabs, true, str(t[2]))
 		if board_by == str(t[0]): b.modulate = Color(1, 0.75, 0.3)
 	var rows := Net.board(board_by)
@@ -674,18 +674,18 @@ func _page_board() -> void:
 		var me: bool = str(row.get("name", "")).to_lower() == Net.username.to_lower()
 		var none: bool = row.get("none", false)
 		var medal: String = ("★%d" % place) if place <= 3 and not none else "%d." % place
-		var line := "%s  %s   —   هروب %s  •  قتل %s  •  مستوى %s  •  جولات %s" % [medal, str(row.get("name", "")),
+		var line := "%s  %s   —   Escapes %s  •  Kills %s  •  Level %s  •  Rounds %s" % [medal, str(row.get("name", "")),
 			"-" if none else str(row.get("esc", 0)), "-" if none else str(row.get("kills", 0)),
 			"-" if none else str(row.get("lv", 0)), "-" if none else str(row.get("rounds", 0))]
 		_label(line, 20, Color(1, 0.85, 0.5) if me else (Color(0.55, 0.55, 0.58) if none else Color(0.88, 0.9, 0.95)))
-	_label("آخر جولاتي", 24, Color(0.95, 0.3, 0.25))
-	if Net.history.is_empty(): _label("ما لعبت جولة للحين", 18, Color(0.7, 0.7, 0.7))
+	_label("My last rounds", 24, Color(0.95, 0.3, 0.25))
+	if Net.history.is_empty(): _label("You haven't played a round yet", 18, Color(0.7, 0.7, 0.7))
 	for hrow in Net.history.slice(0, 8):
 		var res := str(hrow.get("res", ""))
-		var what: String = str({"escaped": "هربت", "dead": "متّ", "killer": "قاتلة — قتلت %d" % int(hrow.get("kills", 0))}.get(res, res))
+		var what: String = str({"escaped": "escaped", "dead": "You died", "killer": "Killer — %d kills" % int(hrow.get("kills", 0))}.get(res, res))
 		_label("%s   %s   %s   +%d" % [str(hrow.get("d", "")), str(MAPS.get(str(hrow.get("map", "")), hrow.get("map", ""))), what, int(hrow.get("score", 0))],
 			18, Color(0.5, 1, 0.6) if res == "escaped" else (Color(1, 0.55, 0.5) if res == "dead" else Color(1, 0.8, 0.5)))
-	_button("رجوع", func(): open("friends"), null, true, "exit")
+	_button("Back", func(): open("friends"), null, true, "exit")
 
 ## The three campfire emotes: played here at once, and relayed to the room if I am in one.
 func _emote_row() -> void:
@@ -707,11 +707,11 @@ func _page_lobby() -> void:
 		return
 	var host := str(r.host) == Net.username
 	var code := str(r.code)
-	_label("كود الغرفة", 20, Color(0.75, 0.75, 0.78))
+	_label("Room code", 20, Color(0.75, 0.75, 0.78))
 	_label(code, 46, Color(1, 0.85, 0.4))
-	_button("انسخ الكود وأرسله لربعك", func():
+	_button("Copy the code and send it to your friends", func():
 		DisplayServer.clipboard_set(code)
-		toast = "انتسخ الكود %s" % code
+		toast = "Code %s copied" % code
 		_refresh(), null, true, "chat")
 	if host:
 		var h := _row()
@@ -723,86 +723,86 @@ func _page_lobby() -> void:
 		var ht := _row()
 		for id in THEMES:
 			if id == "sunset": ht = _row() # a game mode of its own: its own row
-			var b2 := _button(("وضع: " if id == "sunset" else "") + THEMES[id], func(): Net.send({"t": "set", "theme": id}), ht, true, THEME_ICON[id])
+			var b2 := _button(("Mode: " if id == "sunset" else "") + THEMES[id], func(): Net.send({"t": "set", "theme": id}), ht, true, THEME_ICON[id])
 			b2.add_theme_font_size_override("font_size", 20)
 			if str(r.get("theme", "normal")) == id: b2.modulate = Color(1, 0.75, 0.3)
 		var gon: bool = r.get("gun", false)
-		var bg := _button("وضع السلاح: %s" % ("شغّال — مسدس صاعق للناجين" if gon else "مطفي"), func(): Net.send({"t": "set", "gun": not gon}), null, true, "gun")
+		var bg := _button("Gun mode: %s" % ("On — stun pistol for survivors" if gon else "Off"), func(): Net.send({"t": "set", "gun": not gon}), null, true, "gun")
 		if gon: bg.modulate = Color(0.6, 0.9, 1.0)
 		var son: bool = r.get("sniper", false)
-		var bs := _button("وضع القنّاص: %s" % ("شغّال — مدينة الكويت، بوابة وحدة، القاتلة بالسطح" if son else "مطفي"), func(): Net.send({"t": "set", "sniper": not son}), null, true, "gun")
+		var bs := _button("Sniper mode: %s" % ("On — Kuwait City, one gate, the killer on the roof" if son else "Off"), func(): Net.send({"t": "set", "sniper": not son}), null, true, "gun")
 		if son: bs.modulate = Color(1.0, 0.55, 0.45)
 	else:
-		_label("الخريطة: %s  •  الجو: %s%s" % [MAPS.get(str(r.map), str(r.map)), THEMES.get(str(r.get("theme", "normal")), "عادي"),
-			("  •  وضع السلاح" if r.get("gun", false) else "") + ("  •  وضع القنّاص" if r.get("sniper", false) else "")], 22)
+		_label("Map: %s  •  Weather: %s%s" % [MAPS.get(str(r.map), str(r.map)), THEMES.get(str(r.get("theme", "normal")), "Normal"),
+			("  •  Gun mode" if r.get("gun", false) else "") + ("  •  Sniper mode" if r.get("sniper", false) else "")], 22)
 	for p in r.players:
 		var txt := "%s%s — %s" % ["★ " if str(p.name) == str(r.host) else "", str(p.name), CHARS.get(str(p.char), str(p.char))]
 		_label(txt, 20, Color(1, 0.4, 0.4) if str(p.role) == "killer" else Color(0.7, 0.85, 1))
 	var me := _me()
 	var h2 := _row()
-	var bk := _button("ألعب قاتل", func(): Net.send({"t": "set", "role": "killer"}), h2, true, "skull")
-	var bs := _button("ألعب ناجي", func(): Net.send({"t": "set", "role": "survivor"}), h2, true, "shoe")
+	var bk := _button("Play killer", func(): Net.send({"t": "set", "role": "killer"}), h2, true, "skull")
+	var bs := _button("Play survivor", func(): Net.send({"t": "set", "role": "survivor"}), h2, true, "shoe")
 	if str(me.get("role", "")) == "killer": bk.modulate = Color(1, 0.75, 0.3)
 	else: bs.modulate = Color(1, 0.75, 0.3)
 	if str(me.get("role", "")) == "survivor":
-		_button("اختر الشخصية — %s" % CHARS.get(str(me.get("char", "")), ""), func():
+		_button("Choose character — %s" % CHARS.get(str(me.get("char", "")), ""), func():
 			chars_from = "lobby"; open("chars"), null, true, "star")
 	_emote_row()
-	_button("دعوة الأصدقاء", func(): open("friends"), null, true, "chat")
-	if host: _button("ابدأ اللعب", func(): Net.send({"t": "start"}), null, true, "out")
-	else: _label("بانتظار صاحب الغرفة يبدأ...", 20, Color(0.7, 0.7, 0.7))
-	_button("خروج من الغرفة", func(): Net.send({"t": "leave"}), null, true, "exit")
+	_button("Invite friends", func(): open("friends"), null, true, "chat")
+	if host: _button("Start", func(): Net.send({"t": "start"}), null, true, "out")
+	else: _label("Waiting for the host to start...", 20, Color(0.7, 0.7, 0.7))
+	_button("Leave the room", func(): Net.send({"t": "leave"}), null, true, "exit")
 
 ## Character select: the chosen one is standing in front of the fire; swipe the camp to change.
 func _page_chars() -> void:
 	var list := _char_list()
 	var id := _my_char()
 	var i := list.find(id)
-	_label("اختر شخصيتك", 26, Color(1, 0.85, 0.45))
+	_label("Choose your character", 26, Color(1, 0.85, 0.45))
 	_label(str(CHARS.get(id, id)), 40, NFUI.char_col(id))
 	var pk: String = Rules.PERK.get(id, "")
 	var survivor := not id.begins_with("killer")
 	if survivor and Net.perk == "aid": pk = "aid" # «المسعف», picked instead of the character's own
 	if pk != "": # what this character can do that the others cannot
 		var info: Array = Rules.PERK_INFO[pk]
-		_label("القدرة: %s — %s" % [info[0], info[1]], 19, Color(1.0, 0.82, 0.45))
+		_label("Perk: %s — %s" % [info[0], info[1]], 19, Color(1.0, 0.82, 0.45))
 	if survivor: # pick a perk: the character's own, or «المسعف» with the first-aid kit in hand
 		var own: String = Rules.PERK.get(id, "")
-		var own_name: String = Rules.PERK_INFO[own][0] if Rules.PERK_INFO.has(own) else "بدون"
+		var own_name: String = Rules.PERK_INFO[own][0] if Rules.PERK_INFO.has(own) else "None"
 		var ph := _row()
-		var b1 := _button("قدرة الشخصية: %s" % own_name, func(): _pick_perk(""), ph, true, "star")
-		var b2 := _button("المسعف (شنطة الإسعاف)", func(): _pick_perk("aid"), ph, true, "heal")
+		var b1 := _button("Character perk: %s" % own_name, func(): _pick_perk(""), ph, true, "star")
+		var b2 := _button("Medic (first-aid kit)", func(): _pick_perk("aid"), ph, true, "heal")
 		(b2 if Net.perk == "aid" else b1).modulate = Color(0.55, 1.0, 0.6)
-	_label("%d/%d  •  اسحب الشاشة يمين أو يسار" % [maxi(i, 0) + 1, list.size()], 18, Color(0.7, 0.7, 0.72))
+	_label("%d/%d  •  swipe left or right" % [maxi(i, 0) + 1, list.size()], 18, Color(0.7, 0.7, 0.72))
 	var h := _row()
-	_button("‹ السابق", func(): _step(-1), h, true, "next")
-	_button("التالي ›", func(): _step(1), h, true, "next")
-	_button("تم", func(): open(chars_from if chars_from != "main" else "main"), null, true, "star")
+	_button("‹ Previous", func(): _step(-1), h, true, "next")
+	_button("Next ›", func(): _step(1), h, true, "next")
+	_button("Done", func(): open(chars_from if chars_from != "main" else "main"), null, true, "star")
 
 ## Hidden developer tools. Only reachable on a phone that has unlocked them.
 func _page_dev() -> void:
 	if not Dev.unlocked: # fifteen taps got here: the passkey opens the tools
-		_label("أدوات المطوّر", 30, Color(1, 0.85, 0.4))
+		_label("Developer tools", 30, Color(1, 0.85, 0.4))
 		var hk := _row()
-		var e := _edit("devkey", "الرمز", hk)
+		var e := _edit("devkey", "Passkey", hk)
 		e.secret = true
 		e.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_NUMBER
-		_button("فتح", func():
+		_button("Open", func():
 			var ok := Dev.try_key(typed.get("devkey", ""))
 			typed["devkey"] = ""
-			if not ok: toast = "الرمز غلط"
+			if not ok: toast = "Wrong passkey"
 			_refresh(), hk, true, "star")
-		_button("رجوع", func(): typed["devkey"] = ""; open("main"), null, true, "exit")
+		_button("Back", func(): typed["devkey"] = ""; open("main"), null, true, "exit")
 		return
-	_label("أدوات المطوّر", 30, Color(1, 0.85, 0.4))
-	_label("تظهر على جهازك فقط", 18, Color(0.7, 0.7, 0.72))
-	var van := _button("زر Vanish بالجولة: %s" % ("شغّال" if Dev.vanish_tool else "مطفي"), func():
+	_label("Developer tools", 30, Color(1, 0.85, 0.4))
+	_label("Only shown on your phone", 18, Color(0.7, 0.7, 0.72))
+	var van := _button("Vanish button in rounds: %s" % ("On" if Dev.vanish_tool else "Off"), func():
 		Dev.set_vanish_tool(not Dev.vanish_tool); _refresh(), null, true, "ghost")
 	if Dev.vanish_tool: van.modulate = Color(1, 0.75, 0.3)
-	var esp := _button("رؤية اللاعبين: %s" % ("شغّال" if Dev.esp else "مطفي"), func():
+	var esp := _button("See players: %s" % ("On" if Dev.esp else "Off"), func():
 		Dev.set_esp(not Dev.esp); _refresh(), null, true, "next")
 	if Dev.esp: esp.modulate = Color(1, 0.75, 0.3)
-	_label("سرعة الحركة ×%.2f" % Dev.speed, 20, Color(0.85, 0.9, 1))
+	_label("Move speed x%.2f" % Dev.speed, 20, Color(0.85, 0.9, 1))
 	var sl := HSlider.new()
 	sl.min_value = 1.0; sl.max_value = 2.0; sl.step = 0.05
 	sl.custom_minimum_size = Vector2(0, 44)
@@ -810,12 +810,12 @@ func _page_dev() -> void:
 	sl.set_value_no_signal(Dev.speed)
 	sl.value_changed.connect(func(v: float): Dev.set_speed(v); _refresh())
 	box.add_child(sl)
-	_button("اقفل الأدوات (تحتاج الرمز مرة ثانية)", func(): Dev.lock(); open("main"), null, true, "skull")
-	_button("رجوع", func(): open("main"), null, true, "exit")
+	_button("Lock the tools (needs the passkey again)", func(): Dev.lock(); open("main"), null, true, "skull")
+	_button("Back", func(): open("main"), null, true, "exit")
 
 func _page_offline() -> void:
 	chars_from = "offline"
-	_label("النمط التجريبي — اختر الخريطة والجو والشخصية")
+	_label("Trial mode — pick the map, weather and character")
 	var h := _row()
 	var k := 0
 	for id in MAPS:
@@ -829,27 +829,27 @@ func _page_offline() -> void:
 	var ht := _row()
 	for id in THEMES:
 		if id == "sunset": ht = _row() # a game mode of its own: its own row
-		var b2 := _button(("وضع: " if id == "sunset" else "") + THEMES[id], func(): off_theme = id; NFLobby.last_theme = id; _weather_changed(); _refresh(), ht, true, THEME_ICON[id])
+		var b2 := _button(("Mode: " if id == "sunset" else "") + THEMES[id], func(): off_theme = id; NFLobby.last_theme = id; _weather_changed(); _refresh(), ht, true, THEME_ICON[id])
 		b2.add_theme_font_size_override("font_size", 20)
 		if off_theme == id: b2.modulate = Color(1, 0.75, 0.3)
-	_button("الشخصية — %s" % CHARS.get(off_char, off_char), func(): open("chars"), null, true, "star")
+	_button("Character — %s" % CHARS.get(off_char, off_char), func(): open("chars"), null, true, "star")
 	if not off_char.begins_with("killer"):
-		var bb := _button("قاتلة كمبيوتر: %s" % ("شغّالة" if off_bot else "طافية"), func(): off_bot = not off_bot; _refresh(), null, true, "skull")
+		var bb := _button("Computer killer: %s" % ("On" if off_bot else "Off"), func(): off_bot = not off_bot; _refresh(), null, true, "skull")
 		if off_bot: bb.modulate = Color(1, 0.6, 0.5)
-	var bgn := _button("وضع السلاح: %s" % ("شغّال — مسدس صاعق للناجين" if off_gun else "مطفي"), func(): off_gun = not off_gun; _refresh(), null, true, "gun")
+	var bgn := _button("Gun mode: %s" % ("On — stun pistol for survivors" if off_gun else "Off"), func(): off_gun = not off_gun; _refresh(), null, true, "gun")
 	if off_gun: bgn.modulate = Color(0.6, 0.9, 1.0)
 	var sn_toggle := func():
 		off_sniper = not off_sniper
 		if off_sniper: off_map = "kuwait"
 		_refresh()
-	var bsn := _button("وضع القنّاص: %s" % ("شغّال — مدينة الكويت، بوابة وحدة، القاتلة بالسطح" if off_sniper else "مطفي"), sn_toggle, null, true, "gun")
+	var bsn := _button("Sniper mode: %s" % ("On — Kuwait City, one gate, the killer on the roof" if off_sniper else "Off"), sn_toggle, null, true, "gun")
 	if off_sniper: bsn.modulate = Color(1.0, 0.55, 0.45)
-	_button("ابدأ", func():
+	_button("Start", func():
 		var n := Net.username if Net.username != "" else "Player"
 		var list := [{"name": n, "role": "killer" if off_char.begins_with("killer") else "survivor", "char": off_char, "perk": Net.perk, "slot": 0}]
 		# a practice dummy: a target for the killer, or a wounded teammate to heal
-		list.append({"name": "دمية", "role": "survivor", "char": "survivor1" if off_char != "survivor1" else "survivor2", "slot": 1, "dummy": true})
+		list.append({"name": "Dummy", "role": "survivor", "char": "survivor1" if off_char != "survivor1" else "survivor2", "slot": 1, "dummy": true})
 		if not off_char.begins_with("killer") and off_bot: # a computer killer hunting you
-			list.append({"name": "القاتلة", "role": "killer", "char": "killer", "slot": 2, "bot": true})
+			list.append({"name": "The Killer", "role": "killer", "char": "killer", "slot": 2, "bot": true})
 		start_game.emit({"map": off_map, "me": n, "offline": true, "theme": off_theme, "gun": off_gun, "sniper": off_sniper and off_map == "kuwait", "players": list}), null, true, "out")
-	_button("رجوع", func(): chars_from = "main"; open("main" if Net.username != "" else "name"), null, true, "exit")
+	_button("Back", func(): chars_from = "main"; open("main" if Net.username != "" else "name"), null, true, "exit")

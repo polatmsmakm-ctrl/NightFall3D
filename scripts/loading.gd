@@ -4,29 +4,29 @@ extends CanvasLayer
 ## of that map and a random tip. Everything is drawn, so it costs no textures.
 
 const TIPS := [
-	"القاتل يسمع المولد من 8 أمتار",
-	"لا تركض كثير — الركض يخلّي أثر أحمر يشوفه القاتل",
-	"اختبئ بالخزانة، بس خذ بالك… القاتل يفتّش الخزانات",
-	"خمس مولدات وتنفتح البوابات",
-	"اسقط الباب على القاتل ويتصعق وتهرب منه",
-	"صاحبك على الخطاف؟ طير له قبل لا يخلص وقته",
-	"أول مرة تنعلّق تقدر تفك نفسك إذا ضغطت بسرعة وبدون توقف",
-	"الكشاف يبيّن من بعيد — شغّله بحذر",
-	"إذا بقيت وحدك تنفتح لك فتحة هروب بمكان عشوائي",
-	"لما تنفتح البوابات عندك دقيقتين قبل القمر ينزل على الخريطة",
-	"دقات القلب معناها القاتل داخل ٢٤ متر منك",
-	"الحقيبة تعالجك مرة واحدة بس — خلّها للوقت الصعب",
-	"السوق يصير ظلام لما يدخله القاتل",
-	"الانحناء يخفّي صوت خطواتك",
-	"بعد البوابة امشِ للطريق لين آخره، هناك تطلع برّا",
-	"تصليح المولد يبي ضغطات بالوقت الصح، وإلا ينفجر ويسمعه القاتل",
-	"بالربع الخالي العجاج يغطي الرؤية — استغله واختفِ",
-	"بيوت الشعر فيها خزانات تختبئ فيها",
-	"الخيل والبعارين ما يأذونك، بس يشتتون نظر القاتل",
+	"The killer hears a generator from 8 metres away",
+	"Don't run too much — running leaves red marks the killer can see",
+	"Hide in a locker, but careful… the killer searches lockers",
+	"Five generators and the gates open",
+	"Drop a pallet on the killer to stun her and get away",
+	"Friend on the hook? Get there before their time runs out",
+	"On your first hook you can free yourself by tapping fast without stopping",
+	"The torch can be seen from far away — use it carefully",
+	"If you're the last one left, an escape hatch opens somewhere random",
+	"Once the gates open you have two minutes before the moon falls",
+	"A heartbeat means the killer is within 24 metres",
+	"The bag heals you only once — save it for a hard moment",
+	"The market goes dark when the killer walks in",
+	"Crouching hides the sound of your steps",
+	"After the gate, follow the road to its end — that's the way out",
+	"Repairing a generator needs well-timed taps, or it blows and the killer hears it",
+	"In the Empty Quarter the sandstorm hides you — use it",
+	"The bedouin tents have lockers to hide in",
+	"Horses and camels won't hurt you, but they distract the killer",
 ]
-const NAMES := {"forest": "الغابة", "village": "القرية المهجورة", "fareej": "الفريج", "rubkhali": "الربع الخالي",
-	"garage": "المواقف", "beach": "الشاطئ", "city": "City Life", "kuwait": "مدينة الكويت"}
-const THEME_NAMES := {"snow": "ثلج", "halloween": "هالوين"}
+const NAMES := {"forest": "The Forest", "village": "The Abandoned Village", "fareej": "The Fareej", "rubkhali": "The Empty Quarter",
+	"garage": "The Car Park", "beach": "The Beach", "city": "City Life", "kuwait": "Kuwait City"}
+const THEME_NAMES := {"snow": "Snow", "halloween": "Halloween"}
 
 var map_id := "forest"
 var theme := "normal"
@@ -247,4 +247,4 @@ func _draw_pad() -> void:
 	var br := Rect2(Vector2((s.x - bw) / 2.0, pr.position.y + ph + 76.0), Vector2(bw, 16.0))
 	NFUI.bar(_pad, br, f, Color(0.78, 0.1, 0.1, a), Color(1, 1, 1, 0.3 * a))
 	var dots := ".".repeat(1 + int(shown * 2.0) % 3)
-	_say(Vector2(s.x / 2.0, br.position.y + 40.0), ("جاري بناء الخريطة" + dots) if f < 1.0 else "جاهز!", 20, Color(0.7, 0.72, 0.75))
+	_say(Vector2(s.x / 2.0, br.position.y + 40.0), ("Building the map" + dots) if f < 1.0 else "Ready!", 20, Color(0.7, 0.72, 0.75))

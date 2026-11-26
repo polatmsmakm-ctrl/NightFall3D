@@ -54,7 +54,7 @@ func _ready() -> void:
 	m._on_event({"k": "hooked", "n": "D", "s": "hooked"})
 	m._on_event({"k": "rescued", "n": "D", "by": "P", "hands": 1})
 	await frames(2)
-	check(m.feed.size() >= 3 and str(m.feed[0].t).contains("أنقذ"), "the feed: hooked, then P saved D (%s)" % (m.feed[0].t if m.feed.size() else "-"))
+	check(m.feed.size() >= 3 and str(m.feed[0].t).contains("Rescue"), "the feed: hooked, then P saved D (%s)" % (m.feed[0].t if m.feed.size() else "-"))
 	m.rules.s["D"].hp = "ok"
 	for g in m.rules.gens: g.done = true
 	m.rules.powered = true
@@ -62,7 +62,7 @@ func _ready() -> void:
 	var texts := []
 	for f in m.feed: texts.append(str(f.t))
 	print("   feed now: ", texts)
-	check(texts.any(func(t: String) -> bool: return t.contains("مولد")), "the feed: a generator done")
+	check(texts.any(func(t: String) -> bool: return t.contains("Generator")), "the feed: a generator done")
 	check(texts.any(func(t: String) -> bool: return t.contains("البوابات")), "the feed: the gates are open")
 	check(m.feed.size() <= 5, "never more than five lines")
 	for i in 1000: # 6 s
@@ -112,13 +112,13 @@ func _ready() -> void:
 	await frames(4)
 	var labels := []
 	for l in mn.box.find_children("*", "Label", true, false): labels.append((l as Label).text)
-	check(labels.has("صلّح المولدات") and labels.has("أنقذ ربعك"), "«طريقة اللعب»: the survivors' tips")
+	check(labels.has("Repair generators") and labels.has("Save your team"), "«طريقة اللعب»: the survivors' tips")
 	mn.help_tab = "killer"
 	mn._refresh()
 	await frames(3)
 	labels.clear()
 	for l in mn.box.find_children("*", "Label", true, false): labels.append((l as Label).text)
-	check(labels.has("السيارة") and labels.has("شيل وعلّق"), "and the killer's tab")
+	check(labels.has("The car") and labels.has("Carry and hook"), "and the killer's tab")
 	print("hud check: ", "FAILED %d" % bad if bad else "all good")
 	if bad: push_error("HUD FAIL")
 	tree.quit(1 if bad else 0)

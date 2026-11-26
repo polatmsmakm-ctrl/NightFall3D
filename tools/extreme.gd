@@ -175,7 +175,7 @@ func _ready() -> void:
 	await tree.process_frame
 	# ---------------- the computer killer ----------------
 	m = await boot("forest", [{"name": "P", "role": "survivor", "char": "survivor1", "slot": 0},
-		{"name": "القاتلة", "role": "killer", "char": "killer", "slot": 2, "bot": true}])
+		{"name": "The Killer", "role": "killer", "char": "killer", "slot": 2, "bot": true}])
 	w = m.world
 	check(m.bot != null, "trial mode as a survivor: a computer killer")
 	for i in 600:

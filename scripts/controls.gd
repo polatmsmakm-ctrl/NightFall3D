@@ -30,8 +30,8 @@ const DEF := {
 
 ## Default face of every button (context buttons are overridden in main.gd).
 const LABEL := {
-	"attack": "ضرب", "power": "اندفاع", "interact": "تفاعل", "sprint": "ركض", "crouch": "انحناء",
-	"vault": "قفز", "heal": "علاج", "item": "حقيبة", "light": "كشاف", "sig": "إشارة", "next": "التالي", "trap": "فخ", "gun": "مسدس",
+	"attack": "Attack", "power": "Rush", "interact": "Use", "sprint": "Run", "crouch": "Crouch",
+	"vault": "Jump", "heal": "Heal", "item": "Bag", "light": "Torch", "sig": "Signal", "next": "Next", "trap": "Trap", "gun": "Pistol",
 }
 const ICON := {
 	"attack": "attack", "power": "power", "interact": "hand", "sprint": "shoe", "crouch": "crouch",

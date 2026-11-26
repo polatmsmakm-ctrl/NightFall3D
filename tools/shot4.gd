@@ -43,7 +43,7 @@ func _ready() -> void:
 	await frames(8)
 	await shot("61_settings_volume")
 	for ch in Gfx._panel.find_children("*", "Button", true, false):
-		if ch.text == "تفصيل": ch.emit_signal("pressed")
+		if ch.text == "Details": ch.emit_signal("pressed")
 	await frames(8)
 	await shot("62_settings_volume_split")
 	Gfx._toggle()

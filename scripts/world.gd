@@ -2600,7 +2600,7 @@ func _build_objectives() -> void:
 		for left in [500, 400, 300, 200, 100]:
 			var mz := -(ROAD_LEN - float(left))
 			_mesh_box(body, Vector3(2.6, 1.0, 0.08), Vector3(-(lane_w / 2.0 - 0.1), gy + 4.4, mz), _flat(Color(0.05, 0.12, 0.07), 0.7))
-			_sign_text(body, "%d م" % left, Vector3(-(lane_w / 2.0 - 0.1), gy + 4.4, mz + 0.06), 70, Color(0.65, 1.0, 0.72))
+			_sign_text(body, "%d m" % left, Vector3(-(lane_w / 2.0 - 0.1), gy + 4.4, mz + 0.06), 70, Color(0.65, 1.0, 0.72))
 		# the last gate: two towers and a lit header; through it, you are out
 		var finish := _flat(Color(0.8, 1.0, 0.85), 0.5, 0.0, 4.0)
 		var fz := -ROAD_LEN
@@ -2609,7 +2609,7 @@ func _build_objectives() -> void:
 			_mesh_box(body, Vector3(0.25, 6.6, 0.25), Vector3(sx * (lane_w / 2.0 - 1.75), gy + 3.3, fz + 0.85), finish)
 		_mesh_box(body, Vector3(lane_w, 1.2, 1.6), Vector3(0, gy + 7.4, fz), _mat.concrete)
 		_mesh_box(body, Vector3(lane_w - 3.4, 0.3, 0.2), Vector3(0, gy + 6.55, fz + 0.85), finish)
-		_sign_text(body, "البوابة الأخيرة", Vector3(0, gy + 7.4, fz + 0.85), 120, Color(0.6, 1.0, 0.7))
+		_sign_text(body, "THE LAST GATE", Vector3(0, gy + 7.4, fz + 0.85), 120, Color(0.6, 1.0, 0.7))
 		var fl := OmniLight3D.new()
 		fl.position = Vector3(0, gy + 4.0, fz + 3.0)
 		fl.light_color = Color(0.7, 1.0, 0.8)
@@ -2855,9 +2855,9 @@ func _build_market() -> void:
 		_box(body, Vector3(0.7, H, 0.7), Vector3(cx, y0 + H / 2.0, D / 2.0), beige)
 	# shop fronts: glass with a 2 m doorway, sign board above
 	var signs := [
-		{"col": Color(0.03, 0.03, 0.03), "lines": [["ساس", 0.25, 92, Color(1, 0.95, 0.8)], ["مطعم", -0.45, 40, Color(1, 0.95, 0.8)]]},
-		{"col": Color(0.85, 0.03, 0.08), "lines": [["فرع غرب عبدالله مبارك", 0.42, 44, Color.WHITE], ["قطعة 4", -0.02, 44, Color.WHITE]]},
-		{"col": Color(0.02, 0.1, 0.65), "lines": [["مصبغة غرب عبدالله مبارك", 0.0, 46, Color.WHITE]]},
+		{"col": Color(0.03, 0.03, 0.03), "lines": [["SAS", 0.25, 92, Color(1, 0.95, 0.8)], ["RESTAURANT", -0.45, 40, Color(1, 0.95, 0.8)]]},
+		{"col": Color(0.85, 0.03, 0.08), "lines": [["WEST ABDULLAH MUBARAK BRANCH", 0.42, 44, Color.WHITE], ["BLOCK 4", -0.02, 44, Color.WHITE]]},
+		{"col": Color(0.02, 0.1, 0.65), "lines": [["WEST ABDULLAH MUBARAK LAUNDRY", 0.0, 46, Color.WHITE]]},
 	]
 	for k in 3:
 		var cx := -W / 3.0 + k * W / 3.0
@@ -2874,7 +2874,7 @@ func _build_market() -> void:
 			_sign_text(body, ln[0], Vector3(cx, y0 + 3.6 + ln[1], D / 2.0 + 0.49), ln[2], ln[3])
 		if k == 1: # supermarket: white strip under the red board
 			_mesh_box(body, Vector3(shop_w - 0.2, 0.42, 0.27), Vector3(cx, y0 + 3.06, D / 2.0 + 0.35), _flat(Color(0.95, 0.95, 0.95), 0.5, 0.0, 0.6))
-			_sign_text(body, "سوبر ماركت", Vector3(cx, y0 + 3.06, D / 2.0 + 0.5), 30, Color(0.85, 0.03, 0.08))
+			_sign_text(body, "SUPERMARKET", Vector3(cx, y0 + 3.06, D / 2.0 + 0.5), 30, Color(0.85, 0.03, 0.08))
 		var lamp := OmniLight3D.new()
 		lamp.position = Vector3(cx, y0 + 3.7, 0.5)
 		lamp.light_color = [Color(1.0, 0.72, 0.4), Color(1.0, 0.98, 0.92), Color(0.75, 0.88, 1.0)][k]
@@ -3573,7 +3573,7 @@ func _build_diwan(body: StaticBody3D, mat: StandardMaterial3D, w: float, d: floa
 	_mesh_box(body, Vector3(4.9, 0.16, 3.3), sb + Vector3(0, 1.33, 0), mat)
 	_mesh_box(body, Vector3(4.7, 0.035, 0.035), sb + Vector3(0, 1.23, 1.6), led)
 	var lbl := Label3D.new()
-	lbl.text = "ديوان\nراشد الشمري"
+	lbl.text = "RASHID AL-SHAMMARI\nDIWAN"
 	lbl.font = Net.font
 	lbl.font_size = 64
 	lbl.pixel_size = 0.01
@@ -4974,7 +4974,7 @@ func _build_garage_roof(w: float) -> void:
 		_blob(p, 1.0)
 	add_child(body)
 	# the sign faces the driver coming up the ramp (they are looking toward +z)
-	_sign_text(body, "السطح", Vector3((x0 + x1) / 2.0, 3.2, z_foot - 2.0), 90, Color(1.0, 0.85, 0.4), PI)
+	_sign_text(body, "ROOF", Vector3((x0 + x1) / 2.0, 3.2, z_foot - 2.0), 90, Color(1.0, 0.85, 0.4), PI)
 
 ## The killer's car: on the garage it waits on the roof at the top of the ramp, everywhere else
 ## it is parked a few metres from where the killer starts, nose toward the middle of the map.
@@ -5489,7 +5489,7 @@ func _build_sniper_tower() -> void:
 	for bz2 in [z - SN_STAIR_W / 2.0 + 0.35, z + SN_STAIR_W / 2.0 - 0.35]:
 		_box(bol, Vector3(0.3, 0.9, 0.3), Vector3(SN_STAIR_X0 + 1.2, 0.45, bz2), _flat(Color(0.95, 0.75, 0.1), 0.5))
 	var sign_l := Label3D.new()
-	sign_l.text = "للقنّاصة فقط"
+	sign_l.text = "SNIPER ONLY"
 	sign_l.font_size = 64
 	sign_l.pixel_size = 0.006
 	sign_l.modulate = Color(1.0, 0.3, 0.25)

@@ -90,7 +90,7 @@ func _ready() -> void:
 		"victory": [
 			{"name": "راشد", "char": "survivor2", "role": "survivor", "state": "escaped", "score": 300.0, "mine": true},
 			{"name": "بدر", "char": "survivor5", "role": "survivor", "state": "escaped", "score": 210.0}],
-		"title": "تم الهروب بنجاح!", "stats": "اختبار", "xp_from": 100, "xp_to": 400,
+		"title": "You escaped!", "stats": "اختبار", "xp_from": 100, "xp_to": 400,
 		"escapes": 3, "kills": 1})
 	await frames(10)
 	var at_gate := 0
@@ -125,7 +125,7 @@ func _ready() -> void:
 	tree.root.add_child.call_deferred(res2)
 	await frames(2)
 	res2.setup({"rows": [{"name": "راشد", "char": "survivor2", "role": "survivor", "state": "dead", "score": 60.0, "mine": true}],
-		"victory": [], "title": "ما نجوت", "stats": "اختبار", "xp_from": 0, "xp_to": 60, "escapes": 0, "kills": 0})
+		"victory": [], "title": "You didn't make it", "stats": "اختبار", "xp_from": 0, "xp_to": 60, "escapes": 0, "kills": 0})
 	await frames(8)
 	print("nobody escaped: shot skipped=", res2.intro <= 0.0, " statistics up=", res2.row_stage.visible)
 	tree.quit()

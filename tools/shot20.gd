@@ -23,7 +23,7 @@ func _ready() -> void:
 	m._start({"map": "forest", "me": "P", "offline": true, "players": [
 		{"name": "P", "role": "survivor", "char": "survivor6", "slot": 0},
 		{"name": "سارة", "role": "survivor", "char": "survivor5", "slot": 1},
-		{"name": "القاتلة", "role": "killer", "char": "killer", "slot": 2}]})
+		{"name": "The Killer", "role": "killer", "char": "killer", "slot": 2}]})
 	for i in 600:
 		await tree.process_frame
 		if m.world.ready_done: break

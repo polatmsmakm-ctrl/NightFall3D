@@ -44,16 +44,16 @@ const PERK := {"survivor1": "burst", "survivor2": "fix", "survivor3": "lift", "s
 	"survivor5": "tough", "survivor6": "sense", "survivor7": "medic", "survivor8": "ghost", "survivor9": "mend"}
 ## Name, one line and an icon for each, for the character stand, the HUD and «طريقة اللعب».
 const PERK_INFO := {
-	"burst": ["نفس ثاني", "إذا انضربت أو نزلت من الخطاف، تركض أسرع وأطول", "shoe"],
-	"fix": ["يد المصلّح", "تصلّح المولدات أسرع بـ 30%", "wrench"],
-	"lift": ["الحامي", "تنزّل الناس من الخطاف كأنك اثنين", "rescue"],
-	"rise": ["جناح الفالكيري", "إذا طحت وما أحد شالك 20 ثانية، تقوم بروحك (مرة وحدة)", "star"],
-	"tough": ["جلد قاسي", "أول ضربة بالجولة ما تأثر فيك", "shield"],
-	"sense": ["عين الليل", "تحس بالقاتلة إذا قربت 28 م، وسهم يوريك وينها", "eye"],
-	"medic": ["طب ميداني", "تعالج غيرك أسرع بـ 60%", "heal"],
-	"ghost": ["خطوة شبح", "القاتلة ما تشوف آثار ركضك وخطواتك واطية", "crouch"],
-	"aid": ["المسعف", "تشيل شنطة الإسعاف: تعالج غيرك أسرع بالضعف، وتعالج نفسك بـ 8 ثواني، والشنطة ما تخلص", "heal"],
-	"mend": ["تفتّح", "إذا انجرحت وقعدت 45 ثانية ما انضربتي، ترجعين سليمة", "heal"],
+	"burst": ["Second Wind", "When you're hit or come off the hook, you run faster and longer", "shoe"],
+	"fix": ["Repair Hands", "Repairs generators 30% faster", "wrench"],
+	"lift": ["The Protector", "Lifts people off the hook like two", "rescue"],
+	"rise": ["Valkyrie Wing", "If you're down and nobody picks you up for 20 seconds, you get up yourself (once)", "star"],
+	"tough": ["Tough Skin", "The first hit of the round does nothing", "shield"],
+	"sense": ["Night Eye", "You sense the killer within 28 m, and an arrow shows where she is", "eye"],
+	"medic": ["Field Medic", "Heals others 60% faster", "heal"],
+	"ghost": ["Ghost Step", "The killer can't see your run marks and your steps are quiet", "crouch"],
+	"aid": ["The Medic", "Carries the first-aid kit: heals others twice as fast, heals himself in 8 seconds, and the kit never runs out", "heal"],
+	"mend": ["Bloom", "If you're hurt and not hit again for 45 seconds, you're healthy again", "heal"],
 }
 const SENSE_R := 28.0     # «عين الليل»: how close she has to be
 const FIX_MUL := 1.3      # «يد المصلّح»: repairs 30% faster

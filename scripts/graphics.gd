@@ -65,7 +65,7 @@ var _hud: Label
 var _panel: PanelContainer
 var _opts := {}
 var _vol := {}        # slider + percentage label per bus
-var _vol_rows := []   # the two rows that "تفصيل" folds away
+var _vol_rows := []   # the two rows that "Details" folds away
 var _vol_split := false
 var _editor: NFControlsEdit
 var _engine_note: Label
@@ -315,7 +315,7 @@ func _process(dt: float) -> void:
 func _perf_text(avg: float) -> String:
 	if not perf_hud: # the one line it always showed
 		return "%d FPS  %.1f ms  target %d  scale %d%%" % [roundi(1.0 / avg), avg * 1000.0, target_fps(), roundi(render_scale() * 100.0)]
-	return "%d FPS  %.1f ms (هدف %d)  دقة %d%%\nرسم %d  أشياء %d  مثلثات %dk\nذاكرة %d MB  فيديو %d MB  CPU %.1f ms" % [
+	return "%d FPS  %.1f ms (target %d)  res %d%%\ndraw %d  objects %d  tris %dk\nmemory %d MB  video %d MB  CPU %.1f ms" % [
 		roundi(1.0 / avg), avg * 1000.0, target_fps(), roundi(render_scale() * 100.0),
 		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
 		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_OBJECTS_IN_FRAME),
@@ -363,7 +363,7 @@ func _build_ui() -> void:
 	_hud.add_theme_font_size_override("font_size", 16)
 	_hud.modulate = Color(1, 1, 1, 0.7); _hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(_hud)
-	var gear := Button.new(); gear.text = "الإعدادات"
+	var gear := Button.new(); gear.text = "Settings"
 	gear.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
 	gear.offset_left = -140; gear.offset_right = -12; gear.offset_top = 12; gear.offset_bottom = 64
 	gear.pressed.connect(_toggle)
@@ -384,53 +384,53 @@ func _build_ui() -> void:
 	var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 10)
 	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sc.add_child(v)
-	var title := Label.new(); title.text = "الإعدادات"; title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; v.add_child(title)
-	_vol_row(v, "master", "الصوت")
-	var det := Button.new(); det.text = "تفصيل"; det.custom_minimum_size.y = 44
+	var title := Label.new(); title.text = "Settings"; title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; v.add_child(title)
+	_vol_row(v, "master", "Sound")
+	var det := Button.new(); det.text = "Details"; det.custom_minimum_size.y = 44
 	det.pressed.connect(func() -> void:
 		_vol_split = not _vol_split
-		det.text = "إخفاء التفصيل" if _vol_split else "تفصيل"
+		det.text = "Hide details" if _vol_split else "Details"
 		for r in _vol_rows: r.visible = _vol_split)
 	NFUI.dress(det, "gear"); v.add_child(det)
 	var hap := Button.new()
 	hap.custom_minimum_size.y = 46
-	hap.text = "الاهتزاز: %s" % ("شغّال" if Aud.haptics else "مطفي")
+	hap.text = "Vibration: %s" % ("On" if Aud.haptics else "Off")
 	hap.pressed.connect(func() -> void:
 		Aud.set_haptics(not Aud.haptics)
-		hap.text = "الاهتزاز: %s" % ("شغّال" if Aud.haptics else "مطفي")
+		hap.text = "Vibration: %s" % ("On" if Aud.haptics else "Off")
 		if Aud.haptics: NFHaptics.pulse("tick"))
 	NFUI.dress(hap, "heart")
 	v.add_child(hap)
-	_vol_rows.append(_vol_row(v, "music", "صوت الموسيقى"))
-	_vol_rows.append(_vol_row(v, "sfx", "صوت اللعب"))
+	_vol_rows.append(_vol_row(v, "music", "Music volume"))
+	_vol_rows.append(_vol_row(v, "sfx", "Game volume"))
 	for r in _vol_rows: r.visible = false
 	_bright_row(v)
-	var ct := Label.new(); ct.text = "التحكم"; ct.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var ct := Label.new(); ct.text = "Controls"; ct.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	ct.modulate = Color(1, 0.75, 0.7); v.add_child(ct)
-	_num_row(v, "_sens", "حساسية الكاميرا", 40.0, 200.0, 5.0, "%d%%", func() -> float: return look_sens * 100.0,
+	_num_row(v, "_sens", "Camera sensitivity", 40.0, 200.0, 5.0, "%d%%", func() -> float: return look_sens * 100.0,
 		func(x: float) -> void: look_sens = x / 100.0)
-	_num_row(v, "_fov", "مجال الرؤية", -10.0, 15.0, 1.0, "%+d°", func() -> float: return fov_add,
+	_num_row(v, "_fov", "Field of view", -10.0, 15.0, 1.0, "%+d°", func() -> float: return fov_add,
 		func(x: float) -> void: fov_add = x)
-	_num_row(v, "_btn", "حجم الأزرار", 80.0, 130.0, 5.0, "%d%%", func() -> float: return btn_scale * 100.0,
+	_num_row(v, "_btn", "Button size", 80.0, 130.0, 5.0, "%d%%", func() -> float: return btn_scale * 100.0,
 		func(x: float) -> void: btn_scale = x / 100.0)
-	_num_row(v, "_btn_a", "وضوح الأزرار", 35.0, 100.0, 5.0, "%d%%", func() -> float: return btn_alpha * 100.0,
+	_num_row(v, "_btn_a", "Button opacity", 35.0, 100.0, 5.0, "%d%%", func() -> float: return btn_alpha * 100.0,
 		func(x: float) -> void: btn_alpha = x / 100.0)
-	_row(v, "fps", "الإطارات", ["تلقائي", "30", "60", "120"])
-	_row(v, "preset", "الجرافيكس", ["منخفض", "متوسط", "عالي", "فائق"], [3, 0, 1, 2])
-	_row(v, "shadows", "الظلال", ["منخفض", "متوسط", "عالي"])
-	_row(v, "aa", "تنعيم الحواف", ["مغلق", "عادي", "عالي", "MetalFX (الآيفون)"])
-	_row(v, "scale", "دقة الرسم", ["85%", "90%", "100%"])
-	_row(v, "effects", "جودة المؤثرات", ["منخفض", "متوسط", "عالي"])
-	_row(v, "engine", "محرك الرسم", ["عالي (فخم)", "خفيف (أسرع)"])
-	_row(v, "perf", "مراقب الأداء", ["مطفي", "شغّال"])
+	_row(v, "fps", "Frame rate", ["Auto", "30", "60", "120"])
+	_row(v, "preset", "Graphics", ["Low", "Medium", "High", "Ultra"], [3, 0, 1, 2])
+	_row(v, "shadows", "Shadows", ["Low", "Medium", "High"])
+	_row(v, "aa", "Anti-aliasing", ["Off", "Normal", "High", "MetalFX (iPhone)"])
+	_row(v, "scale", "Render resolution", ["85%", "90%", "100%"])
+	_row(v, "effects", "Effects quality", ["Low", "Medium", "High"])
+	_row(v, "engine", "Renderer", ["High (best look)", "Light (faster)"])
+	_row(v, "perf", "Performance monitor", ["Off", "On"])
 	_engine_note = Label.new()
 	_engine_note.add_theme_font_size_override("font_size", 15)
 	_engine_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_engine_note.modulate = Color(1, 0.8, 0.5)
 	v.add_child(_engine_note)
-	var ctl := Button.new(); ctl.text = "أزرار التحكم (مكان وحجم)"; ctl.custom_minimum_size.y = 52
+	var ctl := Button.new(); ctl.text = "Button layout (position and size)"; ctl.custom_minimum_size.y = 52
 	ctl.pressed.connect(_edit_controls); NFUI.dress(ctl, "gear"); v.add_child(ctl)
-	var close := Button.new(); close.text = "إغلاق"; close.custom_minimum_size.y = 52
+	var close := Button.new(); close.text = "Close"; close.custom_minimum_size.y = 52
 	close.pressed.connect(_toggle); NFUI.dress(close, "exit"); v.add_child(close)
 	_refresh()
 
@@ -473,7 +473,7 @@ func _bright_row(parent: Control) -> void:
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 10)
 	parent.add_child(h)
-	var l := Label.new(); l.text = "السطوع"; l.custom_minimum_size.x = 150; h.add_child(l)
+	var l := Label.new(); l.text = "Brightness"; l.custom_minimum_size.x = 150; h.add_child(l)
 	var s := HSlider.new()
 	s.min_value = 60.0; s.max_value = 160.0; s.step = 5.0
 	s.custom_minimum_size = Vector2(220, 44)
@@ -540,7 +540,7 @@ func _refresh() -> void:
 	_opts["aa"].select(aa); _opts["scale"].select(scale_idx); _opts["effects"].select(effects)
 	_opts["engine"].select(0 if engine_next_hd() else 1)
 	_engine_note.visible = engine_next_hd() != engine_hd()
-	_engine_note.text = "سكّر اللعبة وافتحها عشان يتغيّر محرك الرسم"
+	_engine_note.text = "Close and reopen the game to change the renderer"
 
 func _on_select(i: int, key: String) -> void:
 	match key:

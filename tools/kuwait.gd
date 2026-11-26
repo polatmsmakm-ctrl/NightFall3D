@@ -144,7 +144,7 @@ func _ready() -> void:
 	check(gw.night_fell() and gw.moon.light_energy < 0.05 and gw.env.ambient_light_energy < NightWorld.DARK_AMB_E + 0.05, "five minutes: the sun is gone and it is pitch dark (%.2f)" % gw.env.ambient_light_energy)
 	g.body.global_position = gw.power_box + Vector3(1.4, 0.3, 0)
 	await frames(10)
-	check(g.ctx.has("interact") and g.ctx.interact.kind == "pfix" and g.ctx.interact.label == "شغّل أنوار الشارع", "at the box: «شغّل أنوار الشارع»")
+	check(g.ctx.has("interact") and g.ctx.interact.kind == "pfix" and g.ctx.interact.label == "Turn on the street lights", "at the box: «شغّل أنوار الشارع»")
 	g.rules.handle({"k": "pfix", "on": true}, "P")
 	for i in 40: # (and past the round's own blackout event, which the jumps in the clock set off)
 		for e in g.rules.tick(1.0): g._on_event(e)

@@ -133,16 +133,16 @@ func status_of(n: String) -> String:
 ## «متصل» and friends, in Arabic, with how long ago for someone offline (from the server's last seen).
 func status_text(n: String) -> String:
 	match status_of(n):
-		"game": return "بجولة الحين"
-		"room": return "بغرفة — ينتظر"
-		"menu": return "متصل"
+		"game": return "In a round now"
+		"room": return "In a room — waiting"
+		"menu": return "Online"
 	var seen := int(fstats.get(n.to_lower(), {}).get("seen", 0))
-	if seen <= 0: return "غير متصل"
+	if seen <= 0: return "Offline"
 	var mins := int((Time.get_unix_time_from_system() * 1000.0 - float(seen)) / 60000.0)
-	if mins < 1: return "غير متصل — قبل شوي"
-	if mins < 60: return "غير متصل — قبل %d دقيقة" % mins
-	if mins < 60 * 24: return "غير متصل — قبل %d ساعة" % (mins / 60)
-	return "غير متصل — قبل %d يوم" % (mins / 1440)
+	if mins < 1: return "Offline — a moment ago"
+	if mins < 60: return "Offline — %d min ago" % mins
+	if mins < 60 * 24: return "Offline — %d h ago" % (mins / 60)
+	return "Offline — %d days ago" % (mins / 1440)
 
 func set_bio(t: String) -> void:
 	bio = t.strip_edges().replace("<", "").replace(">", "").left(60)
@@ -201,14 +201,14 @@ func record_match(got_out: int, killed: int, map := "", role := "", res := "", s
 	save()
 
 ## The challenge of the day: the same one for everybody on the same date, counted on the phone.
-const DAILY := [["العب 3 جولات اليوم", 0, 3], ["اهرب مرة اليوم", 1, 1], ["اهرب مرتين اليوم", 1, 2],
-	["اقتل 3 ناجين وأنت القاتل", 2, 3], ["العب جولتين اليوم", 0, 2], ["اقتل ناجي واحد وأنت القاتل", 2, 1]]
+const DAILY := [["Play 3 rounds today", 0, 3], ["Escape once today", 1, 1], ["Escape twice today", 1, 2],
+	["Kill 3 survivors as the killer", 2, 3], ["Play 2 rounds today", 0, 2], ["Kill one survivor as the killer", 2, 1]]
 const DAILY_XP := 150
 ## A line that changes with the date, under the challenge.
-const WHISPERS := ["المولد اللي يرمش أقرب للنهاية — كمّله أول", "لا تركض جنب القاتلة: الركض له صوت",
-	"اثنين على الخطاف أسرع من واحد", "سكّر الباب وراك، بس تذكّر إن له صوت", "الخزانة تخبّيك، بس مو للأبد",
-	"إذا انفتحت البوابات لا تتأخر: القمر ما ينتظر", "الكشاف يعميها لحظة — استغلها", "امشِ منحني جنب النوافذ",
-	"القاتلة تسمع المولد من 8 متر بس", "لا تتركون واحد وراكم"]
+const WHISPERS := ["A blinking generator is close to done — finish it first", "Don't run near the killer: running makes noise",
+	"Two on a hook is faster than one", "Shut the door behind you, but remember it makes noise", "A locker hides you, but not forever",
+	"When the gates open, don't wait: the moon won't", "The torch blinds her for a moment — use it", "Crouch-walk past windows",
+	"The killer only hears a generator from 8 m", "Don't leave anyone behind"]
 
 func _roll_day() -> void:
 	var today := Time.get_date_string_from_system()
@@ -227,11 +227,11 @@ func daily() -> Dictionary:
 ## A name for the level, on the player card.
 func title() -> String:
 	var lv := level()
-	if lv >= 20: return "أسطورة الليل"
-	if lv >= 12: return "صيّاد الظلام"
-	if lv >= 7: return "ناجي متمرّس"
-	if lv >= 3: return "ناجي"
-	return "مبتدئ"
+	if lv >= 20: return "Legend of the Night"
+	if lv >= 12: return "Dark Hunter"
+	if lv >= 7: return "Seasoned Survivor"
+	if lv >= 3: return "Survivor"
+	return "Beginner"
 
 func configure(new_name: String, new_url: String) -> void:
 	username = new_name.strip_edges()

@@ -32,7 +32,7 @@ func _ready() -> void:
 	Gfx.open_settings()
 	await frames(6)
 	for ch in Gfx._panel.find_children("*", "Button", true, false):
-		if ch.text == "تفصيل": ch.emit_signal("pressed")
+		if ch.text == "Details": ch.emit_signal("pressed")
 	await frames(8)
 	await shot("70_haptics_switch")
 	Gfx._toggle()

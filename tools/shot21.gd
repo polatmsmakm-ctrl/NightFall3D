@@ -24,7 +24,7 @@ func _ready() -> void:
 	m._start({"map": "forest", "me": "P", "offline": true, "players": [
 		{"name": "P", "role": "survivor", "char": "survivor6", "slot": 0},
 		{"name": "سارة", "role": "survivor", "char": "survivor5", "slot": 1},
-		{"name": "القاتلة", "role": "killer", "char": "killer", "slot": 2}]})
+		{"name": "The Killer", "role": "killer", "char": "killer", "slot": 2}]})
 	for i in 900:
 		await tree.process_frame
 		if m.world.ready_done and not m.world.esc_cars.is_empty(): break
@@ -48,7 +48,7 @@ func _ready() -> void:
 	m.stick_vec = Vector2(0, -1)
 	await frames(200)
 	# her car close behind, lights on
-	var kr = m.remotes["القاتلة"] # as if her phone said she is at the wheel, just behind
+	var kr = m.remotes["The Killer"] # as if her phone said she is at the wheel, just behind
 	kr.anim = "drive"
 	kr.pos = ec.global_position - ec.forward() * 9.0 + b * Vector3(1.5, 0, 0)
 	kr.yaw = ec.rotation.y

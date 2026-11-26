@@ -19,7 +19,7 @@ func boot(map: String, theme: String, gun := false):
 	await frames(10)
 	m._start({"map": map, "me": "P", "offline": true, "theme": theme, "gun": gun, "players": [
 		{"name": "P", "role": "survivor", "char": "survivor6", "slot": 0},
-		{"name": "القاتلة", "role": "killer", "char": "killer", "slot": 1}]})
+		{"name": "The Killer", "role": "killer", "char": "killer", "slot": 1}]})
 	for i in 900:
 		await tree.process_frame
 		if m.world.ready_done: break

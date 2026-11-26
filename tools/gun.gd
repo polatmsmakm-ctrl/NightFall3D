@@ -129,7 +129,7 @@ func _ready() -> void:
 	check(not Dev.unlocked, "and lock again")
 	Net.online = {"saud": true, "badr": true}
 	Net.status = {"saud": "game", "badr": "room"}
-	check(Net.status_of("Saud") == "game" and Net.status_text("Badr") == "بغرفة — ينتظر" and Net.status_of("Ghanim") == "off", "friends' status: in a round, in a room, offline")
+	check(Net.status_of("Saud") == "game" and Net.status_text("Badr") == "In a room — waiting" and Net.status_of("Ghanim") == "off", "friends' status: in a round, in a room, offline")
 	Net.fstats["saud"] = {"name": "Saud", "lv": 4, "esc": 3, "kills": 1, "rounds": 9, "ch": "survivor6", "bio": "هلا", "seen": 0}
 	print("GUN DONE bad=%d" % bad)
 	tree.quit()

@@ -121,7 +121,7 @@ func setup(d: Dictionary) -> void:
 	layer.add_child(pad)
 	var safe := NFUI.safe_insets(get_viewport())
 	var back := Button.new()
-	back.text = "رجوع"
+	back.text = "Back"
 	back.custom_minimum_size = Vector2(170, 56)
 	back.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	back.offset_left = -190.0 - safe.y; back.offset_right = -20.0 - safe.y
@@ -276,8 +276,8 @@ func _draw_pad() -> void:
 		var names := PackedStringArray()
 		for r in vic: names.append(str(r.get("name", "")))
 		var fade: float = clampf(intro / 0.6, 0.0, 1.0) * clampf((5.0 - intro) / 0.4, 0.0, 1.0)
-		_say(Vector2(s.x / 2.0, s.y * 0.16), "نجوا!", 56, Color(0.6, 1.0, 0.75, fade), s.x - 40.0)
-		_say(Vector2(s.x / 2.0, s.y * 0.24), "، ".join(names), 26, Color(0.85, 1.0, 0.9, fade), s.x - 60.0)
+		_say(Vector2(s.x / 2.0, s.y * 0.16), "They escaped!", 56, Color(0.6, 1.0, 0.75, fade), s.x - 40.0)
+		_say(Vector2(s.x / 2.0, s.y * 0.24), ", ".join(names), 26, Color(0.85, 1.0, 0.9, fade), s.x - 60.0)
 		return
 	var safe := NFUI.safe_insets(get_viewport())
 	pad.draw_rect(Rect2(Vector2.ZERO, Vector2(s.x, 100.0)), Color(0.02, 0.02, 0.03, 0.72))
@@ -299,8 +299,8 @@ func _draw_pad() -> void:
 			var col: Color = Color(1, 0.86, 0.35) if mine else (Color(0.55, 0.9, 1.0) if st == "escaped" else (Color(1, 0.45, 0.4) if st == "dead" else Color(0.85, 0.85, 0.9)))
 			var y: float = clampf(p.y + 28.0, 134.0, s.y - 200.0)
 			_say(Vector2(p.x, y), str(r.get("name", "")), 24, col, 300.0)
-			_say(Vector2(p.x, y + 28.0), "%d نقطة" % roundi(float(r.get("score", 0)) * grow), 20, Color(1, 0.9, 0.6), 300.0)
-			var fate: String = {"escaped": "هرب", "dead": "مات", "killer": "القاتل"}.get("killer" if str(r.get("role", "")) == "killer" else st, "داخل")
+			_say(Vector2(p.x, y + 28.0), "%d points" % roundi(float(r.get("score", 0)) * grow), 20, Color(1, 0.9, 0.6), 300.0)
+			var fate: String = {"escaped": "Escaped", "dead": "died", "killer": "The Killer"}.get("killer" if str(r.get("role", "")) == "killer" else st, "inside")
 			_say(Vector2(p.x, y + 52.0), fate, 18, Color(col, 0.75), 300.0)
 			NFIcons.draw(pad, "out" if st == "escaped" else ("skull" if st == "dead" else "star"),
 				Vector2(p.x, y - 16.0), 26.0, Color(col, 0.9))
@@ -312,7 +312,7 @@ func _draw_pad() -> void:
 	var bw: float = minf(s.x - 120.0 - safe.x - safe.y, 520.0)
 	var br := Rect2(Vector2((s.x - bw) / 2.0, s.y - 56.0), Vector2(bw, 14.0))
 	var up := lvl > 1 + int(sqrt(float(xp_from) / 200.0))
-	_say(Vector2(s.x / 2.0, s.y - 96.0), "هروب %d   •   قتل %d" % [escapes, kills], 19, Color(0.75, 0.78, 0.8), s.x - 40.0)
-	_say(Vector2(s.x / 2.0, s.y - 66.0), "المستوى %d%s   •   الخبرة %d  (+%d)" % [lvl, "  ترقية!" if up else "", roundi(xp_show), xp_to - xp_from],
+	_say(Vector2(s.x / 2.0, s.y - 96.0), "Escapes %d   •   Kills %d" % [escapes, kills], 19, Color(0.75, 0.78, 0.8), s.x - 40.0)
+	_say(Vector2(s.x / 2.0, s.y - 66.0), "Level %d%s   •   XP %d  (+%d)" % [lvl, "  Level up!" if up else "", roundi(xp_show), xp_to - xp_from],
 		22, Color(0.6, 1.0, 0.7) if up else Color(1, 0.9, 0.6), s.x - 40.0)
 	NFUI.bar(pad, br, f, Color(0.8, 0.12, 0.12), Color(1, 1, 1, 0.35))

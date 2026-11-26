@@ -111,7 +111,7 @@ func _ready() -> void:
 	var lab := ""
 	for bt in m._buttons():
 		if bt[3] == "power": lab = bt[2]
-	check(lab == "سكّر الراديو", "the button now says سكّر الراديو (%s)" % lab)
+	check(lab == "Radio off", "the button now says سكّر الراديو (%s)" % lab)
 	m._press("power", 5)
 	await frames(3)
 	check(not car.radio_on and car.radio.stream_paused, "and off again (paused, not restarted)")
@@ -186,7 +186,7 @@ func _ready() -> void:
 	check(m.rules.carrying == "D", "picked the survivor up")
 	m.body.position = car.position + car.global_basis.x * 2.4 + Vector3(0, 0.3, 0)
 	await frames(6)
-	check(m.ctx.get("interact", {}).get("kind", "") == "car_in" and m.ctx.interact.label == "حطّه بالسيارة", "carrying, next to the car: «حطّه بالسيارة»")
+	check(m.ctx.get("interact", {}).get("kind", "") == "car_in" and m.ctx.interact.label == "Put them in the car", "carrying, next to the car: «حطّه بالسيارة»")
 	m._press("interact", 5)
 	await frames(30)
 	check(m.driving and m.rules.carrying == "D", "in the car with the survivor")
