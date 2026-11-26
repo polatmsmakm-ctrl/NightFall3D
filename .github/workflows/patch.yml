@@ -50,6 +50,12 @@ jobs:
           echo "base: $BASE"
           git diff --name-only --diff-filter=AMR "$BASE" HEAD > changed.txt
           echo "changed since the IPA:"; cat changed.txt
+          # a new class_name cannot reach the phone in a patch (the engine reads the class list before any
+          # pack is mounted): those changes need a new IPA
+          git grep -h -E "^class_name " "$BASE" -- '*.gd' | sort -u > base_classes.txt || true
+          git grep -h -E "^class_name " HEAD -- '*.gd' | sort -u > head_classes.txt || true
+          NEWC=$(comm -13 base_classes.txt head_classes.txt | grep -v "NFPatchProbe" || true)
+          if [ -n "$NEWC" ]; then echo "::error::new classes need a new IPA: $NEWC"; exit 1; fi
           PREV=$(python3 -c "import json;print(json.load(open('server/patches/patch.json')).get('ver',0))" 2>/dev/null || echo 0)
           VER=$((PREV + 1))
           set +e

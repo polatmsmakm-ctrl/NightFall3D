@@ -1256,6 +1256,9 @@ Deploy. Every phone on that IPA downloads it the next time the game opens.
   replace files, never delete them. It is cumulative (everything since the IPA), so only the latest
   `server/patches/patch_<ver>.pck` is kept, with `patch.json` (`base`, `ver`, `file`, `size`, `sha256`,
   `note`).
+  **A new `class_name` cannot go in a patch** (the engine reads the class list at start-up, before
+  any pack is mounted; `tools/updater.tscn` shows it): `patch.yml` stops with an error and it takes an
+  IPA. A new script without a class name, loaded with `preload` / `load`, is fine.
 - The server serves `/patch.json` and `/patches/<file>.pck` (`server.js`, before the WebSocket).
 - `Patch._init` mounts the saved pack before any other script loads
   (`load_resource_pack(..., true)`); a pack for another build is deleted. `Patch.check()` (2.5 s after
