@@ -1202,7 +1202,8 @@ photographs it lowered and raised.
 - `NFCatDog` (made by `main` once the blood is ready): the first generator anyone repairs brings the
   cat (circles the people there, sits, washes, pounces, bats, meows — `assets/sfx/meow0-5.ogg` cut from
   his clip); when that generator is done the dog stalks in from 15 m, freezes, barks
-  (`dog_bark.ogg`), sprints, bites, shakes it 2.4 s with his blood (`NFBlood.splash`), swallows it 3.2 s
-  (`dog_eat.ogg`) and runs off. Once a round. **No server change**: it starts from the generators in
+  (`dog_bark.ogg`), sprints, bites (the cat makes no sound: the owner took the scream out), shakes it 2.4 s with his blood
+  (`NFBlood.splash`), swallows it over 6 s — `dog_eat.ogg` and, started and stopped with it, his dark
+  sound `dog_eat_dark.ogg` (cut from his clip, 2.8-8.8 s) — and runs off. Once a round. **No server change**: it starts from the generators in
   the snapshot, every place and choice comes from `layout_seed` and the generator's number.
   `tools/catdog.tscn` tests it, `tools/shot28.tscn` photographs it.

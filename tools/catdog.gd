@@ -97,6 +97,7 @@ func _ready() -> void:
 	m.rules.gens[g].done = true
 	await frames(5)
 	check(cd.state == 2 and cd.dog.visible, "the generator done: the dog comes")
+	var meows_before := cd.meows + 1 # one meow when it sees the dog, none when it is bitten
 	var dd: float = cd.dog.position.distance_to(cd.cat.position)
 	check(dd > 6.0, "from the dark, well away (%.1f m)" % dd)
 	var seen := {}
@@ -114,6 +115,7 @@ func _ready() -> void:
 	check(cd.barks == 1, "barks once as it goes")
 	check(cd.bites == 1 and seen.get("held", false), "bites and holds the cat in its mouth")
 	check(seen.has(3) and seen.has(4), "shakes it, swallows it")
+	check(cd.darks == 1 and cd.meows == meows_before, "the owner's dark sound with the eating, and no scream from the cat")
 	check(cd.splashes >= 6 and m.blood._d_live + m.blood.landed > 10, "with blood (%d splashes, %d drops landed)" % [cd.splashes, m.blood.landed])
 	check(cd.state == 3 and not cd.cat.visible and not cd.dog.visible, "and runs off: both gone, once a round")
 	Engine.time_scale = 1.0

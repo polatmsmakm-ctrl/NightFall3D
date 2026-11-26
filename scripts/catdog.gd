@@ -21,7 +21,7 @@ const STALK := 0.75          # the dog's slow approach (m/s)
 const SPRINT := 7.5
 const FREEZE_AT := 6.5       # how near the dog creeps before it stops
 const SHAKE_TIME := 2.4
-const SWALLOW_TIME := 3.2
+const SWALLOW_TIME := 6.0     # as long as the eating sound and the owner's dark sound over it
 const RUN_TIME := 5.0
 
 var world: NightWorld
@@ -63,12 +63,15 @@ var bites := 0
 var splashes := 0
 var meows := 0
 var barks := 0
+var darks := 0
 var acts := {}
 var cat_snd: AudioStreamPlayer3D
 var dog_snd: AudioStreamPlayer3D
+var dark_snd: AudioStreamPlayer3D # the owner's dark sound, played with the eating
 var meow_s: Array = []
 var bark_s: AudioStream
 var eat_s: AudioStream
+var dark_s: AudioStream
 
 func setup(w: NightWorld, r: Rules, b: NFBlood, cam_cb: Callable, people_cb: Callable, skip_rids: Array) -> void:
 	world = w
@@ -90,11 +93,13 @@ func setup(w: NightWorld, r: Rules, b: NFBlood, cam_cb: Callable, people_cb: Cal
 	dog.visible = false
 	cat_snd = _snd(cat, 5.0)
 	dog_snd = _snd(dog, 9.0)
+	dark_snd = _snd(dog, 12.0)
 	for i in 6:
 		var p := "res://assets/sfx/meow%d.ogg" % i
 		if ResourceLoader.exists(p): meow_s.append(load(p))
 	if ResourceLoader.exists("res://assets/sfx/dog_bark.ogg"): bark_s = load("res://assets/sfx/dog_bark.ogg")
 	if ResourceLoader.exists("res://assets/sfx/dog_eat.ogg"): eat_s = load("res://assets/sfx/dog_eat.ogg")
+	if ResourceLoader.exists("res://assets/sfx/dog_eat_dark.ogg"): dark_s = load("res://assets/sfx/dog_eat_dark.ogg")
 	for g in rules.gens: # joined after the first generator was done: it has happened already
 		if g.done: state = 3
 
@@ -195,9 +200,12 @@ func _process(dt: float) -> void:
 	if eat_stop > 0.0:
 		eat_stop -= dt
 		dog_snd.volume_db = linear_to_db(clampf(eat_stop / 0.6, 0.001, 1.0)) if eat_stop < 0.6 else 0.0
+		dark_snd.volume_db = dog_snd.volume_db
 		if eat_stop <= 0.0:
 			dog_snd.stop()
 			dog_snd.volume_db = 0.0
+			dark_snd.stop()
+			dark_snd.volume_db = 0.0
 
 # ---- the cat -------------------------------------------------------------------------------------
 
@@ -383,7 +391,6 @@ func _dog_step(dt: float) -> void:
 				ph = 3
 				ph_t = 0.0
 				bites += 1
-				_meow(1.5)
 				cat.limp = 1.0
 				cat.crouch = 0.0
 				cat.sit = 0.0
@@ -413,6 +420,10 @@ func _dog_step(dt: float) -> void:
 					dog_snd.stream = eat_s
 					dog_snd.play()
 					eat_stop = SWALLOW_TIME + 0.2
+				if dark_s: # starts with the eating, ends with it
+					dark_snd.stream = dark_s
+					dark_snd.play()
+					darks += 1
 		4: # and swallows it: head up, the throat working
 			dog.swallow = 1.0
 			dog.jaw = 0.25
