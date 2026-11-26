@@ -5196,6 +5196,8 @@ func _build_sniper_tower() -> void:
 	walk_sh.set_faces(tris)
 	var walk_b := StaticBody3D.new()
 	walk_b.name = "StairWalk"
+	walk_b.collision_layer = SN_EDGE # bodies only (like the roof's edge): the rifle's bullets pass over the top landing
+	walk_b.collision_mask = 0
 	var walk_cs := CollisionShape3D.new()
 	walk_cs.shape = walk_sh
 	walk_b.add_child(walk_cs)

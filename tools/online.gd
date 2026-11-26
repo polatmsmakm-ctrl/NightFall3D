@@ -69,7 +69,8 @@ func _ready():
 		tree.quit()
 		return
 	var d = m.remotes["Bot"]
-	check(d.node.position.distance_to(spot) < 3.0, "its position reaches me (%s)" % d.node.position.snapped(Vector3.ONE * 0.1))
+	var said: Vector3 = d.pos # where its last message put it (the killer bot is already walking)
+	check(d.node.position.distance_to(said) < 3.0 and (mode == "forest-surv" or said.distance_to(spot) < 3.0), "its position reaches me (%s)" % d.node.position.snapped(Vector3.ONE * 0.1))
 	match mode:
 		"forest": await _as_killer(m, d)
 		"forest-surv": await _as_survivor(m, d)

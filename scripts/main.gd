@@ -1167,6 +1167,9 @@ func _on_event(e: Dictionary) -> void:
 			_slash(str(e.n))
 			_hit_anim(str(e.n)) # a real flinch, if hit.glb has been dropped in
 			if str(e.n) == my_name:
+				# the rules let go of whatever I was working on (repair, heal, unhook, the power box) the
+				# moment I am struck; so must this phone, or it went on «repairing» with nothing counted
+				_end_hold()
 				hit_t = 1.6 # the red arc points back at her
 				hit_from = car.global_position if (car and (driving or car_remote)) else _pos_of(rules.killer)
 				boost_t = 3.5 if _perk() == "burst" else 2.0 # «نفس ثاني»
@@ -1197,6 +1200,7 @@ func _on_event(e: Dictionary) -> void:
 				_flash("دوّخوك بالمسدس!" if str(e.get("by", "")) == "gun" else "انصعقت!")
 				if str(e.get("by", "")) == "gun": _shake(0.7)
 		"snipe": # «وضع القنّاص»: the rifle fired; n is whoever it dropped
+			if str(e.get("n", "")) == my_name: _end_hold()
 			_snipe_fx(str(e.get("by", "")), e.get("p", []), str(e.get("n", "")))
 		"shot": # the stun gun: a beam from the shooter, to her if it hit
 			var who := str(e.n)
