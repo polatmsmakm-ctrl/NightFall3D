@@ -94,7 +94,7 @@ func _ready() -> void:
 	await frames(40)
 	var names := ["29_hook_0_whole", "29_hook_1_legs", "29_hook_2_thighs", "29_hook_3_stomach", "29_hook_4_chest"]
 	for k in 5:
-		D.t = Rules.HOOK_TIME[1] * (1.0 - (k + 0.95) / 5.0) if k > 0 else Rules.HOOK_TIME[1] * 0.99
+		D.t = Rules.HOOK_TIME[1] * (1.0 - (k * 0.2 - 0.012)) if k > 0 else Rules.HOOK_TIME[1] * 0.99 # the end of each stage
 		await frames(25)
 		await shot(names[k])
 	D.t = 0.05

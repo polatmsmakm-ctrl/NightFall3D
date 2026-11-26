@@ -1918,11 +1918,11 @@ func _update_esp() -> void:
 	for n in esp_nodes:
 		var e: Dictionary = esp_nodes[n]
 		var r = remotes.get(n)
-		var on: bool = Dev.esp and r != null and r.node.visible and not _kept(n)
+		var on: bool = Dev.esp and r != null and r.node.visible and not _kept(n) and not _kissing(n)
 		# survivors know each other: a name over every teammate still in the round, and their body seen
 		# through walls (the killer's phone never gets either)
 		var team: bool = my_role == "survivor" and r != null and r.role == "survivor" and r.node.visible \
-			and rules.hp(n) in ["ok", "hurt", "down", "hooked", "carried"] and not _kept(n)
+			and rules.hp(n) in ["ok", "hurt", "down", "hooked", "carried"] and not _kept(n) and not _kissing(n)
 		var ov: Material = e.mat if on else (e.tmat if team else null)
 		for mi in e.meshes:
 			if is_instance_valid(mi) and mi.material_overlay != ov: mi.material_overlay = ov
@@ -3340,7 +3340,7 @@ func _process(dt: float) -> void:
 			r.rig.position.y = lerpf(r.rig.position.y, lift, w)
 			r.rig.rotation = Vector3(0, lerp_angle(r.rig.rotation.y, face, w), 0)
 			_lean_rig(r.rig, dt, float(r.spd), anim)
-			if hit_anim.get(n, 0.0) <= 0.0: r.rig.play(anim, stride)
+			if hit_anim.get(n, 0.0) <= 0.0 and not _kissing(n): r.rig.play(anim, stride) # (a kiss poses them itself)
 		_update_bleed(r.bleed, st == "hooked", dt)
 		# far away or behind the camera: the skeleton is posed less often (see CharacterRig.set_anim_rate)
 		var vc := get_viewport().get_camera_3d()
@@ -4334,6 +4334,7 @@ func _move(delta: float) -> void:
 	if my_role == "killer" and not driving: _killer_eye(delta, v)
 	# animation (a running flinch keeps the rig until it is done)
 	if hit_anim.get(my_name, 0.0) > 0.0: return
+	if _kissing(my_name): return # the kiss poses me (scripts/kiss.gd)
 	if sniping: # prone: the crawl while she moves, held still while she lies and aims
 		rig.play("crawl", clampf(v / NATURAL.crawl, 0.5, 1.6) if v > 0.15 else 0.0001)
 		return
