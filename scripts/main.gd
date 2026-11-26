@@ -13,6 +13,7 @@ const DECEL := 28.0
 var rain_audio: AudioStreamPlayer
 var _text_hint := "" # a line under the middle of the screen for the killer (the power box cooling)
 var ravens: NFRavens
+var catdog: NFCatDog # the cat at the first generator, and the dog (scripts/catdog.gd)
 const SFX := ["knife1", "knife2", "knife3", "knife4", "gunshot", "scream_beast", "crow", "raven", "gate", "heart", "breath", "steps_out", "steps_in", "gen_run", "chase", "ambient", "doom", "rope", "male_pain", "scream1", "scream2", "oof1", "oof2", "oof3"]
 const MALE := ["survivor2", "survivor3", "killer2"] # the other characters (the killer «البركة القرمزية» too) use the female voice clips
 const TERROR_RADIUS := 24.0 # survivors start to feel the killer inside this distance
@@ -970,6 +971,14 @@ func _snipe_fx(by: String, p, n: String) -> void:
 	elif to.distance_to(body.global_position) < 6.0 and my_role == "survivor":
 		_flash("رصاصة جنبك! القنّاصة تشوفك")
 		_shake(0.2)
+
+## Where the survivors stand (the cat looks up at the nearest one at its generator).
+func _survivor_spots() -> Array:
+	var out := []
+	if my_role == "survivor": out.append(body.global_position)
+	for n in remotes:
+		if remotes[n].role == "survivor": out.append((remotes[n].node as Node3D).global_position)
+	return out
 
 func _cam_pos() -> Vector3:
 	var c := get_viewport().get_camera_3d()
@@ -2933,6 +2942,11 @@ func _process(dt: float) -> void:
 		blood.name = "Blood"
 		world.add_child(blood)
 		blood.setup(world, [body.get_rid()])
+	if catdog == null and blood != null: # the owner's cat and dog, once a round
+		catdog = NFCatDog.new()
+		catdog.name = "CatDog"
+		world.add_child(catdog)
+		catdog.setup(world, rules, blood, _cam_pos, _survivor_spots, [body.get_rid()])
 	if ravens == null and world.ready_done and world.map_id != "garage": # the owner's ravens
 		ravens = NFRavens.new()
 		ravens.name = "Ravens"

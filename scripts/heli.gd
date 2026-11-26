@@ -156,7 +156,8 @@ func step(dt: float, h: Dictionary, come_time: float) -> void:
 			visible = false
 			if sound: sound.stop()
 			return
-	pos = pos.lerp(want, 1.0 - exp(-3.0 * dt)) if pos != Vector3.ZERO else want
+	if pos == Vector3.ZERO or ((st == 2 or st == 3) and pos.distance_to(want) > 25.0): pos = want # (a phone that came in late)
+	else: pos = pos.lerp(want, 1.0 - exp(-3.0 * dt))
 	body.global_transform = Transform3D(Basis.from_euler(Vector3(pitch, yaw, roll)), pos)
 	if rotor: rotor.rotate_object_local(Vector3.UP, dt * 26.0)
 	if tail: tail.rotate_object_local(Vector3.RIGHT, dt * 40.0)

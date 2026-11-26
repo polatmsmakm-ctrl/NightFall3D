@@ -8,5 +8,6 @@ server/node_modules/
 !assets/chars/*.jpg.import
 !assets/props/*.jpg.import
 !assets/props/*.png.import
+!assets/animals/*.jpg.import
 server/stats.json
 __pycache__/

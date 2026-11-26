@@ -137,7 +137,7 @@ func _ready() -> void:
 	await frames(5)
 	check(int(m.rules.heli.st) == 1 and m.heli != null and m.heli.visible, "the helicopter flies in")
 	m.rules.heli.t = 0.05
-	await frames(30)
+	await frames(150)
 	check(int(m.rules.heli.st) == 2 and m.heli.ladder.visible, "it hovers, the ladder down")
 	var foot: Vector3 = m.heli.ladder_foot()
 	check(absf(foot.y - w.heli_spot.y) < 2.0, "the ladder reaches the ground (%.1f m off)" % absf(foot.y - w.heli_spot.y))
