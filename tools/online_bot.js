@@ -34,6 +34,9 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   let lastHit = 0;
   for (let k = 0; k < 1200; k++) {
     let anim = 'idle';
+    if (role !== 'killer') { // the Godot phone may move me to where the round's generator really is
+      try { const sp = fs.readFileSync('/tmp/spot.txt', 'utf8').trim().split(' ').map(Number); if (sp.length === 3 && sp.every(Number.isFinite)) { pos[0] = sp[0]; pos[1] = sp[1]; pos[2] = sp[2]; } } catch { }
+    }
     if (role === 'killer' && tester) { // walk at 4.6 m/s toward the survivor and swing within reach
       const dx = tester[0] - pos[0]; const dz = tester[2] - pos[2]; const dist = Math.hypot(dx, dz);
       if (dist > 1.6) { const s = Math.min(0.46, dist - 1.5); pos[0] += dx / dist * s; pos[2] += dz / dist * s; pos[1] = tester[1]; anim = 'run'; }

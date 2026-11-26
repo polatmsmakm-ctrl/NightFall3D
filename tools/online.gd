@@ -62,6 +62,12 @@ func _ready():
 		print("O RESULT FAIL (no round)")
 		tree.quit()
 		return
+	# the round's own seed (the server picks it): tell the bot where generator 2 really is
+	if mode == "forest":
+		spot = m.world.gen_points[2] + Vector3(1.5, 0, 1.0)
+		var sf := FileAccess.open("/tmp/spot.txt", FileAccess.WRITE)
+		sf.store_string("%f %f %f" % [spot.x, spot.y, spot.z])
+		sf.close()
 	await frames(90)
 	check(m.remotes.has("Bot"), "the other phone is in my round")
 	if not m.remotes.has("Bot"):
@@ -114,7 +120,7 @@ func _as_survivor(m, d) -> void:
 	check(m.rules.gens[0].p > p0, "my repair counted by the server and back on my phone (%.3f)" % m.rules.gens[0].p)
 	# the bot (the killer) walks to me and swings: the blow comes from the server
 	var hurt := false
-	for i in 900:
+	for i in 3000: # it may have to cross the whole map to me
 		await tree.physics_frame
 		if m.rules.hp(m.my_name) == "hurt" or m.rules.hp(m.my_name) == "down":
 			hurt = true

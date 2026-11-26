@@ -60,7 +60,7 @@ jobs:
             pkill -f "node server.js" || true; sleep 1
             (cd server && PORT=8099 node server.js > ../srv_online.log 2>&1 &)
             sleep 1
-            rm -f /tmp/code.txt
+            rm -f /tmp/code.txt /tmp/spot.txt
             (WS_MODULE=$PWD/server/node_modules/ws node tools/online_bot.js ws://127.0.0.1:8099 > bot_online.log 2>&1 &)
             echo "=== online $mode" | tee -a online_all.log
             NF_MODE=$mode NF_URL=ws://127.0.0.1:8099 timeout 300 godot --headless --path . res://tools/online.tscn > online_raw.log 2>&1 || true
