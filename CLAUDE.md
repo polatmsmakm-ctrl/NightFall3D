@@ -1152,3 +1152,8 @@ photographs it lowered and raised.
 - **The sniper stairs**: physics stopped her at the landing every time, so the killer and the
   computer killer now walk the stair line itself (`world.stair_y` / `stair_step`); the walk surface
   is on `SN_EDGE` (bodies only) so bullets pass over the top landing.
+- **Stable checkpoint 2026-11-26: commit `5997812` on main** (the online fix and hardening, the sniper
+  mode finished). All headless tests and the three online rounds passed on CI; nothing yet on phones.
+  Tags cannot be pushed from the agent's machine (the proxy refuses them): tag it on GitHub if wanted.
+  Known flaky test: `drive`'s garage leg ("drove down the ramp") fails when the roof car is placed
+  turned away from the ramp (its spot depends on where the roof generator and hook fell).
