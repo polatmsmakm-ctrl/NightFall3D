@@ -30,6 +30,7 @@ func _ready() -> void:
 		if m.world.ready_done and not m.world.esc_cars.is_empty(): break
 	await frames(30)
 	var w: NightWorld = m.world
+	m.rules.gate_delay = 0.0
 	for g in m.rules.gens: g.done = true
 	await frames(30)
 	var ec: NFCar = w.esc_cars[0]

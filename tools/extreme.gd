@@ -32,6 +32,7 @@ func events(m, out: Array) -> void:
 	for e in out: m._on_event(e)
 
 func power(m) -> void:
+	m.rules.gate_delay = 0.0 # (the countdown is tested in sniper.gd)
 	for g in 5:
 		m.rules.gens[g].p = 0.999
 		m.rules.gens[g].reps["P"] = true

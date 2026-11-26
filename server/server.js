@@ -53,7 +53,7 @@ const validName = (n) => typeof n === 'string' && n.trim().length >= 2 && n.trim
 function roomView(r) {
   return {
     t: 'room', code: r.code, host: r.host, map: r.map, theme: r.theme, gun: !!r.gun, sniper: !!r.sniper, state: r.state,
-    players: r.members.map((m) => ({ name: m.name, role: m.role, char: m.char })),
+    players: r.members.map((m) => ({ name: m.name, role: m.role, char: m.char, perk: m.perk || '' })),
   };
 }
 function broadcast(r, obj, except) { for (const m of r.members) if (m !== except) send(m, obj); }
@@ -182,6 +182,7 @@ const handlers = {
     } else if (m.role === 'survivor' && c.role !== 'survivor') {
       c.role = 'survivor'; c.char = freeSurvivor(r);
     }
+    if (m.perk !== undefined) c.perk = m.perk === 'aid' ? 'aid' : ''; // «المسعف» instead of the character's own perk
     if (m.char !== undefined && c.role === 'survivor' && CHARS.indexOf(m.char) > 0) c.char = m.char;
     if (m.char !== undefined && c.role === 'killer' && KILLERS.includes(m.char)) c.char = m.char;
     broadcast(r, roomView(r));
@@ -210,7 +211,7 @@ const handlers = {
     if (!r || r.host !== c.name || r.state !== 'lobby') return;
     r.state = 'game';
     r.seed = Math.floor(Math.random() * 1e9);
-    const players = r.members.map((m, i) => ({ name: m.name, role: m.role, char: m.char, slot: i }));
+    const players = r.members.map((m, i) => ({ name: m.name, role: m.role, char: m.char, perk: m.role === 'survivor' ? (m.perk || '') : '', slot: i }));
     r.rules = new Rules(players, r.seed, { gun: !!r.gun, theme: r.theme, sniper: !!r.sniper && r.map === 'kuwait' });
     broadcast(r, { t: 'started', map: r.map, theme: r.theme || 'normal', gun: !!r.gun, sniper: !!r.sniper && r.map === 'kuwait', seed: r.seed, players });
     notifyRoom(r);
@@ -241,6 +242,11 @@ const handlers = {
     if (!r) return;
     const k = Math.min(2, Math.max(0, Math.floor(Number(m.k) || 0)));
     broadcast(r, { t: 'emote', n: c.name, k }, c);
+  },
+  ad(c, m) { // the developer tools play (or stop) the promotional video on the billboard: every phone in the round
+    const r = c.room;
+    if (!r || r.state !== 'game') return;
+    broadcast(r, { t: 'ad', on: m.on !== false, by: c.name });
   },
   sig(c, m) { // quick signal ("come here" / "killer here" / "repairing"): relayed to the sender's own side only
     const r = c.room;

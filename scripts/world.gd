@@ -335,6 +335,7 @@ func configure(id: String, seed := 1, th := "normal") -> void:
 	_plan_road()
 	_plan_trees()
 	if has_power_box(): _plan_power_box() # decided with the layout: the server hears where it is
+	_plan_heli() # where the rescue helicopter lets its ladder down (layout.k)
 
 ## The hooks along each escape road: one every 60 m on alternating sides of the lane, so a car
 ## the killer stops can be emptied onto the nearest one.
@@ -970,6 +971,8 @@ const KW_WATER := -0.6
 const KW_ASSEMBLY := Vector3(-75.0, 0.0, 0.0)
 const KW_TOWERS := Vector3(104.0, 0.0, -62.0) # south-east: looking down the road to the south, as in his picture
 const KW_BOX := Vector3(-23.6, 0.0, 9.0)   # the power box, on the west sidewalk
+const KW_BILL := Vector3(-24.8, 0.0, 34.0) # the billboard: just behind the west walk, facing the road
+const KW_BUS := Vector3(18.7, 0.15, -26.0) # the bus stop, on the east walk facing the road
 const KW_KIOSKS := [[-38.0, -52.0, PI / 2.0], [-38.0, 52.0, PI / 2.0], [-38.0, -90.0, PI / 2.0], [-38.0, 90.0, PI / 2.0],
 	[-78.0, -78.0, 0.0], [50.0, -64.0, -PI / 2.0], [50.0, 64.0, -PI / 2.0], [50.0, -8.0, -PI / 2.0]]
 const KW_MEDIAN := 92.0                    # the median runs to here each way, clear of the gates
@@ -1033,6 +1036,195 @@ func _kw_one(name: String, at: Vector3, yaw: float, k := 1.0, hull := Vector3.ZE
 	parent.add_child(n)
 	kw_parts += 1
 	return n
+
+# ---------------- Kuwait City: the owner's billboard, police, bus stop, drains and boats ----------------
+var ad_mat: StandardMaterial3D        # the billboard's screen: his picture, or his video while it plays
+var ad_img: Texture2D
+var ad_video: VideoStreamPlayer
+var ad_at := Vector3.ZERO
+var police: Array = []                # [node, light, red mat, blue mat, siren, phase]
+var sirens_on := false
+var boats: Array = []                 # [node, x, z, base yaw, draft]
+
+func _build_kw_extras() -> void:
+	# ---- the billboard: just behind the west walk, square to the road, the trees cleared in front ----
+	var bill := _kw_one("billboard", KW_BILL, PI / 2.0, 1.0, Vector3(1.6, 4.0, 1.6), 2.0)
+	if bill:
+		var b := Basis(Vector3.UP, PI / 2.0)
+		ad_at = KW_BILL + b * Vector3(0, 7.45, 0.36)
+		# the screen inside the frame (4.6 x 3.3 m): black behind, his 16:9 picture across its width
+		var back := MeshInstance3D.new()
+		var bq := QuadMesh.new()
+		bq.size = Vector2(4.6, 3.3)
+		bq.material = _flat(Color(0.01, 0.01, 0.012), 0.9)
+		back.mesh = bq
+		back.transform = Transform3D(b, KW_BILL + b * Vector3(0, 7.45, 0.33))
+		back.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(back)
+		ad_mat = StandardMaterial3D.new()
+		ad_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED # it is lit from inside: always bright
+		ad_img = load("res://assets/ads/ad.jpg") if ResourceLoader.exists("res://assets/ads/ad.jpg") else null
+		ad_mat.albedo_texture = ad_img
+		ad_mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+		ad_mat.albedo_color = Color(1.25, 1.25, 1.25)
+		var scr := MeshInstance3D.new()
+		var sq := QuadMesh.new()
+		sq.size = Vector2(4.6, 4.6 * 9.0 / 16.0)
+		sq.material = ad_mat
+		scr.mesh = sq
+		scr.name = "AdScreen"
+		scr.transform = Transform3D(b, ad_at)
+		scr.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(scr)
+		var glow := OmniLight3D.new() # the screen lights the walk under it a little
+		glow.light_color = Color(1.0, 0.9, 0.8)
+		glow.light_energy = 1.2
+		glow.omni_range = 11.0
+		glow.position = KW_BILL + b * Vector3(0, 6.0, 2.2)
+		add_child(glow)
+	# ---- police: lights going round from the start, sirens only once the gates open ----
+	var siren: AudioStream = load("res://assets/sfx/siren.ogg") if ResourceLoader.exists("res://assets/sfx/siren.ogg") else null
+	if siren is AudioStreamOggVorbis: (siren as AudioStreamOggVorbis).loop = true # (a seamless loop: its end is crossfaded into its start)
+	var spots := [["police_car", Vector3(12.6, 0.03, -76.0), 0.22], ["police_suv", Vector3(-12.6, 0.03, -84.0), PI - 0.3],
+		["police_car", Vector3(-12.6, 0.03, 72.0), PI + 0.2], ["police_suv", Vector3(12.6, 0.03, 80.0), -0.3]]
+	if sniper: spots.resize(2) # the north end is the sniper's tower
+	var k := 0
+	for sp in spots:
+		var tall := 1.7 if str(sp[0]) == "police_suv" else 1.55
+		var n := _kw_one(str(sp[0]), sp[1], float(sp[2]), 1.0, Vector3(2.0, tall, 4.6), tall / 2.0)
+		if n == null: continue
+		var bb := Basis(Vector3.UP, float(sp[2]))
+		var at: Vector3 = sp[1]
+		var red := _flat(Color(1.0, 0.05, 0.05), 0.3, 0.0, 0.2) # (emission on from the start: only its strength flashes)
+		var blue := _flat(Color(0.1, 0.3, 1.0), 0.3, 0.0, 0.2)
+		for side in [[-0.38, red], [0.38, blue]]: # the bar's two halves flash in turn
+			var lm := MeshInstance3D.new()
+			var bx := BoxMesh.new()
+			bx.size = Vector3(0.62, 0.1, 0.22)
+			bx.material = side[1]
+			lm.mesh = bx
+			lm.transform = Transform3D(bb, at + bb * Vector3(float(side[0]), tall + 0.02, -0.15))
+			lm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			add_child(lm)
+		var l := OmniLight3D.new()
+		l.omni_range = 16.0
+		l.light_energy = 0.0
+		l.position = at + bb * Vector3(0, tall + 0.4, -0.15)
+		add_child(l)
+		var sp3: AudioStreamPlayer3D = null
+		if siren:
+			sp3 = AudioStreamPlayer3D.new()
+			sp3.stream = siren
+			sp3.bus = "SFX"
+			sp3.unit_size = 22.0
+			sp3.max_distance = 260.0
+			sp3.volume_db = 2.0
+			sp3.position = at + Vector3(0, 1.5, 0)
+			add_child(sp3)
+		police.append([n, l, red, blue, sp3, k * 0.37])
+		k += 1
+	# ---- the bus stop on the east walk, open to the road ----
+	_kw_one("bus_stop", KW_BUS, -PI / 2.0)
+	# ---- drains along both kerbs ----
+	var drains: Array = []
+	for sx in [-1.0, 1.0]:
+		for z in range(-96, 97, 24):
+			drains.append(Transform3D(Basis(Vector3.UP, PI / 2.0), Vector3(sx * (KW_ROAD_HALF - 0.55), 0.035, float(z) + 6.0 * sx)))
+	_kw_many("drain", drains, Vector3.ZERO, 0.0, 60.0, false)
+	# ---- boats: two riding the swell offshore, the skiff on its trailer up on the sand ----
+	for bt in [["boat_marina", 82.0, -26.0, 0.7, 0.55], ["boat_yacht", 104.0, 30.0, -0.45, 0.9], ["boat_marina", 92.0, 72.0, 2.4, 0.55]]:
+		var nb := _kw_one(str(bt[0]), Vector3(float(bt[1]), KW_WATER, float(bt[2])), float(bt[3]))
+		if nb: boats.append([nb, float(bt[1]), float(bt[2]), float(bt[3]), float(bt[4])])
+	var sk := Vector3(KW_SAND + 1.5, 0.0, 72.0)
+	sk.y = height(sk.x, sk.z)
+	_kw_one("boat_skiff", sk, 0.35, 1.0, Vector3(2.4, 1.6, 6.0), 0.8)
+
+## The billboard plays his promotional video (only ever when the developer tools ask, on every
+## phone), then goes back to his picture.
+func play_ad(on: bool) -> void:
+	if ad_mat == null: return
+	if not on:
+		if ad_video: ad_video.stop()
+		ad_mat.albedo_texture = ad_img
+		return
+	if not ResourceLoader.exists("res://assets/ads/promo.ogv"): return
+	if ad_video == null:
+		var layer := CanvasLayer.new()
+		layer.layer = -10
+		add_child(layer)
+		ad_video = VideoStreamPlayer.new()
+		ad_video.stream = load("res://assets/ads/promo.ogv")
+		ad_video.bus = "SFX"
+		ad_video.size = Vector2(4, 4)
+		ad_video.modulate = Color(1, 1, 1, 0) # decoded for the billboard, never drawn on the screen itself
+		ad_video.finished.connect(func(): ad_mat.albedo_texture = ad_img)
+		layer.add_child(ad_video)
+	ad_video.stop()
+	ad_video.play()
+	ad_mat.albedo_texture = ad_video.get_video_texture()
+
+## The gates are open: every police car's siren starts (they were silent, lights only, till now).
+func set_sirens(on: bool) -> void:
+	if sirens_on == on: return
+	sirens_on = on
+	for p in police:
+		var a: AudioStreamPlayer3D = p[4]
+		if a == null: continue
+		if on: a.play(randf() * 2.0)
+		else: a.stop()
+
+func _step_kw(dt: float, t: float, cam: Vector3) -> void:
+	for p in police: # red, red, blue, blue: the bar takes turns, the light on the street with it
+		var ph: float = fmod(t * 1.6 + float(p[5]), 1.0)
+		var red_on := (ph < 0.12) or (ph > 0.2 and ph < 0.32)
+		var blue_on := (ph > 0.5 and ph < 0.62) or (ph > 0.7 and ph < 0.82)
+		(p[2] as StandardMaterial3D).emission_energy_multiplier = 9.0 if red_on else 0.2
+		(p[3] as StandardMaterial3D).emission_energy_multiplier = 9.0 if blue_on else 0.2
+		var l: OmniLight3D = p[1]
+		l.light_color = Color(1.0, 0.1, 0.08) if red_on else Color(0.15, 0.3, 1.0)
+		l.light_energy = 3.2 if (red_on or blue_on) else 0.0
+		if p[4] and sirens_on and not (p[4] as AudioStreamPlayer3D).playing: (p[4] as AudioStreamPlayer3D).play()
+	for b in boats: # riding the swell: up and down with it, and rocking on it
+		var n: Node3D = b[0]
+		var par := n.get_parent() as Node3D
+		var node := par if par != self else n
+		var x: float = b[1]; var z: float = b[2]
+		var y := wave_y(x, z, t)
+		var sx := (wave_y(x + 2.0, z, t) - wave_y(x - 2.0, z, t)) / 4.0
+		var sz := (wave_y(x, z + 3.0, t) - wave_y(x, z - 3.0, t)) / 6.0
+		node.position = Vector3(x, KW_WATER - float(b[4]) + y * 0.85, z)
+		node.rotation = Vector3(-sz * 0.9, float(b[3]), sx * 0.9)
+	if ad_video and ad_video.is_playing(): # the video's sound comes from the billboard
+		var d := cam.distance_to(ad_at)
+		ad_video.volume_db = lerpf(-2.0, -48.0, clampf((d - 12.0) / 70.0, 0.0, 1.0))
+
+## The sea's material (shaders/ocean.gdshader): `amp` 1 the open sea, less for a lagoon; `dir`
+## points out to sea and `shore` is the water line along it.
+func ocean_mat(amp: float, dir: Vector2, shore: float) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = load("res://shaders/ocean.gdshader")
+	m.set_shader_parameter("amp", amp)
+	m.set_shader_parameter("shore_dir", dir)
+	m.set_shader_parameter("shore_d", shore)
+	m.set_shader_parameter("ripple_a", _noise_tex(0.06, 256, true))
+	m.set_shader_parameter("ripple_b", _noise_tex(0.14, 256, true))
+	m.set_shader_parameter("foam_tex", _noise_tex(0.09, 256, false))
+	m.render_priority = -1
+	sea_amp = amp
+	return m
+
+## The same four swells as the sea shader: how high the water stands at (x, z) now, and which way
+## its surface tilts there (so a boat can sit on it and roll with it).
+const WAVES := [[-0.94, 0.34, 21.0, 0.32], [-0.62, -0.78, 13.0, 0.2], [-0.99, -0.12, 7.5, 0.11], [-0.4, 0.92, 4.2, 0.06]]
+var sea_amp := 1.0
+func wave_y(x: float, z: float, t: float) -> float:
+	var y := 0.0
+	for w in WAVES:
+		var d := Vector2(w[0], w[1]).normalized()
+		var k: float = TAU / float(w[2])
+		var c := sqrt(9.8 / k)
+		y += float(w[3]) * sea_amp * sin(k * (d.dot(Vector2(x, z)) - c * t))
+	return y
 
 ## Pavers drawn in code: rows of rectangular stones, each a little different, with sunken grout and
 ## a normal map from it, laid in world space (one tile of the texture covers 2 m). `warm`: the
@@ -1183,11 +1375,11 @@ func _grid_glow_of(n: Node) -> void:
 		_grid_glow.append(2.4)
 
 # ---------------- «بين العصر والمغرب» ----------------
-## The round starts in the afternoon and the sun goes down over SUNSET_TIME (five minutes of the
+## The round starts in the afternoon and the sun goes down over SUNSET_TIME (four minutes of the
 ## round's own clock, `round_t`, the same on every phone): golden light, then the sky reddens, then
 ## dusk, then nothing. From then on the night is pitch dark (DARK_*) until a survivor turns the street
 ## lights on at the power box (`grid_off` false); the killer can cut them again. Written every frame.
-const SUNSET_TIME := 300.0
+const SUNSET_TIME := 240.0 # four minutes (the owner: it was five)
 const MOON_RISE := 150.0     # the moon comes up over this long once the sun is gone
 var moon_now := -10.0        # the moon's height in degrees (tests)
 var _vol_base := -1.0
@@ -1199,8 +1391,8 @@ func night_fell() -> bool: return round_t >= SUNSET_TIME
 
 func _step_sunset(dt: float) -> void:
 	var t := clampf(round_t / SUNSET_TIME, 0.0, 1.0)
-	# degrees over the horizon: it touches the horizon just before the five minutes are up, and at
-	# five minutes it is gone and the night is complete
+	# degrees over the horizon: it touches the horizon just before the four minutes are up, and at
+	# four minutes it is gone and the night is complete
 	var el := lerpf(38.0, -4.0, pow(t, 1.25)) if round_t <= SUNSET_TIME else -4.0 - (round_t - SUNSET_TIME) * 0.1
 	var day := clampf((el - 3.0) / 17.0, 0.0, 1.0)
 	var warm := smoothstep(30.0, 6.0, el) * smoothstep(-5.0, 0.0, el)
@@ -1382,6 +1574,8 @@ func _build_kuwait() -> void:
 	for sx in [-1.0, 1.0]:
 		for z in range(-104, 105, step):
 			if sx < 0.0 and absf(float(z) - KW_BOX.z) < 2.5: continue # the power box stands there
+			if sx < 0.0 and absf(float(z) - KW_BILL.z) < 7.0: continue # nothing in front of the billboard
+			if sx > 0.0 and absf(float(z) - KW_BUS.z) < 3.5: continue # the bus stop
 			trees.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * rng.randf_range(0.85, 1.1)), Vector3(sx * (KW_ROAD_HALF + KW_WALK - 1.2), 0.15, float(z))))
 	for tz in [-46.0, -30.0, -6.0, 6.0, 30.0, 46.0]:
 		for tx in [-46.0, -33.0]: trees.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU), Vector3(tx, 0.06, tz)))
@@ -1468,15 +1662,23 @@ func _build_kuwait() -> void:
 	bm.material = _flat(Color(0.85, 0.85, 0.82), 0.6, 0.0, 0.2)
 	bay.mesh = bm
 	var bays: Array = []
-	var cars := {"kw_nova": [], "kw_chevelle": [], "kw_supercar": [], "kw_pickup": [], "car": []}
-	var kinds := cars.keys()
+	var cars := {"kw_nova": [], "kw_chevelle": [], "kw_supercar": [], "kw_pickup": [], "car": [], "car_hyper": [], "car_porsche": [], "car_pickup": []}
+	var kinds: Array = []
+	for kd in cars: # only the cars whose models are in the build
+		if kd == "car" or ResourceLoader.exists("res://assets/props/%s.glb" % kd): kinds.append(kd)
 	for row in [KW_PARK.x + 3.0, KW_PARK.y - 3.0]:
+		var prev := ""
 		for z in range(-100, 101, 3):
 			bays.append(Transform3D(Basis(), Vector3(row, 0.11, float(z) - 1.5)))
-			if (z + 100) % 33 < 3 or rng.randf() < 0.3: continue # aisles to walk through, and empty bays
+			if (z + 100) % 33 < 3 or rng.randf() < 0.3: # aisles to walk through, and empty bays
+				if (z + 100) % 33 < 3: prev = ""
+				continue
 			var kind: String = kinds[rng.randi() % kinds.size()]
-			# nose into the bay: his cars are long along x, the Land Cruiser along z
-			var yaw := (PI / 2.0 if row < 34.0 else -PI / 2.0) if kind == "car" else (PI if row < 34.0 else 0.0)
+			while kind == prev and kinds.size() > 1: kind = kinds[rng.randi() % kinds.size()] # never two alike side by side
+			prev = kind
+			# nose into the bay: his older cars are long along x; the Land Cruiser and the new ones along z
+			var along_z := kind == "car" or kind.begins_with("car_")
+			var yaw := (PI / 2.0 if row < 34.0 else -PI / 2.0) if along_z else (PI if row < 34.0 else 0.0)
 			var k := 0.9 if kind == "car" else 1.0
 			cars[kind].append(Transform3D(Basis(Vector3.UP, yaw + rng.randf_range(-0.04, 0.04)).scaled(Vector3.ONE * k), Vector3(row, 0.08, float(z))))
 	bay.instance_count = bays.size()
@@ -1487,7 +1689,12 @@ func _build_kuwait() -> void:
 	bmi.visibility_range_end = 90.0
 	add_child(bmi)
 	for kind in cars:
-		_kw_many(kind, cars[kind], Vector3(1.9, 1.4, 4.4) if kind == "car" else Vector3(5.2 if kind == "kw_pickup" else 4.5, 1.5, 1.9), 0.7, 140.0, true)
+		var hull := Vector3(5.2 if kind == "kw_pickup" else 4.5, 1.5, 1.9)
+		if kind == "car": hull = Vector3(1.9, 1.4, 4.4)
+		elif kind == "car_pickup": hull = Vector3(2.05, 1.7, 5.1)
+		elif kind.begins_with("car_"): hull = Vector3(2.0, 1.2, 4.6)
+		_kw_many(kind, cars[kind], hull, 0.7, 140.0, true)
+	_build_kw_extras()
 	# ---- the corniche: benches facing the water, his white car on its deck, a frost of lights in snow ----
 	var benches: Array = []
 	for z in range(-95, 96, 15): benches.append(Transform3D(Basis(Vector3.UP, PI / 2.0), Vector3(KW_PROM.y - 4.5, 0.05, float(z) + 5.0)))
@@ -1532,19 +1739,13 @@ func _build_kuwait() -> void:
 		for x in [26.0, 30.0, 38.0, 42.0]: bars.append(Transform3D(Basis(), Vector3(x, 0.05, zs * 104.0)))
 	_kw_many("kw_barrier", bars, Vector3(2.0, 1.4, 0.8), 0.7, 110.0, true)
 	# ---- the sea: sand, rocks along the water, the towers on their point, a warship ----
-	var water := StandardMaterial3D.new()
-	water.albedo_color = Color(0.03, 0.08, 0.14, 0.86)
-	water.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	water.metallic = 0.5
-	water.roughness = 0.05
-	water.normal_enabled = true
-	water.normal_texture = _noise_tex(0.08, 256, true)
-	water.normal_scale = 0.5
-	water.uv1_scale = Vector3(0.05, 0.05, 0.05)
-	water.uv1_triplanar = true
+	var water := ocean_mat(1.0, Vector2(1, 0), KW_SHORE)
 	var sea := MeshInstance3D.new()
 	var pm := PlaneMesh.new()
 	pm.size = Vector2(700.0, 900.0)
+	# the swell needs vertices to move: dense near the shore, where everyone sees it
+	pm.subdivide_width = 120 if Gfx.weak else 220
+	pm.subdivide_depth = 150 if Gfx.weak else 280
 	pm.material = water
 	sea.mesh = pm
 	sea.position = Vector3(KW_SHORE + 350.0 - 6.0, KW_WATER, 0)
@@ -1711,6 +1912,29 @@ func has_power_box() -> bool:
 	return map_id == "kuwait" or theme in ["halloween", "sunset"]
 
 var power_box_yaw := PI / 2.0
+## The rescue helicopter's spot: open ground, clear of trees, buildings and objectives for its rotor
+## (8.7 m) and its ladder. Kuwait City: on the corniche by the sea; the car park: up on its roof.
+var heli_spot := Vector3.INF
+func _plan_heli() -> void:
+	if map_id == "kuwait":
+		heli_spot = Vector3(49.0, 0.2, -16.0)
+		return
+	if map_id == "garage":
+		var rx: float = (GAR_RAMP_X[0] + GAR_RAMP_X[1]) / 2.0
+		heli_spot = Vector3(rx - 34.0, GAR_ROOF, GAR_RAMP_Z[1] + 14.0)
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = layout_seed * 37 + 7717
+	for k in 40:
+		var p2 := _random_site(rng, 7.0, 18.0, 75.0)
+		if near_tree(p2.x, p2.y, 9.0) or on_street(p2.x, p2.y, 2.0): continue
+		heli_spot = Vector3(p2.x, _raw_h(p2.x, p2.y), p2.y)
+		break
+	if heli_spot == Vector3.INF:
+		var p3 := _random_site(rng, 4.0, 18.0, 75.0)
+		heli_spot = Vector3(p3.x, _raw_h(p3.x, p3.y), p3.y)
+	sites.append([heli_spot.x, heli_spot.z, heli_spot.y, 3.0])
+
 func _plan_power_box() -> void:
 	if map_id == "kuwait":
 		power_box = KW_BOX
@@ -2532,6 +2756,22 @@ func set_gate_state(i: int, open: bool) -> void:
 			var tw := create_tween()
 			tw.tween_property(door, "position:x", sx * (g.open_w * 0.75 + 0.2), 4.6).set_trans(Tween.TRANS_SINE)
 			k += 1
+
+## The countdown before the gates open (`rules.gate_t`): the gate lights blink amber, faster as it
+## runs out. 0 = back to the gate's own red (or green once open: set_gate_state takes over then).
+func gate_warn(left: float) -> void:
+	for g in gate_nodes:
+		if g.state == 2: continue
+		if left < 0.0:
+			g.light.light_color = Color(1.0, 0.15, 0.1); g.light.light_energy = 2.0
+			g.mat.emission = Color(1.0, 0.15, 0.1)
+			continue
+		var hz := lerpf(4.0, 1.2, clampf(left / 10.0, 0.0, 1.0))
+		var on := fmod(Time.get_ticks_msec() / 1000.0 * hz, 1.0) < 0.5
+		var c := Color(1.0, 0.62, 0.08) if on else Color(0.25, 0.08, 0.02)
+		g.light.light_color = c
+		g.light.light_energy = 4.5 if on else 0.6
+		g.mat.emission = c
 
 # ---------------- the market (strip mall) ----------------
 func _flat(c: Color, rough := 0.8, metal := 0.0, glow := 0.0) -> StandardMaterial3D:
@@ -3885,6 +4125,10 @@ func _apply_quality() -> void:
 
 func _process(_dt: float) -> void:
 	var t := Time.get_ticks_msec() / 1000.0
+	if map_id == "kuwait" and (not police.is_empty() or not boats.is_empty() or ad_video):
+		var vp := get_viewport()
+		var cam3 := vp.get_camera_3d() if vp else null
+		_step_kw(_dt, t, cam3.global_position if cam3 else Vector3.ZERO)
 	if theme == "sunset" and env and moon: _step_sunset(_dt)
 	if not animals.is_empty(): _step_animals(_dt)
 	for i in amb_lights.size():
@@ -4337,19 +4581,14 @@ func _build_beach() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 8899
 	# ---- the lagoon ----
-	var water := StandardMaterial3D.new()
-	water.albedo_color = Color(0.06, 0.22, 0.26, 0.78)
-	water.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	water.metallic = 0.35
-	water.roughness = 0.08
-	water.normal_enabled = true
-	water.normal_texture = _noise_tex(0.08, 256, true)
-	water.normal_scale = 0.45
-	water.uv1_scale = Vector3(0.06, 0.06, 0.06)
-	water.uv1_triplanar = true
+	var water := ocean_mat(0.35, Vector2(0, 1), BEACH_SHORE) # a lagoon: a gentle swell
+	water.set_shader_parameter("shallow_col", Color(0.05, 0.24, 0.25))
+	water.set_shader_parameter("shallow_w", 40.0)
 	var sea := MeshInstance3D.new()
 	var pm := PlaneMesh.new()
 	pm.size = Vector2(SIZE, SIZE)
+	pm.subdivide_width = 100 if Gfx.weak else 160
+	pm.subdivide_depth = 100 if Gfx.weak else 160
 	pm.material = water
 	sea.mesh = pm
 	sea.position = Vector3(0, BEACH_WATER, BEACH_SHORE + SIZE / 2.0 - 10.0)

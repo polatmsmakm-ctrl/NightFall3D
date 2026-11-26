@@ -105,6 +105,8 @@ func on_event(e: Dictionary) -> void:
 			if state == "patrol" and int(e.i) < m.world.gen_points.size(): _go(m.world.gen_points[int(e.i)])
 		"snap": # one of her traps
 			if state != "carry": _go(m._pos_of(str(e.n)))
+		"heli": # the rescue helicopter is coming for the last one: she makes for its ladder
+			if int(e.get("st", 0)) in [1, 2] and state == "patrol" and m.world.heli_spot != Vector3.INF: _go(m.world.heli_spot)
 		"pallet": # dropped on her?
 			var i := int(e.i)
 			if i < m.world.pallet_points.size():

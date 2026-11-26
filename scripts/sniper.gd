@@ -42,6 +42,21 @@ static func _cyl(r: float, h: float, m: Material, r2 := -1.0) -> CylinderMesh:
 	return c
 
 static func rifle() -> Node3D:
+	# the owner's gothic sniper rifle (assets/props/rifle.glb, 1.25 m, muzzle toward -x, standing on
+	# y = 0) laid along +z like the one built below: the grip at the origin, the barrel's line at
+	# y 0.03, the muzzle at z 0.86. The scope view (draw_scope) is not touched by any of this.
+	if ResourceLoader.exists("res://assets/props/rifle.glb"):
+		var scene := load("res://assets/props/rifle.glb") as PackedScene
+		if scene:
+			var wrap := Node3D.new()
+			wrap.name = "SniperRifle"
+			var m := scene.instantiate() as Node3D
+			m.rotation.y = PI / 2.0
+			m.position = Vector3(0.0, -0.17, 0.24)
+			wrap.add_child(m)
+			for mi in m.find_children("*", "MeshInstance3D", true, false):
+				(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			return wrap
 	var root := Node3D.new()
 	root.name = "SniperRifle"
 	var steel := _m(Color(0.07, 0.075, 0.08), 0.35, 0.85)

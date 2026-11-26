@@ -362,6 +362,15 @@ func _process(_dt: float) -> void:
 	box.modulate.a = seen
 	card.modulate.a = seen
 
+## The perk I play with: my character's own ("") or «المسعف» ("aid", the first-aid kit). Saved on the
+## phone, and online the room hears it (`set {perk}`), so the rules give it to me when the round starts.
+func _pick_perk(p: String) -> void:
+	NFUI.click()
+	Net.perk = p
+	Net.save()
+	if not _offline_flow(): Net.send({"t": "set", "perk": p})
+	_refresh()
+
 ## One step along the carousel: the new character slides in, then the labels follow.
 func _step(d: int) -> void:
 	var list := _char_list()
@@ -749,9 +758,18 @@ func _page_chars() -> void:
 	_label("اختر شخصيتك", 26, Color(1, 0.85, 0.45))
 	_label(str(CHARS.get(id, id)), 40, NFUI.char_col(id))
 	var pk: String = Rules.PERK.get(id, "")
+	var survivor := not id.begins_with("killer")
+	if survivor and Net.perk == "aid": pk = "aid" # «المسعف», picked instead of the character's own
 	if pk != "": # what this character can do that the others cannot
 		var info: Array = Rules.PERK_INFO[pk]
 		_label("القدرة: %s — %s" % [info[0], info[1]], 19, Color(1.0, 0.82, 0.45))
+	if survivor: # pick a perk: the character's own, or «المسعف» with the first-aid kit in hand
+		var own: String = Rules.PERK.get(id, "")
+		var own_name: String = Rules.PERK_INFO[own][0] if Rules.PERK_INFO.has(own) else "بدون"
+		var ph := _row()
+		var b1 := _button("قدرة الشخصية: %s" % own_name, func(): _pick_perk(""), ph, true, "star")
+		var b2 := _button("المسعف (شنطة الإسعاف)", func(): _pick_perk("aid"), ph, true, "heal")
+		(b2 if Net.perk == "aid" else b1).modulate = Color(0.55, 1.0, 0.6)
 	_label("%d/%d  •  اسحب الشاشة يمين أو يسار" % [maxi(i, 0) + 1, list.size()], 18, Color(0.7, 0.7, 0.72))
 	var h := _row()
 	_button("‹ السابق", func(): _step(-1), h, true, "next")
@@ -825,7 +843,7 @@ func _page_offline() -> void:
 	if off_sniper: bsn.modulate = Color(1.0, 0.55, 0.45)
 	_button("ابدأ", func():
 		var n := Net.username if Net.username != "" else "Player"
-		var list := [{"name": n, "role": "killer" if off_char.begins_with("killer") else "survivor", "char": off_char, "slot": 0}]
+		var list := [{"name": n, "role": "killer" if off_char.begins_with("killer") else "survivor", "char": off_char, "perk": Net.perk, "slot": 0}]
 		# a practice dummy: a target for the killer, or a wounded teammate to heal
 		list.append({"name": "دمية", "role": "survivor", "char": "survivor1" if off_char != "survivor1" else "survivor2", "slot": 1, "dummy": true})
 		if not off_char.begins_with("killer") and off_bot: # a computer killer hunting you

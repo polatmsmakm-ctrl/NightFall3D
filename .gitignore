@@ -9,3 +9,4 @@ server/node_modules/
 !assets/props/*.jpg.import
 !assets/props/*.png.import
 server/stats.json
+__pycache__/

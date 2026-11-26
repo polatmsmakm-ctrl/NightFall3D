@@ -129,6 +129,11 @@ func _ready() -> void:
 	# one gate, no moon
 	for g in m.rules.gens: g.done = true
 	for e in m.rules.tick(0.1): m._on_event(e)
+	check(not m.rules.powered and m.rules.gate_t > 9.0 and not m.rules.gates[0].open, "the generators done: a countdown first (%.1f s), the gates still shut" % m.rules.gate_t)
+	check(m.rules.snapshot().get("gt", -1.0) > 9.0, "the countdown goes out in the snapshot")
+	for e in m.rules.tick(5.0): m._on_event(e)
+	check(not m.rules.powered and absf(m.rules.gate_t - 4.9) < 0.05, "half way: %.1f s left" % m.rules.gate_t)
+	for e in m.rules.tick(5.0): m._on_event(e)
 	check(m.rules.powered and m.rules.gates[0].open and not m.rules.gates[1].open, "power: only the gate on the towers' side opens")
 	check(m.rules.doom < 0.0, "and no moon comes down")
 	m.rules.s["P"].hp = "ok"

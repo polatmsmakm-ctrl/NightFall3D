@@ -25,6 +25,7 @@ func boot(map: String, players: Array):
 	return m
 
 func power(m) -> void:
+	m.rules.gate_delay = 0.0 # (the countdown is tested in sniper.gd)
 	for g in 5:
 		m.rules.gens[g].p = 0.999
 		m.rules.gens[g].reps["D"] = true

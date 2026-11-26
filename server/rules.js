@@ -4,10 +4,14 @@ const BLEED_TIME = 120, HIT_COOLDOWN = 1.5, POWER_CD = 20, STUN_TIME = 2.5;
 // «وضع السلاح» (the host's choice): every survivor carries a stun gun with GUN_SHOTS shots for the round;
 // a hit within GUN_RANGE leaves the killer dizzy for GUN_STUN seconds (she drops whoever she carries)
 const GUN_SHOTS = 3, GUN_RANGE = 22, GUN_STUN = 3;
+const GATE_DELAY = 10; // the generators are done: the gates open this long after
 const DOOM_TIME = 120; // once the gates have power the moon falls: this long to get out
 const MASH_STEP = 0.03, MASH_DECAY = 0.1;
 const RESCUE_TIME = 2; // seconds to lift someone off a hook; two of you halve it // "free yourself": keep tapping or the bar drains
 const LIVE = ['ok', 'hurt', 'down', 'carried', 'hooked'];
+// the rescue helicopter: when only one survivor is left (and free), it comes; it hovers over its
+// spot (layout.k) with a rope ladder down; the survivor climbs it and is out. Caught first: it leaves.
+const HELI_COME = 22, HELI_WAIT = 75, CLIMB_TIME = 6, HELI_REACH = 3.2, CLIMB_SAFE = 0.3;
 // one random event per round, picked from the seed so every client agrees (mirrors rules.gd)
 const EVENT_LEN = [20, 40, 5]; // 0 blackout, 1 heavy fog, 2 alarm
 const ADHAN_LEN = 55;          // the length of assets/sfx/adhan.mp3
@@ -23,6 +27,7 @@ const GRID_GAP = 60; // and only this long after the power came back
 const GRID_OFF_GAP = 15;
 const SNIPE_CD = 1.2; // the sniper's bolt-action: this long between shots, unlimited // Halloween: a survivor may switch the power off again this long after it came back
 const GRID_FIX = 12; // Kuwait City's power box: one survivor brings the street lights back in 12 s // «تفتّح»: Bloom, hurt and left alone this long, mends herself
+const AID_MUL = 2.0, AID_SELF = 8; // «المسعف» (the perk a survivor may pick instead of their own): carries the first-aid kit — heals others twice as fast, heals himself in 8 s, and the kit never runs out
 const FIX_MUL = 1.3, MEDIC_MUL = 1.6, LIFT_W = 1.8, RISE_TIME = 20;
 const TRAPS = 4, HELD_TIME = 4; // the killer's traps armed at once; caught in one: held this long
 
@@ -37,7 +42,7 @@ class Rules {
     this.gridMode = opts && opts.theme === 'halloween' ? 1 : (opts && opts.theme === 'sunset' ? 2 : 0);
     this.gens = []; this.gates = []; this.pallets = []; this.s = {}; this.roles = {};
     this.killer = ''; this.carrying = ''; this.stun = 0; this.powerCd = 0;
-    this.healers = {}; this.rescuers = {}; this.lastHit = {}; this.powered = false; this.doom = -1; this.over = false; this.clock = 0;
+    this.healers = {}; this.rescuers = {}; this.lastHit = {}; this.powered = false; this.gateT = -1; this.heli = { st: 0, t: 0, who: '', p: 0, hp0: '' }; this.doom = -1; this.over = false; this.clock = 0;
     this.pos = {}; this.layout = null; this.ready = false; this.hatch = -1; this.score = {};
     this.doors = [];                        // every doorway: true when the leaf is shut
     // the escape car behind each gate: st 0 waiting, 1 on the road, 2 caught, 3 through the last gate
@@ -57,7 +62,7 @@ class Rules {
       this.score[p.name] = 0;
       if (p.role === 'killer') this.killer = p.name;
       else {
-        const pk = PERK[p.char] || '';
+        const pk = p.perk === 'aid' ? 'aid' : (PERK[p.char] || ''); // a picked perk («المسعف») replaces the character's
         this.perk[p.name] = pk;
         this.s[p.name] = { hp: 'ok', hooks: 0, hook_i: -1, t: 0, heal: 0, locker: -1, item: true, esc: 0, resc: 0, tap: 0, car: -1,
           held: 0, shield: pk === 'tough', risen: false, rt: 0, ammo: this.gun ? GUN_SHOTS : 0 };
@@ -70,6 +75,7 @@ class Rules {
     // left the round with no rules at all (nothing a player did would count)
     if (l.g.length > 16 || l.p.length > 32 || l.h.length > 48) console.error('layout too long', l.g.length, l.p.length, l.h.length);
     l.g = l.g.slice(0, 16); l.p = l.p.slice(0, 32); l.h = l.h.slice(0, 48);
+    if (!(Array.isArray(l.k) && l.k.length >= 2 && l.k.every(Number.isFinite))) l.k = null; // the helicopter's spot
     this.layout = l;
     for (let i = 0; i < l.g.length; i++) this.gens.push({ p: 0, done: false, reps: {} });
     for (let i = 0; i < 2; i++) {
@@ -167,7 +173,7 @@ class Rules {
     switch (d.k) {
       case 'rep':
         if (i >= 0 && i < this.gens.length) {
-          if (d.on && this.freeNow(from) && !this.gens[i].done && !this.powered && this.near(from, L.g[i])) this.gens[i].reps[from] = true;
+          if (d.on && this.freeNow(from) && !this.gens[i].done && !this.powered && this.gateT < 0 && this.near(from, L.g[i])) this.gens[i].reps[from] = true;
           else delete this.gens[i].reps[from];
         }
         break;
@@ -201,7 +207,15 @@ class Rules {
           if (this.freeNow(from) && ((this.powered && atEnd) || viaHatch)) { this.s[from].hp = 'escaped'; this.add(from, 150); this.drop(from); }
         }
         break;
+      case 'ladder': // the last survivor takes hold of the helicopter's rope ladder
+        if (this.heli.st === 2 && from === this.heli.who && this.freeNow(from) && this.layout.k && this.near(from, this.layout.k, HELI_REACH)) {
+          Object.assign(this.heli, { st: 3, p: 0, hp0: this.s[from].hp });
+          this.drop(from);
+          out.push({ k: 'heli', st: 3, n: from });
+        }
+        break;
       case 'hit':
+        if (this.heli.st === 3 && n === this.heli.who && this.heli.p >= CLIMB_SAFE) break; // already out of her reach up the ladder
         if (isKiller && this.stun <= 0 && this.carrying === '' && this.freeNow(n) && this.nearPlayer(from, n)
           && this.clock - (this.lastHit[n] ?? -99) > HIT_COOLDOWN) {
           this.lastHit[n] = this.clock;
@@ -374,7 +388,13 @@ class Rules {
       for (const r of Object.keys(g.reps)) this.add(r, dt * 100 / GEN_TIME);
       if (g.p >= 1) { g.p = 1; g.done = true; g.reps = {}; }
     }
-    if (!this.powered && this.doneCount() >= NEED) {
+    if (!this.powered && this.gateT < 0 && this.doneCount() >= NEED) {
+      this.gateT = GATE_DELAY; // the last generator: a countdown, then the gates open
+      for (const g of this.gens) g.reps = {};
+    }
+    if (!this.powered && this.gateT >= 0) this.gateT = Math.max(this.gateT - dt, 0);
+    if (!this.powered && this.gateT === 0) {
+      this.gateT = -1;
       this.powered = true;
       this.doom = this.sniper ? -1 : DOOM_TIME; // (no moon in the sniper mode)
       for (const g of this.gens) g.reps = {};
@@ -453,12 +473,13 @@ class Rules {
       const self = h === tgt;
       const valid = this.freeNow(h) && p && (p.hp === 'hurt' || (p.hp === 'down' && !self)) && (!self || p.item) && (self || this.nearPlayer(h, tgt));
       if (!valid) { delete this.healers[h]; continue; }
-      p.heal += dt / (self ? SELF_HEAL_TIME : HEAL_TIME) * (!self && this.perk[h] === 'medic' ? MEDIC_MUL : 1);
+      const aid = this.perk[h] === 'aid';
+      p.heal += dt / (self ? (aid ? AID_SELF : SELF_HEAL_TIME) : HEAL_TIME) * (self ? 1 : (aid ? AID_MUL : (this.perk[h] === 'medic' ? MEDIC_MUL : 1)));
       if (p.heal >= 1) {
         p.heal = 0;
         p.hp = p.hp === 'down' ? 'hurt' : 'ok';
         this.add(h, self ? 20 : 40);
-        if (self) p.item = false;
+        if (self && !aid) p.item = false; // «المسعف»'s kit never runs out
         delete this.healers[h];
       }
     }
@@ -480,7 +501,40 @@ class Rules {
     else if (live === 1 && names.length > 1 && this.hatch < 0 && !this.powered && this.layout.x && this.layout.x.length > 0) {
       this.hatch = Math.floor(Math.random() * this.layout.x.length); // last one standing: a way out opens somewhere
     }
+    this.stepHeli(dt, names, live, out);
     return out;
+  }
+
+  stepHeli(dt, names, live, out) {
+    const h = this.heli;
+    if (h.st === 0 && live === 1 && names.length > 1 && this.layout.k) {
+      const last = names.find((n) => LIVE.includes(this.s[n].hp));
+      if (last && ['ok', 'hurt'].includes(this.s[last].hp) && this.s[last].car < 0) {
+        Object.assign(h, { st: 1, t: HELI_COME, who: last, p: 0 });
+        out.push({ k: 'heli', st: 1, n: last });
+      }
+    }
+    if (h.st < 1 || h.st > 3) return;
+    const p = this.s[h.who];
+    if (h.st === 3 && p && p.hp !== h.hp0 && h.p < CLIMB_SAFE) this.down(h.who); // struck off the bottom of the ladder
+    if (!p || !['ok', 'hurt'].includes(p.hp) || p.car >= 0) { // caught (or out some other way): it leaves at once
+      h.st = 5;
+      out.push({ k: 'heli', st: 5, n: h.who });
+      return;
+    }
+    if (h.st === 1) {
+      h.t -= dt;
+      if (h.t <= 0) { h.st = 2; h.t = HELI_WAIT; out.push({ k: 'heli', st: 2, n: h.who }); }
+    } else if (h.st === 2) {
+      h.t -= dt;
+      if (h.t <= 0) { h.st = 5; out.push({ k: 'heli', st: 5, n: h.who }); }
+    } else if (h.st === 3) {
+      h.p = Math.min(h.p + dt / CLIMB_TIME, 1);
+      if (h.p >= 1) {
+        h.st = 4; p.hp = 'escaped'; this.add(h.who, 300); this.drop(h.who);
+        out.push({ k: 'heli', st: 4, n: h.who });
+      }
+    }
   }
 
   snapshot() {
@@ -494,7 +548,7 @@ class Rules {
     }
     return {
       k: 'gs', g: this.gens.map((g) => r3(g.p)), d: this.gens.map((g) => g.done), to: this.gates.map((g) => g.open),
-      pw: this.powered, gn: this.gun, s: ss, pl: this.pallets, kc: this.carrying, ks: r3(this.stun), kp: Math.round(this.powerCd * 10) / 10, ov: this.over, hx: this.hatch, dm: Math.round(this.doom * 10) / 10,
+      pw: this.powered, gn: this.gun, s: ss, pl: this.pallets, kc: this.carrying, ks: r3(this.stun), kp: Math.round(this.powerCd * 10) / 10, ov: this.over, hx: this.hatch, dm: Math.round(this.doom * 10) / 10, gt: Math.round(this.gateT * 10) / 10, hl: [this.heli.st, Math.round(this.heli.t * 10) / 10, this.heli.who, r3(this.heli.p)],
       sc: Object.fromEntries(Object.entries(this.score).map(([n, v]) => [n, Math.round(v)])),
       rd: this.roads.map((r) => [r.st, r.drv, r.who, Math.round(r.t * 10) / 10, r.why, !!r.flat]),
       tp: this.traps, sp: this.spikes,

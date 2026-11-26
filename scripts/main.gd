@@ -180,6 +180,10 @@ var my_gun: NFGun          # the pistol in my hand («وضع السلاح»)
 var gun_aim := 0.0         # seconds the gun stays raised after the button
 var gun_pending := -1.0    # the shot leaves once the arms are up
 const GUN_POSES := ["idle", "walk", "run", "sprint", "injured", "crouchwalk"] # the arms are free in these
+var heli: NFHeli             # the rescue helicopter (comes for the last survivor)
+var heli_p := 0.0            # how far up the ladder the climber is, smoothed between snapshots
+var heli_st_seen := 0
+var gate_count_last := -1.0 # the gate countdown as last seen (-1: not counting)
 var vanished := false      # the developer tools' «Vanish»: hidden on every other phone (st flag v)
 var trap_nodes := []       # one node per trap slot (Rules.TRAPS)
 var spike_nodes := []      # one strip per road
@@ -228,6 +232,7 @@ func _start(c: Dictionary) -> void:
 	rules.setup(world.gen_points.size(), world.gate_points.size(), world.pallet_points.size(), world.hatch_points.size(),
 		c.players, int(c.get("seed", 1)) if not offline else randi() % 1000000, world.door_points.size())
 	rules.has_grid = world.has_power_box() # Kuwait City; every map in Halloween and «بين العصر والمغرب»
+	rules.heli_ok = world.heli_spot != Vector3.INF # the rescue helicopter for the last survivor
 	rules.set_grid_mode(1 if theme == "halloween" else (2 if theme == "sunset" else 0))
 	for p in c.players: chars[str(p.name)] = str(p.char)
 	Net.last_char = str(chars.get(my_name, Net.last_char)) # the one who stands at the fire next time
@@ -267,6 +272,7 @@ func _start(c: Dictionary) -> void:
 			lay.c.append(xz.call(world.esc_start(i)))
 			lay.e.append(xz.call(world.road_end(i)))
 		if world.power_box != Vector3.INF: lay.b = xz.call(world.power_box) # the power box (decided with the layout)
+		if world.heli_spot != Vector3.INF: lay.k = xz.call(world.heli_spot) # the rescue helicopter's ladder
 		Net.send({"t": "layout", "d": lay})
 	started = true
 
@@ -670,6 +676,8 @@ func _on_net(m: Dictionary) -> void:
 			if r:
 				r.node.queue_free()
 				remotes.erase(str(m.name))
+		"ad": # the developer tools on someone's phone: the billboard plays (or stops) his video
+			if world: world.play_ad(bool(m.get("on", true)))
 		"sig": # a team-mate's quick message (the server only relays it to their own side)
 			var sp = m.get("p")
 			if sp is Array and sp.size() == 2:
@@ -1258,6 +1266,27 @@ func _on_event(e: Dictionary) -> void:
 				_feed("القاتل قطع الكهرباء!", "bolt", Color(1.0, 0.45, 0.3))
 				if my_role == "survivor": _flash("انقطعت الكهرباء! الكشاف بس — صلّحوا الصندوق ⚡")
 				_shake(0.15)
+		"heli": # the rescue helicopter for the last survivor
+			var hn := str(e.get("n", ""))
+			match int(e.get("st", 0)):
+				1:
+					_feed("طيارة إنقاذ جاية لـ %s" % hn, "star", Color(0.6, 0.85, 1.0))
+					if hn == my_name: _flash("أنت آخر واحد — طيارة الإنقاذ جاية! بعد %d ثانية" % int(Rules.HELI_COME))
+					elif my_role == "killer": _flash("طيارة إنقاذ جاية لآخر واحد — امسكه قبل يطلع!")
+				2:
+					if hn == my_name:
+						_flash("وصلت طيارة الإنقاذ! روح للسلم واطلع")
+						NFHaptics.pulse("hook")
+					elif my_role == "killer": _flash("الطيارة نزّلت السلم — امسكه!")
+				3: _feed("%s ماسك السلم ويطلع!" % hn, "star", Color(0.6, 0.85, 1.0))
+				4:
+					_feed("%s طلع بالطيارة — نجا!" % hn, "star", Color(0.45, 1.0, 0.55))
+					if hn == my_name:
+						_flash("طلعت بالطيارة — نجوت!")
+						NFHaptics.pulse("escape")
+				5:
+					_feed("طيارة الإنقاذ راحت بدون %s" % hn, "skull", Color(1.0, 0.5, 0.4))
+					if hn == my_name: _flash("انمسكت — الطيارة راحت وخلّتك")
 		"mend": # «تفتّح» (Bloom)
 			_feed("%s تفتّحت ورجعت سليمة" % str(e.n), "heal", Color(0.75, 0.55, 1.0))
 			if str(e.n) == my_name: _flash("تفتّح — رجعتي سليمة!")
@@ -1477,7 +1506,7 @@ func _build_dev_ui(layer: CanvasLayer) -> void:
 	dev_panel.visible = false
 	dev_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
 	dev_panel.offset_left = 8.0 + safe.x; dev_panel.offset_right = 348.0 + safe.x
-	dev_panel.offset_top = -268.0; dev_panel.offset_bottom = -46.0
+	dev_panel.offset_top = (-380.0 if (world and world.map_id == "kuwait") else -268.0); dev_panel.offset_bottom = -46.0
 	layer.add_child(dev_panel)
 	var m := MarginContainer.new()
 	for side in ["left", "right", "top", "bottom"]: m.add_theme_constant_override("margin_" + side, 12)
@@ -1502,6 +1531,24 @@ func _build_dev_ui(layer: CanvasLayer) -> void:
 		van_btn.text = "زر Vanish: %s" % ("شغّال" if Dev.vanish_tool else "مطفي"))
 	NFUI.dress(van_btn, "ghost")
 	v.add_child(van_btn)
+	if world and world.map_id == "kuwait": # Kuwait City's billboard: his video, only when pressed here, on every phone
+		var ad_btn := Button.new()
+		ad_btn.text = "شغّل فيديو الإعلان"
+		ad_btn.custom_minimum_size.y = 46
+		ad_btn.pressed.connect(func() -> void:
+			if offline: world.play_ad(true)
+			else: Net.send({"t": "ad", "on": true})
+			_flash("فيديو الإعلان يشتغل على اللوحة"))
+		NFUI.dress(ad_btn, "star")
+		v.add_child(ad_btn)
+		var ad_stop := Button.new()
+		ad_stop.text = "وقّف الفيديو (ترجع الصورة)"
+		ad_stop.custom_minimum_size.y = 46
+		ad_stop.pressed.connect(func() -> void:
+			if offline: world.play_ad(false)
+			else: Net.send({"t": "ad", "on": false}))
+		NFUI.dress(ad_stop, "exit")
+		v.add_child(ad_stop)
 	var lbl := Label.new()
 	lbl.text = "السرعة ×%.2f" % Dev.speed
 	v.add_child(lbl)
@@ -1927,6 +1974,8 @@ func _draw_ui() -> void:
 	var road := _road_view()
 	if road >= 0:
 		_draw_road(road, mid)
+	elif rules.gate_t >= 0.0 and not rules.powered:
+		_draw_gate_count(Vector2(mid.x, 120.0), rules.gate_t)
 	elif doom_up:
 		_draw_moon(Vector2(mid.x, 120.0))
 		var falling := "ينزل القمر" # the moon on every map now, the Empty Quarter too
@@ -2014,6 +2063,7 @@ func _draw_ui() -> void:
 	_draw_perk()
 	_draw_sense(mid)
 	_draw_gate(mid)
+	_draw_heli(mid)
 	_draw_hit(mid)
 	_draw_feed(s)
 	if my_role == "killer" and rules.ev_kind == 2 and rules.ev_t > 0.0 and remotes.has(rules.ev_n):
@@ -2096,6 +2146,52 @@ func _draw_speedo(c: Vector2, cr: NFCar) -> void:
 	_text(c + Vector2(0, 70), "كم/س", 13, Color(0.8, 0.75, 0.7))
 	var gear := "R" if cr.speed < -0.3 else str(cr.gear)
 	_text(c + Vector2(r + 34.0, 10), gear, 26, Color(1.0, 0.35, 0.25) if gear == "R" else Color(0.5, 1.0, 0.6))
+
+## The countdown before the gates open: a ring emptying round the seconds left, amber, beating on
+## every whole second, with what it means under it for each side.
+## The rescue helicopter on the HUD: for the last survivor (and the killer) where it is and how long
+## it has left; an arrow on the ring to the ladder; while climbing, how far up.
+func _draw_heli(mid: Vector2) -> void:
+	if heli == null or spectating != "": return
+	var st := int(rules.heli.st)
+	if st < 1 or st > 3: return
+	var mine := str(rules.heli.who) == my_name
+	if not mine and my_role != "killer": return
+	var col := Color(0.6, 0.85, 1.0)
+	var y := 250.0
+	if st == 1: _text(Vector2(mid.x, y), ("طيارة الإنقاذ توصل بعد %d ثانية" if mine else "طيارة إنقاذ جاية — توصل بعد %d") % ceili(float(rules.heli.t)), 26, col)
+	elif st == 2: _text(Vector2(mid.x, y), ("الطيارة تنتظرك — تروح بعد %d ثانية!" if mine else "السلم نازل — يروح بعد %d، امسكه") % ceili(float(rules.heli.t)), 26, Color(1.0, 0.85, 0.4) if mine else Color(1.0, 0.5, 0.4))
+	else:
+		_text(Vector2(mid.x, y), "اطلع! اطلع!" if mine else "يطلع السلم — الحقه!", 28, col)
+		var w := 320.0
+		ui.draw_rect(Rect2(mid.x - w / 2.0, y + 18.0, w, 12.0), Color(0, 0, 0, 0.6))
+		ui.draw_rect(Rect2(mid.x - w / 2.0, y + 18.0, w * clampf(heli_p, 0.0, 1.0), 12.0), col)
+		return
+	var target: Vector3 = world.heli_spot
+	var bd := Vector2(target.x - body.position.x, target.z - body.position.z).length()
+	if bd < 5.0: return
+	var d := _ring_dir(target)
+	var at := mid + d * minf(mid.y * 0.8, 300.0)
+	var beat := 0.75 + 0.25 * sin(Time.get_ticks_msec() / 1000.0 * 5.0)
+	var c2 := Color(col.r, col.g, col.b, beat)
+	ui.draw_circle(at, 25.0, Color(0.02, 0.04, 0.07, 0.85), true, -1.0, true)
+	ui.draw_arc(at, 25.0, 0, TAU, 40, c2, 2.5, true)
+	NFIcons.draw(ui, "star", at, 24.0, c2)
+	var tip := at + d * 35.0
+	var sd := Vector2(-d.y, d.x)
+	ui.draw_colored_polygon(PackedVector2Array([tip + d * 13.0, tip - sd * 9.0, tip + sd * 9.0]), c2)
+	_text(at + Vector2(0, 48), "الطيارة %d م" % int(bd), 18, c2)
+
+func _draw_gate_count(c: Vector2, left: float) -> void:
+	var f := clampf(left / Rules.GATE_DELAY, 0.0, 1.0)
+	var beat := 1.0 + 0.12 * maxf(0.0, 1.0 - fmod(left, 1.0) * 4.0)
+	var r := 44.0 * beat
+	ui.draw_circle(c, r + 8.0, Color(0, 0, 0, 0.55))
+	ui.draw_arc(c, r, -PI / 2.0, -PI / 2.0 + TAU * f, 64, Color(1.0, 0.62, 0.1), 7.0, true)
+	_text(c + Vector2(0, 14), "%d" % ceili(left), int(44 * beat), Color(1.0, 0.85, 0.4))
+	var msg := "البوابات تفتح بعد %d ثواني — جهّزوا" % ceili(left)
+	if my_role == "killer": msg = "البوابات تفتح بعد %d — روح لها قبلهم" % ceili(left)
+	_text(c + Vector2(0, 92), msg, 24, Color(1.0, 0.75, 0.35))
 
 func _draw_moon(c: Vector2) -> void:
 	var left: float = maxf(rules.doom, 0.0)
@@ -2388,6 +2484,8 @@ func _update_ctx() -> void:
 				var dd := Vector2(float(tr[0]) - pos.x, float(tr[1]) - pos.z).length()
 				if dd < 2.0 and dd > 0.8:
 					ctx.interact = {"kind": "disarm", "label": "فك الفخ", "i": i}
+		if not ctx.has("interact") and heli and int(rules.heli.st) == 2 and str(rules.heli.who) == my_name and _near(pos, heli.ladder_foot(), 2.8):
+			ctx.interact = {"kind": "ladder", "label": "امسك السلم واطلع", "i": 0}
 		if not ctx.has("interact") and rules.powered: # the escape car past the gate: first one in drives
 			for i in mini(world.esc_cars.size(), rules.roads.size()):
 				var ec: NFCar = world.esc_cars[i]
@@ -2576,6 +2674,9 @@ func _press(id: String, touch: int) -> void:
 					NFHaptics.pulse("tick")
 				"door": _ev({"k": "door", "i": c.i, "on": c.get("on", true)})
 				"board": _ev({"k": "board", "i": c.i})
+				"ladder": # the rescue helicopter's rope ladder
+					_ev({"k": "ladder"})
+					NFHaptics.pulse("grab")
 				"disarm":
 					_ev({"k": "disarm", "i": c.i})
 					NFHaptics.pulse("tick")
@@ -2733,9 +2834,84 @@ func _in_car(n: String) -> bool:
 	return remotes.has(n) and remotes[n].anim == "drive"
 
 # ---------------- per-frame ----------------
+## The rescue helicopter: build it when the map is ready, fly it with the rules' row, and keep the
+## climb smooth between the snapshots (the rules say how far up she is; this phone moves her there).
+var climb_hands := {}
+func _climbing(n: String) -> bool:
+	return heli != null and int(rules.heli.st) == 3 and str(rules.heli.who) == n
+
+func _step_heli(dt: float) -> void:
+	if world == null or not world.ready_done or world.heli_spot == Vector3.INF: return
+	if heli == null:
+		heli = NFHeli.new()
+		world.add_child(heli)
+		var away := Vector3(world.heli_spot.x, 0, world.heli_spot.z)
+		if world.map_id == "kuwait": away = Vector3(1, 0, -0.3) # in over the sea
+		elif away.length() < 1.0: away = Vector3(1, 0, 0)
+		heli.setup(world.heli_spot, away.normalized())
+	var st := int(rules.heli.st)
+	heli.step(dt, rules.heli, Rules.HELI_COME)
+	if st == 3:
+		heli_p = minf(heli_p + dt / Rules.CLIMB_TIME, float(rules.heli.p) + 0.06)
+		heli_p = maxf(heli_p, float(rules.heli.p) - 0.06)
+	elif st != 4:
+		heli_p = 0.0
+	if st != heli_st_seen:
+		heli_st_seen = st
+
+## A climber on the ladder: feet on the rungs between its foot and the top, facing it, both hands on
+## the rungs above the head taking turns, the walk-made `climb` clip moving the legs.
+func _climb_pose(key: String, nd: Node3D, rg: CharacterRig, _dt: float) -> void:
+	var foot: Vector3 = heli.ladder_foot()
+	var top: Vector3 = heli.ladder_top() - Vector3(0, 1.75, 0)
+	var face: Vector3 = heli.ladder_face()
+	var feet := foot.lerp(top, clampf(heli_p, 0.0, 1.0)) - face * 0.32
+	nd.global_position = feet
+	rg.position.y = 0.0
+	rg.rotation = Vector3(0, atan2(face.x, face.z), 0)
+	rg.play("climb" if rg.has("climb") else "walk", 0.8)
+	var right := face.cross(Vector3.UP).normalized()
+	var phase := fmod(heli_p * Rules.CLIMB_TIME * 1.6, 1.0) < 0.5
+	var lh: Vector3 = heli.rung_at(feet.y + (1.95 if phase else 1.65)) - right * 0.19
+	var rh: Vector3 = heli.rung_at(feet.y + (1.65 if phase else 1.95)) + right * 0.19
+	rg.reach(lh, rh, feet + Vector3(0, 1.0, 0) - right * 0.6 - face * 0.4, feet + Vector3(0, 1.0, 0) + right * 0.6 - face * 0.4)
+	climb_hands[key] = true
+
+## «المسعف»: whoever picked it carries the first-aid kit (assets/props/medkit.glb) in the left hand,
+## hanging from the handle, on every phone; put away while carried, hooked, down, in a car or a
+## locker, out or dead.
+var kits := {}
+func _step_kits() -> void:
+	if not ResourceLoader.exists("res://assets/props/medkit.glb"): return
+	for n in rules.perk:
+		if str(rules.perk[n]) != "aid": continue
+		var rg: CharacterRig = rig if n == my_name else (remotes[n].rig if remotes.has(n) else null)
+		var nd: Node3D = body if n == my_name else (remotes[n].node if remotes.has(n) else null)
+		if rg == null or nd == null: continue
+		if not kits.has(n):
+			var ps := load("res://assets/props/medkit.glb") as PackedScene
+			if ps == null: return
+			var k := ps.instantiate() as Node3D
+			add_child(k)
+			kits[n] = k
+		var kit: Node3D = kits[n]
+		var st: String = rules.hp(n)
+		var show: bool = nd.visible and rg.visible and st in ["ok", "hurt"] and rules.car_of(n) < 0 and int(rules.s[n].get("locker", -1)) < 0
+		kit.visible = show
+		if not show: continue
+		var hand := rg.bone_at("LeftHand")
+		# hanging straight down from the hand, turned with the body; the handle (its top) in the palm
+		kit.global_transform = Transform3D(Basis(Vector3.UP, rg.global_rotation.y + PI / 2.0), hand + Vector3(0, -0.235, 0))
+
 func _process(dt: float) -> void:
 	if not started: return
 	_step_guns(dt)
+	if rules:
+		_step_kits()
+		_step_heli(dt)
+		if not _climbing(my_name) and climb_hands.has("me") and rig:
+			climb_hands.erase("me")
+			rig.reach_clear()
 	if rules and rules.has_grid and world.ready_done and world.grid_off == rules.grid: world.set_grid(rules.grid)
 	if rules: world.round_t = rules.clock
 	if rules and theme == "sunset": _sunset_calls()
@@ -2844,7 +3020,12 @@ func _process(dt: float) -> void:
 			if world.rifle_stand: world.rifle_stand.visible = not lying
 		if st == "hooked":
 			_hook_pose(r.rig, dt)
+		elif _climbing(n): # up the helicopter's rope ladder, on every phone the same
+			_climb_pose(n, r.node, r.rig, dt)
 		else:
+			if climb_hands.has(n):
+				climb_hands.erase(n)
+				r.rig.reach_clear()
 			r.rig.position.y = lerpf(r.rig.position.y, lift, w)
 			r.rig.rotation = Vector3(0, lerp_angle(r.rig.rotation.y, face, w), 0)
 			_lean_rig(r.rig, dt, float(r.spd), anim)
@@ -2953,9 +3134,21 @@ func _process(dt: float) -> void:
 	world.set_killer_at(kpos if rules.killer != "" else Vector3(9999, 0, 9999))
 	_round_event(dt)
 	_adhan()
+	# the countdown before the gates open: blinking gate lights, a tick each second, one call at the start
+	if rules.gate_t >= 0.0 and not rules.powered:
+		world.gate_warn(rules.gate_t)
+		if gate_count_last < 0.0:
+			_flash("المولدات خلصت — البوابات بتفتح بعد %d ثواني" % ceili(rules.gate_t))
+			for g in world.gate_points: _sfx("gate", g[0] + Vector3(0, 3, 0), 2.0)
+		if gate_count_last >= 0.0 and ceili(rules.gate_t) < ceili(gate_count_last): NFHaptics.pulse("tick")
+		gate_count_last = rules.gate_t
+	elif gate_count_last >= 0.0:
+		gate_count_last = -1.0
+		if not rules.powered: world.gate_warn(-1.0)
 	if rules.powered and not was_powered:
 		was_powered = true
 		world.set_blood_moon(true)
+		world.set_sirens(true) # the police hear the gates open: every siren starts at once
 		for g in world.gate_points: _sfx("gate", g[0] + Vector3(0, 3, 0), 8.0)
 		_sfx("gate", null, -12.0)
 		doom_music.play()
@@ -2995,7 +3188,7 @@ func _process(dt: float) -> void:
 	los_t -= dt
 	if los_t <= 0.0:
 		los_t = 0.2
-		if k_driving:
+		if k_driving or vanished: # vanished (the developer tools): no proximity music on my own phone either
 			pass
 		elif my_role == "killer":
 			var look := Vector3(-sin(yaw), 0, -cos(yaw))
@@ -3007,7 +3200,7 @@ func _process(dt: float) -> void:
 				elif to.length() < CHASE_NEAR: chase_hold = maxf(chase_hold, 3.0) # one of them is right by her
 		elif my_state in ["ok", "hurt", "down"] and me_locker() < 0 and (kdist < CHASE_NEAR or (kdist < 26.0 and _line_of_sight(kpos))):
 			chase_hold = maxf(chase_hold, 4.0) # she is close (on foot): the music, seen or not
-	chase_hold = 0.0 if k_driving else maxf(chase_hold - dt, 0.0)
+	chase_hold = 0.0 if (k_driving or vanished) else maxf(chase_hold - dt, 0.0)
 	var chasing := chase_hold > 0.0 and not rules.over
 	_beast_cry(chasing, dt)
 	if chasing and not chase_music.playing: chase_music.play()
@@ -3092,6 +3285,8 @@ func _physics_process(delta: float) -> void:
 		if last_state != "hooked": hook_cam = 2.6
 		body.position = world.hook_points[me.hook_i] + Vector3(0, 0, 0.9)
 		_hook_pose(rig, delta)
+	elif _climbing(my_name): # up the helicopter's rope ladder (the rules count the climb)
+		_climb_pose("me", body, rig, delta)
 	elif esc_i >= 0:
 		_esc_ride(delta)
 	elif locker >= 0:

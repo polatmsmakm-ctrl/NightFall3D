@@ -64,6 +64,7 @@ func _ready():
 	await put(m, w.gen_points[1] + Vector3(1.6, 0, 0.9))
 	m._press("interact", 5); await frames(10)
 	print("S repairing=", m.hold.get("kind", ""), " reps=", m.rules.gens[1].reps.keys())
+	m.rules.gate_delay = 0.0
 	for g in 5: m.rules.gens[g].p = 0.999; m.rules.gens[g].reps["P"] = true
 	await frames(60)
 	print("S powered=", m.rules.powered, " hold cleared=", m.hold.is_empty())

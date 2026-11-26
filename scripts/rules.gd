@@ -24,6 +24,7 @@ var gun := false
 var sniper := false
 const SNIPE_CD := 1.2      # a bolt-action: this long between shots, no limit on them
 var snipe_t := -99.0
+const GATE_DELAY := 10.0 # the generators are done: the gates open this long after (a countdown on every phone)
 const DOOM_TIME := 120.0 # once the gates have power the moon falls: this long to get out
 const MASH_STEP := 0.03 # each tap on "free yourself"
 const MASH_DECAY := 0.1 # lost per second, so you have to keep hammering the button
@@ -31,6 +32,12 @@ const RESCUE_TIME := 2.0 # seconds to lift someone off a hook; two of you halve 
 const CAR_SEATS := 6 # an escape car seats six: every survivor a room can have
 const ROAD_TIME := 120.0 # from the first one getting into a gate's escape car to the last gate, 600 m on
 const LIVE := ["ok", "hurt", "down", "carried", "hooked"]
+# the rescue helicopter (both rules files): one free survivor left, it comes, hovers with a rope ladder
+# down, the survivor climbs it and is out; caught before the top of the ladder, it leaves at once
+const HELI_COME := 22.0
+const HELI_WAIT := 75.0
+const CLIMB_TIME := 6.0
+const CLIMB_SAFE := 0.3 # this far up the ladder the killer cannot reach her any more
 ## One ability per survivor character. The rules apply the ones that touch the round (fix, lift,
 ## rise, tough, medic); main.gd does the rest on the phone (burst, sense, ghost). Same table in rules.js.
 const PERK := {"survivor1": "burst", "survivor2": "fix", "survivor3": "lift", "survivor4": "rise",
@@ -45,6 +52,7 @@ const PERK_INFO := {
 	"sense": ["عين الليل", "تحس بالقاتلة إذا قربت 28 م، وسهم يوريك وينها", "eye"],
 	"medic": ["طب ميداني", "تعالج غيرك أسرع بـ 60%", "heal"],
 	"ghost": ["خطوة شبح", "القاتلة ما تشوف آثار ركضك وخطواتك واطية", "crouch"],
+	"aid": ["المسعف", "تشيل شنطة الإسعاف: تعالج غيرك أسرع بالضعف، وتعالج نفسك بـ 8 ثواني، والشنطة ما تخلص", "heal"],
 	"mend": ["تفتّح", "إذا انجرحت وقعدت 45 ثانية ما انضربتي، ترجعين سليمة", "heal"],
 }
 const SENSE_R := 28.0     # «عين الليل»: how close she has to be
@@ -54,6 +62,8 @@ const GRID_GAP := 60.0    # and only this long after the power came back
 const GRID_OFF_GAP := 15.0 # Halloween: a survivor may switch the power off again this long after it came back
 const GRID_FIX := 12.0    # Kuwait City's power box: one survivor brings the street lights back in 12 s
 const MEND_TIME := 45.0   # «تفتّح»: how long Bloom has to stay hurt (and not hit again) to mend
+const AID_MUL := 2.0      # «المسعف» (picked instead of the character's own perk): carries the first-aid kit, heals others twice as fast
+const AID_SELF := 8.0     # and himself in 8 s, and the kit never runs out
 const MEDIC_MUL := 1.6    # «طب ميداني»: heals the others 60% faster
 const LIFT_W := 1.8       # «الحامي»: lifts someone off a hook like nearly two people
 const RISE_TIME := 20.0   # «جناح الفالكيري»: down this long without being picked up, she gets up (once)
@@ -83,6 +93,10 @@ var healers := {} # healer -> target
 var rescuers := {} # rescuer -> the hooked survivor they are lifting
 var last_hit := {}
 var powered := false
+var heli := {"st": 0, "t": 0.0, "who": "", "p": 0.0, "hp0": ""} # 0 none, 1 coming, 2 hovering, 3 climbing, 4 away with her, 5 left
+var heli_ok := false # the map has a spot for it (main sets it; the server knows it from layout.k)
+var gate_t := -1.0 # counting down to the gates opening (-1: not yet / done)
+var gate_delay := GATE_DELAY # (the tests that are not about the countdown set it to 0)
 var doom := -1.0 # seconds until the moon hits (-1: not falling yet)
 var over := false
 var clock := 0.0
@@ -129,7 +143,7 @@ func setup(n_gens: int, n_gates: int, n_pallets: int, hatches: int, players: Arr
 		score[str(pl.name)] = 0.0
 		if str(pl.role) == "killer": killer = str(pl.name)
 		else:
-			var pk: String = PERK.get(str(pl.get("char", "")), "")
+			var pk: String = "aid" if str(pl.get("perk", "")) == "aid" else PERK.get(str(pl.get("char", "")), "") # a picked perk («المسعف») replaces the character's
 			perk[str(pl.name)] = pk
 			s[str(pl.name)] = {"hp": "ok", "hooks": 0, "hook_i": -1, "t": 0.0, "heal": 0.0, "locker": -1, "item": true, "esc": 0.0, "resc": 0.0, "car": -1,
 				"held": 0.0, "shield": pk == "tough", "risen": false, "rt": 0.0, "ammo": GUN_SHOTS if gun else 0}
@@ -226,7 +240,7 @@ func handle(d: Dictionary, from: String) -> Array:
 			else: grid_reps.erase(from)
 		"rep":
 			if i >= 0 and i < gens.size():
-				if d.get("on", false) and free_now(from) and not gens[i].done and not powered: gens[i].reps[from] = true
+				if d.get("on", false) and free_now(from) and not gens[i].done and not powered and gate_t < 0.0: gens[i].reps[from] = true
 				else: gens[i].reps.erase(from)
 		"skill":
 			if i >= 0 and i < gens.size() and gens[i].reps.has(from):
@@ -256,7 +270,13 @@ func handle(d: Dictionary, from: String) -> Array:
 				s[from].hp = "escaped"
 				add(from, 150.0)
 				_drop(from)
+		"ladder": # the last survivor takes hold of the helicopter's rope ladder
+			if int(heli.st) == 2 and from == str(heli.who) and free_now(from):
+				heli.st = 3; heli.p = 0.0; heli.hp0 = str(s[from].hp)
+				_drop(from)
+				out.append({"k": "heli", "st": 3, "n": from})
 		"hit":
+			if int(heli.st) == 3 and n == str(heli.who) and float(heli.p) >= CLIMB_SAFE: return out # out of her reach up the ladder
 			if is_killer and stun <= 0.0 and carrying == "" and free_now(n) and clock - float(last_hit.get(n, -99.0)) > HIT_COOLDOWN:
 				last_hit[n] = clock
 				if s[n].get("shield", false): # «جلد قاسي»: the first blow of the round does nothing
@@ -408,7 +428,13 @@ func tick(dt: float) -> Array:
 		for r in g.reps: add(r, dt * 100.0 / GEN_TIME) # one point per percent repaired
 		if g.p >= 1.0:
 			g.p = 1.0; g.done = true; g.reps.clear()
-	if not powered and done_count() >= NEED:
+	if not powered and gate_t < 0.0 and done_count() >= NEED:
+		gate_t = gate_delay # the last generator: a countdown, then the gates open
+		for g in gens: g.reps.clear()
+	if not powered and gate_t >= 0.0:
+		gate_t = maxf(gate_t - dt, 0.0)
+	if not powered and gate_t == 0.0:
+		gate_t = -1.0
 		powered = true
 		doom = -1.0 if sniper else DOOM_TIME # (the sniper mode has no moon: it ends when they are all dead or out)
 		for g in gens: g.reps.clear()
@@ -497,12 +523,13 @@ func tick(dt: float) -> Array:
 		if not valid:
 			healers.erase(h)
 			continue
-		p.heal += dt / (SELF_HEAL_TIME if self_heal else HEAL_TIME) * (MEDIC_MUL if (not self_heal and perk.get(h, "") == "medic") else 1.0)
+		var aid: bool = perk.get(h, "") == "aid"
+		p.heal += dt / ((AID_SELF if aid else SELF_HEAL_TIME) if self_heal else HEAL_TIME) * (1.0 if self_heal else (AID_MUL if aid else (MEDIC_MUL if perk.get(h, "") == "medic" else 1.0)))
 		if p.heal >= 1.0:
 			p.heal = 0.0
 			p.hp = "hurt" if p.hp == "down" else "ok"
 			add(h, 20.0 if self_heal else 40.0)
-			if self_heal: p.item = false
+			if self_heal and not aid: p.item = false # «المسعف»'s kit never runs out
 			healers.erase(h)
 	# the one random event of the round, and the call to prayer
 	if not ev_fired and clock >= ev_at:
@@ -526,7 +553,41 @@ func tick(dt: float) -> Array:
 		if live == 0: over = true
 		elif live == 1 and s.size() > 1 and hatch < 0 and n_hatch > 0 and not powered:
 			hatch = randi() % n_hatch # last one standing: a way out opens somewhere
+		_step_heli(dt, live, out)
 	return out
+
+func _step_heli(dt: float, live: int, out: Array) -> void:
+	if int(heli.st) == 0 and live == 1 and s.size() > 1 and heli_ok:
+		for n in s:
+			if not (s[n].hp in LIVE): continue
+			if s[n].hp in ["ok", "hurt"] and int(s[n].get("car", -1)) < 0: # the one left, and free
+				heli = {"st": 1, "t": HELI_COME, "who": n, "p": 0.0, "hp0": ""}
+				out.append({"k": "heli", "st": 1, "n": n})
+			break
+	var st := int(heli.st)
+	if st < 1 or st > 3: return
+	var who := str(heli.who)
+	var p = s.get(who)
+	if st == 3 and p and str(p.hp) != str(heli.hp0) and float(heli.p) < CLIMB_SAFE: _down(who) # struck off the bottom of the ladder
+	if p == null or not (p.hp in ["ok", "hurt"]) or int(p.get("car", -1)) >= 0: # caught: it leaves at once
+		heli.st = 5
+		out.append({"k": "heli", "st": 5, "n": who})
+		return
+	if st == 1:
+		heli.t = float(heli.t) - dt
+		if float(heli.t) <= 0.0:
+			heli.st = 2; heli.t = HELI_WAIT
+			out.append({"k": "heli", "st": 2, "n": who})
+	elif st == 2:
+		heli.t = float(heli.t) - dt
+		if float(heli.t) <= 0.0:
+			heli.st = 5
+			out.append({"k": "heli", "st": 5, "n": who})
+	elif st == 3:
+		heli.p = minf(float(heli.p) + dt / CLIMB_TIME, 1.0)
+		if float(heli.p) >= 1.0:
+			heli.st = 4; p.hp = "escaped"; add(who, 300.0); _drop(who)
+			out.append({"k": "heli", "st": 4, "n": who})
 
 ## How many survivors are pulling on the same hooked player right now.
 func hands_on(name: String) -> int:
@@ -547,7 +608,7 @@ func snapshot() -> Dictionary:
 			snappedf(float(p.get("held", 0.0)), 0.1), bool(p.get("shield", false)), int(p.get("ammo", 0))]
 	var rd := []
 	for r in roads: rd.append([r.st, r.drv, r.who, snappedf(float(r.t), 0.1), r.why, bool(r.get("flat", false))])
-	return {"tp": traps, "sp": spikes, "rd": rd, "k": "gs", "g": gp, "d": gd, "to": to, "pw": powered, "gn": gun, "s": ss, "pl": pallets, "kc": carrying, "ks": snappedf(stun, 0.01), "kp": snappedf(power_cd, 0.1), "ov": over, "hx": hatch, "sc": sc, "dm": snappedf(doom, 0.1),
+	return {"tp": traps, "sp": spikes, "rd": rd, "k": "gs", "g": gp, "d": gd, "to": to, "pw": powered, "gn": gun, "s": ss, "pl": pallets, "kc": carrying, "ks": snappedf(stun, 0.01), "kp": snappedf(power_cd, 0.1), "ov": over, "hx": hatch, "sc": sc, "dm": snappedf(doom, 0.1), "gt": snappedf(gate_t, 0.1), "hl": [heli.st, snappedf(float(heli.t), 0.1), heli.who, snappedf(float(heli.p), 0.001)],
 		"dr": doors, "ek": ev_kind if ev_fired else -1, "et": snappedf(ev_t, 0.1), "en": ev_n, "ad": adhan, "pb": [grid, snappedf(grid_p, 0.001), grid_cuts, ceili(grid_wait)] if has_grid else [], "ck": snappedf(clock, 0.1)}
 
 func apply(v: Dictionary) -> void:
@@ -579,6 +640,9 @@ func apply(v: Dictionary) -> void:
 	over = bool(v.ov)
 	hatch = int(v.get("hx", -1))
 	doom = float(v.get("dm", -1.0))
+	gate_t = float(v.get("gt", -1.0))
+	var hl: Array = v.get("hl", [0, 0.0, "", 0.0])
+	if hl.size() >= 4: heli = {"st": int(hl[0]), "t": float(hl[1]), "who": str(hl[2]), "p": float(hl[3]), "hp0": str(heli.get("hp0", ""))}
 	var dr = v.get("dr", [])
 	if dr is Array:
 		for i in mini(doors.size(), dr.size()): doors[i] = bool(dr[i])
