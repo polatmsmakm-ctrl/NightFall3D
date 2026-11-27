@@ -6,12 +6,12 @@ extends Node3D
 ## the list can name clips the owner has not supplied yet: drop sprint.glb / hit.glb / fall.glb /
 ## standup.glb / cheer.glb in and the game starts using them with no code change.
 const ANIMS := ["idle", "walk", "run", "sprint", "crouchwalk", "hide", "attack", "injured", "dying",
-	"vault", "carry", "carried", "hang", "crawl", "repair", "hit", "fall", "standup", "slump", "drive", "hookhang", "struggle", "unhook"]
+	"vault", "carry", "carried", "hang", "crawl", "repair", "hit", "fall", "standup", "slump", "drive", "hookhang", "struggle", "unhook", "draped"]
 const ONCE := ["hit", "fall", "attack", "vault", "standup", "unhook"] # played through once, then back to the state pose
-const LOOPING := ["dance_pop", "dance_funny", "dance_break", "dance_mom", "hookhang", "struggle", "crawl_back", "reach_help", "injured_walk", "climb_wall", "climb", "idle", "walk", "run", "sprint", "crouchwalk", "hide", "injured", "carry", "carried", "hang", "crawl", "repair", "campfire", "wave", "clap", "dance", "cheer", "slump", "drive"]
+const LOOPING := ["draped", "dance_pop", "dance_funny", "dance_break", "dance_mom", "hookhang", "struggle", "crawl_back", "reach_help", "injured_walk", "climb_wall", "climb", "idle", "walk", "run", "sprint", "crouchwalk", "hide", "injured", "carry", "carried", "hang", "crawl", "repair", "campfire", "wave", "clap", "dance", "cheer", "slump", "drive"]
 ## Campfire emotes. There is no Mixamo clip for these in assets/anims, so they are posed here on the
 ## same skeleton: drop wave.glb / clap.glb / dance.glb in and the real clip is used instead.
-const EMOTES := {"wave": 2.4, "clap": 2.2, "dance": 4.0, "slump": 3.0, "drive": 3.0}
+const EMOTES := {"wave": 2.4, "clap": 2.2, "dance": 4.0, "slump": 3.0, "drive": 3.0, "draped": 2.6}
 const EMOTE_BONES := ["mixamorig_Hips", "mixamorig_Spine", "mixamorig_Spine1", "mixamorig_Spine2",
 	"mixamorig_Neck", "mixamorig_Head",
 	"mixamorig_LeftShoulder", "mixamorig_LeftArm", "mixamorig_LeftForeArm", "mixamorig_LeftHand",
@@ -279,6 +279,28 @@ func _emote_world(a: String, bone: String, ph: float) -> Quaternion:
 				"mixamorig_LeftUpLeg": return _w(KNEE, -1.30) * _w(FWD, 0.14)
 				"mixamorig_RightLeg": return _w(KNEE, 1.75)
 				"mixamorig_LeftLeg": return _w(KNEE, 1.75)
+		"draped":
+			# over the killer's shoulder (scripts/carry_pose.gd turns the whole body): folded at the
+			# hips, the back bent down, the head and the arms hanging, knees a little bent; everything
+			# loose swings slowly with her steps
+			var sw := sin(ph * TAU)
+			var sw2 := sin(ph * TAU + 1.3)
+			match bone:
+				"mixamorig_Spine": return _w(side, 0.5)
+				"mixamorig_Spine1": return _w(side, 0.5 + 0.03 * sw)
+				"mixamorig_Spine2": return _w(side, 0.38)
+				"mixamorig_Neck": return _w(side, 0.25)
+				"mixamorig_Head": return _w(side, 0.25 + 0.06 * sw2) * _w(FWD, 0.08 * sw)
+				"mixamorig_RightShoulder": return _w(R_LIFT, 0.2)
+				"mixamorig_LeftShoulder": return _w(L_LIFT, 0.2)
+				"mixamorig_RightArm": return _w(UP, 0.2 + 0.08 * sw) * _w(R_LIFT, 1.3 + 0.1 * sw2)
+				"mixamorig_LeftArm": return _w(UP, -0.2 + 0.08 * sw) * _w(L_LIFT, 1.3 - 0.1 * sw2)
+				"mixamorig_RightForeArm": return _w(UP, 0.25 + 0.1 * sw2)
+				"mixamorig_LeftForeArm": return _w(UP, -0.25 - 0.1 * sw2)
+				"mixamorig_RightUpLeg": return _w(KNEE, -1.2 - 0.05 * sw) * _w(FWD, -0.06)
+				"mixamorig_LeftUpLeg": return _w(KNEE, -1.2 + 0.05 * sw) * _w(FWD, 0.06)
+				"mixamorig_RightLeg": return _w(KNEE, 0.5 + 0.08 * sw2)
+				"mixamorig_LeftLeg": return _w(KNEE, 0.5 - 0.08 * sw2)
 		"drive":
 			# the killer at the wheel: sitting up against the reclined seat back, the head level, knees
 			# toward the pedals. The arms are only a starting point: NFReach puts the hands on the rim.
@@ -327,7 +349,7 @@ func _emote_anim(a: String, skel_path: String, char_rest: Vector3) -> Animation:
 		for k in steps + 1:
 			out.rotation_track_insert_key(tr, out.length * float(k) / steps, keys[k])
 	# the hop: in hips local space z is the vertical axis and -z is up
-	var dip := {"dance": [3.0, 4.0], "clap": [0.0, 1.0], "wave": [1.2, 3.0], "slump": [0.0, 1.0], "drive": [0.0, 1.0]}
+	var dip := {"dance": [3.0, 4.0], "clap": [0.0, 1.0], "wave": [1.2, 3.0], "slump": [0.0, 1.0], "drive": [0.0, 1.0], "draped": [0.0, 1.0]}
 	if float(dip[a][0]) > 0.0:
 		var tr := out.add_track(Animation.TYPE_POSITION_3D)
 		out.track_set_path(tr, NodePath("%s:mixamorig_Hips" % skel_path))
@@ -400,9 +422,10 @@ func _process(dt: float) -> void:
 		_anim_n = 0
 
 func play(anim: String, speed := 1.0) -> void:
+	if anim == "carried" and player.has_animation("draped"): anim = "draped" # over her shoulder now
 	if current == anim and player.speed_scale == speed: return
 	if not player.has_animation(anim): return
 	current = anim
-	if hunch: hunch.want = 0.0 if anim in ["drive", "slump", "hang", "carried", "dying", "crawl", "hide"] else 1.0
+	if hunch: hunch.want = 0.0 if anim in ["drive", "slump", "hang", "carried", "draped", "dying", "crawl", "hide"] else 1.0
 	player.speed_scale = speed
 	player.play(anim, 0.2)

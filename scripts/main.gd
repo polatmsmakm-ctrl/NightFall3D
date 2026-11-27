@@ -72,6 +72,9 @@ var cam_extra := 0.0          # how far the camera has pulled back (hooked)
 var hook_cam := 0.0           # seconds left of the camera swinging round to the hook
 var slowmo := 0.0             # seconds of the escape slow-motion left
 var heart_beat := 0.0         # drives the heartbeat buzz
+const Carry := preload("res://scripts/carry_pose.gd")
+var carry_arm := "" # the killer whose right arm is on someone's legs (let go when the carry ends)
+var carry_body := "" # who is over her shoulder (their rig goes back under their own node when it ends)
 var hit_anim := {}            # name -> seconds left of the one-shot flinch (and the fall, stand-up, unhook)
 var lift_anim := {}           # name -> [seconds left, seconds, height]: the drop off the hook, eased to the ground
 var hook_esc := {}            # name -> the mash bar last seen: rising means they are struggling
@@ -3230,7 +3233,33 @@ func _carry_spot() -> Vector3:
 	if _in_car(rules.killer): # slumped in his passenger seat
 		return car.seat_spot()
 	var ky := _yaw_of(rules.killer)
-	return _pos_of(rules.killer) + Basis(Vector3.UP, ky) * Vector3(0, 0, 0.5)
+	return _pos_of(rules.killer) + Basis(Vector3.UP, ky) * Vector3(0, 0, -0.15) # (the body is put on her shoulder by _shoulder_carry)
+
+## The carried survivor over the killer's shoulder, her right hand on their legs (scripts/carry_pose.gd),
+## on every phone, after both have been animated this frame. Not in her car (they ride slumped there).
+func _shoulder_carry() -> void:
+	var kn: String = rules.killer if rules else ""
+	var vn: String = rules.carrying if rules else ""
+	var kr: CharacterRig = null
+	var vr: CharacterRig = null
+	if kn != "" and vn != "" and not _in_car(kn):
+		kr = rig if kn == my_name else (remotes[kn].rig if remotes.has(kn) else null)
+		vr = rig if vn == my_name else (remotes[vn].rig if remotes.has(vn) else null)
+	if kr == null or vr == null or not is_instance_valid(kr) or not is_instance_valid(vr):
+		if carry_arm != "":
+			var was: CharacterRig = rig if carry_arm == my_name else (remotes[carry_arm].rig if remotes.has(carry_arm) else null)
+			if was and is_instance_valid(was): Carry.release(was)
+			carry_arm = ""
+		if carry_body != "":
+			var b: CharacterRig = rig if carry_body == my_name else (remotes[carry_body].rig if remotes.has(carry_body) else null)
+			if b and is_instance_valid(b): # back on their own feet, under their own node
+				b.position = Vector3.ZERO
+				b.rotation = Vector3(0, b.rotation.y, 0)
+			carry_body = ""
+		return
+	Carry.place(kr, vr)
+	carry_arm = kn
+	carry_body = vn
 
 ## Is this player at the wheel of the car (me, or a remote killer whose `st` says "drive")?
 func _in_car(n: String) -> bool:
@@ -3433,8 +3462,9 @@ func _process(dt: float) -> void:
 		var stride := 1.0
 		if NATURAL.has(anim) and float(r.spd) > 0.3:
 			stride = snappedf(clampf(float(r.spd) / float(NATURAL[anim]), 0.75, 2.6), 0.05)
-		elif anim == "carry" and float(r.spd) > 0.3:
-			stride = snappedf(clampf(float(r.spd) / 1.4, 0.8, 2.6), 0.05)
+		if anim == "carry": # the survivor is over her shoulder now: her own walk, or standing
+			anim = "walk" if float(r.spd) > 0.3 else "idle"
+			if anim == "walk": stride = snappedf(clampf(float(r.spd) / float(NATURAL.walk), 0.75, 2.6), 0.05)
 		if anim == "crawl" and float(r.spd) < 0.15: stride = 0.0001 # lying still (the sniper aiming)
 		if r.role == "killer" and rules.sniper: # her rifle, in front of her while she lies on the roof
 			var lying: bool = anim == "crawl"
@@ -3657,6 +3687,7 @@ func _process(dt: float) -> void:
 	if chase_music.playing and not chasing and chase_music.volume_db < -50.0: chase_music.stop()
 	amb.volume_db = lerpf(amb.volume_db, -30.0 if chasing else -13.0, fade)
 	# the end of the world: the moon grows in the sky for two minutes, then lands
+	_shoulder_carry()
 	if rules.powered and rules.doom >= 0.0:
 		var near := 1.0 - rules.doom / Rules.DOOM_TIME
 		world.set_moon_near(near)
@@ -4492,7 +4523,7 @@ func _move(delta: float) -> void:
 		else: rig.play("hide")
 	elif v > 0.25:
 		if my_role == "killer" and rules.carrying != "":
-			rig.play("carry", clampf(v / 1.4, 0.8, 2.6))
+			rig.play("walk", clampf(v / NATURAL.walk, 0.6, 1.7)) # (over her shoulder now: her own walk)
 		elif v > 4.3 and rig.has("sprint"): # the real sprint clip, when there is one
 			rig.play("sprint", snappedf(clampf(v / NATURAL.sprint, 0.75, 1.5 * _fast()), 0.05))
 		elif v > 2.6:
