@@ -103,8 +103,8 @@ func setup(w: NightWorld, cd: NFCatDog, b: NFBlood, cam_cb: Callable, skip_rids:
 	feast_s = _load("gorilla_feast.ogg")
 	for i in 4: hit_s.append(_load("knife%d.mp3" % (i + 1)))
 	for i in 3: thud_s.append(_load("fall%d.ogg" % (i + 1)))
-	# read the two models in the background now, so the scene does not stall the round when it starts
-	for p in ["res://assets/chars/gorilla.glb", HORSE]: ResourceLoader.load_threaded_request(p)
+	# (no background loading: on the iPhone, loading these on a worker thread while the round draws crashed
+	# the game when the scene began; they are read on the main thread when it starts, a short hitch)
 
 func _load(f: String) -> AudioStream:
 	var p := "res://assets/sfx/" + f

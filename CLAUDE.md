@@ -1324,3 +1324,9 @@ took «انطفت الأضوية» out). The Cairo font's Latin half (`cairo-lat
   meet; a slow sway, then they let go (4.4 s). Input frozen meanwhile; struck / carried ends it.
 - `tools/kiss.tscn` tests it; `tools/shot29.tscn` photographs it (step in, side, the faces close up,
   over the shoulder).
+- **Try it on yourself** (developer tools, trial mode only: «Try: the Beast eats me», `main._beast_try_start`):
+  puts me on the nearest free hook as a second hook with `rules.beast` on, the meal plays, the head
+  hangs 5 s (`feast.held`: the clock is held instead of dying), then I am back where I stood as I was.
+- **No background loading** for the gorilla and the horse: `ResourceLoader.load_threaded_request` at
+  setup crashed the game on the owner's iPhone when the scene began (after the second generator);
+  `_build` reads them with plain `load()` on the main thread when it starts.
