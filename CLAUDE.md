@@ -1332,3 +1332,39 @@ took «انطفت الأضوية» out). The Cairo font's Latin half (`cairo-lat
 - Perk «Light Feet» (`nimble`, phone side only: `NIMBLE_VAULT` 0.65 — her vaults take 65% of the
   time — and the killer's phone plays no sound for her vaults). In `PERK` in both rules files and
   `CHARS` in `server.js` (Render deploy). `tools/adventurer.tscn` tests her; `shot14` photographs her.
+
+## The owner's start screen (November 27: his mockup, his camp painting, his map cards)
+- **The camp is his painting** (`assets/ui/camp_bg.png`, `scripts/paint.gd`, `shaders/painted.gdshader`):
+  `NFLobby._ready_painted` puts it behind the 3D (`BG_CANVAS`, linear tonemap, no fog/glow so it shows
+  exactly as painted) and builds no 3D scenery. Only the fire flickers (with sparks, heat shimmer and its
+  glow in the puddles), the moon breathes with a cloud drifting over it and the cabin's window lamp
+  flickers. The camera is the painter's eye (`CAMP_FOCAL` 1009 px, horizon 545, eye 0.88 m); characters
+  stand where a painting pixel meets the ground (`_ground(px)`: `P_SEATS`, `P_STAND`, `P_STALK`) with a soft
+  blob under them. **Nothing follows the map, weather, mode or last round** (`set_map`, `_time_of_day`,
+  `_apply_look` return at once): the owner wants it fixed. Without the painting the old 3D camp is built.
+- **His map cards** (`assets/ui/maps/<map>.png`, cut from his sheet): `Paint.card(id)` in the MAP SELECT
+  frame and on the loading screen (`NFLoading._card`). Forest / Kuwait / beach moons glow, the forest and
+  village window lamps flicker, Kuwait City's palms and trees and the beach palms sway (`CARDS` boxes).
+  The Fareej has no card: its rendered `assets/mapshots/fareej.png` stands in.
+- **The menu after his mockup** (`menu.gd`, `_mrow`, `_build_start`, `_layout_start`): the wordmark top left,
+  Create Room (lit red), Room Code + Join, Friends, Trial Mode (red dot), Sound and Settings, How to Play,
+  Developer Tools (unlocked phones), Name and Server; four squares at the bottom (quit, rankings, today's
+  challenge, my profile); on the right **Dances**, **Game Modes**, MAP SELECT (‹ › and a dot per map) and
+  **PLAY** (online: a room on that map with the picked modes, `_apply_modes`; offline: a trial round). The
+  right column also shows in a room (the host's arrows change the room's map, PLAY becomes START) and on
+  the trial page. Maps, weather and modes are no longer in the room / trial pages.
+- **Dances** (page `dances`): `NFLobby.DANCES` — Hip Hop, Pop Dance, Funny Dancing, Breakdance, Not Your
+  Mom (the owner's Meshy motions). Tapping one makes my character dance it; it is saved as `Net.dance`
+  and the emote carries it (`{t:"emote", k:1, d}`; `server.js` checks the name and relays it).
+- **Game Modes** (page `modes`): the weather (Night, Fog, Rain, Snow, Halloween, Late Afternoon), gun mode,
+  sniper mode, the computer killer (trial). In a room only the host can change them.
+- `tools/shot30.tscn` photographs all of it.
+
+## The owner's Meshy motions in the round
+`tools/clip_from_meshy.py` turned his Meshy animation pack into clips on our skeleton. The round uses:
+`hit` (the flinch), `fall` (going down, `_move_anim`), `standup` (picked up from down, played at 1.6x),
+`hookhang` (hanging on the hook), `struggle` (while they mash — seen from the mash bar rising, so every
+phone shows it), `unhook` (saved or free: the drop, with the rig's lift eased to the ground, `lift_anim`),
+`cheer` (victory shot), `wave` / `dance` (emotes, replacing the hand-posed ones) and the dances. `fall`,
+`standup` and `unhook` had their hip travel pinned (they walked 2.5 m / 0.8 m off and snapped back).
+The Beast's meal and what he leaves on the hook keep the old `hang` pose (`feast.gd` is measured on it).

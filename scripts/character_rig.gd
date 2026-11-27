@@ -6,9 +6,9 @@ extends Node3D
 ## the list can name clips the owner has not supplied yet: drop sprint.glb / hit.glb / fall.glb /
 ## standup.glb / cheer.glb in and the game starts using them with no code change.
 const ANIMS := ["idle", "walk", "run", "sprint", "crouchwalk", "hide", "attack", "injured", "dying",
-	"vault", "carry", "carried", "hang", "crawl", "repair", "hit", "fall", "standup", "slump", "drive"]
-const ONCE := ["hit", "fall", "attack", "vault"] # played through once, then back to the state pose
-const LOOPING := ["climb", "idle", "walk", "run", "sprint", "crouchwalk", "hide", "injured", "carry", "carried", "hang", "crawl", "repair", "campfire", "wave", "clap", "dance", "cheer", "slump", "drive"]
+	"vault", "carry", "carried", "hang", "crawl", "repair", "hit", "fall", "standup", "slump", "drive", "hookhang", "struggle", "unhook"]
+const ONCE := ["hit", "fall", "attack", "vault", "standup", "unhook"] # played through once, then back to the state pose
+const LOOPING := ["dance_pop", "dance_funny", "dance_break", "dance_mom", "hookhang", "struggle", "crawl_back", "reach_help", "injured_walk", "climb_wall", "climb", "idle", "walk", "run", "sprint", "crouchwalk", "hide", "injured", "carry", "carried", "hang", "crawl", "repair", "campfire", "wave", "clap", "dance", "cheer", "slump", "drive"]
 ## Campfire emotes. There is no Mixamo clip for these in assets/anims, so they are posed here on the
 ## same skeleton: drop wave.glb / clap.glb / dance.glb in and the real clip is used instead.
 const EMOTES := {"wave": 2.4, "clap": 2.2, "dance": 4.0, "slump": 3.0, "drive": 3.0}

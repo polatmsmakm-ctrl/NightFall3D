@@ -21,6 +21,7 @@ var kills := 0     # survivors I killed as the killer, all time
 var secret := false # the hidden character is open on this phone (a gift from the owner)
 var gifted: Array = [] # owner's phone only: the friends I opened it for
 var perk := ""         # the perk I picked instead of my character's own: "aid" (المسعف) or "" (saved)
+var dance := "dance"   # the dance my character does at the fire (menu «Dances»; a clip in assets/anims, saved)
 var last_char := ""    # the character I last started a round with: the one standing at the fire
 var last_round := {}   # {res: escaped / dead / killer, score, gens, wipe}: the card and the camp read it
 var day := ""          # today's date, for the daily challenge
@@ -59,6 +60,7 @@ func _ready() -> void:
 		gifted = c.get_value("p", "gifted", [])
 		last_char = str(c.get_value("p", "last_char", ""))
 		perk = str(c.get_value("p", "perk", ""))
+		dance = str(c.get_value("p", "dance", "dance"))
 		last_round = c.get_value("p", "last_round", {})
 		day = str(c.get_value("p", "day", ""))
 		day_n = c.get_value("p", "day_n", [0, 0, 0])
@@ -82,6 +84,7 @@ func save() -> void:
 	c.set_value("p", "gifted", gifted)
 	c.set_value("p", "last_char", last_char)
 	c.set_value("p", "perk", perk)
+	c.set_value("p", "dance", dance)
 	c.set_value("p", "last_round", last_round)
 	c.set_value("p", "rounds", rounds)
 	c.set_value("p", "history", history)

@@ -242,7 +242,8 @@ const handlers = {
     const r = c.room;
     if (!r) return;
     const k = Math.min(2, Math.max(0, Math.floor(Number(m.k) || 0)));
-    broadcast(r, { t: 'emote', n: c.name, k }, c);
+    const d = /^dance(_[a-z]{1,10})?$/.test(String(m.d || '')) ? String(m.d) : 'dance'; // which dance (the menu «Dances»)
+    broadcast(r, { t: 'emote', n: c.name, k, d }, c);
   },
   ad(c, m) { // the developer tools play (or stop) the promotional video on the billboard: every phone in the round
     const r = c.room;

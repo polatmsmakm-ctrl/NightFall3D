@@ -11,6 +11,9 @@ const CAM_CHAR := [Vector3(-1.5, 1.45, 5.2), Vector3(-0.14, -0.2, 0.0)]
 const EMOTES := ["wave", "dance", "clap"]            # relayed as {t:"emote", k:0..2}
 const EMOTE_TEXT := ["Wave", "Dance", "Clap"]
 const EMOTE_ICON := ["hand", "note", "clap"]
+## Every dance a player can pick (menu «Dances»): clips in assets/anims, made from the owner's Meshy motions.
+const DANCES := ["dance", "dance_pop", "dance_funny", "dance_break", "dance_mom"]
+const DANCE_NAMES := {"dance": "Hip Hop", "dance_pop": "Pop Dance", "dance_funny": "Funny Dancing", "dance_break": "Breakdance", "dance_mom": "Not Your Mom"}
 const SEATS := [[-1.05, 2.1], [-0.38, 2.2], [0.42, 2.2], [1.1, 2.1], [-1.78, 2.3], [1.82, 2.3]]
 const KILLER_AT := Vector3(1.6, 0.0, -7.4)
 ## Where she shows herself between the trees while nobody plays the killer: each time she comes
@@ -19,6 +22,13 @@ const KILLER_AT := Vector3(1.6, 0.0, -7.4)
 const STALK := [Vector3(1.6, 0.0, -7.4), Vector3(4.6, 0.0, -8.2), Vector3(-0.8, 0.0, -8.0), Vector3(6.2, 0.0, -5.4),
 	Vector3(2.8, 0.0, -5.6), Vector3(-1.6, 0.0, -5.2), Vector3(3.6, 0.0, -4.2)]
 const HOOK_AT := Vector3(4.9, 0.0, -0.2)
+## The owner's painted camp (assets/ui/camp_bg.png): the start screen's fixed background. When it is
+## there the 3D scenery is not built at all; the characters stand on the painted ground, placed by where
+## their feet are in the picture (pixels of the painting), lit by its fire.
+const Paint := preload("res://scripts/paint.gd")
+const P_SEATS := [Vector2(782.0, 652.0), Vector2(866.0, 664.0), Vector2(952.0, 652.0), Vector2(700.0, 676.0), Vector2(1030.0, 668.0), Vector2(620.0, 700.0)] # right of the fire first: the menu covers the left
+const P_STAND := Vector2(1090.0, 790.0)      # the chosen character, big, between the menu and the map card
+const P_STALK := [Vector2(1222.0, 604.0), Vector2(892.0, 598.0), Vector2(1112.0, 592.0), Vector2(1000.0, 612.0), Vector2(782.0, 600.0)]
 
 var stock: Array[Node3D] = []     # the shipped cast, shown when we are not in a room
 var cast := {}                  # other players in the room: name -> {rig, tag}
@@ -65,6 +75,8 @@ var _shade_dir := 1.0
 var _grav := Vector3.ZERO
 var _tilt := Vector2.ZERO
 var blood := false                # the last round was a wipe: the camp sits under a blood moon
+var painted := false              # the owner's painting is the background (see P_SEATS)
+var backdrop: CanvasLayer
 
 func _soft_dot() -> ImageTexture: # shared with the other particle systems
 	return NFUI.soft_dot()
@@ -151,11 +163,14 @@ func _ready() -> void:
 	env.adjustment_enabled = true
 	env.adjustment_contrast = 1.1
 	NFLook.apply(env, "camp") # occlusion round the fire, its light in the mist, bloom
-	Gfx.changed.connect(func() -> void: NFLook.apply(env, "camp"))
+	Gfx.changed.connect(func() -> void: if not painted: NFLook.apply(env, "camp"))
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
 	sky_mat = sm
+	if Paint.has_camp():
+		_ready_painted()
+		return
 	moon = DirectionalLight3D.new()
 	moon.basis = Basis.looking_at(-Vector3(0.35, 0.33, -0.88).normalized())
 	moon.light_color = Color(0.5, 0.6, 0.95)
@@ -456,6 +471,165 @@ func _ready() -> void:
 		intro_done = true
 		intro = 0.0
 
+# ---------------- the painted camp ----------------
+## The camp as the owner painted it: his picture behind everything (a canvas the 3D draws over), the
+## real characters in front of it standing on his ground, his fire lighting them. Nothing here follows
+## the map, the weather, the mode or the last round: it is the same night every time.
+func _ready_painted() -> void:
+	painted = true
+	env.background_mode = Environment.BG_CANVAS
+	env.background_canvas_max_layer = -5
+	# the picture must come out exactly as painted: no tone curve, no fog, no glow or grading on it
+	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
+	env.tonemap_exposure = 1.0
+	env.fog_enabled = false
+	env.volumetric_fog_enabled = false
+	env.glow_enabled = false
+	env.adjustment_enabled = false
+	env.ssao_enabled = false
+	env.ssil_enabled = false
+	env.ssr_enabled = false
+	env.sdfgi_enabled = false
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color(0.36, 0.4, 0.56)
+	env.ambient_light_energy = 0.75
+	backdrop = CanvasLayer.new()
+	backdrop.layer = -10
+	add_child(backdrop)
+	var bg := Paint.camp()
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	backdrop.add_child(bg)
+	pivot = Node3D.new()
+	pivot.name = "Pivot"
+	add_child(pivot)
+	cam = Camera3D.new() # the painter's eye: fixed, only its lens follows the screen's shape
+	cam.position = Vector3(0.0, Paint.CAMP_EYE, 0.0)
+	cam.rotation.x = atan((Paint.CAMP_HORIZON - Paint.CAMP_SIZE.y / 2.0) / Paint.CAMP_FOCAL)
+	cam.near = 0.05
+	cam.far = 200.0
+	pivot.add_child(cam)
+	cam.current = true
+	_paint_lens()
+	moon = DirectionalLight3D.new() # cold light from his moon, up and behind on the right
+	moon.basis = Basis.looking_at(-Vector3(-0.35, 0.55, -0.75).normalized())
+	moon.light_color = Color(0.62, 0.7, 1.0)
+	moon.light_energy = 0.55
+	moon.shadow_enabled = false
+	add_child(moon)
+	var fp := _ground(Paint.CAMP_FIRE)
+	fire = OmniLight3D.new()
+	fire.name = "Fire"
+	fire.position = fp + Vector3(0, 0.8, 0)
+	fire.light_color = Color(1.0, 0.55, 0.22)
+	fire.light_energy = 3.6
+	fire.omni_range = 9.0
+	fire.shadow_enabled = false
+	add_child(fire)
+	for i in 4: # the shipped cast round his fire
+		var r := CharacterRig.new()
+		add_child(r)
+		r.setup(["survivor1", "survivor2", "survivor5", "survivor6"][i], ["campfire", "idle"])
+		_place_seat(r, i)
+		r.play("idle")
+		r.player.seek(1.0 + i * 1.3, true)
+		stock.append(r)
+	var killer := CharacterRig.new()
+	add_child(killer)
+	killer.setup("killer", ["idle"])
+	killer.play("idle")
+	stalker = killer
+	var rim := OmniLight3D.new()
+	rim.light_color = Color(1.0, 0.15, 0.1)
+	rim.light_energy = 2.0
+	rim.omni_range = 3.0
+	add_child(rim)
+	stalk_rim = rim
+	var sp := _stand()
+	key_light = OmniLight3D.new() # the chosen one: warm from the fire's side, cool fill, a rim behind
+	key_light.position = sp + Vector3(-0.9, 1.9, 1.2)
+	key_light.light_color = Color(1.0, 0.72, 0.48)
+	key_light.light_energy = 1.6
+	key_light.omni_range = 5.0
+	add_child(key_light)
+	fill_light = OmniLight3D.new()
+	fill_light.position = sp + Vector3(1.3, 1.4, 1.0)
+	fill_light.light_color = Color(0.55, 0.66, 1.0)
+	fill_light.light_energy = 0.7
+	fill_light.omni_range = 5.0
+	add_child(fill_light)
+	back_light = OmniLight3D.new()
+	back_light.position = sp + Vector3(0.6, 2.3, -1.4)
+	back_light.light_color = Color(0.8, 0.88, 1.0)
+	back_light.light_energy = 1.8
+	back_light.omni_range = 4.5
+	add_child(back_light)
+	for snd in [["campfire", -4.0], ["ambient", -14.0]]:
+		var a := AudioStreamPlayer.new()
+		a.bus = Aud.MUSIC
+		var stream: AudioStreamMP3 = load("res://assets/sfx/%s.mp3" % snd[0])
+		stream.loop = true
+		a.stream = stream
+		a.volume_db = snd[1]
+		add_child(a)
+		a.play()
+	map_id = "painted"
+	_place_stalker()
+	if not intro_done and DisplayServer.get_name() != "headless":
+		intro_done = true
+		intro = 0.0
+
+## The camera's lens for this screen: the painting covers the screen (cut at the sides or at the top
+## and bottom, never squashed), so the 3D has to see exactly the part of it that shows.
+func _paint_lens() -> void:
+	if cam == null: return
+	var vs := get_viewport().get_visible_rect().size if is_inside_tree() else Vector2(1564, 720)
+	if vs.x < 2.0 or vs.y < 2.0: return
+	var s: float = maxf(vs.x / Paint.CAMP_SIZE.x, vs.y / Paint.CAMP_SIZE.y)
+	var vis_h: float = vs.y / s
+	cam.keep_aspect = Camera3D.KEEP_HEIGHT
+	cam.fov = rad_to_deg(2.0 * atan(vis_h / 2.0 / Paint.CAMP_FOCAL))
+
+## The point on the ground under a pixel of the painting.
+func _ground(px: Vector2) -> Vector3:
+	var d := Vector3((px.x - Paint.CAMP_SIZE.x / 2.0) / Paint.CAMP_FOCAL, -(px.y - Paint.CAMP_SIZE.y / 2.0) / Paint.CAMP_FOCAL, -1.0)
+	d = Basis(Vector3.RIGHT, atan((Paint.CAMP_HORIZON - Paint.CAMP_SIZE.y / 2.0) / Paint.CAMP_FOCAL)) * d
+	var eye := Vector3(0.0, Paint.CAMP_EYE, 0.0)
+	if d.y > -0.001: d.y = -0.001
+	return eye + d * (Paint.CAMP_EYE / -d.y)
+
+func _stand() -> Vector3:
+	return _ground(P_STAND) if painted else STAND
+
+## Put a rig on seat i round the fire, facing the fire, with a soft shadow under it.
+func _place_seat(r: Node3D, i: int) -> void:
+	if painted:
+		r.position = _ground(P_SEATS[i % P_SEATS.size()])
+		var f := _ground(Paint.CAMP_FIRE)
+		r.rotation.y = atan2(f.x - r.position.x, f.z - r.position.z)
+		_blob(r)
+		return
+	var st: Array = SEATS[i % SEATS.size()]
+	r.position = Vector3(sin(st[0]) * st[1], 0, -cos(st[0]) * st[1])
+	r.rotation.y = atan2(-r.position.x, -r.position.z)
+
+## A soft dark patch under someone on the painted ground (there is no 3D ground to take a shadow).
+func _blob(r: Node3D) -> void:
+	if r.has_node("Blob"): return
+	var mi := MeshInstance3D.new()
+	mi.name = "Blob"
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(1.15, 0.85)
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.albedo_color = Color(0, 0, 0, 0.62)
+	m.albedo_texture = _soft_dot()
+	pm.material = m
+	mi.mesh = pm
+	mi.position.y = 0.01
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	r.add_child(mi)
+
 ## Tests and screenshots pretend it is this hour (and force the mist on or off); -1 = normal.
 static var force_hour := -1
 static var force_mist := -1
@@ -464,6 +638,7 @@ static var force_mist := -1
 ## from the weather the host picked for the round (ضباب), so the start screen already shows you
 ## what you are about to play. force_hour is only for the tests and the screenshots.
 func _time_of_day() -> void:
+	if painted: return # the painted camp is the same night whatever the room picks
 	var h: int = force_hour if force_hour >= 0 else (18 if weather() == "sunset" else 21) # «بين العصر والمغرب»: the camp at dusk
 	if h >= 5 and h < 8: period = "dawn"
 	elif h >= 8 and h < 17: period = "day"
@@ -542,12 +717,16 @@ func preview(char_id: String, label := "", dir := 0.0) -> void:
 	if char_id == "": return
 	me_rig = CharacterRig.new()
 	add_child(me_rig)
-	me_rig.setup(char_id, ["idle", "campfire"] + EMOTES, true) # the one you are looking at, in detail
+	me_rig.setup(char_id, ["idle", "campfire"] + EMOTES + DANCES, true) # the one you are looking at, in detail
 	me_rig.play("idle")
-	_slide_from = STAND + Vector3(dir * 1.9, 0.0, 0.35)
+	var sp := _stand()
+	_slide_from = sp + Vector3(dir * 1.9, 0.0, 0.35)
 	_slide = 1.0 if dir != 0.0 else 0.0
-	me_rig.position = _slide_from if dir != 0.0 else STAND
-	me_rig.rotation.y = atan2(CAM_IDLE[0].x - STAND.x, CAM_IDLE[0].z - STAND.z)
+	me_rig.position = _slide_from if dir != 0.0 else sp
+	if painted: # toward the viewer, turned a little to the fire
+		me_rig.rotation.y = atan2(-sp.x, cam.position.z - sp.z) - 0.28
+		_blob(me_rig)
+	else: me_rig.rotation.y = atan2(CAM_IDLE[0].x - STAND.x, CAM_IDLE[0].z - STAND.z)
 	me_label = _tag(label, Color(1, 0.88, 0.6), 2.15)
 	me_rig.add_child(me_label)
 
@@ -583,24 +762,20 @@ func set_cast(players: Array, me: String) -> void:
 		if cast.has(n): # still here: only move them if somebody left and freed a seat
 			if int(cast[n].seat) != int(want[n].seat) and str(want[n].role) != "killer":
 				cast[n].seat = int(want[n].seat)
-				var st3: Array = SEATS[int(want[n].seat) % SEATS.size()]
-				cast[n].rig.position = Vector3(sin(st3[0]) * st3[1], 0, -cos(st3[0]) * st3[1])
-				cast[n].rig.rotation.y = atan2(-cast[n].rig.position.x, -cast[n].rig.position.z)
+				_place_seat(cast[n].rig, int(want[n].seat))
 			continue
 		var d: Dictionary = want[n]
 		var r := CharacterRig.new()
 		add_child(r)
 		var killer: bool = d.role == "killer"
-		r.setup(str(d.char), (["idle"] if killer else ["campfire", "idle"]) + EMOTES)
+		r.setup(str(d.char), (["idle"] if killer else ["campfire", "idle"]) + EMOTES + DANCES)
 		if killer:
-			r.position = KILLER_AT
+			r.position = _ground(P_STALK[0]) if painted else KILLER_AT
 			r.rotation.y = atan2(-r.position.x, -r.position.z)
 			r.play("idle")
 		else:
-			var st: Array = SEATS[int(d.seat) % SEATS.size()]
-			r.position = Vector3(sin(st[0]) * st[1], 0, -cos(st[0]) * st[1])
-			r.rotation.y = atan2(-r.position.x, -r.position.z)
-			r.play("campfire")
+			_place_seat(r, int(d.seat))
+			r.play("idle" if painted else "campfire") # in his picture they stand round the fire
 			r.player.seek(2.0 + float(d.seat) * 1.7, true)
 		var tag_col := Color(1, 0.45, 0.45) if killer else Color(0.78, 0.92, 1.0)
 		if str(d.role) == "friend": tag_col = Color(0.55, 1.0, 0.6) # online, not in a room: tap to invite
@@ -611,15 +786,30 @@ func set_cast(players: Array, me: String) -> void:
 	if in_room: _stalk_t = minf(_stalk_t, 0.5) # settle who the killer is right away
 
 ## Play a campfire emote. `who` is the player's name; mine is the one standing at the fire.
-func emote(who: String, k: int) -> void:
+func emote(who: String, k: int, dance := "") -> void:
 	k = clampi(k, 0, EMOTES.size() - 1)
 	var r: CharacterRig = null
 	if who == me_name or who == "": r = me_rig
 	elif cast.has(who): r = cast[who].rig
 	if r == null or not is_instance_valid(r): return
-	if not r.player.has_animation(EMOTES[k]): return
-	r.play(EMOTES[k])
-	_emoting[r] = float(CharacterRig.EMOTES.get(EMOTES[k], 3.0)) * (2.0 if EMOTES[k] != "dance" else 1.0) + 0.2 # then back to sitting / standing
+	var a: String = EMOTES[k]
+	if a == "dance" and dance in DANCES and r.player.has_animation(dance): a = dance # the one they picked
+	if not r.player.has_animation(a): return
+	r.play(a)
+	var clip_len := r.player.get_animation(a).length
+	if CharacterRig.EMOTES.has(a) and not ResourceLoader.exists("res://assets/anims/%s.glb" % a): # posed in code
+		_emoting[r] = float(CharacterRig.EMOTES[a]) * (2.0 if a != "dance" else 1.0) + 0.2
+	else: # a real clip: twice round a short one, once round a long one, never more than nine seconds
+		_emoting[r] = clampf(clip_len * (2.0 if clip_len < 3.0 else 1.0), 3.0, 9.0) + 0.2
+
+## The Dances page: my character dances the one under my finger until the page closes.
+func dance_preview(d: String) -> void:
+	if me_rig == null or not is_instance_valid(me_rig) or not me_rig.player.has_animation(d): return
+	_emoting.erase(me_rig)
+	me_rig.play(d)
+
+func dance_stop() -> void:
+	if me_rig and is_instance_valid(me_rig) and not _emoting.has(me_rig): me_rig.play("idle")
 
 func _tick_emotes(dt: float) -> void:
 	for r in _emoting.keys():
@@ -629,7 +819,7 @@ func _tick_emotes(dt: float) -> void:
 		_emoting[r] -= dt
 		if _emoting[r] <= 0.0:
 			_emoting.erase(r)
-			r.play("idle" if r == me_rig else ("campfire" if r.player.has_animation("campfire") else "idle"))
+			r.play("idle" if (r == me_rig or painted) else ("campfire" if r.player.has_animation("campfire") else "idle"))
 
 # ---------------- the camp is alive ----------------
 func _mat_flat(col: Color, glow := 0.0, rough := 0.9) -> StandardMaterial3D:
@@ -794,7 +984,7 @@ func _build_owner_models() -> void:
 
 ## Dress the camp for the map the room (or the trial menu) has picked.
 func set_map(id: String) -> void:
-	if id == map_id: return
+	if painted or id == map_id: return
 	map_id = id
 	if _dress and is_instance_valid(_dress): _dress.queue_free()
 	_dress = Node3D.new()
@@ -948,7 +1138,7 @@ func _palms(n: int) -> void:
 
 ## The player's «السطوع» on the camp as well.
 func _apply_look() -> void:
-	if env: env.tonemap_exposure = 1.1 * Gfx.brightness
+	if env and not painted: env.tonemap_exposure = 1.1 * Gfx.brightness
 
 ## Which player stands under this point of the screen ("" if none): the menu uses it for a tap.
 func pick(at: Vector2) -> String:
@@ -966,8 +1156,8 @@ func pick(at: Vector2) -> String:
 	return best
 
 func _place_stalker() -> void:
-	var p: Vector3 = STALK[_stalk_i]
-	var t: Vector3 = CAM_IDLE[0]
+	var p: Vector3 = _ground(P_STALK[_stalk_i % P_STALK.size()]) if painted else STALK[_stalk_i]
+	var t: Vector3 = cam.position if painted else CAM_IDLE[0]
 	stalker.position = p
 	stalker.rotation.y = atan2(t.x - p.x, t.z - p.z) # she looks at whoever holds the phone
 	stalk_rim.position = p + Vector3(-0.5, 1.9, 1.3) # in front of her, low and red: her face reads from the fire
@@ -991,7 +1181,7 @@ func _tick_stalker(dt: float) -> void:
 		else:
 			_stalk_seen = true
 			_stalk_t = randf_range(5.0, 9.0)
-			if randf() < 0.75: _stalk_i = mini(_stalk_i + 1, STALK.size() - 1)
+			if randf() < 0.75: _stalk_i = mini(_stalk_i + 1, (P_STALK if painted else STALK).size() - 1)
 			else: _stalk_i = randi() % STALK.size()
 			_place_stalker()
 	stalker.visible = _stalk_seen
@@ -1016,6 +1206,19 @@ func _process(dt: float) -> void:
 	_tick_stalker(dt)
 	var tt := Time.get_ticks_msec() / 1000.0
 	var flick := 0.78 + 0.14 * sin(tt * 13.0) * sin(tt * 4.3) + 0.08 * sin(tt * 27.0)
+	if painted:
+		_paint_lens()
+		fire.light_energy = 3.6 * flick
+		if intro < 1.0: intro = minf(intro + dt / 2.8, 1.0)
+		var w := 1.0 if focused else 0.0
+		if absf(_focus - w) > 0.001: _focus = move_toward(_focus, w, dt * 1.6)
+		key_light.light_energy = lerpf(1.3, 2.2, _focus)
+		back_light.light_energy = lerpf(1.4, 2.4, _focus)
+		if _slide > 0.0 and me_rig:
+			_slide = maxf(_slide - dt * 3.4, 0.0)
+			var k2: float = 1.0 - _slide
+			me_rig.position = _slide_from.lerp(_stand(), k2 * k2 * (3.0 - 2.0 * k2))
+		return
 	fire.light_energy = 3.4 * flick * fire_mul
 	fire.position = Vector3(0.05 * sin(tt * 9.0), 0.75 + 0.05 * sin(tt * 7.0), 0.05 * cos(tt * 11.0)) # shadows dance
 	_tick_air(dt, tt)

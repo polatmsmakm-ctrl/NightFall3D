@@ -72,7 +72,10 @@ var cam_extra := 0.0          # how far the camera has pulled back (hooked)
 var hook_cam := 0.0           # seconds left of the camera swinging round to the hook
 var slowmo := 0.0             # seconds of the escape slow-motion left
 var heart_beat := 0.0         # drives the heartbeat buzz
-var hit_anim := {}            # name -> seconds left of the one-shot flinch
+var hit_anim := {}            # name -> seconds left of the one-shot flinch (and the fall, stand-up, unhook)
+var lift_anim := {}           # name -> [seconds left, seconds, height]: the drop off the hook, eased to the ground
+var hook_esc := {}            # name -> the mash bar last seen: rising means they are struggling
+var struggle_t := {}          # name -> seconds left of the struggle clip
 var ev_shown := -1            # which event warning has been shown
 var ev_on := false            # the event is running right now
 var adhan_player: AudioStreamPlayer3D
@@ -1671,6 +1674,11 @@ func _feed_watch(dt: float) -> void:
 		if hp != was:
 			var who_at = null if n == my_name else _pos_of(n) + Vector3(0, 0.5, 0)
 			if hp == "down" and was in ["ok", "hurt"]: _sfx("fall%d" % randi_range(1, 3), who_at, 0.0 if n == my_name else 6.0)
+			# the owner's Meshy moves: falling when they go down, getting up when they are picked up,
+			# dropping off the hook when they are saved or get themselves off
+			if hp == "down" and was in ["ok", "hurt"]: _move_anim(n, "fall")
+			elif was == "down" and hp == "hurt": _move_anim(n, "standup")
+			elif was == "hooked" and hp in ["hurt", "ok"]: _move_anim(n, "unhook")
 			if (was == "hurt" and hp == "ok") or (was == "down" and hp == "hurt"): _sfx("healed", who_at, -6.0 if n == my_name else 0.0)
 			match hp:
 				"down": _feed("%s is down" % n, "down", Color(1.0, 0.62, 0.3))
@@ -3177,11 +3185,40 @@ func _input(e: InputEvent) -> void:
 func me_locker() -> int:
 	return rules.s[my_name].locker if rules.s.has(my_name) else -1
 
-## Hanging on the hook by the hands: lifted off the ground and still.
-func _hook_pose(r: CharacterRig, dt: float) -> void:
-	r.position.y = lerpf(r.position.y, world.hook_hang_y if world else 0.62, 1.0 - exp(-10.0 * dt)) # the gallows hangs you lower
+## Hanging on the hook by the hands: lifted off the ground. The owner's Meshy moves when the clips are
+## there: hanging still (hookhang), kicking to get off while they mash (struggle). The Beast's meal and
+## what he leaves on the hook keep the old pose (scripts/feast.gd is measured on it).
+func _hook_pose(r: CharacterRig, dt: float, n := "") -> void:
+	var clip := "hang"
+	if n != "" and r.has("hookhang") and not _kept(n) and not (rules and rules.eaten(n)):
+		clip = "hookhang"
+		var e: float = float(rules.s[n].get("esc", 0.0)) if rules and rules.s.has(n) else 0.0
+		if e > float(hook_esc.get(n, 0.0)) + 0.0005: struggle_t[n] = 0.55
+		hook_esc[n] = e
+		if float(struggle_t.get(n, 0.0)) > 0.0 and r.has("struggle"): clip = "struggle"
+	# the Meshy hang holds the hips 18 cm lower in the clip than the old one: the same height on the hook
+	var y: float = (world.hook_hang_y if world else 0.62) + (0.18 if clip != "hang" else 0.0)
+	r.position.y = lerpf(r.position.y, y, 1.0 - exp(-10.0 * dt)) # the gallows hangs you lower
 	r.rotation = Vector3.ZERO
-	r.play("hang", 0.6)
+	r.play(clip, 0.6 if clip == "hang" else 1.0)
+
+## A move played once on whoever it happened to (the fall when they go down, the stand-up when they are
+## picked up, the drop off the hook): the state pose waits until it is done. Nothing without the clip.
+func _move_anim(who: String, clip: String) -> void:
+	var r: CharacterRig = rig if who == my_name else (remotes[who].rig if remotes.has(who) else null)
+	if r == null or not is_instance_valid(r) or not r.has(clip): return
+	var t := r.player.get_animation(clip).length
+	if clip == "fall": t = minf(t, 1.6) # down on the ground by then: the crawl / lying pose takes over
+	if clip == "standup": t = minf(t / 1.6, 4.0)
+	r.play(clip, 1.6 if clip == "standup" else 1.0)
+	hit_anim[who] = t
+	if clip == "unhook": lift_anim[who] = [t, t, r.position.y - 0.3] # the clip starts 30 cm up already
+
+## How high the rig sits while it drops off the hook (-1 when it is not dropping).
+func _lift_of(n: String) -> float:
+	if not lift_anim.has(n): return -1.0
+	var a: Array = lift_anim[n]
+	return maxf(float(a[2]), 0.0) * clampf(float(a[0]) / maxf(float(a[1]), 0.01), 0.0, 1.0)
 
 func _yaw_of(n: String) -> float:
 	if n == my_name: return rig.rotation.y
@@ -3409,14 +3446,15 @@ func _process(dt: float) -> void:
 			if r.get("rifle") != null: (r.rifle as Node3D).visible = lying and r.node.visible
 			if world.rifle_stand: world.rifle_stand.visible = not lying
 		if st == "hooked" or _kept(n):
-			_hook_pose(r.rig, dt)
+			_hook_pose(r.rig, dt, n)
 		elif _climbing(n): # up the helicopter's rope ladder, on every phone the same
 			_climb_pose(n, r.node, r.rig, dt)
 		else:
 			if climb_hands.has(n):
 				climb_hands.erase(n)
 				r.rig.reach_clear()
-			r.rig.position.y = lerpf(r.rig.position.y, lift, w)
+			if lift_anim.has(n): r.rig.position.y = _lift_of(n) # dropping off the hook
+			else: r.rig.position.y = lerpf(r.rig.position.y, lift, w)
 			r.rig.rotation = Vector3(0, lerp_angle(r.rig.rotation.y, face, w), 0)
 			_lean_rig(r.rig, dt, float(r.spd), anim)
 			if hit_anim.get(n, 0.0) <= 0.0 and not _kissing(n): r.rig.play(anim, stride) # (a kiss poses them itself)
@@ -3643,6 +3681,12 @@ func _physics_process(delta: float) -> void:
 	for n in hit_anim.keys(): # the one-shot flinch, if the clip exists
 		hit_anim[n] = hit_anim[n] - delta
 		if hit_anim[n] <= 0.0: hit_anim.erase(n)
+	for n in lift_anim.keys():
+		lift_anim[n][0] = float(lift_anim[n][0]) - delta
+		if float(lift_anim[n][0]) <= 0.0: lift_anim.erase(n)
+	for n in struggle_t.keys():
+		struggle_t[n] = float(struggle_t[n]) - delta
+		if float(struggle_t[n]) <= 0.0: struggle_t.erase(n)
 	if offline:
 		for e in rules.tick(delta): _on_event(e)
 	if bot and world.ready_done: bot.step(delta)
@@ -3695,11 +3739,11 @@ func _physics_process(delta: float) -> void:
 		rig.play("carried")
 	elif my_state == "dead" and _kept(my_name): # what «الوحش» left of me, on his hook
 		body.position = world.hook_points[_hook_at(my_name)] + Vector3(0, 0, 0.9)
-		_hook_pose(rig, delta)
+		_hook_pose(rig, delta, my_name)
 	elif my_state == "hooked":
 		if last_state != "hooked": hook_cam = 2.6
 		body.position = world.hook_points[me.hook_i] + Vector3(0, 0, 0.9)
-		_hook_pose(rig, delta)
+		_hook_pose(rig, delta, my_name)
 	elif _climbing(my_name): # up the helicopter's rope ladder (the rules count the climb)
 		_climb_pose("me", body, rig, delta)
 	elif esc_i >= 0:
@@ -3720,7 +3764,8 @@ func _physics_process(delta: float) -> void:
 		if f >= 1.0: vault = {}
 	else:
 		pinned = false
-	if my_state != "carried" and my_state != "hooked" and not driving and esc_i < 0: rig.position.y = 0.0
+	if my_state != "carried" and my_state != "hooked" and not driving and esc_i < 0:
+		rig.position.y = _lift_of(my_name) if lift_anim.has(my_name) else 0.0
 	rig.scale = Vector3.ONE * (NFCar.VICTIM_SCALE if ((my_state == "carried" and _in_car(rules.killer)) or driving or esc_i >= 0) else 1.0)
 	if last_state == "hooked" and my_state != "hooked": rig.rotation = Vector3.ZERO
 	if last_locker >= 0 and locker < 0 and my_state in ["ok", "hurt"]: # stepped out of a locker

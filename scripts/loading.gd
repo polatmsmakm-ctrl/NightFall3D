@@ -35,6 +35,8 @@ var f := 0.0        # build progress 0..1
 var shown := 0.0    # seconds on screen
 var fade := 1.0
 var _pad: Control
+var _card: TextureRect # the owner's picture of this map (assets/ui/maps), the same for every weather and mode
+const Paint := preload("res://scripts/paint.gd")
 
 func setup(id: String, th := "normal") -> void:
 	map_id = id
@@ -48,6 +50,10 @@ func _ready() -> void:
 	_pad.mouse_filter = Control.MOUSE_FILTER_STOP # no stray taps into the match
 	_pad.draw.connect(_draw_pad)
 	add_child(_pad)
+	_card = Paint.card(map_id)
+	if _card:
+		_card.stretch_mode = TextureRect.STRETCH_SCALE
+		_pad.add_child(_card)
 
 func progress(v: float) -> void:
 	f = maxf(f, clampf(v, 0.0, 1.0))
@@ -237,14 +243,23 @@ func _draw_pad() -> void:
 	var safe := NFUI.safe_insets(get_viewport())
 	var pw: float = minf(s.x - safe.x - safe.y - 120.0, 720.0)
 	var ph: float = minf(s.y * 0.46, pw * 0.42)
+	if _card and _card.texture: # his picture, whole, at its own shape
+		var asp: float = float(_card.texture.get_width()) / float(_card.texture.get_height())
+		ph = minf(s.y * 0.46, pw / asp)
+		pw = ph * asp
 	var pr := Rect2(Vector2((s.x - pw) / 2.0, s.y * 0.2), Vector2(pw, ph))
-	_draw_preview(pr)
+	if _card:
+		_card.position = pr.position
+		_card.size = pr.size
+		_card.modulate.a = a
+		_pad.draw_rect(pr.grow(3.0), Color(0.5, 0.08, 0.09, 0.8 * a), false, 2.0)
+	else: _draw_preview(pr)
 	var title: String = str(NAMES.get(map_id, map_id))
 	if THEME_NAMES.has(theme): title += "  •  " + str(THEME_NAMES[theme])
 	_say(Vector2(s.x / 2.0, s.y * 0.1), title, 46, Color(0.88, 0.14, 0.15))
-	_say(Vector2(s.x / 2.0, pr.position.y + ph + 24.0), tip, 24, Color(1.0, 0.86, 0.5), minf(s.x - 80.0, 1000.0))
+	_say(Vector2(s.x / 2.0, pr.position.y + ph + 40.0), tip, 24, Color(1.0, 0.86, 0.5), minf(s.x - 80.0, 1000.0))
 	var bw: float = minf(pw, 560.0)
-	var br := Rect2(Vector2((s.x - bw) / 2.0, pr.position.y + ph + 76.0), Vector2(bw, 16.0))
+	var br := Rect2(Vector2((s.x - bw) / 2.0, pr.position.y + ph + 92.0), Vector2(bw, 16.0))
 	NFUI.bar(_pad, br, f, Color(0.78, 0.1, 0.1, a), Color(1, 1, 1, 0.3 * a))
 	var dots := ".".repeat(1 + int(shown * 2.0) % 3)
 	_say(Vector2(s.x / 2.0, br.position.y + 40.0), ("Building the map" + dots) if f < 1.0 else "Ready!", 20, Color(0.7, 0.72, 0.75))

@@ -42,6 +42,21 @@ var poster: TextureRect # the opening shot, fading into the camp
 var _logo_tex: Texture2D
 var _invite_after := ""  # a friend tapped while I had no room: invite him once the room exists
 var _tap_at := -9.0
+const Paint := preload("res://scripts/paint.gd")
+# the start screen's own pieces (the owner's mockup): built once, laid out by _layout_start
+var ui: Control
+var side: VBoxContainer
+var modes_btn: Button
+var map_panel: Control
+var map_pic_holder: Control
+var map_prev: Button
+var map_next: Button
+var play_btn: Button
+var foot: HBoxContainer
+var map_pic: Control
+var _pic_map := ""
+var _apply_modes := false
+var _danced := false # the Dances page was open: my character goes back to standing when it closes # a room made with PLAY: send the modes picked before it existed
 
 func _ready() -> void:
 	layer = 10
@@ -74,6 +89,7 @@ func _ready() -> void:
 	card.size = Vector2(340, 116)
 	card.draw.connect(_draw_card)
 	add_child(card)
+	_build_start()
 	version = Label.new()
 	version.text = VERSION
 	version.add_theme_font_size_override("font_size", 15)
@@ -118,7 +134,10 @@ func _on_msg(m: Dictionary) -> void:
 					Net.send({"t": "invite", "to": _invite_after})
 					toast = "Invite sent to " + _invite_after
 					_invite_after = ""
-				if not (page in ["friends", "chars", "controls"]): page = "lobby"
+				if _apply_modes: # PLAY made this room: the weather and modes picked on the start screen come along
+					_apply_modes = false
+					Net.send({"t": "set", "theme": off_theme, "gun": off_gun, "sniper": off_sniper and off_map == "kuwait"})
+				if not (page in ["friends", "chars", "controls", "dances", "modes"]): page = "lobby"
 			elif page in ["lobby", "friends", "chars"]: page = "main"
 		"started":
 			start_game.emit({"map": m.map, "players": m.players, "me": Net.username, "offline": false,
@@ -134,7 +153,7 @@ func _on_msg(m: Dictionary) -> void:
 		"gift":
 			toast = ("%s unlocked a secret character for you: Crimson Valkyrie" if bool(m.get("on", true)) else "%s locked the secret character") % str(m.get("from", ""))
 		"emote": # someone at the fire waved / danced / clapped
-			if lobby and is_instance_valid(lobby): lobby.emote(str(m.get("n", "")), int(m.get("k", 0)))
+			if lobby and is_instance_valid(lobby): lobby.emote(str(m.get("n", "")), int(m.get("k", 0)), str(m.get("d", "")))
 			return
 		"error":
 			toast = ERRORS.get(str(m.code), str(m.code))
@@ -235,8 +254,8 @@ func _refresh() -> void:
 		var lg := TextureRect.new()
 		lg.texture = _logo_tex
 		lg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		lg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		lg.custom_minimum_size = Vector2(540, 196)
+		lg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT if page == "main" else TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		lg.custom_minimum_size = Vector2(540, 118 if page == "main" else 196)
 		lg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		box.add_child(lg)
 	else: _label("NightFall", 44, Color(0.85, 0.1, 0.12))
@@ -261,6 +280,9 @@ func _refresh() -> void:
 		"help": _page_help()
 		"board": _page_board()
 		"profile": _page_profile()
+		"dances": _page_dances()
+		"modes": _page_modes()
+		"challenge": _page_challenge()
 	_sync_lobby()
 
 # ---------- the campfire scene follows the menu ----------
@@ -299,8 +321,9 @@ func _sync_lobby(dir := 0.0) -> void:
 	version.size = Vector2(130, 42)
 	version.position = Vector2(vs.x - 130.0 - 12.0 - safe.y, vs.y - 44.0)
 	card.visible = page != "name"
-	card.position = Vector2(vs.x - card.size.x - 16.0 - safe.y, 50.0) # clear of the name over her head
+	card.position = Vector2(vs.x - card.size.x - 16.0 - safe.y, 70.0) # clear of the settings gear above it
 	card.queue_redraw()
+	_layout_start()
 	char_pad.visible = page == "chars"
 	var px: float = maxf(596.0, vs.x * 0.44) # clear of the menu column on the left
 	char_pad.position = Vector2(px, 0.0)
@@ -361,6 +384,7 @@ func _process(_dt: float) -> void:
 	var seen := clampf((k - 0.72) / 0.28, 0.0, 1.0)
 	box.modulate.a = seen
 	card.modulate.a = seen
+	if ui: ui.modulate.a = seen
 
 ## The perk I play with: my character's own ("") or «المسعف» ("aid", the first-aid kit). Saved on the
 ## phone, and online the room hears it (`set {perk}`), so the rules give it to me when the round starts.
@@ -451,28 +475,19 @@ func _page_main() -> void:
 	var errs: PackedStringArray = cr.last_errs
 	if Dev.unlocked and not errs.is_empty(): # the engine's own errors last session, crash or not
 		_label("Engine errors last time:\n" + "\n".join(Array(errs).slice(-6)), 14, Color(1, 0.7, 0.35))
-	_label(_status(), 20, Color(0.6, 0.9, 0.6) if Net.state == "online" else Color(0.8, 0.8, 0.8))
-	var dy: Dictionary = Net.daily() # today's challenge, and a line that changes with the date
-	_label(("✓ Daily challenge: %s" if bool(dy.done) else "Daily challenge: %s") % str(dy.text) + "  (%d/%d)" % [int(dy.have), int(dy.need)],
-		19, Color(0.55, 1.0, 0.6) if bool(dy.done) else Color(1, 0.85, 0.45))
-	_label("«%s»" % str(dy.whisper), 16, Color(0.72, 0.72, 0.76))
+	_label(_status(), 16, Color(0.6, 0.9, 0.6) if Net.state == "online" else Color(0.75, 0.75, 0.78))
 	var on := Net.state == "online"
-	_button("Create room", func(): Net.send({"t": "create", "map": "forest"}), null, on, "star")
-	var h := _row()
-	_edit("code", "Room code", h)
-	_button("Join", func(): Net.send({"t": "join", "code": typed.get("code", "")}), h, on, "out")
-	_button("Friends (%d)" % Net.friends.size(), func(): open("friends"), null, true, "chat")
-	_button("Trial mode (offline)", func(): chars_from = "offline"; open("offline"), null, true, "star")
-	_button("Sound and settings", func(): Gfx.open_settings(), null, true, "gear")
-	_button("How to play", func(): open("help"), null, true, "note")
-	if Dev.unlocked: # this phone has the hidden tools: straight to them
-		var db := _button("Developer tools", func(): open("dev"), null, true, "gear")
-		db.modulate = Color(1, 0.85, 0.5)
-	_button("Name and server", func():
-		typed["name"] = Net.username; typed["url"] = Net.url; open("settings"), null, true, "gear")
-	_emote_row()
+	var cr2 := _mrow("Create Room", "claw", func(): _create_room(), true, false, null, 48.0)
+	cr2.disabled = not on
+	_code_row(on)
+	_mrow("Friends (%d)" % Net.friends.size(), "people", func(): open("friends"), false, false, null, 48.0)
+	_mrow("Trial Mode", "skull", func(): chars_from = "offline"; open("offline"), false, true, null, 48.0)
+	_mrow("Sound and Settings", "gear", func(): Gfx.open_settings(), false, false, null, 48.0)
+	_mrow("How to Play", "book", func(): open("help"), false, false, null, 48.0)
+	if Dev.unlocked: _mrow("Developer Tools", "wrench", func(): open("dev"), false, false, null, 48.0)
+	_mrow("Name and Server", "globe", func():
+		typed["name"] = Net.username; typed["url"] = Net.url; open("settings"), false, false, null, 48.0)
 
-## «طريقة اللعب»: a short guide, one drawn icon and two lines per thing to know, a tab per side.
 var help_tab := "survivor"
 var board_by := "esc" # the friends' board: sorted by escapes, kills or level
 const HELP := {
@@ -721,28 +736,8 @@ func _page_lobby() -> void:
 		DisplayServer.clipboard_set(code)
 		toast = "Code %s copied" % code
 		_refresh(), null, true, "chat")
-	if host:
-		var h := _row()
-		var hk := 0
-		for id in MAPS:
-			if hk % 3 == 0 and hk > 0: h = _row() # six maps: three to a row
-			hk += 1
-			_map_card(id, str(r.map) == id, func(): Net.send({"t": "set", "map": id}), h)
-		var ht := _row()
-		for id in THEMES:
-			if id == "sunset": ht = _row() # a game mode of its own: its own row
-			var b2 := _button(("Mode: " if id == "sunset" else "") + THEMES[id], func(): Net.send({"t": "set", "theme": id}), ht, true, THEME_ICON[id])
-			b2.add_theme_font_size_override("font_size", 20)
-			if str(r.get("theme", "normal")) == id: b2.modulate = Color(1, 0.75, 0.3)
-		var gon: bool = r.get("gun", false)
-		var bg := _button("Gun mode: %s" % ("On — stun pistol for survivors" if gon else "Off"), func(): Net.send({"t": "set", "gun": not gon}), null, true, "gun")
-		if gon: bg.modulate = Color(0.6, 0.9, 1.0)
-		var son: bool = r.get("sniper", false)
-		var bs := _button("Sniper mode: %s" % ("On — Kuwait City, one gate, the killer on the roof" if son else "Off"), func(): Net.send({"t": "set", "sniper": not son}), null, true, "gun")
-		if son: bs.modulate = Color(1.0, 0.55, 0.45)
-	else:
-		_label("Map: %s  •  Weather: %s%s" % [MAPS.get(str(r.map), str(r.map)), THEMES.get(str(r.get("theme", "normal")), "Normal"),
-			("  •  Gun mode" if r.get("gun", false) else "") + ("  •  Sniper mode" if r.get("sniper", false) else "")], 22)
+	_label("Map: %s  •  %s%s" % [MAPS.get(str(r.map), str(r.map)), THEMES.get(str(r.get("theme", "normal")), "Night"),
+		("  •  Gun mode" if r.get("gun", false) else "") + ("  •  Sniper mode" if r.get("sniper", false) else "")], 20)
 	for p in r.players:
 		var txt := "%s%s — %s" % ["★ " if str(p.name) == str(r.host) else "", str(p.name), CHARS.get(str(p.char), str(p.char))]
 		_label(txt, 20, Color(1, 0.4, 0.4) if str(p.role) == "killer" else Color(0.7, 0.85, 1))
@@ -757,8 +752,7 @@ func _page_lobby() -> void:
 			chars_from = "lobby"; open("chars"), null, true, "star")
 	_emote_row()
 	_button("Invite friends", func(): open("friends"), null, true, "chat")
-	if host: _button("Start", func(): Net.send({"t": "start"}), null, true, "out")
-	else: _label("Waiting for the host to start...", 20, Color(0.7, 0.7, 0.7))
+	if not host: _label("Waiting for the host to start...", 20, Color(0.7, 0.7, 0.7))
 	_button("Leave the room", func(): Net.send({"t": "leave"}), null, true, "exit")
 
 ## Character select: the chosen one is standing in front of the fire; swipe the camp to change.
@@ -840,41 +834,424 @@ func _page_dev() -> void:
 
 func _page_offline() -> void:
 	chars_from = "offline"
-	_label("Trial mode — pick the map, weather and character")
-	var h := _row()
-	var k := 0
-	for id in MAPS:
-		if k % 3 == 0 and k > 0: h = _row()
-		k += 1
-		var pick := func():
-			off_map = id
-			if id != "kuwait": off_sniper = false
-			_refresh()
-		_map_card(id, off_map == id, pick, h)
-	var ht := _row()
-	for id in THEMES:
-		if id == "sunset": ht = _row() # a game mode of its own: its own row
-		var b2 := _button(("Mode: " if id == "sunset" else "") + THEMES[id], func(): off_theme = id; NFLobby.last_theme = id; _weather_changed(); _refresh(), ht, true, THEME_ICON[id])
-		b2.add_theme_font_size_override("font_size", 20)
-		if off_theme == id: b2.modulate = Color(1, 0.75, 0.3)
+	_label("Trial Mode", 34, Color(0.95, 0.25, 0.22))
+	_label("Pick the map on the right, the weather and rules in Game Modes, then PLAY", 18, Color(0.78, 0.78, 0.8))
 	_button("Character — %s" % CHARS.get(off_char, off_char), func(): open("chars"), null, true, "star")
 	if not off_char.begins_with("killer"):
 		var bb := _button("Computer killer: %s" % ("On" if off_bot else "Off"), func(): off_bot = not off_bot; _refresh(), null, true, "skull")
 		if off_bot: bb.modulate = Color(1, 0.6, 0.5)
-	var bgn := _button("Gun mode: %s" % ("On — stun pistol for survivors" if off_gun else "Off"), func(): off_gun = not off_gun; _refresh(), null, true, "gun")
-	if off_gun: bgn.modulate = Color(0.6, 0.9, 1.0)
-	var sn_toggle := func():
-		off_sniper = not off_sniper
-		if off_sniper: off_map = "kuwait"
-		_refresh()
-	var bsn := _button("Sniper mode: %s" % ("On — Kuwait City, one gate, the killer on the roof" if off_sniper else "Off"), sn_toggle, null, true, "gun")
-	if off_sniper: bsn.modulate = Color(1.0, 0.55, 0.45)
-	_button("Start", func():
-		var n := Net.username if Net.username != "" else "Player"
-		var list := [{"name": n, "role": "killer" if off_char.begins_with("killer") else "survivor", "char": off_char, "perk": Net.perk, "slot": 0}]
-		# a practice dummy: a target for the killer, or a wounded teammate to heal
-		list.append({"name": "Dummy", "role": "survivor", "char": "survivor1" if off_char != "survivor1" else "survivor2", "slot": 1, "dummy": true})
-		if not off_char.begins_with("killer") and off_bot: # a computer killer hunting you
-			list.append({"name": "The Killer", "role": "killer", "char": "killer", "slot": 2, "bot": true})
-		start_game.emit({"map": off_map, "me": n, "offline": true, "theme": off_theme, "gun": off_gun, "sniper": off_sniper and off_map == "kuwait", "players": list}), null, true, "out")
 	_button("Back", func(): chars_from = "main"; open("main" if Net.username != "" else "name"), null, true, "exit")
+
+# ---------- the start screen, after the owner's mockup ----------
+## His layout: the wordmark top left, a column of dark rows with an icon each (Create Room lit red),
+## four square icons along the bottom, the player card top right, and on the right the Dances and
+## Game Modes buttons, the MAP SELECT card with arrows and dots, and a big red PLAY. The camp behind
+## all of it is his painting (NFLobby), the same whatever map, weather or mode is picked.
+func _style(bg: Color, edge: Color, bw := 1, glow := Color(0, 0, 0, 0.5), glow_size := 4, left := 74) -> StyleBoxFlat:
+	var s := StyleBoxFlat.new()
+	s.bg_color = bg
+	s.border_color = edge
+	s.set_border_width_all(bw)
+	s.set_corner_radius_all(3)
+	s.shadow_color = glow
+	s.shadow_size = glow_size
+	s.content_margin_left = left
+	s.content_margin_right = 44
+	return s
+
+## The drawings his mockup uses that the icon set does not have; everything else is NFIcons.
+func _icon(ci: CanvasItem, name: String, c: Vector2, s: float, col: Color) -> void:
+	var w := maxf(s * 0.07, 2.0)
+	match name:
+		"claw": # three slashes
+			for k in 4:
+				var x := c.x - s * 0.3 + k * s * 0.2
+				ci.draw_line(Vector2(x + s * 0.08, c.y - s * 0.42), Vector2(x - s * 0.04, c.y + s * 0.42), col, w * 1.3, true)
+		"people":
+			for o in [[-0.2, 0.75], [0.18, 1.0]]:
+				var cx := c.x + s * float(o[0])
+				var k: float = o[1]
+				ci.draw_circle(Vector2(cx, c.y - s * 0.16 * k), s * 0.14 * k, col, true, -1.0, true)
+				ci.draw_rect(Rect2(cx - s * 0.2 * k, c.y + s * 0.04, s * 0.4 * k, s * 0.32 * k), col)
+		"book":
+			ci.draw_polyline(PackedVector2Array([c + Vector2(-s * 0.45, -s * 0.28), c + Vector2(0, -s * 0.18), c + Vector2(s * 0.45, -s * 0.28),
+				c + Vector2(s * 0.45, s * 0.3), c + Vector2(0, s * 0.4), c + Vector2(-s * 0.45, s * 0.3), c + Vector2(-s * 0.45, -s * 0.28)]), col, w, true)
+			ci.draw_line(c + Vector2(0, -s * 0.18), c + Vector2(0, s * 0.4), col, w, true)
+		"globe":
+			ci.draw_arc(c, s * 0.42, 0, TAU, 32, col, w, true)
+			ci.draw_line(c + Vector2(-s * 0.42, 0), c + Vector2(s * 0.42, 0), col, w, true)
+			ci.draw_line(c + Vector2(0, -s * 0.42), c + Vector2(0, s * 0.42), col, w, true)
+			for k in [-1.0, 1.0]:
+				ci.draw_arc(c + Vector2(k * s * 0.42, 0), s * 0.6, PI - 0.78 if k > 0 else -0.78, PI + 0.78 if k > 0 else 0.78, 12, col, w * 0.8, true)
+		"quit": # the power symbol
+			ci.draw_arc(c, s * 0.36, -PI / 2.0 + 0.62, PI * 1.5 - 0.62, 28, col, w * 1.2, true)
+			ci.draw_line(c + Vector2(0, -s * 0.46), c + Vector2(0, -s * 0.06), col, w * 1.2, true)
+		"bars":
+			for k in 3:
+				var h := s * (0.35 + 0.22 * k)
+				ci.draw_rect(Rect2(c.x - s * 0.36 + k * s * 0.27, c.y + s * 0.38 - h, s * 0.18, h), col)
+		"trophy":
+			ci.draw_rect(Rect2(c.x - s * 0.24, c.y - s * 0.38, s * 0.48, s * 0.36), col)
+			ci.draw_circle(c + Vector2(0, -s * 0.04), s * 0.24, col, true, -1.0, true)
+			ci.draw_arc(c + Vector2(-s * 0.28, -s * 0.2), s * 0.13, 0, TAU, 12, col, w, true)
+			ci.draw_arc(c + Vector2(s * 0.28, -s * 0.2), s * 0.13, 0, TAU, 12, col, w, true)
+			ci.draw_rect(Rect2(c.x - s * 0.05, c.y + s * 0.18, s * 0.1, s * 0.14), col)
+			ci.draw_rect(Rect2(c.x - s * 0.22, c.y + s * 0.3, s * 0.44, s * 0.1), col)
+		"badge":
+			for k in 8:
+				var a := k * TAU / 8.0
+				ci.draw_circle(c + Vector2(cos(a), sin(a)) * s * 0.33, s * 0.1, col, true, -1.0, true)
+			ci.draw_circle(c, s * 0.3, col, true, -1.0, true)
+			ci.draw_circle(c, s * 0.15, Color(0.05, 0.04, 0.05), true, -1.0, true)
+		"dance":
+			ci.draw_circle(c + Vector2(s * 0.08, -s * 0.36), s * 0.1, col, true, -1.0, true)
+			ci.draw_polyline(PackedVector2Array([c + Vector2(-s * 0.34, -s * 0.32), c + Vector2(-s * 0.05, -s * 0.12), c + Vector2(s * 0.3, -s * 0.28)]), col, w, true)
+			ci.draw_line(c + Vector2(s * 0.04, -s * 0.22), c + Vector2(-s * 0.02, s * 0.1), col, w * 1.3, true)
+			ci.draw_polyline(PackedVector2Array([c + Vector2(-s * 0.3, s * 0.42), c + Vector2(-s * 0.02, s * 0.1), c + Vector2(s * 0.14, s * 0.24), c + Vector2(s * 0.34, s * 0.12)]), col, w, true)
+		"modes":
+			for k in 3:
+				var y := c.y - s * 0.3 + k * s * 0.3
+				ci.draw_line(Vector2(c.x - s * 0.42, y), Vector2(c.x + s * 0.42, y), col, w, true)
+				ci.draw_circle(Vector2(c.x + s * (-0.2 + 0.2 * k), y), s * 0.09, col, true, -1.0, true)
+		_: NFIcons.draw(ci, name, c, s, col)
+
+## One row of his menu: icon on the left, the words, a chevron on the lit one, a red dot if asked.
+func _mrow(text: String, icon: String, cb: Callable, primary := false, dot := false, parent: Control = null, h := 54.0) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.custom_minimum_size = Vector2(0, h)
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.add_theme_font_size_override("font_size", 24 if h >= 50.0 else 20)
+	if Net.font: b.add_theme_font_override("font", Net.font)
+	var base := Color(0.025, 0.022, 0.026, 0.8)
+	var edge := Color(0.42, 0.42, 0.46, 0.55)
+	if primary:
+		base = Color(0.38, 0.02, 0.03, 0.93)
+		edge = Color(1.0, 0.18, 0.13, 0.95)
+	var glow := Color(1.0, 0.05, 0.02, 0.5) if primary else Color(0, 0, 0, 0.55)
+	b.add_theme_stylebox_override("normal", _style(base, edge, 2 if primary else 1, glow, 14 if primary else 4))
+	b.add_theme_stylebox_override("hover", _style(base.lightened(0.07), edge.lightened(0.25), 2 if primary else 1, glow, 14 if primary else 4))
+	b.add_theme_stylebox_override("pressed", _style(base.lightened(0.15), edge.lightened(0.35), 2, glow, 16))
+	b.add_theme_stylebox_override("disabled", _style(Color(0.02, 0.02, 0.022, 0.62), Color(0.3, 0.3, 0.32, 0.4)))
+	b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	b.add_theme_color_override("font_color", Color(0.95, 0.93, 0.9))
+	b.add_theme_color_override("font_hover_color", Color(1, 1, 1))
+	b.add_theme_color_override("font_pressed_color", Color(1, 1, 1))
+	b.add_theme_color_override("font_disabled_color", Color(0.5, 0.5, 0.52))
+	b.pressed.connect(func() -> void:
+		NFUI.click()
+		cb.call())
+	var deco := Control.new()
+	deco.set_anchors_preset(Control.PRESET_FULL_RECT)
+	deco.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	deco.draw.connect(func() -> void:
+		var col := Color(0.95, 0.93, 0.9) if not b.disabled else Color(0.45, 0.45, 0.47)
+		_icon(deco, icon, Vector2(38.0, deco.size.y / 2.0), minf(deco.size.y * 0.58, 34.0), col)
+		if primary: # the chevron
+			var x := deco.size.x - 26.0
+			var y := deco.size.y / 2.0
+			deco.draw_polyline(PackedVector2Array([Vector2(x - 6, y - 11), Vector2(x + 4, y), Vector2(x - 6, y + 11)]), col, 3.0, true)
+		if dot: deco.draw_circle(Vector2(deco.size.x - 30.0, deco.size.y / 2.0), 6.0, Color(0.95, 0.08, 0.08), true, -1.0, true))
+	b.add_child(deco)
+	(parent if parent else box).add_child(b)
+	return b
+
+## His second row: the room code box with Join on its right.
+func _code_row(on: bool) -> void:
+	var p := PanelContainer.new()
+	p.custom_minimum_size = Vector2(0, 48)
+	p.add_theme_stylebox_override("panel", _style(Color(0.025, 0.022, 0.026, 0.8), Color(0.42, 0.42, 0.46, 0.55), 1, Color(0, 0, 0, 0.55), 4, 74))
+	box.add_child(p)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 6)
+	p.add_child(h)
+	var e := LineEdit.new()
+	e.placeholder_text = "Room Code"
+	e.text = typed.get("code", "")
+	e.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	e.add_theme_font_size_override("font_size", 24)
+	if Net.font: e.add_theme_font_override("font", Net.font)
+	for st in ["normal", "focus", "read_only"]: e.add_theme_stylebox_override(st, StyleBoxEmpty.new())
+	e.add_theme_color_override("font_placeholder_color", Color(0.62, 0.62, 0.65))
+	e.add_theme_color_override("font_color", Color(0.95, 0.93, 0.9))
+	e.text_changed.connect(func(t): typed["code"] = t)
+	h.add_child(e)
+	var j := Button.new()
+	j.text = "Join   "
+	j.flat = true
+	j.disabled = not on
+	j.custom_minimum_size = Vector2(118, 0)
+	j.add_theme_font_size_override("font_size", 24)
+	if Net.font: j.add_theme_font_override("font", Net.font)
+	j.add_theme_color_override("font_color", Color(0.95, 0.93, 0.9))
+	j.pressed.connect(func() -> void:
+		NFUI.click()
+		Net.send({"t": "join", "code": typed.get("code", "")}))
+	h.add_child(j)
+	p.draw.connect(func() -> void:
+		_icon(p, "people", Vector2(38.0, p.size.y / 2.0), 32.0, Color(0.95, 0.93, 0.9))
+		NFIcons.draw(p, "out", Vector2(p.size.x - 30.0, p.size.y / 2.0), 24.0, Color(0.95, 0.93, 0.9)))
+
+## A square icon button (the row along the bottom of his mockup).
+func _square(icon: String, cb: Callable, parent: Control) -> Button:
+	var b := Button.new()
+	b.custom_minimum_size = Vector2(64, 64)
+	var st := _style(Color(0.03, 0.027, 0.03, 0.82), Color(0.42, 0.42, 0.46, 0.6), 1, Color(0, 0, 0, 0.55), 4, 0)
+	st.content_margin_right = 0
+	b.add_theme_stylebox_override("normal", st)
+	var hv := st.duplicate() as StyleBoxFlat
+	hv.border_color = Color(1.0, 0.2, 0.15)
+	b.add_theme_stylebox_override("hover", hv)
+	b.add_theme_stylebox_override("pressed", hv)
+	b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	b.pressed.connect(func() -> void:
+		NFUI.click()
+		cb.call())
+	b.draw.connect(func() -> void: _icon(b, icon, b.size / 2.0, 34.0, Color(0.95, 0.93, 0.9)))
+	parent.add_child(b)
+	return b
+
+func _build_start() -> void:
+	ui = Control.new()
+	ui.set_anchors_preset(Control.PRESET_FULL_RECT)
+	ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(ui)
+	side = VBoxContainer.new()
+	side.add_theme_constant_override("separation", 10)
+	ui.add_child(side)
+	_mrow("Dances", "dance", func(): open("dances"), false, false, side, 52.0)
+	modes_btn = _mrow("Game Modes", "modes", func(): open("modes"), false, false, side, 52.0)
+	map_panel = Control.new()
+	map_panel.mouse_filter = Control.MOUSE_FILTER_PASS
+	map_panel.draw.connect(_draw_map_panel)
+	ui.add_child(map_panel)
+	map_pic_holder = Control.new()
+	map_pic_holder.clip_contents = true
+	map_pic_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	map_panel.add_child(map_pic_holder)
+	for k in [-1, 1]:
+		var a := Button.new()
+		a.flat = true
+		a.text = "‹" if k < 0 else "›"
+		a.add_theme_font_size_override("font_size", 54)
+		a.add_theme_color_override("font_color", Color(1, 1, 1, 0.95))
+		a.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+		a.add_theme_constant_override("outline_size", 8)
+		a.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+		a.pressed.connect(func() -> void: _map_step(k))
+		map_panel.add_child(a)
+		if k < 0: map_prev = a
+		else: map_next = a
+	play_btn = Button.new()
+	play_btn.text = "PLAY"
+	play_btn.add_theme_font_size_override("font_size", 46)
+	if Net.font: play_btn.add_theme_font_override("font", Net.font)
+	var pn := _style(Color(0.62, 0.03, 0.04, 0.96), Color(1.0, 0.25, 0.2), 2, Color(1.0, 0.04, 0.02, 0.55), 18, 0)
+	pn.content_margin_right = 0
+	play_btn.add_theme_stylebox_override("normal", pn)
+	var ph := pn.duplicate() as StyleBoxFlat
+	ph.bg_color = Color(0.78, 0.06, 0.06)
+	play_btn.add_theme_stylebox_override("hover", ph)
+	play_btn.add_theme_stylebox_override("pressed", ph)
+	play_btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	play_btn.add_theme_color_override("font_color", Color(1, 0.97, 0.95))
+	play_btn.pressed.connect(_play)
+	play_btn.draw.connect(func() -> void:
+		var x := play_btn.size.x - 34.0
+		var y := play_btn.size.y / 2.0
+		play_btn.draw_polyline(PackedVector2Array([Vector2(x - 9, y - 16), Vector2(x + 6, y), Vector2(x - 9, y + 16)]), Color(1, 0.97, 0.95), 4.0, true))
+	ui.add_child(play_btn)
+	foot = HBoxContainer.new()
+	foot.add_theme_constant_override("separation", 30)
+	ui.add_child(foot)
+	_square("quit", func(): get_tree().quit(), foot)
+	_square("bars", func(): open("board"), foot)
+	_square("trophy", func(): open("challenge"), foot)
+	_square("badge", func(): prof_name = ""; open("profile"), foot)
+	get_viewport().size_changed.connect(func() -> void: _sync_lobby())
+
+## MAP SELECT: his frame, the title, the map's own painted card, a dot per map.
+func _draw_map_panel() -> void:
+	var s := map_panel.size
+	var f: Font = Net.font if Net.font else ThemeDB.fallback_font
+	map_panel.draw_rect(Rect2(Vector2.ZERO, s), Color(0.03, 0.025, 0.03, 0.88))
+	map_panel.draw_rect(Rect2(Vector2.ZERO, s), Color(0.85, 0.08, 0.07, 0.95), false, 2.0)
+	NFUI.scratches(map_panel, s, 4471, false)
+	map_panel.draw_string(f, Vector2(0, 30), "MAP SELECT", HORIZONTAL_ALIGNMENT_CENTER, s.x, 22, Color(0.95, 0.93, 0.9))
+	var ids := MAPS.keys()
+	var n := ids.size()
+	var i := ids.find(_cur_map())
+	for k in n:
+		var cx := s.x / 2.0 + (k - (n - 1) / 2.0) * 22.0
+		map_panel.draw_circle(Vector2(cx, s.y - 14.0), 5.5, Color(0.95, 0.1, 0.08) if k == i else Color(0.55, 0.55, 0.58), true, -1.0, true)
+	if Paint.card_path(_cur_map()).contains("/mapshots/"): # a map without his card: its name under the shot
+		map_panel.draw_string(f, Vector2(0, s.y - 30.0), str(MAPS.get(_cur_map(), _cur_map())), HORIZONTAL_ALIGNMENT_CENTER, s.x, 20, Color(1, 0.9, 0.7))
+
+## The map the card shows: the room's in a room (the host picks it), otherwise mine.
+func _cur_map() -> String:
+	return str(Net.room.get("map", "forest")) if Net.in_room() else off_map
+
+func _host() -> bool:
+	return Net.in_room() and str(Net.room.get("host", "")) == Net.username
+
+func _map_step(d: int) -> void:
+	var ids := MAPS.keys()
+	var next := str(ids[(ids.find(_cur_map()) + d + ids.size()) % ids.size()])
+	if Net.in_room():
+		if not _host(): return
+		NFUI.click()
+		Net.send({"t": "set", "map": next})
+		return
+	NFUI.click()
+	off_map = next
+	if off_map != "kuwait": off_sniper = false
+	_refresh()
+
+## Put the picked map's card in the MAP SELECT frame (only when it changes).
+func _show_map_pic() -> void:
+	if _pic_map == _cur_map() and map_pic and is_instance_valid(map_pic): return
+	_pic_map = _cur_map()
+	if map_pic and is_instance_valid(map_pic): map_pic.queue_free()
+	map_pic = Paint.card(_pic_map)
+	if map_pic == null: return
+	map_pic.set_anchors_preset(Control.PRESET_FULL_RECT)
+	map_pic_holder.add_child(map_pic)
+
+## PLAY: with the server, a room on the picked map (with the picked modes; friends join with the code);
+## without it, a trial round on that map at once.
+func _play() -> void:
+	if Net.in_room():
+		if _host():
+			NFUI.click()
+			Net.send({"t": "start"})
+		return
+	NFUI.click()
+	if page == "main" and Net.state == "online": _create_room()
+	else: _start_trial()
+
+func _create_room() -> void:
+	_apply_modes = true
+	Net.send({"t": "create", "map": off_map})
+
+func _start_trial() -> void:
+	var n := Net.username if Net.username != "" else "Player"
+	var list := [{"name": n, "role": "killer" if off_char.begins_with("killer") else "survivor", "char": off_char, "perk": Net.perk, "slot": 0}]
+	# a practice dummy: a target for the killer, or a wounded teammate to heal
+	list.append({"name": "Dummy", "role": "survivor", "char": "survivor1" if off_char != "survivor1" else "survivor2", "slot": 1, "dummy": true})
+	if not off_char.begins_with("killer") and off_bot: # a computer killer hunting you
+		list.append({"name": "The Killer", "role": "killer", "char": "killer", "slot": 2, "bot": true})
+	start_game.emit({"map": off_map, "me": n, "offline": true, "theme": off_theme, "gun": off_gun, "sniper": off_sniper and off_map == "kuwait", "players": list})
+
+## Lay out his start screen for this screen size.
+func _layout_start() -> void:
+	if ui == null: return
+	var vs := get_viewport().get_visible_rect().size
+	var safe := NFUI.safe_insets(get_viewport())
+	ui.visible = page in ["main", "lobby", "offline"]
+	foot.visible = page == "main"
+	play_btn.text = ("START" if _host() else "WAITING") if Net.in_room() else "PLAY"
+	play_btn.disabled = Net.in_room() and not _host()
+	map_prev.visible = not Net.in_room() or _host()
+	map_next.visible = map_prev.visible
+	var rw := 330.0
+	var rx := vs.x - rw - 18.0 - safe.y
+	play_btn.position = Vector2(rx, vs.y - 92.0)
+	play_btn.size = Vector2(rw, 76.0)
+	map_panel.position = Vector2(rx, vs.y - 92.0 - 16.0 - 156.0)
+	map_panel.size = Vector2(rw, 156.0)
+	map_pic_holder.position = Vector2(10.0, 40.0)
+	map_pic_holder.size = Vector2(rw - 20.0, 92.0)
+	map_prev.position = Vector2(4.0, 44.0)
+	map_prev.size = Vector2(44.0, 84.0)
+	map_next.position = Vector2(rw - 48.0, 44.0)
+	map_next.size = Vector2(44.0, 84.0)
+	side.position = Vector2(rx, map_panel.position.y - 12.0 - 114.0)
+	side.size = Vector2(rw, 114.0)
+	foot.position = Vector2(36.0 + safe.x, vs.y - 80.0)
+	if page in ["main", "lobby", "offline"]: # the build number just left of PLAY, clear of the menu column
+		version.position = Vector2(rx - 84.0, vs.y - 44.0)
+	if _danced and page != "dances" and lobby and is_instance_valid(lobby):
+		_danced = false
+		lobby.dance_stop()
+	if page == "dances": _danced = true
+	modes_btn.text = "Game Modes  ·  %s" % THEMES.get(_mode_theme(), "Night")
+	_show_map_pic()
+	map_panel.queue_redraw()
+
+func _mode_theme() -> String:
+	return str(Net.room.get("theme", "normal")) if Net.in_room() else off_theme
+
+# ---------- Dances ----------
+func _page_dances() -> void:
+	_label("Dances", 34, Color(0.95, 0.25, 0.22))
+	_label("Pick the dance your character does at the fire — tap one to watch it", 18, Color(0.78, 0.78, 0.8))
+	for d in NFLobby.DANCES:
+		var did: String = d
+		_mrow(str(NFLobby.DANCE_NAMES.get(did, did)) + ("     ✓ chosen" if Net.dance == did else ""), "dance", func() -> void:
+			Net.dance = did
+			Net.save()
+			if lobby and is_instance_valid(lobby): lobby.dance_preview(did)
+			_refresh(), Net.dance == did)
+	_mrow("Dance now — everyone in the room sees it", "note", func() -> void:
+		if lobby and is_instance_valid(lobby): lobby.emote(Net.username, 1, Net.dance)
+		if Net.in_room(): Net.send({"t": "emote", "k": 1, "d": Net.dance}))
+	_mrow("Back", "exit", func() -> void:
+		if lobby and is_instance_valid(lobby): lobby.dance_stop()
+		open("lobby" if Net.in_room() else "main"))
+
+# ---------- Game Modes ----------
+func _page_modes() -> void:
+	var in_room := Net.in_room()
+	var host := in_room and str(Net.room.get("host", "")) == Net.username
+	var can := (not in_room) or host
+	var r := Net.room
+	_label("Game Modes", 34, Color(0.95, 0.25, 0.22))
+	if in_room and not host: _label("Only the host can change these", 18, Color(1, 0.75, 0.45))
+	_label("Weather", 22, Color(1, 0.82, 0.45))
+	var cur := _mode_theme()
+	var row: HBoxContainer = null
+	var k := 0
+	for id in THEMES:
+		if k % 2 == 0: row = _row()
+		k += 1
+		var tid: String = id
+		var b := _mrow(str(THEMES[tid]), str(THEME_ICON[tid]), func() -> void:
+			if in_room: Net.send({"t": "set", "theme": tid})
+			else:
+				off_theme = tid
+				NFLobby.last_theme = tid
+			_refresh(), cur == tid, false, row, 50.0)
+		b.disabled = not can
+	_label("Rules", 22, Color(1, 0.82, 0.45))
+	var gon: bool = r.get("gun", false) if in_room else off_gun
+	var gb := _mrow("Gun mode: %s" % ("On — a stun pistol for survivors" if gon else "Off"), "gun", func() -> void:
+		if in_room: Net.send({"t": "set", "gun": not gon})
+		else: off_gun = not gon
+		_refresh(), gon)
+	gb.disabled = not can
+	var son: bool = r.get("sniper", false) if in_room else off_sniper
+	var sb := _mrow("Sniper mode: %s" % ("On — Kuwait City, one gate, the killer on the roof" if son else "Off"), "gun", func() -> void:
+		if in_room: Net.send({"t": "set", "sniper": not son})
+		else:
+			off_sniper = not son
+			if off_sniper: off_map = "kuwait"
+		_refresh(), son)
+	sb.disabled = not can
+	if not in_room:
+		var bb := _mrow("Computer killer (trial): %s" % ("On" if off_bot else "Off"), "skull", func() -> void:
+			off_bot = not off_bot
+			_refresh(), off_bot)
+	_label("The start screen keeps the same picture whatever you pick", 16, Color(0.65, 0.65, 0.68))
+	_mrow("Back", "exit", func(): open("lobby" if in_room else "main"))
+
+# ---------- the trophy: today's challenge and my last round ----------
+func _page_challenge() -> void:
+	_label("Today", 34, Color(1, 0.82, 0.45))
+	var dy: Dictionary = Net.daily()
+	_label(("✓ Daily challenge: %s" if bool(dy.done) else "Daily challenge: %s") % str(dy.text) + "  (%d/%d)" % [int(dy.have), int(dy.need)],
+		22, Color(0.55, 1.0, 0.6) if bool(dy.done) else Color(1, 0.85, 0.45))
+	_label("«%s»" % str(dy.whisper), 18, Color(0.75, 0.75, 0.78))
+	_label(_status(), 18, Color(0.6, 0.9, 0.6) if Net.state == "online" else Color(0.8, 0.8, 0.8))
+	_mrow("Rankings and my rounds", "bars", func(): open("board"))
+	_mrow("Back", "exit", func(): open("main"))
