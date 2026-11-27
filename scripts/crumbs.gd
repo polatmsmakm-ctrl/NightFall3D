@@ -7,6 +7,7 @@ extends RefCounted
 
 const FILE := "user://crumbs.txt"
 const KEEP := 30
+const NO_GORILLA := "user://no_gorilla" # the gorilla's scene crashed this phone once: it stays off here
 
 static var lines := PackedStringArray()
 static var last_crash := ""   # the previous session's trail, if it ended in a crash
@@ -27,7 +28,12 @@ static func launch() -> String:
 	_read = true
 	if FileAccess.file_exists(FILE):
 		var t := FileAccess.get_file_as_string(FILE).strip_edges()
-		if t != "" and not t.ends_with(" ok"): last_crash = t
+		if t != "" and not t.ends_with(" ok"):
+			last_crash = t
+			var tail := t.substr(maxi(t.rfind("\n"), 0))
+			if "gorilla:" in tail: # it died building or playing the gorilla: never again on this phone
+				var f := FileAccess.open(NO_GORILLA, FileAccess.WRITE)
+				if f: f.close()
 	lines = PackedStringArray()
 	mark("launch ok")
 	return last_crash

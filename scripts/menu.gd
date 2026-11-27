@@ -447,6 +447,7 @@ func _page_main() -> void:
 	if crash != "" and Dev.unlocked: # the owner's phone: where the last session stopped
 		var tail := Array(crash.split("\n")).slice(-8)
 		_label("Last time the game closed while:\n" + "\n".join(tail), 15, Color(1, 0.45, 0.4))
+		if FileAccess.file_exists("user://no_gorilla"): _label("(the gorilla scene is now off on this phone)", 14, Color(1, 0.7, 0.4))
 	_label(_status(), 20, Color(0.6, 0.9, 0.6) if Net.state == "online" else Color(0.8, 0.8, 0.8))
 	var dy: Dictionary = Net.daily() # today's challenge, and a line that changes with the date
 	_label(("✓ Daily challenge: %s" if bool(dy.done) else "Daily challenge: %s") % str(dy.text) + "  (%d/%d)" % [int(dy.have), int(dy.need)],

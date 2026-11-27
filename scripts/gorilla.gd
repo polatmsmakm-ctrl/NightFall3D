@@ -95,7 +95,8 @@ func setup(w: NightWorld, cd: NFCatDog, b: NFBlood, cam_cb: Callable, skip_rids:
 	blood = b
 	cam = cam_cb
 	skip = skip_rids
-	if not ResourceLoader.exists("res://assets/chars/gorilla.glb") or not ResourceLoader.exists(HORSE):
+	if not ResourceLoader.exists("res://assets/chars/gorilla.glb") or not ResourceLoader.exists(HORSE) \
+			or FileAccess.file_exists(Crumbs.NO_GORILLA): # (off on this phone after it crashed the game here once)
 		state = 3
 		return
 	roar_s = _load("scream_beast.mp3")
@@ -121,10 +122,12 @@ func _build() -> bool:
 	Crumbs.mark("gorilla: model loaded")
 	if rig.skeleton == null: return false
 	rig.scale = Vector3.ONE * GS
+	Crumbs.mark("gorilla: hunch")
 	rig.hunch = NFHunch.new() # bent like an ape over every clip, as «الوحش» is
 	rig.skeleton.add_child(rig.hunch)
 	rig.skeleton.move_child(rig.hunch, 0)
 	Probe.of(rig)
+	Crumbs.mark("gorilla: probe")
 	for gi in rig.find_children("*", "GeometryInstance3D", true, false):
 		(gi as GeometryInstance3D).visibility_range_end = 120.0
 	horse = Node3D.new()
@@ -137,12 +140,14 @@ func _build() -> bool:
 	hmodel = (load(HORSE) as PackedScene).instantiate() as Node3D
 	hmodel.position.y = -PIVOT_Y
 	pivot.add_child(hmodel)
+	Crumbs.mark("gorilla: horse loaded")
 	hsk = hmodel.find_children("*", "Skeleton3D", true, false)[0]
 	var aps := hmodel.find_children("*", "AnimationPlayer", true, false)
 	if aps.is_empty(): return false
 	hap = aps[0]
 	for c in ["Walk", "Idle", "Graze", "Trot", "Gallop"]:
 		if hap.has_animation(c): hap.get_animation(c).loop_mode = Animation.LOOP_LINEAR
+	Crumbs.mark("gorilla: built")
 	snd = _snd(rig, 14.0, 90.0)
 	chew = _snd(rig, 9.0, 60.0)
 	dark = _snd(rig, 12.0, 70.0)
@@ -238,6 +243,7 @@ func _process(dt: float) -> void:
 		0:
 			if catdog.state == 3:
 				if catdog.ph == 6: # the dog ran off: the gorilla's turn
+					Crumbs.mark("gorilla: waiting")
 					state = 1
 					wait = DELAY
 				else: state = 3 # the cat and dog never played here (a late join): nor does this
