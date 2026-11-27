@@ -187,12 +187,14 @@ def main():
     cols = []
     for a in anims:
         frac = 0.35
+        if '@' in a:                       # name@0.8: that fraction of the clip
+            a, frac = a.split('@')[0], float(a.split('@')[1])
         P, C = skin(src, a, frac)
         P = P - np.array([np.median(P[:, 0]), 0, np.median(P[:, 2])])
         P[:, 1] -= P[:, 1].min()
         im = np.vstack([splat(P, C, 0, 2, 1), splat(P, C, 2, 0, -1)])
         im = Image.fromarray(im)
-        ImageDraw.Draw(im).text((4, 4), a or 'bind', fill=(255, 255, 0))
+        ImageDraw.Draw(im).text((4, 4), (a or 'bind') + ('' if abs(frac - 0.35) < 1e-6 else ' @%.2f' % frac), fill=(255, 255, 0))
         cols.append(np.asarray(im))
     Image.fromarray(np.hstack(cols)).save(dst)
     print(dst)
