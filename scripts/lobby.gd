@@ -756,7 +756,9 @@ var owner_models := 0
 func _prop(name: String, at: Vector3, yaw := 0.0, k := 1.0, parent: Node3D = null) -> Node3D:
 	var path := "res://assets/props/%s.glb" % name
 	if not ResourceLoader.exists(path): return null
-	var n := (load(path) as PackedScene).instantiate() as Node3D
+	var pps := load(path) as PackedScene
+	if pps == null: return null
+	var n := pps.instantiate() as Node3D
 	n.position = at
 	n.rotation.y = yaw
 	n.scale = Vector3(k, k, k)

@@ -448,6 +448,10 @@ func _page_main() -> void:
 		var tail := Array(crash.split("\n")).slice(-8)
 		_label("Last time the game closed while:\n" + "\n".join(tail), 15, Color(1, 0.45, 0.4))
 		if FileAccess.file_exists("user://no_gorilla"): _label("(the gorilla scene is now off on this phone)", 14, Color(1, 0.7, 0.4))
+	var cr := load("res://scripts/crumbs.gd") as GDScript
+	var errs: PackedStringArray = cr.last_errs
+	if Dev.unlocked and not errs.is_empty(): # the engine's own errors last session, crash or not
+		_label("Engine errors last time:\n" + "\n".join(Array(errs).slice(-6)), 14, Color(1, 0.7, 0.35))
 	_label(_status(), 20, Color(0.6, 0.9, 0.6) if Net.state == "online" else Color(0.8, 0.8, 0.8))
 	var dy: Dictionary = Net.daily() # today's challenge, and a line that changes with the date
 	_label(("✓ Daily challenge: %s" if bool(dy.done) else "Daily challenge: %s") % str(dy.text) + "  (%d/%d)" % [int(dy.have), int(dy.need)],
@@ -785,6 +789,21 @@ func _page_chars() -> void:
 	_button("Done", func(): open(chars_from if chars_from != "main" else "main"), null, true, "star")
 
 ## Hidden developer tools. Only reachable on a phone that has unlocked them.
+## Load each model the in-game updates brought, and say which load: on the owner's phone the
+## gorilla's would not (the "second generator" crash). Failures also go in the crash trail with the
+## engine's own reason ("ERR ...").
+func _model_test() -> String:
+	var out := []
+	for p in ["res://assets/chars/gorilla.glb", "res://assets/chars/survivor10.glb", "res://assets/chars/survivor9.glb",
+			"res://assets/animals/arabian-horse.glb", "res://assets/chars/gorilla_col.png"]:
+		if not ResourceLoader.exists(p):
+			out.append("—  %s (not in this build)" % p.get_file())
+			continue
+		var r = load(p)
+		out.append(("OK  %s" if r != null else "FAILED  %s") % p.get_file())
+		if r == null: (load("res://scripts/crumbs.gd") as GDScript).mark("model test failed: " + p)
+	return "\n".join(out)
+
 func _page_dev() -> void:
 	if not Dev.unlocked: # fifteen taps got here: the passkey opens the tools
 		_label("Developer tools", 30, Color(1, 0.85, 0.4))
@@ -815,6 +834,8 @@ func _page_dev() -> void:
 	sl.set_value_no_signal(Dev.speed)
 	sl.value_changed.connect(func(v: float): Dev.set_speed(v); _refresh())
 	box.add_child(sl)
+	_button("Test the update's models", func(): typed["models"] = _model_test(); _refresh(), null, true, "star")
+	if typed.has("models"): _label(str(typed["models"]), 15, Color(0.8, 1, 0.8))
 	_button("Lock the tools (needs the passkey again)", func(): Dev.lock(); open("main"), null, true, "skull")
 	_button("Back", func(): open("main"), null, true, "exit")
 

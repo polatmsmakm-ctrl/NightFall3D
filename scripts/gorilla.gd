@@ -18,6 +18,7 @@ extends Node3D
 
 const Probe := preload("res://scripts/pose_probe.gd")
 const Crumbs := preload("res://scripts/crumbs.gd")
+var horse_ps: PackedScene
 const GS := 1.9              # the gorilla's size against the cast's 1.95 m: a titan
 const HORSE := "res://assets/animals/arabian-horse.glb"
 const DELAY := 6.0           # after the dog has gone
@@ -120,7 +121,7 @@ func _build() -> bool:
 	add_child(rig)
 	rig.setup("gorilla", ["idle", "walk", "run", "attack", "repair"], false, false)
 	Crumbs.mark("gorilla: model loaded")
-	if rig.skeleton == null: return false
+	if rig.skeleton == null or rig.failed != "": return false
 	rig.scale = Vector3.ONE * GS
 	Crumbs.mark("gorilla: hunch")
 	rig.hunch = NFHunch.new() # bent like an ape over every clip, as «الوحش» is
@@ -137,7 +138,11 @@ func _build() -> bool:
 	pivot.position.y = PIVOT_Y
 	horse.add_child(pivot)
 	Crumbs.mark("gorilla: loading the horse")
-	hmodel = (load(HORSE) as PackedScene).instantiate() as Node3D
+	horse_ps = load(HORSE) as PackedScene
+	if horse_ps == null:
+		Crumbs.mark("gorilla: the horse would not load")
+		return false
+	hmodel = horse_ps.instantiate() as Node3D
 	hmodel.position.y = -PIVOT_Y
 	pivot.add_child(hmodel)
 	Crumbs.mark("gorilla: horse loaded")
@@ -439,7 +444,7 @@ func _rip() -> void:
 	var neck_xf := _hb(hsk, "Neck3")
 	neck_xf.basis = neck_xf.basis.orthonormalized()
 	hsk.set_bone_pose_scale(n3, Vector3.ONE * 0.001)
-	head = (load(HORSE) as PackedScene).instantiate() as Node3D
+	head = horse_ps.instantiate() as Node3D
 	add_child(head)
 	head_sk = head.find_children("*", "Skeleton3D", true, false)[0]
 	for ap in head.find_children("*", "AnimationPlayer", true, false): (ap as AnimationPlayer).stop()

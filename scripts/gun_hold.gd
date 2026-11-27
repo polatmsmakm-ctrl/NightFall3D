@@ -23,7 +23,9 @@ func setup(r: CharacterRig) -> void:
 	model = Node3D.new()
 	add_child(model)
 	if ResourceLoader.exists("res://assets/props/gun.glb"):
-		model.add_child((load("res://assets/props/gun.glb") as PackedScene).instantiate())
+		var gps := load("res://assets/props/gun.glb") as PackedScene
+		if gps: model.add_child(gps.instantiate())
+		else: _build(model)
 	else:
 		_build(model)
 	for gi in model.find_children("*", "GeometryInstance3D", true, false):

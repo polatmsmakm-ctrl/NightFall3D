@@ -235,6 +235,7 @@ func results_shown() -> bool:
 	return results != null and is_instance_valid(results) and results.visible
 
 func _start(c: Dictionary) -> void:
+	Crumbs.listen()
 	Crumbs.mark("round start: %s %s" % [str(c.get("map", "")), str(c.get("theme", ""))])
 	if started: return
 	cfg = c
@@ -726,7 +727,8 @@ func _blood_model(path: String) -> Mesh:
 	if not _blood_models.has(path):
 		var found: Mesh = null
 		if ResourceLoader.exists(path):
-			var root := (load(path) as PackedScene).instantiate()
+			var bps := load(path) as PackedScene
+			var root: Node = bps.instantiate() if bps else Node.new()
 			var stack: Array = [root]
 			while not stack.is_empty() and found == null:
 				var nd: Node = stack.pop_back()

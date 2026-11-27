@@ -4359,7 +4359,7 @@ var animal_models := 0
 
 func _animal_node(kind: String, k: int) -> Node3D:
 	var path := ("res://assets/animals/%s.glb" % HORSES[k % HORSES.size()]) if kind == "horse" else "res://assets/animals/camel.glb"
-	if ResourceLoader.exists(path):
+	if ResourceLoader.exists(path) and load(path) is PackedScene: # (a model that will not load: the code-built one)
 		var n := (load(path) as PackedScene).instantiate() as Node3D
 		var inner := Node3D.new() # the camel's model faces +X: turned so every animal faces +Z
 		if kind == "camel": n.rotation.y = -PI / 2.0
@@ -4560,7 +4560,9 @@ const PIER_FROM := 34.0     # where the deck starts on the sand (a ramp comes up
 
 func _beach_group(name: String) -> Array:
 	var out := []
-	var src := (load("res://assets/maps/beach.glb") as PackedScene).instantiate()
+	var bps := load("res://assets/maps/beach.glb") as PackedScene
+	if bps == null: return out
+	var src := bps.instantiate()
 	for g in src.find_children("*", "Node3D", true, false):
 		if not str(g.name).begins_with(name): continue
 		for mi in g.find_children("*", "MeshInstance3D", true, false):
@@ -4820,7 +4822,8 @@ func _plan_garage(rng: RandomNumberGenerator) -> void:
 	gate_points.append([Vector3(0.0, GAR_ROOF, WALL), PI])
 
 func _build_garage() -> void:
-	var src := (load("res://assets/maps/carpark.glb") as PackedScene).instantiate()
+	var cps := load("res://assets/maps/carpark.glb") as PackedScene
+	var src: Node = cps.instantiate() if cps else Node3D.new()
 	var piece := {}
 	for ch in src.get_children():
 		if ch is MeshInstance3D: piece[str(ch.name)] = (ch as MeshInstance3D).mesh

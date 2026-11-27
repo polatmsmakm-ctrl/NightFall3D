@@ -23,6 +23,8 @@ var skeleton: Skeleton3D
 var hunch: NFHunch # «الوحش» only
 var player := AnimationPlayer.new()
 var current := ""
+var failed := ""   # the model file that would not load ("" when it did)
+const Crumbs := preload("res://scripts/crumbs.gd")
 
 ## `close_up` loads <char>_hi.glb when the owner has made one: the same sculpt at four or five
 ## times the detail, for the character select and the results stage where the camera is right in
@@ -30,7 +32,18 @@ var current := ""
 func setup(char_name: String, anims: Array = ANIMS, close_up := false, sss := true) -> void:
 	var body_path := "res://assets/chars/%s%s.glb" % [char_name, "_hi" if close_up else ""]
 	if not ResourceLoader.exists(body_path): body_path = "res://assets/chars/%s.glb" % char_name
-	model = (load(body_path) as PackedScene).instantiate()
+	var ps := load(body_path) as PackedScene
+	if ps == null and not close_up and ResourceLoader.exists("res://assets/chars/%s_hi.glb" % char_name):
+		ps = load("res://assets/chars/%s_hi.glb" % char_name) as PackedScene
+	if ps == null:
+		# the release engine crashes (no error) on .instantiate() of nothing: this is what the
+		# "second generator" crash was — the gorilla's model would not load on the phone
+		failed = body_path
+		Crumbs.mark("model failed to load: " + body_path)
+		if not (char_name.begins_with("survivor") or char_name.begins_with("killer")): return
+		ps = load("res://assets/chars/survivor1.glb") as PackedScene
+		if ps == null: return
+	model = ps.instantiate()
 	add_child(model)
 	# skin that lets light through, on Forward+ — on the stand and in the victory shot only. In the
 	# round (sss = false) it was a full-screen pass every frame, and a separate specular buffer
@@ -62,6 +75,9 @@ func setup(char_name: String, anims: Array = ANIMS, close_up := false, sss := tr
 		var res = load(path) if ResourceLoader.exists(path) else null
 		if res == null:
 			if EMOTES.has(a): lib.add_animation(a, _emote_anim(a, skel_path, char_rest)) # posed in code
+			continue
+		if not (res is PackedScene):
+			Crumbs.mark("clip failed to load: " + path)
 			continue
 		var inst: Node = (res as PackedScene).instantiate()
 		var src_player: AnimationPlayer = inst.find_children("*", "AnimationPlayer", true, false)[0]
