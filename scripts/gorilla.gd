@@ -17,6 +17,7 @@ extends Node3D
 ## No class_name (an in-game update can carry it).
 
 const Probe := preload("res://scripts/pose_probe.gd")
+const Crumbs := preload("res://scripts/crumbs.gd")
 const GS := 1.9              # the gorilla's size against the cast's 1.95 m: a titan
 const HORSE := "res://assets/animals/arabian-horse.glb"
 const DELAY := 6.0           # after the dog has gone
@@ -112,10 +113,12 @@ func _load(f: String) -> AudioStream:
 
 ## The models are only loaded when the scene starts: nothing to draw or skin before then.
 func _build() -> bool:
+	Crumbs.mark("gorilla: building")
 	rig = CharacterRig.new()
 	rig.name = "Titan"
 	add_child(rig)
 	rig.setup("gorilla", ["idle", "walk", "run", "attack", "repair"], false, false)
+	Crumbs.mark("gorilla: model loaded")
 	if rig.skeleton == null: return false
 	rig.scale = Vector3.ONE * GS
 	rig.hunch = NFHunch.new() # bent like an ape over every clip, as «الوحش» is
@@ -130,6 +133,7 @@ func _build() -> bool:
 	pivot = Node3D.new()
 	pivot.position.y = PIVOT_Y
 	horse.add_child(pivot)
+	Crumbs.mark("gorilla: loading the horse")
 	hmodel = (load(HORSE) as PackedScene).instantiate() as Node3D
 	hmodel.position.y = -PIVOT_Y
 	pivot.add_child(hmodel)
@@ -267,6 +271,7 @@ func _start() -> void:
 	ph_t = 0.0
 
 func _phase(n: int) -> void:
+	Crumbs.mark("gorilla: phase %d" % n)
 	ph = n
 	ph_t = 0.0
 	phases[n] = true
@@ -417,6 +422,7 @@ func _tear(dt: float) -> void:
 ## The head comes away: the body's neck is folded shut, and the copy with only a head takes its place
 ## in the gorilla's right hand.
 func _rip() -> void:
+	Crumbs.mark("gorilla: tearing the head")
 	rips += 1
 	var n3 := hsk.find_bone("Neck3")
 	var neck_xf := _hb(hsk, "Neck3")
@@ -450,6 +456,7 @@ func _rip() -> void:
 	cap.scale = Vector3(1.0, 0.6, 1.0)
 	head_state = 1
 	spurt = 9.0
+	Crumbs.mark("gorilla: head in hand")
 	var c := _cam()
 	if blood:
 		blood.splash(neck_xf.origin, (neck_xf.origin - _hb(hsk, "Chest").origin).normalized(), c)

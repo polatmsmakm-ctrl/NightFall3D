@@ -73,6 +73,8 @@ var bark_s: AudioStream
 var eat_s: AudioStream
 var dark_s: AudioStream
 
+const Crumbs := preload("res://scripts/crumbs.gd")
+
 func setup(w: NightWorld, r: Rules, b: NFBlood, cam_cb: Callable, people_cb: Callable, skip_rids: Array) -> void:
 	world = w
 	rules = r
@@ -210,6 +212,7 @@ func _process(dt: float) -> void:
 # ---- the cat -------------------------------------------------------------------------------------
 
 func _start_cat(i: int) -> void:
+	Crumbs.mark("cat comes (generator %d)" % i)
 	state = 1
 	gen = i
 	gp = world.gen_points[i]
@@ -309,6 +312,7 @@ func _cat_step(dt: float) -> void:
 # ---- the dog -------------------------------------------------------------------------------------
 
 func _start_dog() -> void:
+	Crumbs.mark("dog comes")
 	state = 2
 	ph = 0
 	ph_t = 0.0
@@ -360,6 +364,7 @@ func _dog_step(dt: float) -> void:
 			_look_at(dog, cat.position + Vector3(0, 0.2, 0))
 			if dist <= FREEZE_AT or ph_t > 25.0:
 				ph = 1
+				Crumbs.mark("dog: phase 1")
 				ph_t = 0.0
 		1: # stops dead, lower still
 			_go(dog, dog.position, 0.0, dt)
@@ -368,6 +373,7 @@ func _dog_step(dt: float) -> void:
 			_look_at(dog, cat.position + Vector3(0, 0.2, 0))
 			if ph_t > 1.4:
 				ph = 2
+				Crumbs.mark("dog: phase 2")
 				ph_t = 0.0
 				if bark_s:
 					dog_snd.stream = bark_s
@@ -389,6 +395,7 @@ func _dog_step(dt: float) -> void:
 				_go(cat, cat.position + away * 3.0, 3.0, dt, 9.0)
 			if md < 0.45 or ph_t > 3.0:
 				ph = 3
+				Crumbs.mark("dog: phase 3")
 				ph_t = 0.0
 				bites += 1
 				cat.limp = 1.0
@@ -413,6 +420,7 @@ func _dog_step(dt: float) -> void:
 				splashes += 1
 			if ph_t > SHAKE_TIME:
 				ph = 4
+				Crumbs.mark("dog: phase 4")
 				ph_t = 0.0
 				dog.shake = 0.0
 				cat.shake = 0.0
@@ -430,6 +438,7 @@ func _dog_step(dt: float) -> void:
 			dog.look = Vector2(0.0, 0.35)
 			if ph_t > SWALLOW_TIME:
 				ph = 5
+				Crumbs.mark("dog: phase 5")
 				ph_t = 0.0
 				cat.visible = false
 				dog.swallow = 0.0
@@ -445,6 +454,7 @@ func _dog_step(dt: float) -> void:
 			_go(dog, dog.position + away * 10.0, 6.5, dt, 5.0)
 			if ph_t > RUN_TIME:
 				ph = 6
+				Crumbs.mark("dog: phase 6")
 				dog.visible = false
 				state = 3
 

@@ -68,6 +68,7 @@ func start(a: String, b: String) -> void:
 	now[a + "|" + b] = {"a": a, "b": b, "t": 0.0, "mid": (pa + pb) * 0.5, "u": u, "sep": SEP0,
 		"pa": pa, "pb": pb, "y": (pa.y + pb.y) * 0.5}
 	played += 1
+	(load("res://scripts/crumbs.gd") as GDScript).mark("kiss: %s and %s" % [a, b])
 	closest = 9.0
 	if snd_s:
 		snd.global_position = (pa + pb) * 0.5 + Vector3(0, 1.6, 0)

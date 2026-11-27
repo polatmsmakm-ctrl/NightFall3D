@@ -15,6 +15,7 @@ var _text_hint := "" # a line under the middle of the screen for the killer (the
 var ravens: NFRavens
 var catdog: NFCatDog # the cat at the first generator, and the dog (scripts/catdog.gd)
 const FeastScript := preload("res://scripts/feast.gd")
+const Crumbs := preload("res://scripts/crumbs.gd")
 const GorillaScript := preload("res://scripts/gorilla.gd")
 var feast: Node3D   # «الوحش» eating whoever is on his hook a second time (scripts/feast.gd)
 const KissScript := preload("res://scripts/kiss.gd")
@@ -234,6 +235,7 @@ func results_shown() -> bool:
 	return results != null and is_instance_valid(results) and results.visible
 
 func _start(c: Dictionary) -> void:
+	Crumbs.mark("round start: %s %s" % [str(c.get("map", "")), str(c.get("theme", ""))])
 	if started: return
 	cfg = c
 	offline = c.get("offline", false)
@@ -1683,6 +1685,7 @@ func _feed_watch(dt: float) -> void:
 	var dc := rules.done_count()
 	if feed_gens >= 0 and dc > feed_gens:
 		_feed("Generator done — %d of %d" % [mini(dc, Rules.NEED), Rules.NEED], "wrench", Color(1.0, 0.88, 0.4))
+		Crumbs.mark("generator %d done (%d)" % [i, dc])
 	feed_gens = dc
 	if rules.powered and not feed_pw: _feed("The gates have power — get out!", "door", Color(0.45, 1.0, 0.55))
 	feed_pw = rules.powered
@@ -2006,6 +2009,7 @@ func _update_esp() -> void:
 
 ## End of the round: the cast lines up on a dark stage (scripts/results.gd).
 func _show_results() -> void:
+	Crumbs.mark("results ok")
 	var escaped := 0
 	var dead := 0
 	for n in rules.s:

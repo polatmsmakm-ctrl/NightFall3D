@@ -168,6 +168,7 @@ func _cut(lv: Array, prog: float) -> float:
 ## Every surface of the character gets the cutting shader, fed with its own maps.
 func _dress(n: String, rig: CharacterRig) -> void:
 	var x: Dictionary = e[n]
+	(load("res://scripts/crumbs.gd") as GDScript).mark("the Beast eats %s" % n)
 	x.rig = rig
 	x.mats = []
 	var seed := float(absi(n.hash()) % 1000)

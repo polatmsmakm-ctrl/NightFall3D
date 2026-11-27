@@ -1330,3 +1330,8 @@ took «انطفت الأضوية» out). The Cairo font's Latin half (`cairo-lat
 - **No background loading** for the gorilla and the horse: `ResourceLoader.load_threaded_request` at
   setup crashed the game on the owner's iPhone when the scene began (after the second generator);
   `_build` reads them with plain `load()` on the main thread when it starts.
+- **The crash trail** (`scripts/crumbs.gd`, no class_name): `Crumbs.mark(text)` writes the last 30
+  steps of a round to `user://crumbs.txt` as they happen (round start, each generator done, the cat
+  and the dog's phases, the gorilla's build and phases, the rip, the Beast's meal, a kiss). A session
+  that ended cleanly ends with "ok"; if it did not, the next launch shows the trail in red on the main
+  menu of a phone with the developer tools unlocked. Added for the crash "after the second generator".
