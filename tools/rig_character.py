@@ -514,6 +514,71 @@ def shrink_images(j, blob, side, T, F):
     return out
 
 
+def normals_of(j, blob):
+    N = []
+    for m in j['meshes']:
+        for pr in m['primitives']:
+            N.append(read_acc(j, blob, pr['attributes']['NORMAL']))
+    return np.vstack(N)
+
+
+def source_pics(j, blob):
+    """--full: the sculpt's own maps, byte for byte, in the order colour, metal-rough, normal."""
+    mat = j['materials'][0]
+    pbr = mat.get('pbrMetallicRoughness', {})
+    out = []
+    for e in (pbr.get('baseColorTexture'), pbr.get('metallicRoughnessTexture'), mat.get('normalTexture')):
+        if e is None:
+            out.append(None)
+            continue
+        im = j['images'][j['textures'][e['index']]['source']]
+        bv = j['bufferViews'][im['bufferView']]
+        out.append((blob[bv.get('byteOffset', 0):bv.get('byteOffset', 0) + bv['byteLength']], im.get('mimeType', 'image/png')))
+    return out
+
+
+def full_hair(P, T, F, col_png, pos, ix, hair_lum):
+    """--full: the hair mask the bake path makes, on the sculpt's own vertices: dark (brightest channel
+    under `hair_lum`), above the hips, inside the shoulders, not on the arm, and part of a big dark mass
+    (brows, lashes and irises are small islands). Softened over the welded surface -> 0..1 per vertex."""
+    from PIL import Image
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+    img = np.asarray(Image.open(io.BytesIO(col_png)).convert('RGB'))
+    h, w = img.shape[:2]
+    px = np.clip((T[:, 0] % 1.0) * w, 0, w - 1).astype(int)
+    py = np.clip((T[:, 1] % 1.0) * h, 0, h - 1).astype(int)
+    c = img[py, px].astype(float)
+    lum = c.max(1)
+    red = c[:, 0] > 1.8 * c[:, 1] + 12.0      # crimson cloth is dark too, but hair is never that red
+    hip = (pos[ix['LeftUpLeg']][1] + pos[ix['RightUpLeg']][1]) / 2.0
+    reach = max(abs(pos[ix['LeftArm']][0]), abs(pos[ix['RightArm']][0])) + 0.10
+    arm_y = (pos[ix['LeftArm']][1] + pos[ix['RightArm']][1]) / 2.0
+    dark = (lum < hair_lum) & ~red & (P[:, 1] > hip) & (np.abs(P[:, 0]) < reach)
+    dark &= ~((np.abs(P[:, 0]) > reach - 0.07) & (np.abs(P[:, 1] - arm_y) < 0.09))
+    _, weld = np.unique(np.round(P * 1e5).astype(np.int64), axis=0, return_inverse=True)
+    weld = weld.reshape(-1)
+    nW = weld.max() + 1
+    dw = np.zeros(nW, bool)
+    dw[weld[dark]] = True
+    Fw = weld[F]
+    e = np.concatenate([Fw[:, [0, 1]], Fw[:, [1, 2]], Fw[:, [2, 0]]])
+    ed = e[dw[e[:, 0]] & dw[e[:, 1]]]
+    g = coo_matrix((np.ones(len(ed)), (ed[:, 0], ed[:, 1])), shape=(nW, nW))
+    _, lab = connected_components(g, directed=False)
+    size = np.bincount(lab, weights=dw.astype(float))
+    hw = (dw & (size[lab] > 0.02 * max(dw.sum(), 1))).astype(float)
+    e = np.unique(np.vstack([e, e[:, ::-1]]), axis=0)
+    deg = np.bincount(e[:, 0], minlength=nW).astype(float)
+    for _ in range(2):
+        acc = np.zeros(nW)
+        np.add.at(acc, e[:, 0], hw[e[:, 1]])
+        hw = 0.5 * hw + 0.5 * acc / np.maximum(deg, 1.0)
+    print('  hair: %d of %d vertices' % (int((hw[weld] > 0.5).sum()), len(P)))
+    return hw[weld]
+
+
+FULL = False         # --full: nothing collapsed, the sculpt's own UVs, normals and maps
 HAIR_DENSITY = 0.32  # --hair-density
 FRINGE = False       # --fringe
 FACE_FACES = 0       # --face-faces
@@ -541,7 +606,8 @@ def build(src, out_path, donor_path, faces, tex_side, facing='auto', arms=None, 
     donor = Donor(donor_path)
     ix = donor.idx
     P, T, F = mesh_of(sj, sb)
-    T0, F0 = T.copy(), F.copy()                            # the sculpt's own UV layout, for the atlas padding
+    N0 = normals_of(sj, sb) if FULL else None
+    T0, F0 = T.copy(), F.copy()                           # the sculpt's own UV layout, for the atlas padding
     dP = donor.mesh
     # 1. the cast's space
     P = P * ((dP[:, 1].max() - dP[:, 1].min()) / (P[:, 1].max() - P[:, 1].min()))
@@ -552,6 +618,9 @@ def build(src, out_path, donor_path, faces, tex_side, facing='auto', arms=None, 
     if facing == 'turn' or (facing == 'auto' and backwards):
         P[:, 0] *= -1.0                                    # toes pointed backwards: turn it round
         P[:, 2] *= -1.0
+        if N0 is not None:
+            N0[:, 0] *= -1.0
+            N0[:, 2] *= -1.0
         print('turned to face +z')
     # 2. the skeleton, fitted to this body
     bind = None
@@ -579,7 +648,12 @@ def build(src, out_path, donor_path, faces, tex_side, facing='auto', arms=None, 
     print('  rest-translation round trip on the donor: max error %.5f' % check)
     # 3. decimate by region, 4. weight by body part
     TAN = pics = hair = None
-    if bake:                                               # no pymeshlab: collapse, new atlas, bake the maps
+    src_pics = None
+    if FULL:                                               # every triangle, UV and normal as the sculpt has them
+        N = N0 / np.maximum(np.linalg.norm(N0, axis=1, keepdims=True), 1e-9)
+        src_pics = source_pics(sj, sb)
+        hair = full_hair(P, T, F, src_pics[0][0], pos, ix, hair_lum)
+    elif bake:                                              # no pymeshlab: collapse, new atlas, bake the maps
         import sys
         sys.path.insert(0, HERE)
         import rig_bake
@@ -622,38 +696,69 @@ def build(src, out_path, donor_path, faces, tex_side, facing='auto', arms=None, 
     j_a = put(JJ.astype('<u2').tobytes(), len(JJ), 5123, 'VEC4', 34962)
     w_a = put(WW.astype('<f4').tobytes(), len(WW), 5126, 'VEC4', 34962)
     i_a = put(F.astype('<u4').reshape(-1).tobytes(), F.size, 5125, 'SCALAR', 34963)
-    if pics is None:
-        pics = shrink_images(sj, sb, tex_side, T0, F0)
-    out['images'] = []
-    for k, raw in enumerate(pics):
-        if EXTERNAL: # a PNG beside the GLB, with its own .import: Godot loads the texture it imported
-            name = '%s_%s.png' % (os.path.splitext(os.path.basename(EXTERNAL))[0], ('col', 'mr', 'nrm')[k] if len(pics) == 3 else k)
-            with open(os.path.join(os.path.dirname(os.path.abspath(EXTERNAL)), name), 'wb') as fh:
+    if src_pics is not None:   # --full: the sculpt's own files, not re-encoded, beside the GLB
+        assert EXTERNAL, '--full writes its maps beside the GLB: use it with --external'
+        base = os.path.splitext(os.path.basename(EXTERNAL))[0]
+        folder = os.path.dirname(os.path.abspath(EXTERNAL))
+        out['images'], slots = [], {}
+        for k, (tag, item) in enumerate(zip(('col', 'mr', 'nrm'), src_pics)):
+            if item is None:
+                continue
+            raw, mime = item
+            name = '%s_%s.%s' % (base, tag, 'png' if 'png' in mime else 'jpg')
+            with open(os.path.join(folder, name), 'wb') as fh:
                 fh.write(raw)
-            write_import(os.path.join(os.path.dirname(os.path.abspath(EXTERNAL)), name), normal=(k == 2 and len(pics) == 3))
+            write_import(os.path.join(folder, name), normal=(tag == 'nrm'))
+            slots[tag] = len(out['images'])
             out['images'].append({'uri': name})
-            continue
-        while len(blob) % 4:
-            blob.append(0)
-        views.append({'buffer': 0, 'byteOffset': len(blob), 'byteLength': len(raw)})
-        blob.extend(raw)
-        out['images'].append({'bufferView': len(views) - 1, 'mimeType': 'image/jpeg'})
-    out['samplers'] = [{}]
-    out['textures'] = [{'source': i, 'sampler': 0} for i in range(len(pics))]
-    sm = sj['materials'][0] if sj.get('materials') else {}
-    pbr = sm.get('pbrMetallicRoughness', {})
-    mat = {'name': 'body', 'pbrMetallicRoughness': {'metallicFactor': 0.0, 'roughnessFactor': 0.85}}
-    def tex(e):
-        return e['index'] if e and e.get('index', 99) < len(pics) else None
-    if tex(pbr.get('baseColorTexture')) is not None:
-        mat['pbrMetallicRoughness']['baseColorTexture'] = {'index': tex(pbr.get('baseColorTexture'))}
-    if tex(sm.get('normalTexture')) is not None:
-        mat['normalTexture'] = {'index': tex(sm.get('normalTexture'))}
-    if tex(pbr.get('metallicRoughnessTexture')) is not None:
-        mat['pbrMetallicRoughness']['metallicRoughnessTexture'] = {'index': tex(pbr.get('metallicRoughnessTexture'))}
-        mat['pbrMetallicRoughness'] = {k: v for k, v in mat['pbrMetallicRoughness'].items()
-                                       if k not in ('metallicFactor', 'roughnessFactor')}
-    out['materials'] = [mat]
+            print('  %s: the sculpt\'s own %s, %.1f MB, unchanged' % (name, tag, len(raw) / 1e6))
+        out['samplers'] = [{}]
+        out['textures'] = [{'source': i, 'sampler': 0} for i in range(len(out['images']))]
+        mat = {'name': 'body', 'pbrMetallicRoughness': {},
+               'doubleSided': bool(sj['materials'][0].get('doubleSided', False))}
+        if 'col' in slots:
+            mat['pbrMetallicRoughness']['baseColorTexture'] = {'index': slots['col']}
+        if 'mr' in slots:
+            mat['pbrMetallicRoughness']['metallicRoughnessTexture'] = {'index': slots['mr']}
+        else:
+            mat['pbrMetallicRoughness'].update({'metallicFactor': 0.0, 'roughnessFactor': 0.85})
+        if 'nrm' in slots:
+            mat['normalTexture'] = {'index': slots['nrm']}
+        out['materials'] = [mat]
+        pics = None
+    else:
+      if pics is None:
+        pics = shrink_images(sj, sb, tex_side, T0, F0)
+      out['images'] = []
+      for k, raw in enumerate(pics):
+          if EXTERNAL: # a PNG beside the GLB, with its own .import: Godot loads the texture it imported
+              name = '%s_%s.png' % (os.path.splitext(os.path.basename(EXTERNAL))[0], ('col', 'mr', 'nrm')[k] if len(pics) == 3 else k)
+              with open(os.path.join(os.path.dirname(os.path.abspath(EXTERNAL)), name), 'wb') as fh:
+                  fh.write(raw)
+              write_import(os.path.join(os.path.dirname(os.path.abspath(EXTERNAL)), name), normal=(k == 2 and len(pics) == 3))
+              out['images'].append({'uri': name})
+              continue
+          while len(blob) % 4:
+              blob.append(0)
+          views.append({'buffer': 0, 'byteOffset': len(blob), 'byteLength': len(raw)})
+          blob.extend(raw)
+          out['images'].append({'bufferView': len(views) - 1, 'mimeType': 'image/jpeg'})
+      out['samplers'] = [{}]
+      out['textures'] = [{'source': i, 'sampler': 0} for i in range(len(pics))]
+      sm = sj['materials'][0] if sj.get('materials') else {}
+      pbr = sm.get('pbrMetallicRoughness', {})
+      mat = {'name': 'body', 'pbrMetallicRoughness': {'metallicFactor': 0.0, 'roughnessFactor': 0.85}}
+      def tex(e):
+          return e['index'] if e and e.get('index', 99) < len(pics) else None
+      if tex(pbr.get('baseColorTexture')) is not None:
+          mat['pbrMetallicRoughness']['baseColorTexture'] = {'index': tex(pbr.get('baseColorTexture'))}
+      if tex(sm.get('normalTexture')) is not None:
+          mat['normalTexture'] = {'index': tex(sm.get('normalTexture'))}
+      if tex(pbr.get('metallicRoughnessTexture')) is not None:
+          mat['pbrMetallicRoughness']['metallicRoughnessTexture'] = {'index': tex(pbr.get('metallicRoughnessTexture'))}
+          mat['pbrMetallicRoughness'] = {k: v for k, v in mat['pbrMetallicRoughness'].items()
+                                         if k not in ('metallicFactor', 'roughnessFactor')}
+      out['materials'] = [mat]
     out['meshes'] = [{'name': 'body', 'primitives': [{'attributes': {
         'POSITION': pos_a, 'NORMAL': nrm_a, 'TEXCOORD_0': uv_a, 'JOINTS_0': j_a, 'WEIGHTS_0': w_a},
         'indices': i_a, 'material': 0}]}]
@@ -737,7 +842,11 @@ if __name__ == '__main__':
                     help="a sculpt that is not in a T-pose: its joints by hand ({'height': h, 'scale': s, "
                          "'joints': {name: [x,y,z]}, 'extra': {joint: [[x,y,z], ...]}}); weights by the nearest "
                          "bones, bind pose = the sculpt's posture, rest pose = the donor's T-pose")
+    ap.add_argument('--full', action='store_true',
+                    help="nothing collapsed: every triangle, UV and normal of the sculpt, and its own maps copied "
+                         "byte for byte beside the GLB (needs --external). Only the skeleton and the weights are added")
     a = ap.parse_args()
+    FULL = a.full
     arms = tuple(float(v) for v in a.arms.split(',')) if a.arms else None
     HAIR_DENSITY = a.hair_density
     SLEEVES = a.sleeves

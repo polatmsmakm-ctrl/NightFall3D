@@ -39,9 +39,10 @@ const HELI_WAIT := 75.0
 const CLIMB_TIME := 6.0
 const CLIMB_SAFE := 0.3 # this far up the ladder the killer cannot reach her any more
 ## One ability per survivor character. The rules apply the ones that touch the round (fix, lift,
-## rise, tough, medic); main.gd does the rest on the phone (burst, sense, ghost). Same table in rules.js.
+## rise, tough, medic); main.gd does the rest on the phone (burst, sense, ghost, nimble). Same table in rules.js.
 const PERK := {"survivor1": "burst", "survivor2": "fix", "survivor3": "lift", "survivor4": "rise",
-	"survivor5": "tough", "survivor6": "sense", "survivor7": "medic", "survivor8": "ghost", "survivor9": "mend"}
+	"survivor5": "tough", "survivor6": "sense", "survivor7": "medic", "survivor8": "ghost", "survivor9": "mend",
+	"survivor10": "nimble"}
 ## Name, one line and an icon for each, for the character stand, the HUD and «طريقة اللعب».
 const PERK_INFO := {
 	"burst": ["Second Wind", "When you're hit or come off the hook, you run faster and longer", "shoe"],
@@ -53,6 +54,7 @@ const PERK_INFO := {
 	"medic": ["Field Medic", "Heals others 60% faster", "heal"],
 	"ghost": ["Ghost Step", "The killer can't see your run marks and your steps are quiet", "crouch"],
 	"aid": ["The Medic", "Carries the first-aid kit: heals others twice as fast, heals himself in 8 seconds, and the kit never runs out", "heal"],
+	"nimble": ["Light Feet", "Vaults 35% faster, and the killer doesn't hear you vault", "shoe"],
 	"mend": ["Bloom", "If you're hurt and not hit again for 45 seconds, you're healthy again", "heal"],
 }
 const SENSE_R := 28.0     # «عين الليل»: how close she has to be

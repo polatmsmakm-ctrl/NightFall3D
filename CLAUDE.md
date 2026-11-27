@@ -1335,3 +1335,21 @@ took «انطفت الأضوية» out). The Cairo font's Latin half (`cairo-lat
   and the dog's phases, the gorilla's build and phases, the rip, the Beast's meal, a kiss). A session
   that ended cleanly ends with "ok"; if it did not, the next launch shows the trail in red on the main
   menu of a phone with the developer tools unlocked. Added for the crash "after the second generator".
+
+## «Crimson Adventurer» (survivor10) — the first character at full detail (the owner's asset policy)
+- **The owner's rule, from now on: never reduce a model's triangles or re-bake its maps without his
+  explicit yes.** Say the numbers first (his triangles, what the game would get, why) and ask. Keep
+  his originals as they are. Distance LODs (Godot's automatic ones on import) are fine: up close the
+  model is the full one.
+- She is his Meshy model exactly: **218,997 triangles, his own 2048 colour / metal-rough / normal
+  PNGs copied byte for byte** (no new atlas, no JPEG step), his UVs and normals untouched, the
+  material double-sided as he sent it. Only a skeleton and skin weights were added:
+  `python3 tools/rig_character.py src.glb assets/chars/survivor10.glb --full --external --chest 0.12 --hair 85`
+  (`--full` is new: nothing collapsed; the hair mask is made on his own vertices and leaves
+  crimson out, because her dark red top counted as hair). There is no `_hi` copy: the round, the
+  stand and the victory shot all use this one file.
+- His FBX had **no skeleton and no animations** (the same mesh as quads), so nothing was taken from
+  it; she moves with the Mixamo clips in `assets/anims` like everyone.
+- Perk «Light Feet» (`nimble`, phone side only: `NIMBLE_VAULT` 0.65 — her vaults take 65% of the
+  time — and the killer's phone plays no sound for her vaults). In `PERK` in both rules files and
+  `CHARS` in `server.js` (Render deploy). `tools/adventurer.tscn` tests her; `shot14` photographs her.

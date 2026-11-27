@@ -15,7 +15,7 @@ func _ready() -> void:
 	if dir == "": dir = "user://shots"
 	DirAccess.make_dir_recursive_absolute(dir)
 	var who := OS.get_environment("NF_CHARS").split(",", false)
-	if who.is_empty(): who = PackedStringArray(["survivor1", "survivor2", "survivor3"])
+	if who.is_empty(): who = PackedStringArray(["survivor10"]) # the newest character
 	var hi := OS.get_environment("NF_HI") == "1"
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR

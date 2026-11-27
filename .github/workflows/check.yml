@@ -78,7 +78,7 @@ jobs:
           timeout 120 godot --headless --path . --quit 2>&1 | tee boot.log | tail -20
           if grep -E "Parse Error|Compile Error" boot.log; then echo "::error::scripts do not compile"; cat boot.log >> all.log; exit 1; fi
           TL="${{ github.event.inputs.tests }}"
-          for t in ${TL:-road hud tex drive props ui smoke map win camp beach gun gfx city kuwait sniper batch catdog gorilla kiss sounds updater}; do
+          for t in ${TL:-road hud tex drive props ui smoke map win camp beach gun gfx city kuwait sniper batch catdog gorilla kiss adventurer sounds updater}; do
             [ -f tools/$t.tscn ] || continue
             echo "=== $t" | tee -a all.log
             timeout 240 godot --headless --path . res://tools/$t.tscn 2>&1 | tee -a all.log || echo "::warning::$t stopped (timeout or exit $?)"
@@ -120,7 +120,7 @@ jobs:
           # the look as the phone draws it: Forward+ (hd) and the old Mobile renderer (lo), both
           # through Mesa's software Vulkan (lavapipe)
           # a character's pose sheet through Forward+, close-up model (NF_SHEET=survivor6 by default)
-          NF_CHARS=${NF_SHEET:-killer2,survivor9} NF_HI=1 NF_SHOTS=$PWD/shots timeout 900 xvfb-run -a godot --rendering-driver vulkan --resolution 1564x720 --path . res://tools/shot14.tscn 2>&1 | tee -a all.log | grep -v "^\s*at:" | tail -15 || true
+          NF_CHARS=${NF_SHEET:-survivor10,killer2} NF_HI=1 NF_SHOTS=$PWD/shots timeout 900 xvfb-run -a godot --rendering-driver vulkan --resolution 1564x720 --path . res://tools/shot14.tscn 2>&1 | tee -a all.log | grep -v "^\s*at:" | tail -15 || true
           # «وضع القنّاص» and the car's headlights (first: the newest)
           NF_SHOTS=$PWD/shots timeout 1200 xvfb-run -a godot --rendering-driver vulkan --resolution 1564x720 --path . res://tools/shot26.tscn 2>&1 | tee -a all.log | grep -v "^\s*at:" | tail -15 || true
           # the blood, «بين العصر والمغرب» and Halloween's power box

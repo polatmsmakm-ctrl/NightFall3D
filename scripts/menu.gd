@@ -10,7 +10,7 @@ const MAPS := {"forest": "The Forest", "village": "The Abandoned Village", "fare
 const THEMES := {"normal": "Night", "fog": "Fog", "rain": "Rain", "snow": "Snow", "halloween": "Halloween", "sunset": "Late Afternoon"}
 const THEME_ICON := {"normal": "moon", "fog": "fog", "rain": "rain", "snow": "star", "halloween": "skull", "sunset": "sun"}
 const VERSION := "v1.4"
-const CHARS := {"killer": "The Killer", "survivor1": "The Survivor", "survivor2": "The Nomad", "survivor3": "The Sheriff", "survivor4": "Crimson Valkyrie", "survivor5": "Battle-Scarred", "survivor6": "Night Sentinel", "survivor7": "The Researcher", "survivor8": "Night Rose", "survivor9": "Bloom", "killer2": "The Beast"}
+const CHARS := {"killer": "The Killer", "survivor1": "The Survivor", "survivor2": "The Nomad", "survivor3": "The Sheriff", "survivor4": "Crimson Valkyrie", "survivor5": "Battle-Scarred", "survivor6": "Night Sentinel", "survivor7": "The Researcher", "survivor8": "Night Rose", "survivor9": "Bloom", "survivor10": "Crimson Adventurer", "killer2": "The Beast"}
 const SECRET := "survivor4" # hidden: only on phones Net.has_secret() is true for
 const ERRORS := {"no_room": "No room with that code", "room_full": "The room is full", "in_game": "The game in this room has started",
 	"killer_taken": "There's already a killer in the room", "offline": "Your friend is offline", "invite_later": "Your friend is offline — the invite reaches them when they come on (up to 20 minutes)", "bad_name": "Names must be 2 to 16 characters with no spaces",
@@ -327,7 +327,7 @@ func _sync_lobby(dir := 0.0) -> void:
 ## (the server does not say which one he plays until he is in a room).
 func _friends_at_fire() -> Array:
 	var out := []
-	var pool := ["survivor1", "survivor2", "survivor3", "survivor5", "survivor6", "survivor7", "survivor8", "survivor9"]
+	var pool := ["survivor1", "survivor2", "survivor3", "survivor5", "survivor6", "survivor7", "survivor8", "survivor9", "survivor10"]
 	for f in Net.friends:
 		var n := str(f)
 		if n == Net.username or not Net.is_online(n): continue

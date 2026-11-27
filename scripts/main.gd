@@ -39,6 +39,7 @@ const SFX := ["knife1", "knife2", "knife3", "knife4", "gunshot", "scream_beast",
 const SFX_LOOPS := ["heart", "heart_fast", "breath", "breath_hurt", "breath_hide", "whimper", "steps_out", "steps_in", "steps_killer",
 	"steps_beast", "steps_hurt", "gen_run", "chase", "ambient", "power_hum", "terror", "moon_rumble", "amb_night", "amb_sea",
 	"amb_garage", "amb_storm", "amb_cold", "breath_m", "breath_f", "breath_hurt_m", "heal_other", "heal_self", "steps_approach"]
+const NIMBLE_VAULT := 0.65 # «Light Feet»: her vaults take 65% of the time
 const MALE := ["survivor2", "survivor3", "killer2"] # the other characters (the killer «البركة القرمزية» too) use the female voice clips
 const TERROR_RADIUS := 24.0 # survivors start to feel the killer inside this distance
 const CHASE_NEAR := 16.0     # the chase music plays when she is this close on foot, even unseen (never while she drives)
@@ -941,10 +942,12 @@ func _drop_mark(at: Vector3) -> void:
 
 # ---------------- networking ----------------
 ## Sounds that come with another player's animation starting: her swing, a vault over a window.
-func _anim_sound(r: Dictionary, na: String) -> void:
+func _anim_sound(r: Dictionary, na: String, who := "") -> void:
 	var at: Vector3 = (r.node as Node3D).global_position + Vector3(0, 1.2, 0)
 	if na == "attack" and r.role == "killer": _sfx("swing%d" % randi_range(1, 2), at, 4.0, randf_range(0.95, 1.05))
-	elif na == "vault": _sfx("vault", at, 2.0)
+	elif na == "vault":
+		if my_role == "killer" and rules and rules.perk.get(who, "") == "nimble": return # «Light Feet»: she vaults without a sound
+		_sfx("vault", at, 2.0)
 
 func _on_net(m: Dictionary) -> void:
 	if not started: return
@@ -955,7 +958,7 @@ func _on_net(m: Dictionary) -> void:
 				r.pos = Vector3(m.p[0], m.p[1], m.p[2])
 				r.yaw = float(m.p[3])
 				var na := str(m.a)
-				if na != r.anim and r.node.visible and not bool(r.get("v", false)): _anim_sound(r, na)
+				if na != r.anim and r.node.visible and not bool(r.get("v", false)): _anim_sound(r, na, str(m.n))
 				r.anim = na
 				var nl := int(m.get("f", 0)) == 1
 				if nl != r.lit and r.role == "survivor" and r.node.visible: _sfx("torch_on" if nl else "torch_off", (r.node as Node3D).global_position + Vector3(0, 1.3, 0), -4.0)
@@ -3122,7 +3125,9 @@ func _start_vault(c: Dictionary) -> void:
 	var side := 1.0 if (body.position - center).dot(normal) >= 0.0 else -1.0
 	var to := center - normal * side * 1.25
 	to.y = center.y + 0.05
-	vault = {"from": body.position, "to": to, "t": 0.0, "dur": 1.7 if my_role == "killer" else (0.7 if sprint else 1.0)}
+	var dur := 1.7 if my_role == "killer" else (0.7 if sprint else 1.0)
+	if _perk() == "nimble": dur *= NIMBLE_VAULT # «Light Feet» (Crimson Adventurer)
+	vault = {"from": body.position, "to": to, "t": 0.0, "dur": dur}
 
 func _input(e: InputEvent) -> void:
 	if not started or rules.over: return

@@ -21,7 +21,8 @@ const CAR_SEATS = 6; // an escape car seats six: every survivor a room can have
 const ROAD_TIME = 120; // from the first one getting into a gate's escape car to the last gate, 600 m on
 // one ability per survivor character (same table and numbers as rules.gd)
 const PERK = { survivor1: 'burst', survivor2: 'fix', survivor3: 'lift', survivor4: 'rise',
-  survivor5: 'tough', survivor6: 'sense', survivor7: 'medic', survivor8: 'ghost', survivor9: 'mend' };
+  survivor5: 'tough', survivor6: 'sense', survivor7: 'medic', survivor8: 'ghost', survivor9: 'mend',
+  survivor10: 'nimble' }; // «Light Feet»: phone side only (vault speed, a silent vault for the killer)
 const MEND_TIME = 45;
 const GRID_CUTS = 2; // the killer may pull the power box twice a round
 const GRID_GAP = 60; // and only this long after the power came back
