@@ -1685,7 +1685,7 @@ func _feed_watch(dt: float) -> void:
 	var dc := rules.done_count()
 	if feed_gens >= 0 and dc > feed_gens:
 		_feed("Generator done — %d of %d" % [mini(dc, Rules.NEED), Rules.NEED], "wrench", Color(1.0, 0.88, 0.4))
-		Crumbs.mark("generator %d done (%d)" % [i, dc])
+		Crumbs.mark("generators done: %d" % dc)
 	feed_gens = dc
 	if rules.powered and not feed_pw: _feed("The gates have power — get out!", "door", Color(0.45, 1.0, 0.55))
 	feed_pw = rules.powered
