@@ -208,6 +208,9 @@ var heli: NFHeli             # the rescue helicopter (comes for the last survivo
 var heli_p := 0.0            # how far up the ladder the climber is, smoothed between snapshots
 var heli_st_seen := 0
 var gate_count_last := -1.0 # the gate countdown as last seen (-1: not counting)
+var beast_try := 0.0       # the developer tools' «the Beast eats me» try-out (trial mode): >0 while on
+var beast_hold := 0.0      # seconds the head has hung at the end of it
+var beast_back := {}       # what to put back afterwards: where I stood, my hooks, the killer's own setting
 var vanished := false      # the developer tools' «Vanish»: hidden on every other phone (st flag v)
 var trap_nodes := []       # one node per trap slot (Rules.TRAPS)
 var spike_nodes := []      # one strip per road
@@ -459,6 +462,61 @@ func _build_audio() -> void:
 		a.max_distance = 8.0 if my_role == "killer" else 45.0
 		add_child(a)
 		gen_audio.append(a)
+
+## The developer tools' try-out (trial mode only, the rules are on this phone): I am put on the nearest
+## hook as if for the second time with «الوحش» as the killer, the 30 s meal plays on me (scripts/feast.gd),
+## the head hangs there for 5 s, and then I am back where I stood, whole, as I was. Nothing counts.
+func _beast_try_start() -> void:
+	if not offline or my_role != "survivor" or feast == null or beast_try > 0.0: return
+	if not rules.free_now(my_name):
+		_flash("Only while you are on your feet")
+		return
+	var best := -1
+	var bd := INF
+	var n_hooks: int = world.road_hook0 if world.road_hook0 > 0 else world.hook_points.size()
+	for i in n_hooks:
+		var d := body.global_position.distance_to(world.hook_points[i])
+		var taken := false
+		for o in rules.s:
+			if rules.s[o].hp == "hooked" and int(rules.s[o].hook_i) == i: taken = true
+		if d < bd and not taken:
+			bd = d
+			best = i
+	if best < 0: return
+	var p: Dictionary = rules.s[my_name]
+	beast_back = {"pos": body.global_position, "hooks": int(p.hooks), "hp": str(p.hp), "beast": rules.beast}
+	rules.beast = true
+	p.hp = "hooked"
+	p.hooks = 2
+	p.hook_i = best
+	p.t = float(Rules.HOOK_TIME[1])
+	beast_try = 1.0
+	beast_hold = 0.0
+	_flash("Trying it out: «الوحش» eats you — you come back after")
+
+func _beast_try_step(dt: float) -> void:
+	if beast_try <= 0.0: return
+	var p: Dictionary = rules.s[my_name]
+	if rules.over or (p.hp != "hooked" and not feast.held.has(my_name)):
+		_beast_try_end()
+		return
+	if float(p.t) < 0.3: # the meal is over: keep the head on the hook a moment instead of dying
+		p.t = 0.3
+		feast.held[my_name] = true
+		beast_hold += dt
+		if beast_hold > 5.0: _beast_try_end()
+
+func _beast_try_end() -> void:
+	beast_try = 0.0
+	feast.held.erase(my_name)
+	var p: Dictionary = rules.s[my_name]
+	p.hp = str(beast_back.get("hp", "ok")) if not rules.over else p.hp
+	p.hooks = int(beast_back.get("hooks", 0))
+	p.hook_i = -1
+	p.t = 0.0
+	rules.beast = bool(beast_back.get("beast", false))
+	if beast_back.has("pos"): body.global_position = beast_back.pos
+	_flash("You're back")
 
 ## Being eaten (or what is left) on «الوحش»'s hook: main keeps them hanging there.
 func _kept(n: String) -> bool:
@@ -1781,7 +1839,7 @@ func _build_dev_ui(layer: CanvasLayer) -> void:
 	dev_panel.visible = false
 	dev_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
 	dev_panel.offset_left = 8.0 + safe.x; dev_panel.offset_right = 348.0 + safe.x
-	dev_panel.offset_top = (-380.0 if (world and world.map_id == "kuwait") else -268.0); dev_panel.offset_bottom = -46.0
+	dev_panel.offset_top = (-380.0 if (world and world.map_id == "kuwait") else -268.0) - (54.0 if offline else 0.0); dev_panel.offset_bottom = -46.0
 	layer.add_child(dev_panel)
 	var m := MarginContainer.new()
 	for side in ["left", "right", "top", "bottom"]: m.add_theme_constant_override("margin_" + side, 12)
@@ -1806,6 +1864,15 @@ func _build_dev_ui(layer: CanvasLayer) -> void:
 		van_btn.text = "Vanish button: %s" % ("On" if Dev.vanish_tool else "Off"))
 	NFUI.dress(van_btn, "ghost")
 	v.add_child(van_btn)
+	if offline: # trial mode only: what «الوحش» does on his hook, on me, and then I come back
+		var try_btn := Button.new()
+		try_btn.text = "Try: the Beast eats me"
+		try_btn.custom_minimum_size.y = 46
+		try_btn.pressed.connect(func() -> void:
+			dev_panel.visible = false
+			_beast_try_start())
+		NFUI.dress(try_btn, "skull")
+		v.add_child(try_btn)
 	if world and world.map_id == "kuwait": # Kuwait City's billboard: his video, only when pressed here, on every phone
 		var ad_btn := Button.new()
 		ad_btn.text = "Play the ad video"
@@ -3262,6 +3329,7 @@ func _process(dt: float) -> void:
 	sense_t += dt
 	_feed_watch(dt)
 	_shake_watch(dt)
+	_beast_try_step(dt)
 	if scare_t > 0.0: # short close-up of the killer's face, then back to my own camera
 		scare_t -= dt
 		if scare_t <= 0.0: _end_scare()

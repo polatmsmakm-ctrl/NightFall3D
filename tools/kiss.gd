@@ -88,5 +88,20 @@ func _ready() -> void:
 	check(faced < 0.2, "face to face")
 	check(not m.kiss.busy("P") and m.kiss.now.is_empty(), "and they let go")
 	check(m.ctx.get("interact", {}).get("kind", "") != "kiss", "the button is gone until the next shakes")
+	# the developer tools' try-out: «الوحش» eats me, then I am back
+	await frames(30)
+	var from: Vector3 = m.body.global_position
+	m._beast_try_start()
+	await frames(10)
+	var P: Dictionary = m.rules.s["P"]
+	check(P.hp == "hooked" and m.rules.eaten("P") and m.feast.keeps("P"), "try-out: on the hook, being eaten")
+	P.t = 1.0
+	var t1 := Time.get_ticks_msec()
+	while Time.get_ticks_msec() - t1 < 2500: await tree.process_frame
+	check(P.hp == "hooked" and m.feast.progress("P") >= 1.0 and m.feast.held.has("P"), "try-out: only the head left, and not dead")
+	t1 = Time.get_ticks_msec()
+	while m.beast_try > 0.0 and Time.get_ticks_msec() - t1 < 9000: await tree.process_frame
+	await frames(10)
+	check(P.hp == "ok" and not m.feast.keeps("P") and not m.rules.beast and m.body.global_position.distance_to(from) < 0.5, "try-out: back on my feet where I stood")
 	print("KISS %s %d" % ["PASS" if bad == 0 else "FAIL", bad])
 	get_tree().quit(1 if bad else 0)

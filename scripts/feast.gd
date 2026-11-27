@@ -28,6 +28,7 @@ var rig_of := Callable()  # name -> CharacterRig (or null)
 var on_bite := Callable() # (name, where, stage, last) -> main's sound, cry, shake
 var e := {}               # name -> {hook, prog, rig, mats, tip, lift, drip, bite}
 var bites := 0            # for the tests
+var held := {}            # names kept at the end of the meal (the developer tools' try-out: no death)
 var chew: AudioStreamPlayer3D
 var chew_s: AudioStream
 var own := false          # his sound: played in step with the meal (a late phone starts it part way)
@@ -76,7 +77,9 @@ func _process(dt: float) -> void:
 	for n in rules.s:
 		var p: Dictionary = rules.s[n]
 		var prog := -1.0
-		if rules.eaten(n):
+		if held.has(n) and e.has(n):
+			prog = 1.0
+		elif rules.eaten(n):
 			prog = clampf(1.0 - float(p.t) / float(Rules.HOOK_TIME[1]), 0.0, 1.0)
 			if not e.has(n): e[n] = {"hook": int(p.hook_i), "prog": prog, "rig": null, "mats": [], "tip": Vector3.INF, "lift": 0.0, "drip": 0.0}
 		elif e.has(n):
