@@ -46,6 +46,12 @@ var look_sens := 1.0   # «حساسية الكاميرا»: how far a drag turns
 var fov_add := 0.0     # «مجال الرؤية»: degrees added to every round camera (-10 .. +15)
 var btn_scale := 1.0   # «حجم الأزرار»: the round's touch buttons (0.8 .. 1.3)
 var btn_alpha := 1.0   # «وضوح الأزرار»: how solid they are drawn (0.35 .. 1.0)
+# ---- the quality pass (the owner: "do all the quality improvements") ----
+var sharp_sh := true   # «Sharp shadows»: bigger shadow maps and a softer filter (on High shadows)
+var eye := true        # «Eye adaptation»: the picture brightens / darkens as you go in and out of the light
+var dof := true        # «Depth of field»: a soft background behind the victory shot and the kiss
+var water_ref := true  # «Reflections»: the sea, the lagoon and wet roads mirror the lights (Ultra effects)
+var bounce := false    # «Bounce light»: light picks up colour off nearby walls (Pro Max; heavy, off at first)
 signal look_changed
 
 # runtime-only reductions made by the governor (not saved)
@@ -104,12 +110,17 @@ static func detect_weak() -> bool:
 
 ## «فائق» on a strong device: everything below turns up a notch.
 func low() -> bool: return preset == 3
-func view_dist() -> float: return float(VIEW.get(preset, 150.0)) * (0.85 if weak else 1.0)
+func view_dist() -> float:
+	if maxed(): return 260.0 # the Pro Max on «فائق»: further than any preset
+	return float(VIEW.get(preset, 150.0)) * (0.85 if weak else 1.0)
 
 func maxed() -> bool:
 	return strong and eff_effects() >= 2 and eff_shadows() >= 2
 
 func eff_shadows() -> int: return mini(shadows, rt_shadows)
+## «Bounce light» actually drawn: picked, on the high-end renderer, on a strong phone (or a computer),
+## and not taken away by the governor.
+func bounce_on() -> bool: return bounce and engine_hd() and not weak and eff_effects() >= 2
 func eff_effects() -> int: return 0 if _transit else mini(effects, rt_effects)
 
 ## How far the governor may take the resolution down (FSR rebuilds it): further on an older phone.
@@ -189,20 +200,23 @@ func apply() -> void:
 	elif on_metal() and engine_hd() and render_scale() < 0.999: vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_METALFX_SPATIAL
 	vp.fsr_sharpness = 0.35
 	var s := eff_shadows()
-	RenderingServer.directional_shadow_atlas_set_size([1024, 2048, 4096][s], true)
-	RenderingServer.directional_soft_shadow_filter_set_quality(
+	var sharp := sharp_sh and s >= 2 and not weak and engine_hd()
+	# «Sharp shadows»: the moon's map at 8192 on a strong phone (4096 otherwise) and a softer filter.
+	# This is filtering (PCF), not the soft-shadow method that drew black squares on the iPhone.
+	RenderingServer.directional_shadow_atlas_set_size(8192 if (sharp and strong) else [1024, 2048, 4096][s], true)
+	RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_HIGH if sharp else
 		[RenderingServer.SHADOW_QUALITY_HARD, RenderingServer.SHADOW_QUALITY_SOFT_LOW, RenderingServer.SHADOW_QUALITY_SOFT_MEDIUM][s])
 	if engine_hd(): # how fine the high-end effects are drawn (NFLook decides which ones are on)
 		var fx := eff_effects()
 		vp.positional_shadow_atlas_size = [1024, 2048, 4096][s]
-		RenderingServer.positional_soft_shadow_filter_set_quality(
+		RenderingServer.positional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_HIGH if sharp else
 			[RenderingServer.SHADOW_QUALITY_HARD, RenderingServer.SHADOW_QUALITY_SOFT_LOW, RenderingServer.SHADOW_QUALITY_SOFT_MEDIUM][s])
 		if maxed(): # high-quality occlusion at half resolution: full resolution cost a lot and showed little
 			RenderingServer.environment_set_ssao_quality(RenderingServer.ENV_SSAO_QUALITY_HIGH, true, 0.5, 2, 50.0, 300.0)
 		else:
 			RenderingServer.environment_set_ssao_quality(RenderingServer.ENV_SSAO_QUALITY_MEDIUM if fx >= 2 else RenderingServer.ENV_SSAO_QUALITY_LOW,
 				true, 0.5, 2, 50.0, 300.0)
-		RenderingServer.environment_set_ssil_quality(RenderingServer.ENV_SSIL_QUALITY_LOW, true, 0.5, 2, 50.0, 300.0)
+		RenderingServer.environment_set_ssil_quality(RenderingServer.ENV_SSIL_QUALITY_MEDIUM if bounce_on() else RenderingServer.ENV_SSIL_QUALITY_LOW, true, 0.5, 2, 50.0, 300.0)
 		RenderingServer.environment_set_sdfgi_ray_count(RenderingServer.ENV_SDFGI_RAY_COUNT_16)
 		RenderingServer.environment_set_sdfgi_frames_to_converge(RenderingServer.ENV_SDFGI_CONVERGE_IN_15_FRAMES)
 		RenderingServer.environment_set_volumetric_fog_volume_size(64 if fx >= 2 else 48, 64 if fx >= 2 else 40) # 96³ was 3.4x the work
@@ -270,6 +284,11 @@ func _load_controls(c: ConfigFile) -> void:
 	fov_add = clampf(float(c.get_value("g", "fov", fov_add)), -10.0, 15.0)
 	btn_scale = clampf(float(c.get_value("g", "btn", btn_scale)), 0.8, 1.3)
 	btn_alpha = clampf(float(c.get_value("g", "btn_a", btn_alpha)), 0.35, 1.0)
+	sharp_sh = bool(c.get_value("g", "sharp", sharp_sh))
+	eye = bool(c.get_value("g", "eye", eye))
+	dof = bool(c.get_value("g", "dof", dof))
+	water_ref = bool(c.get_value("g", "wref", water_ref))
+	bounce = bool(c.get_value("g", "bounce", bounce))
 
 func _save() -> void:
 	var c := ConfigFile.new()
@@ -279,6 +298,8 @@ func _save() -> void:
 	c.set_value("g", "bright", brightness)
 	c.set_value("g", "sens", look_sens); c.set_value("g", "fov", fov_add)
 	c.set_value("g", "btn", btn_scale); c.set_value("g", "btn_a", btn_alpha)
+	c.set_value("g", "sharp", sharp_sh); c.set_value("g", "eye", eye); c.set_value("g", "dof", dof)
+	c.set_value("g", "wref", water_ref); c.set_value("g", "bounce", bounce)
 	c.set_value("g", "tier", TIER if strong else 0)
 	c.set_value("g", "weak", WEAK_TIER if weak else 0)
 	c.save(PATH)
@@ -423,6 +444,11 @@ func _build_ui() -> void:
 	_row(v, "scale", "Render resolution", ["85%", "90%", "100%"])
 	_row(v, "effects", "Effects quality", ["Low", "Medium", "High"])
 	_row(v, "engine", "Renderer", ["High (best look)", "Light (faster)"])
+	_row(v, "sharp", "Sharp shadows", ["Off", "On"])
+	_row(v, "eye", "Eye adaptation", ["Off", "On"])
+	_row(v, "dof", "Depth of field", ["Off", "On"])
+	_row(v, "wref", "Water reflections", ["Off", "On"])
+	_row(v, "bounce", "Bounce light (Pro Max)", ["Off", "On"])
 	_row(v, "perf", "Performance monitor", ["Off", "On"])
 	_engine_note = Label.new()
 	_engine_note.add_theme_font_size_override("font_size", 15)
@@ -540,6 +566,8 @@ func _refresh() -> void:
 	_opts["perf"].select(1 if perf_hud else 0)
 	_opts["aa"].select(aa); _opts["scale"].select(scale_idx); _opts["effects"].select(effects)
 	_opts["engine"].select(0 if engine_next_hd() else 1)
+	_opts["sharp"].select(1 if sharp_sh else 0); _opts["eye"].select(1 if eye else 0); _opts["dof"].select(1 if dof else 0)
+	_opts["wref"].select(1 if water_ref else 0); _opts["bounce"].select(1 if bounce else 0)
 	_engine_note.visible = engine_next_hd() != engine_hd()
 	_engine_note.text = "Close and reopen the game to change the renderer"
 
@@ -556,6 +584,11 @@ func _on_select(i: int, key: String) -> void:
 		"effects": effects = i
 		"engine": set_engine(i == 0)
 		"perf": perf_hud = i == 1
+		"sharp": sharp_sh = i == 1
+		"eye": eye = i == 1
+		"dof": dof = i == 1
+		"wref": water_ref = i == 1
+		"bounce": bounce = i == 1
 	_reset_runtime()
 	_refresh(); _save(); apply()
 

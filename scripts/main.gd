@@ -344,6 +344,7 @@ func _build_player(char_name: String, at: Vector3) -> void:
 	cam.far = 400.0
 	arm.add_child(cam)
 	main_cam = cam
+	NFLook.eye_dof(cam) # «Eye adaptation» (and the depth of field the kiss turns on)
 	var lamp := OmniLight3D.new()
 	lamp.light_color = Color(1.0, 0.93, 0.82)
 	cam_pivot.add_child(lamp)
@@ -1805,7 +1806,8 @@ func _build_grade() -> void:
 	layer.add_child(grade)
 	grade.visible = Gfx.eff_effects() >= 1 # the governor can drop it mid-round
 	Gfx.changed.connect(func() -> void:
-		if grade: grade.visible = Gfx.eff_effects() >= 1)
+		if grade: grade.visible = Gfx.eff_effects() >= 1
+		if main_cam: NFLook.eye_dof(main_cam, -1.0 if not _focus_on else main_cam.global_position.distance_to(body.global_position)))
 	Gfx.look_changed.connect(func() -> void: # «مجال الرؤية» dragged in the settings: the camera follows live
 		if main_cam and scare_t <= 0.0 and slowmo <= 0.0: main_cam.fov = _base_fov())
 
@@ -3235,6 +3237,15 @@ func _carry_spot() -> Vector3:
 	var ky := _yaw_of(rules.killer)
 	return _pos_of(rules.killer) + Basis(Vector3.UP, ky) * Vector3(0, 0, -0.15) # (the body is put on her shoulder by _shoulder_carry)
 
+## «Depth of field» while I am in a kiss: the two of them sharp, the night behind them soft.
+var _focus_on := false
+func _cam_focus() -> void:
+	if main_cam == null: return
+	var on := _kissing(my_name)
+	if on == _focus_on and not on: return
+	_focus_on = on
+	NFLook.eye_dof(main_cam, main_cam.global_position.distance_to(body.global_position + Vector3(0, 1.5, 0)) if on else -1.0)
+
 ## The carried survivor over the killer's shoulder, her right hand on their legs (scripts/carry_pose.gd),
 ## on every phone, after both have been animated this frame. Not in her car (they ride slumped there).
 func _shoulder_carry() -> void:
@@ -3688,6 +3699,7 @@ func _process(dt: float) -> void:
 	amb.volume_db = lerpf(amb.volume_db, -30.0 if chasing else -13.0, fade)
 	# the end of the world: the moon grows in the sky for two minutes, then lands
 	_shoulder_carry()
+	_cam_focus()
 	if rules.powered and rules.doom >= 0.0:
 		var near := 1.0 - rules.doom / Rules.DOOM_TIME
 		world.set_moon_near(near)

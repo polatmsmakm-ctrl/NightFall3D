@@ -249,10 +249,12 @@ func _process(dt: float) -> void:
 		var centre: Vector3 = vic_stage.global_position + Vector3(0, 0, 0.6) # the stage sits 600 m up: work in world space
 		cam.global_position = centre + Vector3(sin(a) * 7.5, 2.2 + 0.3 * sin(t * 0.5), cos(a) * 7.5)
 		cam.look_at(centre + Vector3(0, 1.25, 0), Vector3.UP)
+		NFLook.eye_dof(cam, 7.5) # the ones who got out sharp, the gate and the night behind them soft
 		pad.queue_redraw()
 		if intro <= 0.0: # over to the numbers
 			vic_stage.visible = false
 			row_stage.visible = true
+			NFLook.eye_dof(cam, -1.0)
 			cam.position = home
 			cam.rotation = Vector3(-0.1, 0.0, 0.0)
 			t = 0.0

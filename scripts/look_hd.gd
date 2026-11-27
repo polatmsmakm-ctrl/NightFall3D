@@ -32,7 +32,7 @@ static func apply(env: Environment, kind: String) -> void:
 	# light bouncing off nearby surfaces: a lamp warms the wall beside it, a torch the floor
 	# OFF on the phone, like SDFGI below: the Empty Quarter's dunes came out in black blocks on the
 	# iPhone and this half-size pass was one of the suspects; SSAO stays.
-	env.ssil_enabled = false
+	env.ssil_enabled = Gfx.bounce_on() and kind != "day" # only when picked («Bounce light»); never on the desert
 	env.ssil_radius = 6.0
 	env.ssil_intensity = 0.85
 	env.ssil_sharpness = 0.98
@@ -76,7 +76,7 @@ static func apply(env: Environment, kind: String) -> void:
 	env.glow_hdr_threshold = 1.0 if kind != "day" else 1.4
 	for i in 7: env.set_glow_level(i, i in [1, 2, 3, 4])
 	# lamps and headlights mirrored in the car park's polished concrete
-	env.ssr_enabled = fx >= 2 and kind in ["garage", "rain"] # wet floors mirror the lights
+	env.ssr_enabled = fx >= 2 and Gfx.water_ref and kind in ["garage", "rain", "water"] # wet floors and the sea mirror the lights
 	env.ssr_max_steps = 48
 	env.ssr_fade_in = 0.15
 	env.ssr_fade_out = 2.0
@@ -135,3 +135,24 @@ static func skin(root: Node, file: String) -> void:
 			mat.subsurf_scatter_strength = 0.32
 			mat.subsurf_scatter_skin_mode = true
 			mat.subsurf_scatter_texture = mask
+
+## «Eye adaptation» and «Depth of field» on a camera: the picture slowly brightens in the dark and
+## darkens in the light (within a narrow range, so the night stays a night), and, while `focus` is
+## set, everything further than it goes soft. One CameraAttributesPractical per camera, reused.
+static func eye_dof(cam: Camera3D, focus := -1.0) -> void:
+	if cam == null or not hd(): return
+	var a := cam.attributes as CameraAttributesPractical
+	if a == null:
+		a = CameraAttributesPractical.new()
+		cam.attributes = a
+	a.auto_exposure_enabled = Gfx.eye and not Gfx.weak
+	a.auto_exposure_scale = 0.35 # how much of the way it adapts: a little, never day out of night
+	a.auto_exposure_speed = 0.6
+	a.auto_exposure_min_sensitivity = 60.0
+	a.auto_exposure_max_sensitivity = 420.0
+	var on := focus > 0.0 and Gfx.dof
+	a.dof_blur_far_enabled = on
+	if on:
+		a.dof_blur_far_distance = focus + 1.2
+		a.dof_blur_far_transition = 3.0
+		a.dof_blur_amount = 0.09

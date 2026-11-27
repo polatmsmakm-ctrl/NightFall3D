@@ -4080,7 +4080,8 @@ func look_kind() -> String:
 	if map_id == "rubkhali": return "day"
 	if map_id == "garage": return "garage"
 	if theme == "rain": return "rain"
-	return "fog" if theme == "fog" else "night"
+	if theme == "fog": return "fog"
+	return "water" if map_id in ["kuwait", "beach"] else "night" # (the sea mirrors the lights; otherwise a night)
 
 ## Visibility ranges by size (the optimisation pass): whatever is small stops drawing at about half
 ## the preset's view distance, everything else at the view distance (Low 80 m … Ultra 200 m; fog has
