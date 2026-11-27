@@ -135,6 +135,7 @@ func step(show: bool, want: float, pitch: float, yaw: float, dt: float) -> void:
 	var r_pole := rs + side * 0.35 - up * 0.45 - flat * 0.1
 	var l_pole := ls - side * 0.35 - up * 0.45 - flat * 0.1
 	rig.reach_arms(lw, rw, l_pole, r_pole, e > 0.35, (gdir + side * 0.15).normalized(), gdir)
+	rig.grip(0.75 if e > 0.35 else 0.0, 0.92) # the fingers round the grip (the left cupping the right)
 	_rw = rw; _gdir = gdir; _flat = flat
 	# the arms are posed by the IK after this, so the pistol is placed once the skeleton's final pose
 	# is known (`skeleton_updated`); placing it here first only covers the very first frame

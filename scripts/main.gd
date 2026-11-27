@@ -73,6 +73,8 @@ var hook_cam := 0.0           # seconds left of the camera swinging round to the
 var slowmo := 0.0             # seconds of the escape slow-motion left
 var heart_beat := 0.0         # drives the heartbeat buzz
 const Carry := preload("res://scripts/carry_pose.gd")
+const Impale := preload("res://scripts/hook_pose.gd")
+var _hook_t := 0.0
 var carry_arm := "" # the killer whose right arm is on someone's legs (let go when the carry ends)
 var carry_body := "" # who is over her shoulder (their rig goes back under their own node when it ends)
 var hit_anim := {}            # name -> seconds left of the one-shot flinch (and the fall, stand-up, unhook)
@@ -3194,18 +3196,29 @@ func me_locker() -> int:
 ## there: hanging still (hookhang), kicking to get off while they mash (struggle). The Beast's meal and
 ## what he leaves on the hook keep the old pose (scripts/feast.gd is measured on it).
 func _hook_pose(r: CharacterRig, dt: float, n := "") -> void:
-	var clip := "hang"
-	if n != "" and r.has("hookhang") and not _kept(n) and not (rules and rules.eaten(n)):
-		clip = "hookhang"
-		var e: float = float(rules.s[n].get("esc", 0.0)) if rules and rules.s.has(n) else 0.0
-		if e > float(hook_esc.get(n, 0.0)) + 0.0005: struggle_t[n] = 0.55
-		hook_esc[n] = e
-		if float(struggle_t.get(n, 0.0)) > 0.0 and r.has("struggle"): clip = "struggle"
-	# the Meshy hang holds the hips 18 cm lower in the clip than the old one: the same height on the hook
-	var y: float = (world.hook_hang_y if world else 0.62) + (0.18 if clip != "hang" else 0.0)
-	r.position.y = lerpf(r.position.y, y, 1.0 - exp(-10.0 * dt)) # the gallows hangs you lower
-	r.rotation = Vector3.ZERO
-	r.play(clip, 0.6 if clip == "hang" else 1.0)
+	# the Beast's meal and what he leaves on the hook keep the old pose (scripts/feast.gd is measured on it)
+	if n == "" or _kept(n) or (rules and rules.eaten(n)):
+		Impale.release(r)
+		r.position.y = lerpf(r.position.y, world.hook_hang_y if world else 0.62, 1.0 - exp(-10.0 * dt))
+		r.rotation = Vector3.ZERO
+		r.play("hang", 0.6)
+		return
+	# through the back and out of the chest, hands round the point (scripts/hook_pose.gd); struggling
+	# (the mash bar rising, so every phone sees it) they kick and pull at it
+	var e: float = float(rules.s[n].get("esc", 0.0)) if rules and rules.s.has(n) else 0.0
+	if e > float(hook_esc.get(n, 0.0)) + 0.0005: struggle_t[n] = 0.6
+	hook_esc[n] = e
+	var hi: int = int(rules.s[n].get("hook_i", -1)) if rules and rules.s.has(n) else -1
+	var at: Vector3 = world.hook_points[hi] if hi >= 0 and hi < world.hook_points.size() else r.get_parent().global_position - Vector3(0, 0, 0.9)
+	_hook_t += dt * 0.5
+	Impale.place(r, at, 1.0 if float(struggle_t.get(n, 0.0)) > 0.0 else 0.0, _hook_t + float(n.hash() % 7), dt)
+
+## Whoever is no longer on a hook lets go of its point.
+func _unimpale() -> void:
+	if rig and rig.has_meta("impaled") and my_state != "hooked": Impale.release(rig)
+	for n in remotes:
+		var rr: CharacterRig = remotes[n].rig
+		if rr and rr.has_meta("impaled") and rules and rules.hp(n) != "hooked": Impale.release(rr)
 
 ## A move played once on whoever it happened to (the fall when they go down, the stand-up when they are
 ## picked up, the drop off the hook): the state pose waits until it is done. Nothing without the clip.
@@ -3699,6 +3712,7 @@ func _process(dt: float) -> void:
 	amb.volume_db = lerpf(amb.volume_db, -30.0 if chasing else -13.0, fade)
 	# the end of the world: the moon grows in the sky for two minutes, then lands
 	_shoulder_carry()
+	_unimpale()
 	_cam_focus()
 	if rules.powered and rules.doom >= 0.0:
 		var near := 1.0 - rules.doom / Rules.DOOM_TIME

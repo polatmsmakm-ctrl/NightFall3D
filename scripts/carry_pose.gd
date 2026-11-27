@@ -31,6 +31,7 @@ static func place(k: CharacterRig, v: CharacterRig) -> void:
 	var hand := thigh + fwd * 0.12 + right * 0.02
 	var pole := sh + right * 0.5 - up * 0.25 + fwd * 0.25
 	k.reach_arms(hand, hand, pole, pole, false, Vector3.ZERO, -right)
+	k.grip(0.0, 0.7) # her fingers round the backs of their thighs
 
 ## Let go of the arm (she dropped them, hooked them, got stunned).
 static func release(k: CharacterRig) -> void:

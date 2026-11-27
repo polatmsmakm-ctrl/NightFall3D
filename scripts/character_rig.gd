@@ -6,12 +6,12 @@ extends Node3D
 ## the list can name clips the owner has not supplied yet: drop sprint.glb / hit.glb / fall.glb /
 ## standup.glb / cheer.glb in and the game starts using them with no code change.
 const ANIMS := ["idle", "walk", "run", "sprint", "crouchwalk", "hide", "attack", "injured", "dying",
-	"vault", "carry", "carried", "hang", "crawl", "repair", "hit", "fall", "standup", "slump", "drive", "hookhang", "struggle", "unhook", "draped"]
+	"vault", "carry", "carried", "hang", "crawl", "repair", "hit", "fall", "standup", "slump", "drive", "hookhang", "struggle", "unhook", "draped", "impaled", "impaled_kick"]
 const ONCE := ["hit", "fall", "attack", "vault", "standup", "unhook"] # played through once, then back to the state pose
-const LOOPING := ["draped", "dance_pop", "dance_funny", "dance_break", "dance_mom", "hookhang", "struggle", "crawl_back", "reach_help", "injured_walk", "climb_wall", "climb", "idle", "walk", "run", "sprint", "crouchwalk", "hide", "injured", "carry", "carried", "hang", "crawl", "repair", "campfire", "wave", "clap", "dance", "cheer", "slump", "drive"]
+const LOOPING := ["impaled", "impaled_kick", "draped", "dance_pop", "dance_funny", "dance_break", "dance_mom", "hookhang", "struggle", "crawl_back", "reach_help", "injured_walk", "climb_wall", "climb", "idle", "walk", "run", "sprint", "crouchwalk", "hide", "injured", "carry", "carried", "hang", "crawl", "repair", "campfire", "wave", "clap", "dance", "cheer", "slump", "drive"]
 ## Campfire emotes. There is no Mixamo clip for these in assets/anims, so they are posed here on the
 ## same skeleton: drop wave.glb / clap.glb / dance.glb in and the real clip is used instead.
-const EMOTES := {"wave": 2.4, "clap": 2.2, "dance": 4.0, "slump": 3.0, "drive": 3.0, "draped": 2.6}
+const EMOTES := {"wave": 2.4, "clap": 2.2, "dance": 4.0, "slump": 3.0, "drive": 3.0, "draped": 2.6, "impaled": 3.4, "impaled_kick": 0.9}
 const EMOTE_BONES := ["mixamorig_Hips", "mixamorig_Spine", "mixamorig_Spine1", "mixamorig_Spine2",
 	"mixamorig_Neck", "mixamorig_Head",
 	"mixamorig_LeftShoulder", "mixamorig_LeftArm", "mixamorig_LeftForeArm", "mixamorig_LeftHand",
@@ -279,6 +279,47 @@ func _emote_world(a: String, bone: String, ph: float) -> Quaternion:
 				"mixamorig_LeftUpLeg": return _w(KNEE, -1.30) * _w(FWD, 0.14)
 				"mixamorig_RightLeg": return _w(KNEE, 1.75)
 				"mixamorig_LeftLeg": return _w(KNEE, 1.75)
+		"impaled":
+			# hung on the hook through the chest (scripts/hook_pose.gd lifts them onto it and puts the
+			# hands round the point): slumped a little forward round it, the head hanging, the legs
+			# loose with the toes down, the whole body turning slowly on the hook
+			var sw := sin(ph * TAU)
+			var sw2 := sin(ph * TAU * 2.0 + 0.7)
+			match bone:
+				"mixamorig_Hips": return _w(UP, 0.05 * sw)
+				"mixamorig_Spine": return _w(side, 0.10)
+				"mixamorig_Spine1": return _w(side, 0.08)
+				"mixamorig_Spine2": return _w(side, 0.06)
+				"mixamorig_Neck": return _w(side, 0.3)
+				"mixamorig_Head": return _w(side, 0.38 + 0.05 * sw2) * _w(FWD, 0.18 + 0.06 * sw)
+				"mixamorig_RightArm": return _w(UP, 0.6) * _w(R_LIFT, -0.6)
+				"mixamorig_LeftArm": return _w(UP, -0.6) * _w(L_LIFT, -0.6)
+				"mixamorig_RightForeArm": return _w(UP, 1.2)
+				"mixamorig_LeftForeArm": return _w(UP, -1.2)
+				"mixamorig_RightUpLeg": return _w(KNEE, -0.38 - 0.06 * sw) * _w(FWD, -0.14)
+				"mixamorig_LeftUpLeg": return _w(KNEE, -0.22 + 0.06 * sw) * _w(FWD, 0.12)
+				"mixamorig_RightLeg": return _w(KNEE, 0.75 + 0.08 * sw2)
+				"mixamorig_LeftLeg": return _w(KNEE, 0.55 - 0.08 * sw2)
+		"impaled_kick":
+			# fighting the hook: legs kicking one after the other, the body twisting and arching back,
+			# the head up with the effort (the hands pull at the point: hook_pose.gd)
+			var k := sin(ph * TAU)
+			var k2 := sin(ph * TAU + PI)
+			match bone:
+				"mixamorig_Hips": return _w(UP, 0.18 * k)
+				"mixamorig_Spine": return _w(side, -0.06) * _w(UP, -0.08 * k)
+				"mixamorig_Spine1": return _w(side, -0.04)
+				"mixamorig_Spine2": return _w(side, 0.02)
+				"mixamorig_Neck": return _w(side, -0.05)
+				"mixamorig_Head": return _w(side, -0.12 + 0.08 * k) * _w(FWD, 0.1 * k2)
+				"mixamorig_RightArm": return _w(UP, 0.6) * _w(R_LIFT, -0.5)
+				"mixamorig_LeftArm": return _w(UP, -0.6) * _w(L_LIFT, -0.5)
+				"mixamorig_RightForeArm": return _w(UP, 1.3)
+				"mixamorig_LeftForeArm": return _w(UP, -1.3)
+				"mixamorig_RightUpLeg": return _w(KNEE, -0.3 - 0.9 * maxf(k, 0.0)) * _w(FWD, -0.12)
+				"mixamorig_LeftUpLeg": return _w(KNEE, -0.3 - 0.9 * maxf(k2, 0.0)) * _w(FWD, 0.12)
+				"mixamorig_RightLeg": return _w(KNEE, 0.4 + 1.3 * maxf(k, 0.0))
+				"mixamorig_LeftLeg": return _w(KNEE, 0.4 + 1.3 * maxf(k2, 0.0))
 		"draped":
 			# over the killer's shoulder (scripts/carry_pose.gd turns the whole body): folded at the
 			# hips, the back bent down, the head and the arms hanging, knees a little bent; everything
@@ -349,7 +390,7 @@ func _emote_anim(a: String, skel_path: String, char_rest: Vector3) -> Animation:
 		for k in steps + 1:
 			out.rotation_track_insert_key(tr, out.length * float(k) / steps, keys[k])
 	# the hop: in hips local space z is the vertical axis and -z is up
-	var dip := {"dance": [3.0, 4.0], "clap": [0.0, 1.0], "wave": [1.2, 3.0], "slump": [0.0, 1.0], "drive": [0.0, 1.0], "draped": [0.0, 1.0]}
+	var dip := {"dance": [3.0, 4.0], "clap": [0.0, 1.0], "wave": [1.2, 3.0], "slump": [0.0, 1.0], "drive": [0.0, 1.0], "draped": [0.0, 1.0], "impaled": [0.0, 1.0], "impaled_kick": [0.0, 1.0]}
 	if float(dip[a][0]) > 0.0:
 		var tr := out.add_track(Animation.TYPE_POSITION_3D)
 		out.track_set_path(tr, NodePath("%s:mixamorig_Hips" % skel_path))
@@ -377,9 +418,45 @@ func reach_clear() -> void:
 	if reach_mod:
 		reach_mod.engaged = false
 		reach_mod.use = [true, true]
+		reach_mod.grip = [0.0, 0.0]
 		reach_mod.aims = [Vector3.ZERO, Vector3.ZERO]
 
 ## The gun hold: one or both arms to their targets, the hands turned along `aim_l` / `aim_r`.
+## Close the hands (0 open .. 1 a fist) round what they hold, after reach_arms(). The fist is the
+## attack clip's own clenched hand, taken once per character.
+func grip(left: float, right: float) -> void:
+	if reach_mod == null: return
+	if reach_mod.fist.is_empty(): reach_mod.fist = fist()
+	reach_mod.grip = [left, right]
+
+var _fist := {}
+func fist() -> Dictionary:
+	if not _fist.is_empty() or skeleton == null or not player.has_animation("attack"): return _fist
+	var a := player.get_animation("attack")
+	var idx := -1
+	var tracks := {}
+	for t in a.get_track_count():
+		if a.track_get_type(t) != Animation.TYPE_ROTATION_3D: continue
+		var p := str(a.track_get_path(t))
+		var bone := p.get_slice(":", p.get_slice_count(":") - 1)
+		var b := skeleton.find_bone(bone)
+		if b < 0 or not (bone.contains("Hand") and (bone.contains("Thumb") or bone.contains("Index") or bone.contains("Middle") or bone.contains("Ring") or bone.contains("Pinky"))): continue
+		tracks[b] = t
+		if bone == "mixamorig_RightHandIndex2": idx = t
+	if idx < 0: return _fist
+	# the moment the index finger is bent furthest: that is the fist
+	var best := 0.0
+	var at := 0.0
+	var rest := skeleton.get_bone_rest(skeleton.find_bone("mixamorig_RightHandIndex2")).basis.get_rotation_quaternion()
+	for k in 24:
+		var time := a.length * k / 24.0
+		var ang := (rest.inverse() * a.rotation_track_interpolate(idx, time)).get_angle()
+		if ang > best:
+			best = ang
+			at = time
+	for b in tracks: _fist[b] = a.rotation_track_interpolate(tracks[b], at)
+	return _fist
+
 func reach_arms(left: Vector3, right: Vector3, left_pole: Vector3, right_pole: Vector3, use_left: bool, aim_l: Vector3, aim_r: Vector3) -> void:
 	reach(left, right, left_pole, right_pole)
 	if reach_mod == null: return
@@ -426,6 +503,6 @@ func play(anim: String, speed := 1.0) -> void:
 	if current == anim and player.speed_scale == speed: return
 	if not player.has_animation(anim): return
 	current = anim
-	if hunch: hunch.want = 0.0 if anim in ["drive", "slump", "hang", "carried", "draped", "dying", "crawl", "hide"] else 1.0
+	if hunch: hunch.want = 0.0 if anim in ["drive", "slump", "hang", "carried", "draped", "impaled", "impaled_kick", "dying", "crawl", "hide"] else 1.0
 	player.speed_scale = speed
 	player.play(anim, 0.2)

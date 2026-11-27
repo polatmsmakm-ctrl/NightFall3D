@@ -12,6 +12,9 @@ var hide_head := false
 var use := [true, true]                       # which arms it moves (the gun hold lowered: the right one only)
 var aims := [Vector3.ZERO, Vector3.ZERO]     # world: where each hand's fingers should point (zero: leave it)
 var _fingers := [-1, -1]                     # the middle finger's first bone of each hand
+var grip := [0.0, 0.0]                       # how far each hand closes into `fist` (the pistol, the carried legs)
+var fist := {}                               # finger bone -> its rotation in a closed hand (CharacterRig.fist())
+var _digits := [[], []]                      # each hand's finger bones
 var _bones := []                             # [[arm, forearm, hand] left, [..] right], neck
 var runs := 0                                # how many times it has run (the test reads it)
 var miss := 0.0                              # how far the wrists ended from the grips, last run
@@ -24,6 +27,11 @@ func _bones_of(sk: Skeleton3D) -> void:
 	_bones.append(sk.find_bone("mixamorig_Neck"))
 	for i in 2:
 		_fingers[i] = sk.find_bone("mixamorig_%sHandMiddle1" % ["Left", "Right"][i])
+		_digits[i] = []
+		for f in ["Thumb", "Index", "Middle", "Ring", "Pinky"]:
+			for k in 3:
+				var b := sk.find_bone("mixamorig_%sHand%s%d" % [["Left", "Right"][i], f, k + 1])
+				if b >= 0: _digits[i].append(b)
 
 func _process_modification() -> void:
 	var sk := get_skeleton()
@@ -43,6 +51,9 @@ func _process_modification() -> void:
 			var want := (inv.basis * aim).normalized()
 			var q3 := Quaternion((f - H.origin).normalized(), want)
 			sk.set_bone_global_pose(ch[2], Transform3D(Basis(q3) * H.basis, H.origin))
+		if float(grip[i]) > 0.0: # the fingers close round what the hand holds
+			for b in _digits[i]:
+				if fist.has(b): sk.set_bone_pose_rotation(b, sk.get_bone_pose_rotation(b).slerp(fist[b], float(grip[i])))
 		var wrist: Vector3 = sk.global_transform * sk.get_bone_global_pose(ch[2]).origin
 		miss = maxf(miss, wrist.distance_to(targets[i]))
 	# from the seat the camera is where her head is: the neck and everything on it (the head, and the

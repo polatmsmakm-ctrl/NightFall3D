@@ -87,7 +87,7 @@ func _ready() -> void:
 	# second gear
 	var labels := {}
 	for bt in m._buttons(): labels[bt[3]] = bt[2]
-	check(labels.get("gear", "") == "غيار 1", "a gear button by the speedometer (%s)" % labels.get("gear", "-"))
+	check(labels.get("gear", "") == "Gear 1", "a gear button by the speedometer (%s)" % labels.get("gear", "-"))
 	m._press("gear", 5)
 	check(car.gear == 2 and car.top() > 19.0, "second gear: up to %.0f km/h" % (car.top() * 3.6))
 	m._press("gear", 5)

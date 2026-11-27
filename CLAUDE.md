@@ -1397,3 +1397,47 @@ The Beast's meal and what he leaves on the hook keep the old `hang` pose (`feast
 the fire is dancing (`NFLobby._tick_song`: the Dances page preview, the emote, a friend's dance), fading
 in and out. It is on its own bus, **Dance** (`Aud.dance`, `Aud.DANCE`), with a slider on the Dances page
 (with an Off button) and «Dance music» in Sound and Settings — apart from the Music volume.
+
+## Finger bones in every character (`tools/add_fingers.py`)
+The characters had the 22-bone Mixamo body and no fingers, while the clips in `assets/anims` carry all
+40 Mixamo finger bones. `python3 tools/add_fingers.py IN.glb [OUT.glb]` adds the 20 bones of each hand
+(`mixamorig:<Side>Hand<Thumb|Index|Middle|Ring|Pinky><1-4>`) under the hands, on the character's own
+fingers (the hand's vertices past the knuckles split into four lateral bands, the thumb found beside
+them nearer the wrist), each with the clip skeleton's rest rotation, and moves the hand's skin weight
+onto them past the knuckles (thumb from its base). **Nothing else in the file changes**: triangles,
+UVs, normals, materials and the textures (embedded or beside it) stay exactly as they were. All 24
+character files (the `_hi` copies and the gorilla too) have them; `asset.extras.fingers` says so and
+the tool skips a file that already has them. The clips' finger keys are copied by bone name in
+`character_rig.gd`, so the fingers simply move now (a fist in the run and the attack).
+- **Closed hands**: `CharacterRig.grip(left, right)` closes the hands into `fist()` (the attack clip's own
+  clenched hand) after the arm IK (`NFReach.grip` / `fist`): the pistol (0.92 the shooting hand, 0.75 the
+  cupping one), the killer's hand on the carried legs (0.7), the hands round the hook's point (0.85).
+- `tools/hand_look.tscn` (NF_CHARS, NF_QUICK, NF_PALM) photographs the hands; `tools/finger_check.tscn`
+  prints how far the finger bones bend per clip.
+
+## The shoulder carry (`scripts/carry_pose.gd`)
+The killer carries a survivor over her right shoulder: the survivor in `draped` (posed in code: folded
+at the hips, back, head and arms hanging, knees a little bent, swaying), turned so the head hangs down
+her back and the legs down her front, hips on the shoulder (`LIFT`, `IN`); her right arm wraps the
+backs of the thighs (`reach_arms` + `grip`), her left swings with her own walk (the `carry` clip is no
+longer played: `walk` / `idle` instead, on every phone). `main._shoulder_carry()` runs after everything
+is animated; when the carry ends the arm lets go and the body goes back under its own node.
+`tools/carry_look.tscn` photographs it (NF_KILLER for the Beast).
+
+## On the hook: through the back, out of the chest (`scripts/hook_pose.gd`)
+The gallows' hook comes down behind the hook point's victim, curves through at about 2.45 m and lifts
+its point in front of them. A hooked survivor now hangs **on** it: chest (`Spine2`) at `Impale.CHEST`
+2.42 m above the hook point, feet about a metre off the ground, both hands round the point (`TIP`,
+`reach_arms` + `grip`). `impaled` (posed in code) hangs limp and turns slowly; while they struggle (the
+mash bar rising, so every phone sees it) `impaled_kick` kicks the legs, twists and arches the body
+and the hands pull at the point. Freed or saved: `unhook` drops them, the rig's lift eased to the
+ground. The Beast's meal and what he leaves on the hook keep the old `hang` pose. `tools/hook_look.tscn`.
+
+## The quality settings (Settings panel, saved in graphics.cfg)
+«Sharp shadows» (High shadows: the moon's map at 8192 on a strong phone, 4096 otherwise, soft-high PCF
+filtering — not the PCSS that drew black squares), «Eye adaptation» (`NFLook.eye_dof`: a
+CameraAttributesPractical with auto exposure over a narrow range, on the round camera), «Depth of
+field» (the kiss and the victory shot), «Water reflections» (SSR on Ultra effects for the rain, the car
+park and the sea maps: `look_kind` "water" for Kuwait City and the beach), «Bounce light (Pro Max)»
+(SSIL at medium quality; off by default: it is a suspect from the black-blocks recording), and on the
+Pro Max on Ultra the view distance goes to 260 m (`Gfx.view_dist`). 120 fps was already in «Frame rate».
