@@ -1368,3 +1368,32 @@ phone shows it), `unhook` (saved or free: the drop, with the rig's lift eased to
 `cheer` (victory shot), `wave` / `dance` (emotes, replacing the hand-posed ones) and the dances. `fall`,
 `standup` and `unhook` had their hip travel pinned (they walked 2.5 m / 0.8 m off and snapped back).
 The Beast's meal and what he leaves on the hook keep the old `hang` pose (`feast.gd` is measured on it).
+
+## The Social Sidebar (`scripts/social.gd`, no class_name; the owner: "like PUBG and Call of Duty")
+- **Accounts on the server** (`server.js`, `accounts.json` beside `stats.json`, both ignored by git): a
+  username belongs to the phone that first took it — `Net.token` (32 hex, made once, saved in
+  `profile.cfg`) goes with `hello`; another phone with that name gets `name_owned`. Each account has a
+  display name (`display`, 2-20 letters, set on my profile page), **mutual friends** and friend requests
+  (`inc` / `out`). Messages: `freq {to}`, `faccept {from}`, `fdecline {from}`, `fcancel {to}`,
+  `funfriend {name}`, `display {display}`; the server answers `social {me, friends, inc, out}` (rows
+  `{name, display, ch, lv}`) plus `freq_in` / `freq_ok` notices. Online and status still come with
+  `friends` / `presence`. **Render's free disk is wiped on a deploy**, so every phone also sends its
+  token, friends and sent requests with `hello`, and the server rebuilds from them.
+- **The panel**: slides in from the right (Friends row on the main page, «Invite friends» in a room),
+  frosted dark glass, SOCIAL with the online count, my own row, tabs FRIENDS / REQUESTS (red badge),
+  «Add friend by username» + SEND. Friends: ONLINE then OFFLINE, each with their character's portrait
+  ringed in the status colour (green In Menu, blue In Lobby, orange In Match, grey Offline + last
+  seen), display name, @username · level, INVITE (a room is made first if I have none). Tapping a row
+  opens their profile (portrait, display name, @username, numbers, Invite / Remove friend). Requests:
+  RECEIVED (ACCEPT / ✕) and SENT (Pending, CANCEL). A link at the bottom keeps the old friends page
+  (the secret character's code and gifts).
+- **Portraits**: `assets/ui/portraits/<char>.png`, round, rendered from the models by `tools/portraits.tscn`
+  (re-run it when a character changes). `Net.char_of(name)`: the character they play most, else one
+  from their name.
+- `node server/test.js` checks reserved names and the whole request flow; `tools/shot31.tscn` photographs it.
+
+## The dance song and its own volume
+`assets/sfx/dance_song.mp3` (the owner's song, loudness-matched) plays on the camp whenever anyone at
+the fire is dancing (`NFLobby._tick_song`: the Dances page preview, the emote, a friend's dance), fading
+in and out. It is on its own bus, **Dance** (`Aud.dance`, `Aud.DANCE`), with a slider on the Dances page
+(with an Off button) and «Dance music» in Sound and Settings — apart from the Music volume.

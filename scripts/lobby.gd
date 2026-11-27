@@ -13,6 +13,8 @@ const EMOTE_TEXT := ["Wave", "Dance", "Clap"]
 const EMOTE_ICON := ["hand", "note", "clap"]
 ## Every dance a player can pick (menu «Dances»): clips in assets/anims, made from the owner's Meshy motions.
 const DANCES := ["dance", "dance_pop", "dance_funny", "dance_break", "dance_mom"]
+var dance_song: AudioStreamPlayer # the owner's song (assets/sfx/dance_song.mp3), on while anyone at the fire dances
+var _song_k := 0.0
 const DANCE_NAMES := {"dance": "Hip Hop", "dance_pop": "Pop Dance", "dance_funny": "Funny Dancing", "dance_break": "Breakdance", "dance_mom": "Not Your Mom"}
 const SEATS := [[-1.05, 2.1], [-0.38, 2.2], [0.42, 2.2], [1.1, 2.1], [-1.78, 2.3], [1.82, 2.3]]
 const KILLER_AT := Vector3(1.6, 0.0, -7.4)
@@ -26,7 +28,7 @@ const HOOK_AT := Vector3(4.9, 0.0, -0.2)
 ## there the 3D scenery is not built at all; the characters stand on the painted ground, placed by where
 ## their feet are in the picture (pixels of the painting), lit by its fire.
 const Paint := preload("res://scripts/paint.gd")
-const P_SEATS := [Vector2(782.0, 652.0), Vector2(866.0, 664.0), Vector2(952.0, 652.0), Vector2(700.0, 676.0), Vector2(1030.0, 668.0), Vector2(620.0, 700.0)] # right of the fire first: the menu covers the left
+const P_SEATS := [Vector2(782.0, 652.0), Vector2(866.0, 664.0), Vector2(952.0, 652.0), Vector2(1012.0, 646.0), Vector2(1030.0, 668.0), Vector2(620.0, 700.0)] # right of the fire first: the menu covers the left
 const P_STAND := Vector2(1090.0, 790.0)      # the chosen character, big, between the menu and the map card
 const P_STALK := [Vector2(1222.0, 604.0), Vector2(892.0, 598.0), Vector2(1112.0, 592.0), Vector2(1000.0, 612.0), Vector2(782.0, 600.0)]
 
@@ -1204,6 +1206,7 @@ func _tick_air(dt: float, tt: float) -> void:
 func _process(dt: float) -> void:
 	_tick_emotes(dt)
 	_tick_stalker(dt)
+	_tick_song(dt)
 	var tt := Time.get_ticks_msec() / 1000.0
 	var flick := 0.78 + 0.14 * sin(tt * 13.0) * sin(tt * 4.3) + 0.08 * sin(tt * 27.0)
 	if painted:
@@ -1254,3 +1257,24 @@ func _process(dt: float) -> void:
 		_slide = maxf(_slide - dt * 3.4, 0.0)
 		var k: float = 1.0 - _slide
 		me_rig.position = _slide_from.lerp(STAND, k * k * (3.0 - 2.0 * k))
+
+## The owner's dance song: it comes up while anyone at the fire is dancing (the Dances page preview,
+## the emote, a friend's dance) and fades out after. Its own volume (Aud "Dance": settings and the
+## Dances page); at 0 it is off.
+func _tick_song(dt: float) -> void:
+	var on := false
+	for r in [me_rig] + stock + cast.values().map(func(c): return c.rig):
+		if r and is_instance_valid(r) and str(r.current).begins_with("dance"): on = true
+	if on and dance_song == null and ResourceLoader.exists("res://assets/sfx/dance_song.mp3"):
+		dance_song = AudioStreamPlayer.new()
+		var st: AudioStreamMP3 = load("res://assets/sfx/dance_song.mp3")
+		st.loop = true
+		dance_song.stream = st
+		dance_song.bus = Aud.DANCE
+		dance_song.volume_db = -60.0
+		add_child(dance_song)
+	if dance_song == null: return
+	_song_k = move_toward(_song_k, 1.0 if on else 0.0, dt * (1.5 if on else 0.6))
+	if _song_k > 0.0 and not dance_song.playing: dance_song.play()
+	dance_song.volume_db = linear_to_db(maxf(_song_k, 0.001))
+	if _song_k <= 0.0 and dance_song.playing: dance_song.stop()

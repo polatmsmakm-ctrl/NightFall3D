@@ -33,6 +33,14 @@ const HISTORY := 20
 var status := {}       # friend (lowercase) -> "menu" / "room" / "game" while online (the server says)
 var bio := ""           # a short line about me, on my profile (sent with my numbers)
 var fstats := {}       # friend (lowercase) -> {name, lv, xp, esc, kills, rounds}: the server passes them on
+# ---- the Social Sidebar ----
+var token := ""        # this phone's secret: my username belongs to it on the server (saved, never shown)
+var display := ""      # my display name, beside my @username on my friends' lists (saved)
+var fdisplay := {}     # friend (lowercase) -> their display name / character, from the server
+var req_in: Array = [] # friend requests I got: [{name, display, ch, lv}]
+var req_out: Array = [] # requests I sent and that wait for an answer (names; saved, resent with hello)
+var social_note := ""  # the last thing that happened ("Badr accepted your request"), for the sidebar
+signal social_changed
 
 var _ws: WebSocketPeer
 var _hello := false
@@ -68,7 +76,14 @@ func _ready() -> void:
 		rounds = int(c.get_value("p", "rounds", 0))
 		history = c.get_value("p", "history", [])
 		bio = str(c.get_value("p", "bio", ""))
+		token = str(c.get_value("p", "token", ""))
+		display = str(c.get_value("p", "display", ""))
+		req_out = c.get_value("p", "req_out", [])
 		if day_n.size() != 3: day_n = [0, 0, 0]
+	if token.length() < 32: # made once: from now on my username belongs to this phone
+		var b := Crypto.new().generate_random_bytes(16)
+		token = b.hex_encode()
+		save()
 	var env_url := OS.get_environment("NF_URL")
 	if env_url != "": url = env_url
 
@@ -89,6 +104,9 @@ func save() -> void:
 	c.set_value("p", "rounds", rounds)
 	c.set_value("p", "history", history)
 	c.set_value("p", "bio", bio)
+	c.set_value("p", "token", token)
+	c.set_value("p", "display", display)
+	c.set_value("p", "req_out", req_out)
 	c.set_value("p", "day", day)
 	c.set_value("p", "day_n", day_n)
 	c.set_value("p", "day_paid", day_paid)
@@ -256,22 +274,56 @@ func is_online(n: String) -> bool:
 func in_room() -> bool:
 	return room.has("code") and str(room.code) != ""
 
+## A friend request (the Social Sidebar): they see it under Requests and accept or decline.
 func add_friend(n: String) -> void:
 	n = n.strip_edges()
 	if n == "" or n.to_lower() == username.to_lower(): return
 	for f in friends:
 		if str(f).to_lower() == n.to_lower(): return
-	friends.append(n)
+	if not (n in req_out): req_out.append(n)
 	save()
-	send({"t": "friends", "friends": friends})
+	send({"t": "freq", "to": n})
 	changed.emit()
+
+func accept_friend(n: String) -> void:
+	send({"t": "faccept", "from": n})
+
+func decline_friend(n: String) -> void:
+	req_in = req_in.filter(func(r): return str(r.name).to_lower() != n.to_lower())
+	send({"t": "fdecline", "from": n})
+	social_changed.emit()
+
+func cancel_request(n: String) -> void:
+	req_out.erase(n)
+	save()
+	send({"t": "fcancel", "to": n})
+	social_changed.emit()
 
 func remove_friend(n: String) -> void:
 	friends.erase(n)
 	online.erase(n.to_lower())
 	save()
-	send({"t": "friends", "friends": friends})
+	send({"t": "funfriend", "name": n})
 	changed.emit()
+
+func set_display(d: String) -> void:
+	display = d.strip_edges().left(20)
+	save()
+	send({"t": "display", "display": display})
+	social_changed.emit()
+
+## A friend's display name (their @username if they never set one).
+func display_of(n: String) -> String:
+	return str(fdisplay.get(n.to_lower(), {}).get("display", n))
+
+## The character on a friend's portrait: the one they play most (their profile), else one from their name.
+func char_of(n: String) -> String:
+	var ch := str(fdisplay.get(n.to_lower(), {}).get("ch", ""))
+	if ch == "": ch = str(fstats.get(n.to_lower(), {}).get("ch", ""))
+	if ch == "":
+		var pool := ["survivor1", "survivor2", "survivor3", "survivor5", "survivor6", "survivor7", "survivor8", "survivor9", "survivor10"]
+		ch = pool[absi(n.to_lower().hash()) % pool.size()]
+	return ch
 
 func _process(dt: float) -> void:
 	if _ws == null:
@@ -291,7 +343,9 @@ func _process(dt: float) -> void:
 		WebSocketPeer.STATE_OPEN:
 			if not _hello:
 				_hello = true
-				send({"t": "hello", "name": username, "friends": friends, "stats": my_stats()})
+				var h := {"t": "hello", "name": username, "friends": friends, "stats": my_stats(), "token": token, "out": req_out}
+				if display != "": h["display"] = display
+				send(h)
 			while _ws.get_available_packet_count() > 0:
 				var m = JSON.parse_string(_ws.get_packet().get_string_from_utf8())
 				if m is Dictionary and m.has("t"): _handle(m)
@@ -323,6 +377,31 @@ func _handle(m: Dictionary) -> void:
 				for n in stt: status[str(n).to_lower()] = str(stt[n])
 			for row in m.get("stats", []):
 				if row is Dictionary: fstats[str(row.get("name", "")).to_lower()] = row
+		"social": # my friends, the requests I got and sent (the server keeps them; my copy is resent with hello)
+			var fl: Array = []
+			for r in m.get("friends", []):
+				if r is Dictionary:
+					fl.append(str(r.name))
+					fdisplay[str(r.name).to_lower()] = r
+			friends = fl
+			req_in = (m.get("inc", []) as Array).filter(func(r): return r is Dictionary)
+			for r in req_in: fdisplay[str(r.name).to_lower()] = r
+			var outs: Array = []
+			for r in m.get("out", []):
+				if r is Dictionary:
+					outs.append(str(r.name))
+					fdisplay[str(r.name).to_lower()] = r
+			req_out = outs
+			var me = m.get("me", {})
+			if me is Dictionary and str(me.get("display", "")) != "" and display == "": display = str(me.display)
+			save()
+			social_changed.emit()
+		"freq_in":
+			social_note = "%s sent you a friend request" % str(m.get("display", m.get("from", "")))
+			social_changed.emit()
+		"freq_ok":
+			social_note = "%s accepted your friend request" % str(m.get("display", m.get("from", "")))
+			social_changed.emit()
 		"fstats": # a friend finished a round
 			if m.get("s") is Dictionary: fstats[str(m.s.get("name", "")).to_lower()] = m.s
 		"presence":
@@ -345,7 +424,10 @@ func _handle(m: Dictionary) -> void:
 			secret = bool(m.get("on", true))
 			save()
 		"error":
-			if str(m.get("code", "")) == "name_taken":
+			if str(m.get("code", "")) == "name_owned": # this username belongs to another player's phone
+				state = "name_taken"
+				_ws.close()
+			elif str(m.get("code", "")) == "name_taken":
 				# coming back after a dropped connection, the server may still hold my old one for a
 				# few seconds: try again (a few times) instead of giving up on my own name
 				if _had_name == username.to_lower() and _taken_tries < 6:

@@ -403,6 +403,7 @@ func _build_ui() -> void:
 	v.add_child(hap)
 	_vol_rows.append(_vol_row(v, "music", "Music volume"))
 	_vol_rows.append(_vol_row(v, "sfx", "Game volume"))
+	_vol_rows.append(_vol_row(v, "dance", "Dance music"))
 	for r in _vol_rows: r.visible = false
 	_bright_row(v)
 	var ct := Label.new(); ct.text = "Controls"; ct.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

@@ -10,10 +10,12 @@ signal changed
 const PATH := "user://audio.cfg"
 const MUSIC := "Music"
 const SFX := "SFX"
+const DANCE := "Dance" # the owner's dance song: its own volume, apart from the music (settings and the Dances page)
 
 var master := 1.0
 var music := 0.9
 var sfx := 1.0
+var dance := 0.8
 var haptics := true   # the phone's vibration motor
 
 func _ready() -> void:
@@ -23,7 +25,7 @@ func _ready() -> void:
 	apply()
 
 func _ensure_buses() -> void:
-	for n in [MUSIC, SFX]:
+	for n in [MUSIC, SFX, DANCE]:
 		if AudioServer.get_bus_index(n) < 0:
 			AudioServer.add_bus()
 			var i := AudioServer.bus_count - 1
@@ -36,7 +38,7 @@ func _db(v: float) -> float:
 func apply() -> void:
 	AudioServer.set_bus_volume_db(0, _db(master))
 	AudioServer.set_bus_mute(0, master <= 0.005)
-	for pair in [[MUSIC, music], [SFX, sfx]]:
+	for pair in [[MUSIC, music], [SFX, sfx], [DANCE, dance]]:
 		var i := AudioServer.get_bus_index(str(pair[0]))
 		if i >= 0:
 			AudioServer.set_bus_volume_db(i, _db(float(pair[1])))
@@ -50,6 +52,7 @@ func set_vol(which: String, v: float) -> void:
 		"master": master = v
 		"music": music = v
 		"sfx": sfx = v
+		"dance": dance = v
 	apply()
 	save()
 
@@ -62,6 +65,7 @@ func get_vol(which: String) -> float:
 	match which:
 		"music": return music
 		"sfx": return sfx
+		"dance": return dance
 	return master
 
 func _load() -> void:
@@ -70,6 +74,7 @@ func _load() -> void:
 	master = clampf(float(c.get_value("a", "master", master)), 0.0, 1.0)
 	music = clampf(float(c.get_value("a", "music", music)), 0.0, 1.0)
 	sfx = clampf(float(c.get_value("a", "sfx", sfx)), 0.0, 1.0)
+	dance = clampf(float(c.get_value("a", "dance", dance)), 0.0, 1.0)
 	haptics = bool(c.get_value("a", "haptics", haptics))
 
 func save() -> void:
@@ -77,5 +82,6 @@ func save() -> void:
 	c.set_value("a", "master", snappedf(master, 0.01))
 	c.set_value("a", "music", snappedf(music, 0.01))
 	c.set_value("a", "sfx", snappedf(sfx, 0.01))
+	c.set_value("a", "dance", snappedf(dance, 0.01))
 	c.set_value("a", "haptics", haptics)
 	c.save(PATH)

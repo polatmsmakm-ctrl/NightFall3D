@@ -35,6 +35,59 @@ function cleanStats(name, s, old) {
   return { name, lv: n(s && s.lv), xp: n(s && s.xp), esc: n(s && s.esc), kills: n(s && s.kills), rounds: n(s && s.rounds),
     ch, bio, seen: (old && old.seen) || 0 };
 }
+// ---- accounts (the Social Sidebar): a username belongs to the phone that first took it (its secret
+// token), with a display name, its friends (mutual) and friend requests. Kept on disk, and every phone
+// also sends its own token, friends and sent requests with hello, so a server that lost its disk
+// (Render's free disk is wiped on a deploy) rebuilds them as the players come back.
+const ACCOUNTS_FILE = process.env.ACCOUNTS_FILE || __dirname + '/accounts.json';
+const accounts = new Map(); // lowercase name -> {name, display, token, friends:Set, inc:Set, out:Set}
+try {
+  for (const [k, a] of Object.entries(JSON.parse(fs.readFileSync(ACCOUNTS_FILE, 'utf8')))) {
+    accounts.set(k, { name: a.name, display: a.display || a.name, token: a.token || '', friends: new Set(a.friends || []), inc: new Set(a.inc || []), out: new Set(a.out || []) });
+  }
+} catch (e) { /* first run */ }
+let accDirty = false;
+setInterval(() => {
+  if (!accDirty) return;
+  accDirty = false;
+  const o = {};
+  for (const [k, a] of accounts) o[k] = { name: a.name, display: a.display, token: a.token, friends: [...a.friends], inc: [...a.inc], out: [...a.out] };
+  try { fs.writeFileSync(ACCOUNTS_FILE, JSON.stringify(o)); } catch (e) { /* read-only disk: memory only */ }
+}, 15000).unref();
+const cleanDisplay = (d, fallback) => {
+  const s = typeof d === 'string' ? d.replace(/[<>\\"\n\r\t]/g, '').trim().slice(0, 20) : '';
+  return s.length >= 2 ? s : fallback;
+};
+function account(name) {
+  const k = key(name);
+  let a = accounts.get(k);
+  if (!a) { a = { name, display: name, token: '', friends: new Set(), inc: new Set(), out: new Set() }; accounts.set(k, a); accDirty = true; }
+  return a;
+}
+function socialRow(k) {
+  const a = accounts.get(k);
+  const s = stats.get(k) || {};
+  return { name: a ? a.name : k, display: a ? a.display : k, ch: s.ch || '', lv: s.lv || 0 };
+}
+// my friends, the requests I got and the ones I sent (online and status come with 'friends' / 'presence')
+function sendSocial(c) {
+  if (!c || !c.name) return;
+  const a = accounts.get(key(c.name));
+  if (!a) return;
+  send(c, { t: 'social', me: { name: a.name, display: a.display }, friends: [...a.friends].map(socialRow),
+    inc: [...a.inc].map(socialRow), out: [...a.out].map(socialRow) });
+}
+function socialBoth(ka, kb) {
+  for (const k of [ka, kb]) { const u = users.get(k); if (u) { sendSocial(u); sendPresence(u); } }
+}
+function befriend(ka, kb) {
+  const a = accounts.get(ka), b = accounts.get(kb);
+  if (!a || !b) return;
+  a.friends.add(kb); b.friends.add(ka);
+  a.inc.delete(kb); a.out.delete(kb); b.inc.delete(ka); b.out.delete(ka);
+  accDirty = true;
+  socialBoth(ka, kb);
+}
 // where a player is right now, for their friends' lists: in the menus, in a room's lobby, or in a round
 function where(c) { return c.room ? (c.room.state === 'game' ? 'game' : 'room') : 'menu'; }
 const pending = new Map(); // lowercase name -> [{from, code, at}]: invites to a friend who was offline
@@ -115,6 +168,10 @@ const handlers = {
     if (c.name) return;
     if (!validName(m.name)) return send(c, { t: 'error', code: 'bad_name' });
     const name = m.name.trim();
+    const tok = typeof m.token === 'string' && /^[a-f0-9]{16,64}$/.test(m.token) ? m.token : '';
+    const acc = accounts.get(key(name));
+    // the username belongs to the phone that took it first: another phone gets «name owned»
+    if (acc && acc.token && tok && acc.token !== tok) return send(c, { t: 'error', code: 'name_owned' });
     const old = users.get(key(name));
     if (old) {
       // the same phone coming back after its connection dropped (Wi-Fi to 4G, the app in the
@@ -128,9 +185,27 @@ const handlers = {
     }
     c.name = name;
     users.set(key(name), c);
+    const a = account(name);
+    if (tok && !a.token) { a.token = tok; accDirty = true; }
+    a.name = name;
+    if (m.display !== undefined) { a.display = cleanDisplay(m.display, a.display || name); accDirty = true; }
+    // what the phone remembers fills in what the server may have lost: its friends and its sent requests
+    for (const f of (Array.isArray(m.friends) ? m.friends : []).slice(0, 100)) {
+      const fk = key(f);
+      if (!validName(String(f)) || fk === key(name)) continue;
+      if (!a.friends.has(fk)) { a.friends.add(fk); accDirty = true; }
+    }
+    for (const f of (Array.isArray(m.out) ? m.out : []).slice(0, 50)) {
+      const fk = key(f);
+      const fa = accounts.get(fk);
+      if (!fa || fk === key(name) || a.friends.has(fk)) continue;
+      a.out.add(fk); fa.inc.add(key(name)); accDirty = true;
+    }
+    c.friends = a.friends;
     if (m.stats && typeof m.stats === 'object') { stats.set(key(name), cleanStats(name, m.stats, stats.get(key(name)))); statsDirty = true; }
-    handlers.friends(c, m);
-    send(c, { t: 'welcome', name, maps: MAPS, ver: 5 });
+    sendPresence(c);
+    sendSocial(c);
+    send(c, { t: 'welcome', name, maps: MAPS, ver: 6 });
     notifyWatchers(name, true);
     // invites that came while I was away, if their room is still open
     const waiting = pending.get(key(name)) || [];
@@ -148,9 +223,59 @@ const handlers = {
     const k = key(c.name);
     for (const u of users.values()) if (u !== c && u.friends.has(k)) send(u, { t: 'fstats', s: row });
   },
-  friends(c, m) {
-    c.friends = new Set((Array.isArray(m.friends) ? m.friends : []).slice(0, 100).map(key));
+  friends(c, m) { // an older phone's own list: kept as my friends (the Social Sidebar's requests are the new way)
+    const a = account(c.name);
+    for (const f of (Array.isArray(m.friends) ? m.friends : []).slice(0, 100)) if (validName(String(f)) && key(f) !== key(c.name)) a.friends.add(key(f));
+    c.friends = a.friends;
+    accDirty = true;
     sendPresence(c);
+    sendSocial(c);
+  },
+  freq(c, m) { // a friend request by username
+    const me = key(c.name), to = key(m.to);
+    if (!validName(String(m.to || '')) || to === me) return send(c, { t: 'error', code: 'bad_friend' });
+    const t = accounts.get(to);
+    if (!t) return send(c, { t: 'error', code: 'no_user' });
+    const a = account(c.name);
+    if (a.friends.has(to)) return sendSocial(c);
+    if (a.inc.has(to)) return befriend(me, to); // they had already asked me: that is a yes on both sides
+    a.out.add(to); t.inc.add(me); accDirty = true;
+    sendSocial(c);
+    const u = users.get(to);
+    if (u) { sendSocial(u); send(u, { t: 'freq_in', from: a.name, display: a.display }); }
+  },
+  faccept(c, m) {
+    const me = key(c.name), from = key(m.from);
+    const a = account(c.name);
+    if (!a.inc.has(from)) return sendSocial(c);
+    befriend(me, from);
+    const u = users.get(from);
+    if (u) send(u, { t: 'freq_ok', from: a.name, display: a.display });
+  },
+  fdecline(c, m) {
+    const me = key(c.name), from = key(m.from);
+    const a = account(c.name), f = accounts.get(from);
+    a.inc.delete(from); if (f) f.out.delete(me); accDirty = true;
+    socialBoth(me, from);
+  },
+  fcancel(c, m) {
+    const me = key(c.name), to = key(m.to);
+    const a = account(c.name), t = accounts.get(to);
+    a.out.delete(to); if (t) t.inc.delete(me); accDirty = true;
+    socialBoth(me, to);
+  },
+  funfriend(c, m) {
+    const me = key(c.name), f = key(m.name);
+    const a = account(c.name), b = accounts.get(f);
+    a.friends.delete(f); if (b) b.friends.delete(me); accDirty = true;
+    socialBoth(me, f);
+  },
+  display(c, m) { // my display name: shown to my friends beside my @username
+    const a = account(c.name);
+    a.display = cleanDisplay(m.display, a.display || a.name);
+    accDirty = true;
+    sendSocial(c);
+    for (const f of a.friends) { const u = users.get(f); if (u) sendSocial(u); }
   },
   create(c, m) {
     leaveRoom(c);

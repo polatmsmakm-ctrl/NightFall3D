@@ -59,6 +59,11 @@ func _ready() -> void:
 		var lb := NFLobby.new()
 		tree.root.add_child.call_deferred(lb)
 		await frames(6)
+		if lb.painted: # the owner's painting: the same night at every hour, on purpose
+			print("at %02d:00 the camp is the owner's painting (fixed)" % h)
+			lb.queue_free()
+			await frames(3)
+			continue
 		print("at %02d:00 the camp is " % h, lb.period,
 			"  sky day=", snappedf(float(lb.sky_mat.get_shader_parameter("day")), 0.01),
 			" warm=", snappedf(float(lb.sky_mat.get_shader_parameter("warm")), 0.01),
@@ -72,7 +77,7 @@ func _ready() -> void:
 	var lb2 := NFLobby.new()
 	tree.root.add_child.call_deferred(lb2)
 	await frames(6)
-	print("a misty night: misty=", lb2.misty, " fog=", snappedf(lb2.env.fog_density, 0.001))
+	if not lb2.painted: print("a misty night: misty=", lb2.misty, " fog=", snappedf(lb2.env.fog_density, 0.001))
 	lb2.queue_free()
 	NFLobby.force_hour = -1
 	NFLobby.force_mist = -1

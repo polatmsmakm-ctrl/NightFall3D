@@ -56,7 +56,9 @@ var foot: HBoxContainer
 var map_pic: Control
 var _pic_map := ""
 var _apply_modes := false
-var _danced := false # the Dances page was open: my character goes back to standing when it closes # a room made with PLAY: send the modes picked before it existed
+var _danced := false
+const Social := preload("res://scripts/social.gd")
+var social: Control # the Social Sidebar (friends, requests, invites), over everything on the start screen # the Dances page was open: my character goes back to standing when it closes # a room made with PLAY: send the modes picked before it existed
 
 func _ready() -> void:
 	layer = 10
@@ -90,6 +92,19 @@ func _ready() -> void:
 	card.draw.connect(_draw_card)
 	add_child(card)
 	_build_start()
+	social = Social.new()
+	add_child(social)
+	social.profile.connect(func(n: String) -> void:
+		social.close()
+		prof_name = n
+		open("profile"))
+	social.invite.connect(func(n: String) -> void:
+		_invite(n)
+		social.note = "Invite sent to %s" % Net.display_of(n)
+		social.note_t = 3.0)
+	social.more_page.connect(func() -> void:
+		social.close()
+		open("friends"))
 	version = Label.new()
 	version.text = VERSION
 	version.add_theme_font_size_override("font_size", 15)
@@ -477,10 +492,15 @@ func _page_main() -> void:
 		_label("Engine errors last time:\n" + "\n".join(Array(errs).slice(-6)), 14, Color(1, 0.7, 0.35))
 	_label(_status(), 16, Color(0.6, 0.9, 0.6) if Net.state == "online" else Color(0.75, 0.75, 0.78))
 	var on := Net.state == "online"
-	var cr2 := _mrow("Create Room", "claw", func(): _create_room(), true, false, null, 48.0)
-	cr2.disabled = not on
+	_mrow("Create Room", "claw", func() -> void: # red like his mockup even before the server answers
+		if Net.state == "online": _create_room()
+		else:
+			toast = "Connecting to the server… try again in a moment"
+			_refresh(), true, false, null, 48.0)
 	_code_row(on)
-	_mrow("Friends (%d)" % Net.friends.size(), "people", func(): open("friends"), false, false, null, 48.0)
+	var waiting := Net.req_in.size()
+	_mrow("Friends (%d)" % Net.friends.size() + ("   •  %d request%s" % [waiting, "" if waiting == 1 else "s"] if waiting > 0 else ""), "people",
+		func(): social.open(), false, waiting > 0, null, 48.0)
 	_mrow("Trial Mode", "skull", func(): chars_from = "offline"; open("offline"), false, true, null, 48.0)
 	_mrow("Sound and Settings", "gear", func(): Gfx.open_settings(), false, false, null, 48.0)
 	_mrow("How to Play", "book", func(): open("help"), false, false, null, 48.0)
@@ -645,12 +665,16 @@ func _page_profile() -> void:
 	card.draw.connect(func() -> void:
 		var cx := card.size.x / 2.0
 		card.draw_circle(Vector2(cx, 70), 64, Color(0, 0, 0, 0.55))
-		NFIcons.portrait(card, Vector2(cx, 70), 56.0, col)
+		var pch := (Net.last_char if Net.last_char != "" else "survivor1") if mine else Net.char_of(who)
+		var pp := "res://assets/ui/portraits/%s.png" % pch
+		if ResourceLoader.exists(pp): card.draw_texture_rect(load(pp), Rect2(Vector2(cx - 60, 10), Vector2(120, 120)), false) # their character's face
+		else: NFIcons.portrait(card, Vector2(cx, 70), 56.0, col)
 		var stt := "menu" if mine else Net.status_of(who)
 		var ring: Color = {"menu": Color(0.5, 1, 0.5), "room": Color(1, 0.85, 0.4), "game": Color(1, 0.5, 0.4)}.get(stt, Color(0.5, 0.5, 0.5))
 		card.draw_arc(Vector2(cx, 70), 64, 0, TAU, 48, ring, 4.0, true))
 	box.add_child(card)
-	_label(who, 34, Color(1, 0.9, 0.7))
+	_label((Net.display if Net.display != "" else who) if mine else Net.display_of(who), 34, Color(1, 0.9, 0.7))
+	_label("@" + who, 18, Color(0.65, 0.65, 0.7))
 	_label("You" if mine else Net.status_text(who), 20, Color(0.7, 0.9, 0.7) if mine or Net.is_online(who) else Color(0.65, 0.65, 0.68))
 	if row.is_empty() or (not mine and not row.has("lv")):
 		_label("No numbers for them yet — they show after they play a round online", 18, Color(0.7, 0.7, 0.72))
@@ -662,6 +686,16 @@ func _page_profile() -> void:
 		var b := str(row.get("bio", ""))
 		if b != "" and not mine: _label("«%s»" % b, 20, Color(0.85, 0.85, 0.95))
 	if mine:
+		var hd := _row() # my display name: what friends see above my @username
+		var ed := _edit("disp", "Display name (2-20 letters)", hd)
+		if not typed.has("disp"): ed.text = Net.display if Net.display != "" else Net.username
+		ed.max_length = 20
+		_button("Save name", func():
+			var d := str(typed.get("disp", Net.display)).strip_edges()
+			if d.length() >= 2: Net.set_display(d)
+			typed.erase("disp")
+			toast = "Saved"
+			_refresh(), hd, true, "star")
 		var h := _row()
 		var e := _edit("bio", "A line about you (your friends see it)", h)
 		if not typed.has("bio"): e.text = Net.bio
@@ -677,9 +711,11 @@ func _page_profile() -> void:
 		for f in Net.friends: known = known or str(f).to_lower() == who.to_lower()
 		if known:
 			if Net.status_of(who) != "game": _button("Invite", func(): _invite(who), h2, true, "chat")
-			_button("Remove", func(): Net.remove_friend(who); open("friends"), h2, true, "exit")
-		else: _button("Add as friend", func(): Net.add_friend(who); _refresh(), h2, true, "chat")
-	_button("Back", func(): open("friends"), null, true, "exit")
+			_button("Remove friend", func(): Net.remove_friend(who); open("main"); social.open(), h2, true, "exit")
+		else: _button("Send friend request", func(): Net.add_friend(who); _refresh(), h2, true, "chat")
+	_button("Back", func():
+		open("main" if not Net.in_room() else "lobby")
+		if prof_name != "": social.open(), null, true, "exit")
 
 ## The friends' board (me and every friend the server has numbers for, best first) and my own
 ## last rounds. Numbers come from each phone; a friend who has not been online since the server
@@ -708,7 +744,7 @@ func _page_board() -> void:
 		var what: String = str({"escaped": "escaped", "dead": "You died", "killer": "Killer — %d kills" % int(hrow.get("kills", 0))}.get(res, res))
 		_label("%s   %s   %s   +%d" % [str(hrow.get("d", "")), str(MAPS.get(str(hrow.get("map", "")), hrow.get("map", ""))), what, int(hrow.get("score", 0))],
 			18, Color(0.5, 1, 0.6) if res == "escaped" else (Color(1, 0.55, 0.5) if res == "dead" else Color(1, 0.8, 0.5)))
-	_button("Back", func(): open("friends"), null, true, "exit")
+	_button("Back", func(): open("main" if not Net.in_room() else "lobby"), null, true, "exit")
 
 ## The three campfire emotes: played here at once, and relayed to the room if I am in one.
 func _emote_row() -> void:
@@ -751,7 +787,7 @@ func _page_lobby() -> void:
 		_button("Choose character — %s" % CHARS.get(str(me.get("char", "")), ""), func():
 			chars_from = "lobby"; open("chars"), null, true, "star")
 	_emote_row()
-	_button("Invite friends", func(): open("friends"), null, true, "chat")
+	_button("Invite friends", func(): social.open(), null, true, "chat")
 	if not host: _label("Waiting for the host to start...", 20, Color(0.7, 0.7, 0.7))
 	_button("Leave the room", func(): Net.send({"t": "leave"}), null, true, "exit")
 
@@ -1193,6 +1229,34 @@ func _page_dances() -> void:
 			Net.save()
 			if lobby and is_instance_valid(lobby): lobby.dance_preview(did)
 			_refresh(), Net.dance == did)
+	# the song's own volume: down to nothing is off (also in Sound and Settings, «Dance music»)
+	var vr := HBoxContainer.new()
+	vr.add_theme_constant_override("separation", 12)
+	box.add_child(vr)
+	var vl := Label.new()
+	vl.text = "Dance music  %d%%" % roundi(Aud.dance * 100.0) if Aud.dance > 0.005 else "Dance music  Off"
+	vl.custom_minimum_size = Vector2(220, 0)
+	vl.add_theme_font_size_override("font_size", 20)
+	if Net.font: vl.add_theme_font_override("font", Net.font)
+	vr.add_child(vl)
+	var sl := HSlider.new()
+	sl.min_value = 0.0; sl.max_value = 1.0; sl.step = 0.05
+	sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sl.custom_minimum_size = Vector2(0, 44)
+	sl.theme = NFUI.theme()
+	sl.set_value_no_signal(Aud.dance)
+	sl.value_changed.connect(func(v: float) -> void:
+		Aud.set_vol("dance", v)
+		vl.text = "Dance music  %d%%" % roundi(v * 100.0) if v > 0.005 else "Dance music  Off")
+	vr.add_child(sl)
+	var off := Button.new()
+	off.text = "On" if Aud.dance <= 0.005 else "Off"
+	off.custom_minimum_size = Vector2(118, 44)
+	off.pressed.connect(func() -> void:
+		Aud.set_vol("dance", 0.8 if Aud.dance <= 0.005 else 0.0)
+		_refresh())
+	NFUI.dress(off, "note")
+	vr.add_child(off)
 	_mrow("Dance now — everyone in the room sees it", "note", func() -> void:
 		if lobby and is_instance_valid(lobby): lobby.emote(Net.username, 1, Net.dance)
 		if Net.in_room(): Net.send({"t": "emote", "k": 1, "d": Net.dance}))

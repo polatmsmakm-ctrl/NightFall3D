@@ -10,5 +10,6 @@ server/node_modules/
 !assets/props/*.png.import
 !assets/animals/*.jpg.import
 server/stats.json
+server/accounts.json
 __pycache__/
 *.uid

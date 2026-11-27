@@ -12,16 +12,16 @@ const ok = (cond, what, extra = '') => {
   if (!cond) failures++;
 };
 
-function client(name) {
+function client(name, token) {
   const ws = new WebSocket(URL);
-  const c = { ws, name, seen: [], room: null };
+  const c = { ws, name, seen: [], room: null, token: token || require('crypto').randomBytes(16).toString('hex') };
   ws.on('message', (d) => {
     const m = JSON.parse(d.toString());
     c.seen.push(m);
     if (m.t === 'room') c.room = m;
   });
   c.send = (o) => ws.send(JSON.stringify(o));
-  c.ready = new Promise((res) => ws.on('open', () => { c.send({ t: 'hello', name, friends: [] }); res(); }));
+  c.ready = new Promise((res) => ws.on('open', () => { c.send({ t: 'hello', name, friends: [], token: c.token }); res(); }));
   c.last = (t) => [...c.seen].reverse().find((m) => m.t === t);
   c.count = (t) => c.seen.filter((m) => m.t === t).length;
   return c;
@@ -29,7 +29,7 @@ function client(name) {
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 (async () => {
-  const srv = spawn(process.execPath, [`${__dirname}/server.js`], { env: { ...process.env, PORT: String(PORT) }, stdio: 'ignore' });
+  const srv = spawn(process.execPath, [`${__dirname}/server.js`], { env: { ...process.env, PORT: String(PORT), STATS_FILE: '/tmp/nf_test_stats.json', ACCOUNTS_FILE: '/tmp/nf_test_accounts.json' }, stdio: 'ignore' });
   await wait(700);
   const host = client('Rashid');
   const mate = client('Badr');
@@ -231,7 +231,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const a1 = client('Mubarak');
   await a1.ready; await wait(150);
   let a1closed = false; a1.ws.on('close', () => { a1closed = true; });
-  const a2 = client('Mubarak'); // the same phone (same address), its old socket not noticed dead yet
+  const a2 = client('Mubarak', a1.token); // the same phone (same address), its old socket not noticed dead yet
   await a2.ready; await wait(250);
   ok(a2.count('welcome') === 1 && !a2.last('error'), 'a reconnecting phone gets its name back (no «name taken»)');
   ok(a1closed, 'and the old socket is closed');
@@ -242,6 +242,32 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const after = client('Ali'); await after.ready; await wait(150);
   ok(after.count('welcome') === 1, 'the server is still up after malformed messages');
   after.ws.close();
+
+  // --- the Social Sidebar: reserved names, friend requests, display names ---
+  const tokR = host.token;
+  const thief = client('Rashid', 'ab'.repeat(16)); await thief.ready; await wait(150);
+  ok(thief.last('error') && thief.last('error').code === 'name_owned', 'another phone cannot take a username that is owned');
+  thief.ws.close();
+  host.send({ t: 'freq', to: 'Badr' }); await wait(200);
+  const hs = host.last('social'), ms = mate.last('social');
+  ok(hs && hs.out.some((r) => r.name === 'Badr'), 'a sent request shows under Sent');
+  ok(ms && ms.inc.some((r) => r.name === 'Rashid'), 'the friend gets it under Requests', JSON.stringify(ms && ms.inc));
+  ok(mate.last('freq_in') && mate.last('freq_in').from === 'Rashid', 'and a live notice');
+  mate.send({ t: 'faccept', from: 'Rashid' }); await wait(200);
+  ok(host.last('social').friends.some((r) => r.name === 'Badr') && mate.last('social').friends.some((r) => r.name === 'Rashid'), 'accepted: friends on both sides');
+  ok(host.last('friends').online.includes('Badr'), 'and each sees the other online');
+  host.send({ t: 'display', display: 'Abu Fahad' }); await wait(200);
+  ok(mate.last('social').friends.find((r) => r.name === 'Rashid').display === 'Abu Fahad', 'a display name reaches friends');
+  third.send({ t: 'freq', to: 'Rashid' }); await wait(150);
+  host.send({ t: 'fdecline', from: 'Yousef' }); await wait(150);
+  ok(!host.last('social').inc.length && !third.last('social').out.length, 'a declined request is gone on both sides');
+  third.send({ t: 'freq', to: 'Nobody' }); await wait(150);
+  ok(third.last('error').code === 'no_user', 'a request to a name nobody has is refused');
+  host.send({ t: 'funfriend', name: 'Badr' }); await wait(150);
+  ok(!host.last('social').friends.some((r) => r.name === 'Badr') && !mate.last('social').friends.some((r) => r.name === 'Rashid'), 'unfriending removes both sides');
+  // the server loses its disk (a Render deploy): the phones bring their friends back with them
+  host.send({ t: 'freq', to: 'Badr' }); await wait(100); mate.send({ t: 'faccept', from: 'Rashid' }); await wait(150);
+  ok(tokR === host.token, 'the owner keeps his token');
 
   for (const c of [host, mate, third]) c.ws.close();
   srv.kill();

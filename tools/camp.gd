@@ -28,7 +28,8 @@ func _ready() -> void:
 	for id in ["forest", "village", "fareej", "rubkhali", "garage", "beach"]:
 		lob.set_map(id)
 		await frames(2)
-		print("camp as ", id, ": dressing nodes=", lob._dress.get_child_count(), " trees=", lob._trees[0].visible)
+		if lob.painted: print("camp as ", id, ": the owner's painting, unchanged (map_id=", lob.map_id, ")")
+		else: print("camp as ", id, ": dressing nodes=", lob._dress.get_child_count(), " trees=", lob._trees[0].visible)
 	lob.set_map("forest")
 	var seen := 0
 	var spots := {}
