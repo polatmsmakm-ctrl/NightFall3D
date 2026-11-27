@@ -25,6 +25,7 @@ const CHAR_COL := {
 	"survivor7": Color(0.95, 0.56, 0.76),
 	"survivor8": Color(0.62, 0.30, 0.52),
 	"survivor9": Color(0.52, 0.36, 0.86),
+	"survivor10": Color(0.80, 0.20, 0.18),
 	"killer2": Color(0.62, 0.44, 0.36),
 }
 
