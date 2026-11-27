@@ -145,6 +145,7 @@ func _build() -> bool:
 	var aps := hmodel.find_children("*", "AnimationPlayer", true, false)
 	if aps.is_empty(): return false
 	hap = aps[0]
+	Crumbs.mark("gorilla: horse clips")
 	for c in ["Walk", "Idle", "Graze", "Trot", "Gallop"]:
 		if hap.has_animation(c): hap.get_animation(c).loop_mode = Animation.LOOP_LINEAR
 	Crumbs.mark("gorilla: built")
@@ -258,6 +259,7 @@ func _start() -> void:
 		state = 3
 		return
 	state = 2
+	Crumbs.mark("gorilla: placing")
 	gp = catdog.gp
 	rng.seed = world.layout_seed * 15485863 + catdog.gen * 211 + 3
 	var away := atan2(catdog.den.x - gp.x, catdog.den.z - gp.z) + PI + rng.randf_range(-0.8, 0.8)
@@ -266,13 +268,16 @@ func _start() -> void:
 	var from := _clear_spot(spot, away + rng.randf_range(-1.2, 1.2), 9.0, 5.0) # the horse wanders in from here
 	horse.position = Vector3(from.x, _ground(from, spot.y), from.z)
 	horse.rotation.y = atan2(spot.x - from.x, spot.z - from.z)
+	Crumbs.mark("gorilla: horse walks")
 	_hclip("Walk", 1.0)
 	den = _clear_spot(spot, away + rng.randf_range(-0.5, 0.5), DEN_R, 16.0)
 	den.y = _ground(den, spot.y)
 	rig.position = den
 	rig.rotation.y = atan2(spot.x - den.x, spot.z - den.z)
+	Crumbs.mark("gorilla: idle")
 	rig.play("idle")
 	rig.visible = false
+	Crumbs.mark("gorilla: ready")
 	ph = 0
 	ph_t = 0.0
 
