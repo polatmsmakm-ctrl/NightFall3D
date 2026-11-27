@@ -1,9 +1,9 @@
 {
  "base": "eff9288fa6fd67dc67f7f4e51336f184feff7489",
- "ver": 1,
- "file": "patch_1.pck",
- "size": 19518968,
- "sha256": "e899a7f6d7def436915c592c04d6f8e386bc52b1e5168b300db98acea0a33460",
- "note": "English, the gorilla and the horse, the Beast eats on the hook, the kiss",
- "date": "2026-11-26T23:18:41Z"
+ "ver": 2,
+ "file": "patch_2.pck",
+ "size": 19521912,
+ "sha256": "f71cff0e8aab0cbd00ce6062076c0cc3d04fd2a56f9efac0709b42e61f026ae8",
+ "note": "Fix: crash after the second generator (gorilla); developer tools: try the Beast eating you",
+ "date": "2026-11-27T02:39:59Z"
 }
