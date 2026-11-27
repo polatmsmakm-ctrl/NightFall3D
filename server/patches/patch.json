@@ -1,9 +1,0 @@
-{
- "base": "eff9288fa6fd67dc67f7f4e51336f184feff7489",
- "ver": 4,
- "file": "patch_4.pck",
- "size": 19593576,
- "sha256": "6606d04e6a0147074554d12f3220c45997ee2eff226e7c0ec8ba172ba0cdeb5c",
- "note": "Crash fix: the gorilla scene can no longer crash the game; model test in developer tools",
- "date": "2026-11-27T15:51:26Z"
-}

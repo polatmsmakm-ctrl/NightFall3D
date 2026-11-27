@@ -75,7 +75,7 @@ func _ready() -> void:
 	card.draw.connect(_draw_card)
 	add_child(card)
 	version = Label.new()
-	version.text = VERSION + (" · update %d" % Patch.applied if Patch.applied > 0 else "")
+	version.text = VERSION
 	version.add_theme_font_size_override("font_size", 15)
 	version.add_theme_color_override("font_color", Color(0.55, 0.55, 0.58))
 	version.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -447,7 +447,6 @@ func _page_main() -> void:
 	if crash != "" and Dev.unlocked: # the owner's phone: where the last session stopped
 		var tail := Array(crash.split("\n")).slice(-8)
 		_label("Last time the game closed while:\n" + "\n".join(tail), 15, Color(1, 0.45, 0.4))
-		if (load("res://scripts/crumbs.gd") as GDScript).gorilla_off(): _label("(the gorilla scene is off on this phone until the next update)", 14, Color(1, 0.7, 0.4))
 	var cr := load("res://scripts/crumbs.gd") as GDScript
 	var errs: PackedStringArray = cr.last_errs
 	if Dev.unlocked and not errs.is_empty(): # the engine's own errors last session, crash or not

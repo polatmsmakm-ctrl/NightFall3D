@@ -41,28 +41,7 @@ const pending = new Map(); // lowercase name -> [{from, code, at}]: invites to a
 const INVITE_KEEP = 20 * 60 * 1000;
 const STALE_MS = 6000; // a connection silent this long can be replaced by its owner's new one
 
-// In-game updates (scripts/patch.gd): patch.json says which build it is for, its version and file;
-// the .pck files sit beside it in server/patches (made by .github/workflows/patch.yml).
-const PATCH_DIR = path.join(__dirname, 'patches');
 const server = http.createServer((req, res) => {
-  try {
-    const u = (req.url || '/').split('?')[0];
-    if (u === '/patch.json') {
-      const f = path.join(PATCH_DIR, 'patch.json');
-      if (!fs.existsSync(f)) { res.writeHead(404); res.end(); return; }
-      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' });
-      res.end(fs.readFileSync(f));
-      return;
-    }
-    const m = /^\/patches\/([A-Za-z0-9_.-]+\.pck)$/.exec(u);
-    if (m) {
-      const f = path.join(PATCH_DIR, m[1]);
-      if (!fs.existsSync(f)) { res.writeHead(404); res.end(); return; }
-      res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Length': fs.statSync(f).size });
-      fs.createReadStream(f).pipe(res);
-      return;
-    }
-  } catch (e) { console.error('http', e); }
   res.writeHead(200, { 'Content-Type': 'text/plain' });
   res.end(`NightFall server OK. online=${users.size} rooms=${rooms.size}`);
 });

@@ -1244,34 +1244,13 @@ loads `<name>.ogg` first, then `.mp3` (`SFX`, `SFX_LOOPS`).
   (A_premium_dark_horro #3). Still unused: Deep_unsettling_hum (the second take),
   Create_an_ultra-real #4, Premium_modern_horro #2 (the old click).
 
-## In-game updates (`scripts/patch.gd`, autoload `Patch`, the first autoload)
-The owner's friends get updates inside the game, with no Sideloadly, once they have an IPA that has
-the updater. **How to send one**: push the changes to main with `[skip ci]` (no IPA), run the
-**Patch** workflow (`.github/workflows/patch.yml`, optional `note` in Arabic), then Render → Manual
-Deploy. Every phone on that IPA downloads it the next time the game opens.
-- The IPA carries its commit in `res://build_id.txt` (written by `build-ipa.yml`, exported through the
-  preset's `include_filter`). Scripts are exported as **text** (`script_export_mode=0`) so a patch can
-  replace them.
-- `patch.yml` diffs the last successful Build IPA's commit against main, and `tools/make_patch.gd`
-  (run with `--script`) packs the changed files with `PCKPacker`: scripts and shaders as they are,
-  imported assets as their `.import` plus their `.godot/imported` files (S3TC/BPTC left out), and the
-  class list and UID table always. Exit 2 = something only an IPA can carry (`project.godot`,
-  `export_presets.cfg`, a `.tscn` / `.tres`): the workflow fails and says so. A patch can add or
-  replace files, never delete them. It is cumulative (everything since the IPA), so only the latest
-  `server/patches/patch_<ver>.pck` is kept, with `patch.json` (`base`, `ver`, `file`, `size`, `sha256`,
-  `note`).
-  **A new `class_name` cannot go in a patch** (the engine reads the class list at start-up, before
-  any pack is mounted; `tools/updater.tscn` shows it): `patch.yml` stops with an error and it takes an
-  IPA. A new script without a class name, loaded with `preload` / `load`, is fine.
-- The server serves `/patch.json` and `/patches/<file>.pck` (`server.js`, before the WebSocket).
-- `Patch._init` mounts the saved pack before any other script loads
-  (`load_resource_pack(..., true)`); a pack for another build is deleted. `Patch.check()` (2.5 s after
-  start) fetches `patch.json` from the server's https address, downloads a newer version for this
-  build with a bar at the top, checks size and SHA-256, saves it in `user://patch`, and then asks the
-  player to close and reopen the game (a box with «سكّر اللعبة الحين»; during a round only a line at
-  the top, the box comes after it). The menu's version text shows «تحديث N».
-- `tools/updater.tscn` tests the mount, make_patch, the download from the real server, the checksum
-  refusal, the next start and a new IPA.
+## Updates come as a new IPA (the in-game updater was removed)
+The owner asked (November 27) to drop the in-game updates and go back to the first way: every push to
+`main` builds `Nightfall.ipa` (`build-ipa.yml`, the `latest` release) and he installs it with Sideloadly.
+`scripts/patch.gd`, `patch.yml`, `ping.yml`, `tools/make_patch.gd`, `tools/updater.*`, the server's
+`/patch.json` and `/patches` routes and `server/patches/` are gone; `Crumbs.launch()` deletes what an
+older version saved (`user://patch`, and `user://no_gorilla`, the note that kept the gorilla off for good
+after the crash Update 4 fixed). Do not push to main with `[skip ci]` unless the owner says no build.
 
 ## The game is in English (the owner, November 26)
 Every on-screen string in `scripts/*.gd` was translated from Arabic to English in one pass (591

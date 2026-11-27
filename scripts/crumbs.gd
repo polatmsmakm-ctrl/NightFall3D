@@ -10,7 +10,7 @@ extends RefCounted
 const FILE := "user://crumbs.txt"
 const KEEP := 30
 const MAX_ERRS := 12 # engine errors written per session (an error repeated every frame must not flood it)
-const NO_GORILLA := "user://no_gorilla" # the gorilla's scene crashed this phone: off here for that update only
+const NO_GORILLA := "user://no_gorilla" # an old note that kept the gorilla off for good: deleted at launch
 
 static var lines := PackedStringArray()
 static var last_crash := ""   # the previous session's trail, if it ended in a crash
@@ -68,41 +68,29 @@ static func _take() -> void:
 		if " ERR " in l: last_errs.append(l)
 	if t != "" and not t.ends_with(" ok"):
 		last_crash = t
-		var tail := t.substr(maxi(t.rfind("\n"), 0))
-		if "gorilla:" in tail: # it died building or playing the gorilla: never again on this phone
-			var f := FileAccess.open(NO_GORILLA, FileAccess.WRITE)
-			if f:
-				f.store_string(str(_update())) # the update it crashed on: a newer one tries again
-				f.close()
-
-## True while the gorilla stays off on this phone: it crashed here on this same update. The file used
-## to have no number in it (it stayed off for good, even after Update 4 fixed the crash): that counts as
-## an older update, so the gorilla comes back.
-static func _update() -> int: # the update mounted now (the Patch autoload; 0 if none)
-	var ml := Engine.get_main_loop() as SceneTree
-	var p: Node = ml.root.get_node_or_null("Patch") if ml else null
-	return int(p.get("applied")) if p else 0
-
-static func gorilla_off() -> bool:
-	if not FileAccess.file_exists(NO_GORILLA): return false
-	var t := FileAccess.get_file_as_string(NO_GORILLA).strip_edges()
-	if t.is_valid_int() and int(t) == _update(): return true
-	DirAccess.remove_absolute(NO_GORILLA)
-	return false
 
 ## Once per launch: what the last session was doing when it stopped, if it did not stop cleanly.
 static func launch() -> String:
 	if not _read:
+		if FileAccess.file_exists(NO_GORILLA): DirAccess.remove_absolute(NO_GORILLA) # the crash it guarded is fixed
+		_clear_updates()
 		_take()
 		mark("launch ok")
 	listen()
 	return last_crash
 
 ## Start recording the engine's errors (once; Godot 4.5's Logger). From the menu (launch) and the
-## round's start: the Patch autoload cannot, it runs before the update it would come in is mounted.
+## round's start.
 static var _listening := false
 static func listen() -> void:
 	if _listening or not ClassDB.class_exists("Logger"): return
 	_listening = true
 	var s = load("res://scripts/err_log.gd")
 	if s: OS.add_logger(s.new())
+
+## The in-game updates are gone (every change comes as a new IPA): delete what an older version saved.
+static func _clear_updates() -> void:
+	var d := DirAccess.open("user://patch")
+	if d == null: return
+	for f in d.get_files(): d.remove(f)
+	DirAccess.remove_absolute("user://patch")
