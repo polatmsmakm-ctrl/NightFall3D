@@ -1,9 +1,9 @@
 {
  "base": "eff9288fa6fd67dc67f7f4e51336f184feff7489",
- "ver": 2,
- "file": "patch_2.pck",
- "size": 19521912,
- "sha256": "f71cff0e8aab0cbd00ce6062076c0cc3d04fd2a56f9efac0709b42e61f026ae8",
- "note": "Fix: crash after the second generator (gorilla); developer tools: try the Beast eating you",
- "date": "2026-11-27T02:39:59Z"
+ "ver": 3,
+ "file": "patch_3.pck",
+ "size": 19559472,
+ "sha256": "f84feb3c74b2d2c3bbcad4af8053a91011e2d9e7da5ef7436b2fdbc8bfde731a",
+ "note": "Crash tracker; the gorilla switches itself off after a crash",
+ "date": "2026-11-27T14:17:48Z"
 }
