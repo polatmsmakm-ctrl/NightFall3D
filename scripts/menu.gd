@@ -447,7 +447,7 @@ func _page_main() -> void:
 	if crash != "" and Dev.unlocked: # the owner's phone: where the last session stopped
 		var tail := Array(crash.split("\n")).slice(-8)
 		_label("Last time the game closed while:\n" + "\n".join(tail), 15, Color(1, 0.45, 0.4))
-		if FileAccess.file_exists("user://no_gorilla"): _label("(the gorilla scene is now off on this phone)", 14, Color(1, 0.7, 0.4))
+		if (load("res://scripts/crumbs.gd") as GDScript).gorilla_off(): _label("(the gorilla scene is off on this phone until the next update)", 14, Color(1, 0.7, 0.4))
 	var cr := load("res://scripts/crumbs.gd") as GDScript
 	var errs: PackedStringArray = cr.last_errs
 	if Dev.unlocked and not errs.is_empty(): # the engine's own errors last session, crash or not

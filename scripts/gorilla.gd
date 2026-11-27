@@ -97,7 +97,7 @@ func setup(w: NightWorld, cd: NFCatDog, b: NFBlood, cam_cb: Callable, skip_rids:
 	cam = cam_cb
 	skip = skip_rids
 	if not ResourceLoader.exists("res://assets/chars/gorilla.glb") or not ResourceLoader.exists(HORSE) \
-			or FileAccess.file_exists(Crumbs.NO_GORILLA): # (off on this phone after it crashed the game here once)
+			or Crumbs.gorilla_off(): # (off on this phone after it crashed the game here, on this update)
 		state = 3
 		return
 	roar_s = _load("scream_beast.mp3")
