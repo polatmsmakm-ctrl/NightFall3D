@@ -1483,6 +1483,15 @@ through meteors with the killer's ship behind, and (stage 3) the endings — Ear
   boulder field, ~1000 of them as one MultiMesh per kind per 40 m chunk (drawn to 75 m, his models'
   own LODs further off; 7% knee-high with a box), the big ones as cover (`_moon_prop`), and ~16k
   code-built pebbles (40 triangles each, 30 m chunks, drawn to 45 m). About half on older phones.
+- **His lunar outpost** (one fused 3.1 M-triangle Meshy mesh) split by geometry into ten parts with
+  every triangle unchanged (`tools/outpost_load.py`, `outpost_split.py`: building footprints from a
+  height map, the deck below -0.197, the rim, then connected pieces as corridors or cargo;
+  `outpost_export.py`: one GLB per part, his three maps byte for byte beside them). The seven buildings
+  (dome lab, comms tower, garage, research lab, medical, energy storage, dish station) are in
+  `assets/props/outpost/` at full detail; the platform, corridors, cargo and the whole outpost as one
+  backup are in `art/outpost/` (`.gdignore`: not imported, not in the IPA). `world._outpost_buildings`
+  hands the buildings out over the map at `OUTPOST_K` 32 (12 of them, the smaller ones twice; 7 on older
+  phones), each sunk to the lowest ground under it with a box of collision (`_moon_prop(..., recenter)`).
 - `tools/moon.tscn` tests it. His props were baked with `prop_bake.py` at about twice the first proposal
   (gate 120k / 4096, ramparts 60k, rocket 300k / 4096, rovers and statue 120k, tanker 100k, rocks kept
   whole); his originals are untouched.

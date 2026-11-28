@@ -13,3 +13,5 @@ server/stats.json
 server/accounts.json
 __pycache__/
 *.uid
+!assets/props/outpost/*.jpg.import
+!assets/props/outpost/*.png.import

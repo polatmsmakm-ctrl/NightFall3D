@@ -45,8 +45,15 @@ func _ready() -> void:
 		["32_moon_pad", w.gate_points[1][0] + Vector3(-6, 2.5, -6), NightWorld.MOON_ROCKET + Vector3(0, 10, 0)],
 		["32_moon_ground", Vector3(-20, 1.6, 30), Vector3(-34, 0.0, 52)],
 	]
+	for e in w.outpost_at.slice(0, 7):
+		var at: Vector3 = e[1]
+		var r: float = e[2]
+		var dir := Vector3(at.x, 0, at.z).normalized() if Vector3(at.x, 0, at.z).length() > 1.0 else Vector3(0, 0, 1)
+		views.append(["32_outpost_" + str(e[0]), at - dir * (r * 2.6) + Vector3(0, r * 0.55 + 2.0, 0), at + Vector3(0, r * 0.35, 0)])
 	for v in views:
-		if only != "" and not str(v[0]) in only: continue
+		var hit := only == ""
+		for tok in only.split(",", false): if str(v[0]).begins_with(tok): hit = true
+		if not hit: continue
 		cam.global_position = v[1]
 		cam.look_at(v[2])
 		await shot(v[0])

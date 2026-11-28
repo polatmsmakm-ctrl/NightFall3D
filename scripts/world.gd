@@ -5734,7 +5734,7 @@ var board_ring: MeshInstance3D
 
 ## One of the owner's Moon models standing on the ground, with a box of collision fitted to its own
 ## bounds (shrunk a little so you can press up against it), drawn up to `far` metres.
-func _moon_prop(name: String, at: Vector3, yaw: float, k := 1.0, solid := 0.85, far := 0.0) -> Node3D:
+func _moon_prop(name: String, at: Vector3, yaw: float, k := 1.0, solid := 0.85, far := 0.0, recenter := false) -> Node3D:
 	var ps := _model(name)
 	if ps == null: return null
 	var n := ps.instantiate() as Node3D
@@ -5755,6 +5755,10 @@ func _moon_prop(name: String, at: Vector3, yaw: float, k := 1.0, solid := 0.85, 
 	var body := StaticBody3D.new()
 	body.position = at
 	body.rotation.y = yaw
+	if recenter and not first: # a piece of his outpost sits where it stood in the outpost: bring it to the origin
+		var mid := box.position + box.size / 2.0
+		n.position = -Vector3(mid.x, box.position.y, mid.z) * k
+		box.position -= Vector3(mid.x, box.position.y, mid.z)
 	if solid > 0.0 and not first:
 		var cs := CollisionShape3D.new()
 		var bs := BoxShape3D.new()
@@ -5862,6 +5866,33 @@ func _moon_mast(at: Vector3, yaw: float, energy := 3.0, reach := 22.0, tilt := 1
 	_amb_light(l)
 	add_child(body)
 	_blob(at, 0.8)
+
+## His lunar outpost, split into its buildings (assets/props/outpost/, every triangle and his own maps as
+## he made them), handed out over the whole map: each building once, the smaller ones twice (once each
+## on the older phones). OUTPOST_K turns the outpost's units into metres (the dome lab ~26 m across).
+const OUTPOST_K := 32.0
+const OUTPOST := [["dome_lab", 15.0], ["comms_tower", 7.0], ["garage", 10.0], ["research_lab", 7.5], ["medical", 8.0],
+	["energy_storage", 7.5], ["dish_station", 6.0], ["research_lab", 7.5], ["medical", 8.0], ["energy_storage", 7.5], ["dish_station", 6.0], ["comms_tower", 7.0]]
+var outpost_parts := 0
+var outpost_at := [] # [name, where] of each one placed
+func _outpost_buildings(rng: RandomNumberGenerator) -> void:
+	var n := 7 if Gfx.weak else OUTPOST.size()
+	for i in n:
+		var name: String = OUTPOST[i][0]
+		var r: float = OUTPOST[i][1]
+		if _model("outpost/" + name) == null: continue
+		for t in 40:
+			var p := _free_spot(rng, r)
+			if p == Vector3.INF: break
+			if absf(p.x) > WALL - r - 3.0 or absf(p.z) > WALL - r - 3.0 or _near_gate_path(p.x, p.z): continue
+			var low := p.y
+			for k in 8: # sit on the lowest ground under it, so no edge floats over a crater
+				var a := TAU * k / 8.0
+				low = minf(low, height(p.x + sin(a) * r * 0.8, p.z + cos(a) * r * 0.8))
+			if _moon_prop("outpost/" + name, Vector3(p.x, low - 0.15, p.z), rng.randf() * TAU, OUTPOST_K, 0.82, 0.0, true):
+				outpost_parts += 1
+				outpost_at.append([name, Vector3(p.x, low, p.z), r])
+			break
 
 ## His rocks strewn all over the ground (the owner: "a lot, so it suits the vibe of the Moon"): his
 ## asteroid and iron-vein stones and his boulder field, hundreds of them, as one MultiMesh per kind
@@ -6011,6 +6042,7 @@ func _build_moon() -> void:
 	var put := func(name: String, pad: float, k: float, solid := 0.85, far := 0.0) -> void:
 		var p := _free_spot(rng, pad)
 		if p != Vector3.INF: _moon_prop(name, p - Vector3(0, 0.05, 0), rng.randf() * TAU, k, solid, far)
+	_outpost_buildings(rng)
 	for i in 3: put.call("moon_rover", 5.0, 1.0)
 	for i in 2: put.call("moon_titan", 6.0, 1.0)
 	for i in 2: put.call("moon_tanker", 7.0, 1.0)
