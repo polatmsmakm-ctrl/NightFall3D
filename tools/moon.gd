@@ -81,7 +81,7 @@ func _ready() -> void:
 	check(float(w._sky_mat.get_shader_parameter("meteor_near")) > 0.2, "the meteor grows in the sky (%.2f)" % float(w._sky_mat.get_shader_parameter("meteor_near")))
 	await put(m, NightWorld.MOON_BOARD)
 	await frames(10)
-	check(m.rules.hp("P") == "escaped", "in the boarding ring: out (%s)" % m.rules.hp("P"))
+	check(m.rules.in_rocket("P") and int(m.rules.fl.st) == 1 and str(m.rules.fl.pil) == "P", "in the boarding ring: into the rocket, at the controls (%s)" % str(m.rules.fl))
 	# the pad's walls
 	m2_walls(m, w)
 	await frames(2)

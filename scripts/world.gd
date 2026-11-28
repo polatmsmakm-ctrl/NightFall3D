@@ -5753,6 +5753,9 @@ var rifle_stand: Node3D # the rifle lying on its crate (hidden while she has it)
 # ---------------- «The Moon» ----------------
 var moon_props := 0          # the owner's models placed on the Moon (the tests count them)
 var rocket: Node3D           # the escape rocket on its pad (stage 2 flies it)
+var rocket_tower: Node3D     # its launch tower and pad, which stay behind
+var kship_spot := Vector3.INF # «The Moon»: where the killer's spaceship waits on the pad (NFFlight flies it)
+var kship_node: Node3D
 var board_ring: MeshInstance3D
 
 ## One of the owner's Moon models standing on the ground, with a box of collision fitted to its own
@@ -6160,12 +6163,17 @@ func _build_launch_pad() -> void:
 		var a := TAU * k / 16.0
 		_mesh_box(body, Vector3(2.2, 0.04, 0.5), r + Vector3(sin(a) * 10.4, 0.52, cos(a) * 10.4), stripe, Vector3(0, a + PI / 2.0, 0))
 	# the rocket
-	var rps := _model("moon_rocket")
-	if rps:
-		rocket = rps.instantiate() as Node3D
-		rocket.position = r + Vector3(0, 0.5, 0)
-		add_child(rocket)
+	# his Escape Rocket in two pieces cut from one model (tools/glb_cut.py): the tower and pad stay, the
+	# rocket itself (`rocket`) is what lifts off in the chase
+	for piece in ["moon_rocket_tower", "moon_rocket_ship"]:
+		var rps := _model(piece)
+		if rps == null: continue
+		var rn := rps.instantiate() as Node3D
+		rn.position = r + Vector3(0, 0.5, 0)
+		add_child(rn)
 		moon_props += 1
+		if piece == "moon_rocket_ship": rocket = rn
+		else: rocket_tower = rn
 	var rcs := CollisionShape3D.new() # his rocket stands in its own tower on its own platform: one box round them
 	var rsh := BoxShape3D.new()
 	rsh.size = Vector3(12.0, 26.0, 9.6)
@@ -6217,6 +6225,32 @@ func _build_launch_pad() -> void:
 	for p in [Vector3(x0 + 5.0, 0, z1 + 6.0), Vector3(x1 - 5.0, 0, z1 + 6.0), Vector3(x0 + 5.0, 0, z0 - 8.0), Vector3(x1 - 5.0, 0, z0 - 8.0)]:
 		var aim := Vector2(r.x - p.x, r.z - p.z)
 		_moon_mast(p, atan2(aim.x, aim.y), 9.0, 70.0, 0.18) # floodlights on the rocket
+	# the killer's spaceship (his Spaceship model), parked on the pad's west side, nose to the south:
+	# once the rocket is up she can take it after them (NFFlight)
+	kship_spot = Vector3(-36.0, 0.0, z0 - 58.0)
+	var ksp := _model("moon_ship")
+	if ksp:
+		kship_node = Node3D.new()
+		kship_node.name = "KillerShipParked"
+		var km := ksp.instantiate() as Node3D
+		km.scale = Vector3.ONE * 1.15
+		kship_node.add_child(km)
+		kship_node.position = kship_spot + Vector3(0, 1.2, 0)
+		add_child(kship_node)
+		moon_props += 1
+		for sx in [-1.0, 1.0]: # standing on two landing legs of light
+			var gl := OmniLight3D.new()
+			gl.light_color = Color(0.3, 0.7, 1.0)
+			gl.light_energy = 2.4
+			gl.omni_range = 9.0
+			gl.position = Vector3(sx * 3.9, 0.6, 7.5)
+			kship_node.add_child(gl)
+	var kcs := CollisionShape3D.new()
+	var ksh := BoxShape3D.new()
+	ksh.size = Vector3(9.5, 4.0, 15.0)
+	kcs.shape = ksh
+	kcs.position = kship_spot + Vector3(0, 2.0, 0)
+	body.add_child(kcs)
 
 ## A fade from the bottom up, for a column of light.
 func _beam_tex() -> GradientTexture2D:

@@ -1512,6 +1512,40 @@ through meteors with the killer's ship behind, and (stage 3) the endings — Ear
   (gate 120k / 4096, ramparts 60k, rocket 300k / 4096, rovers and statue 120k, tanker 100k, rocks kept
   whole); his originals are untouched.
 
+## «The Moon», stage 2: the rocket chase (`scripts/flight.gd`, `NFFlight`)
+- **Boarding**: on the Moon the boarding ring no longer lets you out: `escape` there (and `rboard`) puts
+  you **in the rocket** (`Rules.fl`, both rules files, snapshot `fl`). The first one in steers (`pil`),
+  the second fires the boost (`bst`), up to six ride. It lifts off `LAUNCH_WAIT` 15 s after the first one
+  is in, at once when nobody else is left on the Moon, or when the meteor lands. Aboard, nobody can be
+  hit, healed or helped (`in_rocket`, `free_now`), and the meteor does not kill them.
+- **The flight** happens far above the map (`NFFlight.FLY_O`, y 20 km) along -z, `Rules.FLY_LEN` 42 km
+  to the Earth in `FLIGHT_TIME` 3:30. The pilot's phone flies it (stick: side to side and up and down;
+  forward it runs to `CRUISE` 235, `ROCKET_MAX` 300 with the boost) and its `st` (animation `rocket`) is
+  the rocket for everyone, followed a little ahead (`_predict`). The boost (`boost {on}`) has a tank:
+  `BOOST_LEN` 9 s, refills in `BOOST_FILL` 18 s.
+- **Meteors**: ~700, the same on every phone from `world.layout_seed` (`_gen_meteors`), moved by the
+  rules' flight clock `fl.c` — nothing is sent about them. Denser, faster and bigger toward the Earth;
+  kinds: drifting, crossing from the side, coming down the line at you, falling from above. Big ones
+  (r ≥ `BIG_R`) set off an alarm (sound, flashing frame, a bracket on it). The phone whose ship touches
+  one sends `mhit {m}`: it is gone everywhere, the ship's engine is damaged `DMG_TIME` 3.5 s (half
+  speed, flames short, sparks), the speed is knocked down, the camera shakes. Her ship the same.
+- **The killer's ship**: his Spaceship (`assets/props/moon_ship.glb`, prop_bake 150k / 4096, maps beside
+  it at ETC2) parked on the pad's west side (`world.kship_spot`, `layout.q`). `KSHIP_LOCK` 8 s after
+  lift-off her interact button there is «Take off after them» (`kship`); her ship (`KILLER_MAX` 320,
+  heavier sideways) starts at the Moon end. In the rocket's exhaust (`WASH_L` / `WASH_R`) she is held
+  back, so she has to come alongside to ram (`rram`, her phone decides, the server checks 20 m): the
+  rocket is lost and **everyone aboard dies**. Out of time: the same. At the Earth (`rland`, the pilot's
+  phone; the server checks the position): everyone aboard escapes (+250). While she flies, her actions
+  on the Moon are refused, and her phone puts her back on the pad when the flight is over.
+- In trial mode the computer killer flies too (`_bot_fly`: alongside, then in; dodges what is in front).
+- **His rocket is cut in two** (`tools/glb_cut.py rocket`, every triangle as it was): `moon_rocket_ship.glb`
+  (the rocket and its boosters: lifts off the pad and flies) and `moon_rocket_tower.glb` (the tower and
+  the platform: stay). Both share `moon_rocket_map_*.jpg`; the whole model is kept in `art/rocket/`.
+- Flames: `shaders/flame.gdshader` (additive cones). On screen (`draw_hud`): km to the Earth, the clock,
+  a Moon-to-Earth strip with both ships, the speed and the boost tank, «ENGINE DAMAGED», how far she is.
+  The sky on a flying phone turns the Earth dead ahead and grows it (`disc_r`) as they near it, with the
+  giant meteor beside it. `tools/flight.tscn` tests it; `tools/shot34.tscn` photographs it.
+
 ## The three new killers (`killer3` «The Midnight Revenant», `killer4` «Violet Wraith», `killer5` «Ebonwing Seraph»)
 - His sculpts (1.99 M, 1.39 M, 3.11 M triangles), none of them in a T-pose, rigged with
   `rig_character.py --pose tools/rig/<revenant|wraith|seraph>_pose.json --facing keep --hair 5 --bake

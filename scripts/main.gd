@@ -28,6 +28,7 @@ var shake_last := -9.0
 var shake_hi := false
 var kiss_cd := {}   # survivor -> when (msec) their last kiss happened, from the events
 var gorilla: Node3D # the owner's gorilla and the horse, after the cat and the dog (scripts/gorilla.gd)
+var flight: NFFlight # «The Moon»: the rocket chase (scripts/flight.gd)
 const SFX := ["knife1", "knife2", "knife3", "knife4", "gunshot", "scream_beast", "crow", "raven", "gate", "heart", "breath", "steps_out", "steps_in", "gen_run", "chase", "ambient", "doom", "rope", "male_pain", "scream1", "scream2", "oof1", "oof2", "oof3",
 	# the owner's sound pack (November): see «The owner's sound pack» in CLAUDE.md
 	"heart_fast", "breath_hurt", "breath_hide", "whimper", "steps_killer", "steps_beast", "steps_hurt", "power_hum", "terror",
@@ -35,7 +36,7 @@ const SFX := ["knife1", "knife2", "knife3", "knife4", "gunshot", "scream_beast",
 	"trap_snap", "vault", "fall1", "fall2", "fall3", "groan1", "groan2", "groan3", "scare",
 	"struggle_m1", "struggle_m2", "struggle_m3", "struggle_f1", "struggle_f2", "struggle_f3", "breath_m", "breath_f", "breath_hurt_m",
 	"heal_other", "heal_self", "torch_on", "torch_off", "steps_approach",
-	"impact", "final", "warn", "hook_sting", "chime", "healed", "locker", "thunder"]
+	"impact", "final", "warn", "hook_sting", "chime", "healed", "locker", "thunder", "car_pass"]
 const SFX_LOOPS := ["heart", "heart_fast", "breath", "breath_hurt", "breath_hide", "whimper", "steps_out", "steps_in", "steps_killer",
 	"steps_beast", "steps_hurt", "gen_run", "chase", "ambient", "power_hum", "terror", "moon_rumble", "amb_night", "amb_sea",
 	"amb_garage", "amb_storm", "amb_cold", "breath_m", "breath_f", "breath_hurt_m", "heal_other", "heal_self", "steps_approach"]
@@ -270,7 +271,9 @@ func _start(c: Dictionary) -> void:
 	rules = Rules.new()
 	rules.gun = bool(c.get("gun", false)) # «وضع السلاح»: the host's choice, sent with start
 	rules.sniper = world.sniper
-	if world.map_id == "moon": rules.doom_time = Rules.DOOM_MOON # 3:30 to the rocket before the meteor hits
+	if world.map_id == "moon":
+		rules.doom_time = Rules.DOOM_MOON # 3:30 to the rocket before the meteor hits
+		rules.moon = true # the boarding ring puts you in the rocket (the chase: scripts/flight.gd)
 	rules.setup(world.gen_points.size(), world.gate_points.size(), world.pallet_points.size(), world.hatch_points.size(),
 		c.players, int(c.get("seed", 1)) if not offline else randi() % 1000000, world.door_points.size())
 	rules.has_grid = world.has_power_box() # Kuwait City; every map in Halloween and «بين العصر والمغرب»
@@ -315,6 +318,7 @@ func _start(c: Dictionary) -> void:
 			lay.e.append(xz.call(world.road_end(i)))
 		if world.power_box != Vector3.INF: lay.b = xz.call(world.power_box) # the power box (decided with the layout)
 		if world.heli_spot != Vector3.INF: lay.k = xz.call(world.heli_spot) # the rescue helicopter's ladder
+		if world.kship_spot != Vector3.INF: lay.q = xz.call(world.kship_spot) # the Moon: the killer's spaceship
 		Net.send({"t": "layout", "d": lay})
 	started = true
 
@@ -1564,6 +1568,7 @@ func _on_event(e: Dictionary) -> void:
 			if my_role == "killer":
 				boost_t = 3.5
 				_flash("Rush!")
+		"rboard", "launch", "kship", "mhit", "rland", "rlost": _flight_event(e)
 		"board":
 			var who := str(e.n)
 			if bool(e.get("drv", false)):
@@ -2246,6 +2251,8 @@ func _buttons() -> Array:
 		if _others_alive().size() > 1:
 			out.append([rect.position + rect.size - Vector2(130, 120), 62.0, "Next", "next", true, "next"])
 		return out
+	if flight and flight.me_mode() != "": # in the rocket or her ship: the stick steers; the boost for whoever has it
+		return flight.buttons(get_viewport().get_visible_rect().size)
 	var c = ctx.get("interact")
 	var lay := NFControls.layout("killer" if my_role == "killer" else "survivor")
 	for id in lay:
@@ -2389,8 +2396,11 @@ func _draw_ui() -> void:
 	elif esc_i >= 0 and rules.roads[esc_i].drv == my_name: _draw_speedo(Vector2(mid.x, s.y - 112.0), world.esc_cars[esc_i])
 	var doom_up: bool = rules.powered and rules.doom >= 0.0
 	var top := Vector2(mid.x, 96)
-	var road := _road_view()
-	if road >= 0:
+	var in_fl: bool = flight != null and (flight.shown or flight.me_mode() == "pad")
+	if in_fl: flight.draw_hud(ui, get_viewport().get_visible_rect().size) # the rocket chase's own panel
+	var road := -1 if in_fl else _road_view()
+	if in_fl: pass
+	elif road >= 0:
 		_draw_road(road, mid)
 	elif rules.gate_t >= 0.0 and not rules.powered:
 		_draw_gate_count(Vector2(mid.x, 120.0), rules.gate_t)
@@ -2902,7 +2912,7 @@ func _update_ctx() -> void:
 			return
 		if my_state == "hooked" and me.hooks == 1: # first hook only: hammer the button to pull yourself off
 			ctx.interact = {"kind": "struggle", "label": "Free yourself"}
-		if not (my_state in ["ok", "hurt"]) or esc_i >= 0: return
+		if not (my_state in ["ok", "hurt"]) or esc_i >= 0 or rules.in_rocket(my_name): return
 		for n in rules.s:
 			var p: Dictionary = rules.s[n]
 			if n == my_name: continue
@@ -2956,7 +2966,7 @@ func _update_ctx() -> void:
 		if my_state == "hurt" and me.item: ctx.item = {"kind": "heal", "n": my_name, "need": -1.0}
 		if rules.powered:
 			for i in world.gate_points.size():
-				if world.is_outside_gate(i, pos): _ev({"k": "escape"})
+				if world.is_outside_gate(i, pos) and not (rules.moon and int(rules.fl.st) > 1): _ev({"k": "escape"}) # (the Moon: into the rocket while it is on the pad)
 		if rules.hatch >= 0 and _near(pos, world.hatch_points[rules.hatch], 1.5): _ev({"k": "escape", "h": true})
 	elif driving:
 		if rules.stun <= 0.0:
@@ -2965,9 +2975,20 @@ func _update_ctx() -> void:
 				for i in world.hook_points.size():
 					if rules.hook_user(i) == "" and _near(pos, world.hook_points[i], 4.0):
 						ctx.interact = {"kind": "car_hook", "label": "Get out and hook", "i": i}
+	elif flight and flight.me_mode() != "": return # flying her ship
 	elif sniping: # lying on the roof with the rifle: the one thing to do is get up
 		ctx.interact = {"kind": "rifle_off", "label": "Stand up"}
 	elif rules.stun <= 0.0:
+		if world.kship_spot != Vector3.INF and _near(pos, world.kship_spot, 7.5): # the Moon: her spaceship on the pad
+			var fst := int(rules.fl.st)
+			if fst == 2 and not bool(rules.fl.ks):
+				var wait := Rules.KSHIP_LOCK - float(rules.fl.c)
+				if wait > 0.0: _text_hint = "Your ship is warming up — %d s" % ceili(wait)
+				elif rules.carrying != "": _text_hint = "Put them down first"
+				else:
+					ctx.interact = {"kind": "kship", "label": "Take off after them"}
+					return
+			elif fst < 2: _text_hint = "Your spaceship — it can follow the rocket once it lifts off"
 		if rules.sniper and rules.carrying == "" and world.snipe_rifle != Vector3.INF and _near(pos, world.snipe_rifle, 2.6):
 			ctx.interact = {"kind": "rifle", "label": "Take the rifle"}
 			return
@@ -3028,6 +3049,8 @@ func _press(id: String, touch: int) -> void:
 		"crouch":
 			crouch = not crouch
 			if crouch: sprint = false
+		"fboost":
+			if flight: flight.press(id)
 		"nitro":
 			if esc_i >= 0 and not esc_nitro.get(esc_i, false) and rules.roads[esc_i].drv == my_name:
 				esc_nitro[esc_i] = true
@@ -3117,6 +3140,9 @@ func _press(id: String, touch: int) -> void:
 					NFHaptics.pulse("tick")
 				"door": _ev({"k": "door", "i": c.i, "on": c.get("on", true)})
 				"board": _ev({"k": "board", "i": c.i})
+				"kship": # the Moon: after the rocket in her spaceship
+					_ev({"k": "kship"})
+					NFHaptics.pulse("grab")
 				"ladder": # the rescue helicopter's rope ladder
 					_ev({"k": "ladder"})
 					NFHaptics.pulse("grab")
@@ -3249,6 +3275,7 @@ func _input(e: InputEvent) -> void:
 			stick_vec = ((e.position - stick_origin) / 70.0).limit_length(1.0)
 			if stick_vec.length() < 0.12: stick_vec = Vector2.ZERO # dead zone
 		elif e.index == look_id:
+			if flight and flight.shown: flight.drag(e.relative * Gfx.look_sens)
 			yaw -= e.relative.x * 0.006 * Gfx.look_sens * _look_k()
 			pitch = clampf(pitch - e.relative.y * 0.004 * Gfx.look_sens * _look_k(), -0.9, 0.5)
 	elif e is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
@@ -3598,6 +3625,9 @@ func _process(dt: float) -> void:
 				var gr := ("groan%d" if chars.get(n, "") in MALE else "oof%d") % randi_range(1, 3)
 				_sfx(gr, r.node.position + Vector3(0, 1.5, 0), 2.0)
 		r.node.visible = st != "escaped" and not (rules.s.has(n) and rules.s[n].locker >= 0)
+		if flight and (rules.in_rocket(n) or (n == rules.killer and int(rules.fl.st) == 2 and bool(rules.fl.ks))):
+			r.node.visible = false # in the rocket, or her ship: NFFlight draws them
+			if r.node.position.distance_to(r.pos) > 500.0: r.node.position = r.pos
 		if _kept(n): r.node.visible = true
 		if r.role == "killer" and car and (r.anim == "drive") != car_remote: # he got in / out: the door opens and shuts here too
 			car_remote = r.anim == "drive"
@@ -3798,12 +3828,20 @@ func _process(dt: float) -> void:
 		if near > 0.45: NFHaptics.pulse_scaled("rumble", (near - 0.45) / 0.55) # it keeps getting closer
 		if rules.doom <= 0.0 and impact_t < 0.0:
 			impact_t = 0.0
-			_sfx("impact", null, 2.0)
-			NFHaptics.pulse("impact")
-			_shake(1.0)
-			_flash("The moon hit the ground")
+			if not (flight and flight.me_mode() != ""): # (up in the rocket or her ship, it is far below)
+				_sfx("impact", null, 2.0)
+				NFHaptics.pulse("impact")
+				_shake(1.0)
+				_flash("The meteor hit the Moon" if world.map_id == "moon" else "The moon hit the ground")
 	if impact_t >= 0.0: impact_t += dt
 	amb.volume_db = minf(amb.volume_db, -40.0) if doom_music.playing else amb.volume_db
+	if flight == null and world.map_id == "moon" and world.ready_done: # the rocket chase, once the map is up
+		flight = NFFlight.new()
+		add_child(flight)
+		flight.setup(self, world.layout_seed)
+	if flight:
+		flight.step(dt)
+		minimap.visible = not flight.shown
 	if rules.over and results == null and (impact_t < 0.0 or impact_t > 3.5): _show_results()
 
 func _physics_process(delta: float) -> void:
@@ -3820,7 +3858,7 @@ func _physics_process(delta: float) -> void:
 		if float(struggle_t[n]) <= 0.0: struggle_t.erase(n)
 	if offline:
 		for e in rules.tick(delta): _on_event(e)
-	if bot and world.ready_done: bot.step(delta)
+	if bot and world.ready_done and not (int(rules.fl.st) == 2 and bool(rules.fl.ks)): bot.step(delta) # (flying, NFFlight flies her)
 	match_time += delta
 	escape_banner = maxf(escape_banner - delta, 0.0)
 	my_state = rules.hp(my_name) if my_role == "survivor" else "ok"
@@ -3879,6 +3917,8 @@ func _physics_process(delta: float) -> void:
 		_climb_pose("me", body, rig, delta)
 	elif esc_i >= 0:
 		_esc_ride(delta)
+	elif flight and flight.me_mode() != "": # in the Moon's rocket, or her spaceship
+		flight.step_me(delta)
 	elif locker >= 0:
 		body.position = world.locker_points[locker][0]
 	elif driving:
@@ -3903,7 +3943,8 @@ func _physics_process(delta: float) -> void:
 		var lp: Array = world.locker_points[last_locker]
 		body.position = lp[0] + Basis(Vector3.UP, lp[1]) * Vector3(0, 0, 1.1)
 	last_locker = locker
-	if my_role == "survivor": rig.visible = locker < 0 and my_state != "escaped" and spectating == "" and (esc_i < 0 or esc_vis)
+	if my_role == "survivor": rig.visible = locker < 0 and my_state != "escaped" and spectating == "" and (esc_i < 0 or esc_vis) and not rules.in_rocket(my_name)
+	elif flight: rig.visible = flight.me_mode() == ""
 	cshape.disabled = pinned or my_state in ["dead", "escaped"]
 	if pinned:
 		body.velocity = Vector3.ZERO
@@ -3934,7 +3975,9 @@ func _physics_process(delta: float) -> void:
 		if send_t <= 0.0:
 			send_t = 1.0 / 15.0
 			var p := body.position
-			Net.send({"t": "st", "p": [snappedf(p.x, 0.01), snappedf(p.y, 0.01), snappedf(p.z, 0.01), snappedf(rig.rotation.y, 0.01)], "a": "drive" if driving else (("edrive" if rules.roads[esc_i].drv == my_name else "eride") if esc_i >= 0 else rig.current),
+			var a_now: String = "drive" if driving else (("edrive" if rules.roads[esc_i].drv == my_name else "eride") if esc_i >= 0 else rig.current)
+			if flight and flight.me_mode() != "": a_now = "kship" if my_role == "killer" else "rocket"
+			Net.send({"t": "st", "p": [snappedf(p.x, 0.01), snappedf(p.y, 0.01), snappedf(p.z, 0.01), snappedf(rig.rotation.y, 0.01)], "a": a_now,
 					"f": 1 if (light_on or (my_role == "killer" and car != null and car.radio_on)
 						or (esc_i >= 0 and (world.esc_cars[esc_i] as NFCar).nitro > 0.0)) else 0, "v": 1 if vanished else 0,
 					"g": (0 if my_gun == null or not my_gun.visible else (2 if gun_aim > 0.0 else 1)), "gp": snappedf(_gun_pitch(), 0.05)}) # the killer has no torch: f is his radio
@@ -4468,6 +4511,46 @@ func _esc_ride(delta: float) -> void:
 		var k := 1.0 - exp(-2.5 * delta)
 		yaw = lerp_angle(yaw, ec.rotation.y + PI, k)
 		pitch = lerpf(pitch, -0.24, k)
+
+## The rocket chase's moments: the feed, a line on the screen, and NFFlight's own effects.
+func _flight_event(e: Dictionary) -> void:
+	if flight: flight.on_event(e)
+	var who := str(e.get("n", ""))
+	match str(e.k):
+		"rboard":
+			_feed("%s is in the rocket%s" % [who, " — at the controls" if bool(e.get("pil", false)) else (" — on the boost" if bool(e.get("bst", false)) else "")], "out", Color(0.5, 0.85, 1.0))
+			if who == my_name:
+				NFHaptics.pulse("hook")
+				_end_hold()
+				_flash("You're at the controls — steer with the stick" if bool(e.get("pil", false)) else ("You're on the boost — fire it when the way is clear" if bool(e.get("bst", false)) else "You're aboard"))
+			elif my_role == "killer" and bool(e.get("pil", false)): _flash("They're boarding the rocket! It lifts off in %d seconds" % roundi(Rules.LAUNCH_WAIT))
+		"launch":
+			_feed("The rocket lifted off!", "out", Color(1.0, 0.8, 0.4))
+			_sfx("gen_boom", null, -2.0, 0.6)
+			if my_role == "killer": _flash("The rocket is up — take your spaceship after it (west side of the pad)")
+			elif rules.in_rocket(my_name):
+				_flash("LIFT-OFF! %d:%02d to reach the Earth" % [int(Rules.FLIGHT_TIME) / 60, int(Rules.FLIGHT_TIME) % 60])
+				NFHaptics.pulse("impact")
+			elif my_state in ["ok", "hurt", "down", "hooked", "carried"]: _flash("The rocket left without you")
+		"kship":
+			_feed("The killer took off after the rocket", "car", Color(1.0, 0.45, 0.35))
+			if my_role == "killer": _flash("After them! Ram the rocket — stay out of its exhaust")
+			elif rules.in_rocket(my_name): _flash("The killer is coming after you!")
+		"mhit":
+			if who == my_name or (rules.in_rocket(my_name) and who == str(rules.fl.pil)):
+				_feed("A meteor hit the engine!", "spike", Color(1.0, 0.55, 0.3))
+			elif who == rules.killer and rules.in_rocket(my_name): _feed("A meteor hit the killer's ship!", "spike", Color(0.6, 1.0, 0.6))
+		"rland":
+			NFHaptics.pulse("escape")
+			_feed("The rocket reached the Earth! (%s)" % ", ".join(PackedStringArray(e.get("who", []))), "out", Color(0.5, 1.0, 0.6))
+			if my_role == "killer": _flash("They got away — the rocket reached the Earth")
+		"rlost":
+			var ram := str(e.get("why", "")) == "ram"
+			_feed("The killer rammed the rocket!" if ram else "The rocket ran out of time", "car", Color(1.0, 0.35, 0.3))
+			if my_name in (e.get("who", []) as Array):
+				_flash("She rammed the rocket — nobody aboard survived" if ram else "Out of time — the rocket was lost")
+				NFHaptics.pulse("impact")
+			elif my_role == "killer": _flash("Rammed! The rocket is gone" if ram else "Their time ran out — the rocket is lost")
 
 ## The road to show on the HUD: the car I am in, the road I am standing on, the car of the one I
 ## watch; for the killer, an escape car on its way.

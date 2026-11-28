@@ -33,6 +33,24 @@ const MASH_DECAY := 0.1 # lost per second, so you have to keep hammering the but
 const RESCUE_TIME := 2.0 # seconds to lift someone off a hook; two of you halve it
 const CAR_SEATS := 6 # an escape car seats six: every survivor a room can have
 const ROAD_TIME := 120.0 # from the first one getting into a gate's escape car to the last gate, 600 m on
+## «The Moon», stage 2: the rocket chase (the same numbers in rules.js). Stepping onto the boarding ring
+## puts a survivor in the rocket: the first one in steers it (`pil`), the second fires the boost (`bst`).
+## It lifts off LAUNCH_WAIT after the first one is in (at once when nobody else is left to come, or when
+## the meteor lands), then has FLIGHT_TIME to fly FLY_LEN through the meteors to the Earth. The killer's
+## ship may take off KSHIP_LOCK after it; if she rams the rocket, everyone in it is lost.
+const LAUNCH_WAIT := 15.0
+const FLIGHT_TIME := 210.0
+const FLY_LEN := 42000.0    # metres from the Moon to the Earth (the flight runs along -z, NFFlight)
+const KSHIP_LOCK := 8.0
+const BOOST_LEN := 9.0      # a full tank of boost lasts this long
+const BOOST_FILL := 18.0    # and fills again in this long
+const DMG_TIME := 3.5       # a meteor strike: the engine coughs this long (stacks up to DMG_MAX)
+const DMG_MAX := 6.0
+var moon := false           # main sets it on the Moon (rules.js: opts.map)
+## st 0 on the pad, 1 counting down to lift-off (t), 2 flying (t left, c since lift-off), 3 at the
+## Earth, 4 lost (why: ram / time). who: everyone aboard, pilot first. b / e: the boost on and its tank.
+## dm / kd: seconds of engine damage on the rocket / on her ship. ks: she is flying. hits: meteors gone.
+var fl := {"st": 0, "t": 0.0, "c": 0.0, "who": [], "pil": "", "bst": "", "b": false, "e": 1.0, "dm": 0.0, "kd": 0.0, "ks": false, "hits": [], "why": ""}
 const LIVE := ["ok", "hurt", "down", "carried", "hooked"]
 # the rescue helicopter (both rules files): one free survivor left, it comes, hovers with a rope ladder
 # down, the survivor climbs it and is out; caught before the top of the ladder, it leaves at once
@@ -176,7 +194,39 @@ func hp(name: String) -> String:
 
 ## Standing, free to act (not hiding, not in an escape car).
 func free_now(name: String) -> bool:
-	return s.has(name) and s[name].hp in ["ok", "hurt"] and s[name].locker < 0 and int(s[name].get("car", -1)) < 0
+	return s.has(name) and s[name].hp in ["ok", "hurt"] and s[name].locker < 0 and int(s[name].get("car", -1)) < 0 and not in_rocket(name)
+
+## Aboard the Moon's rocket, on the pad or in flight.
+func in_rocket(name: String) -> bool:
+	return int(fl.st) in [1, 2] and name in (fl.who as Array)
+
+## Into the rocket: the first one in steers, the second boosts, the rest ride.
+func _rboard(from: String, out: Array) -> void:
+	if not (moon and powered and free_now(from) and int(fl.st) <= 1 and (fl.who as Array).size() < CAR_SEATS): return
+	if int(fl.st) == 0:
+		fl.st = 1; fl.t = LAUNCH_WAIT; fl.pil = from
+	elif str(fl.bst) == "": fl.bst = from
+	(fl.who as Array).append(from)
+	_drop(from)
+	out.append({"k": "rboard", "n": from, "pil": fl.pil == from, "bst": fl.bst == from})
+
+## At the Earth: everyone aboard is out.
+func _rland() -> Dictionary:
+	fl.st = 3
+	for n in fl.who:
+		if s.has(n) and s[n].hp in ["ok", "hurt"]:
+			s[n].hp = "escaped"
+			add(n, 250.0)
+	return {"k": "rland", "who": (fl.who as Array).duplicate()}
+
+## Rammed, or out of time: nobody aboard lives.
+func _rlost(why: String) -> Dictionary:
+	fl.st = 4; fl.why = why
+	for n in fl.who:
+		if s.has(n) and s[n].hp in LIVE:
+			s[n].hp = "dead"
+			add(killer, 100.0)
+	return {"k": "rlost", "why": why, "who": (fl.who as Array).duplicate()}
 
 ## The escape car this survivor is riding in, -1 none.
 func car_of(name: String) -> int:
@@ -239,7 +289,28 @@ func handle(d: Dictionary, from: String) -> Array:
 	var i := int(d.get("i", -1))
 	var n := str(d.get("n", ""))
 	var is_killer := from == killer
-	match str(d.get("k", "")):
+	var kind := str(d.get("k", ""))
+	if is_killer and bool(fl.ks) and int(fl.st) == 2 and not kind in ["rram", "mhit"]: return out # in her ship, far above the Moon
+	match kind:
+		"rboard": _rboard(from, out)
+		"boost": # the second one aboard (or the pilot flying alone) fires the boost
+			if int(fl.st) == 2 and (from == str(fl.bst) or (from == str(fl.pil) and str(fl.bst) == "")):
+				fl.b = bool(d.get("on", false)) and float(fl.e) > 0.05
+		"mhit": # a meteor struck the rocket (its pilot's phone saw it) or her ship (hers did)
+			var m := int(d.get("m", -1))
+			if int(fl.st) == 2 and m >= 0 and not m in (fl.hits as Array) and (from == str(fl.pil) or (is_killer and bool(fl.ks))):
+				(fl.hits as Array).append(m)
+				if is_killer: fl.kd = minf(float(fl.kd) + DMG_TIME, DMG_MAX)
+				else: fl.dm = minf(float(fl.dm) + DMG_TIME, DMG_MAX)
+				out.append({"k": "mhit", "m": m, "n": from})
+		"rland": # the pilot reached the Earth
+			if int(fl.st) == 2 and from == str(fl.pil): out.append(_rland())
+		"rram": # her ship rammed the rocket
+			if is_killer and bool(fl.ks) and int(fl.st) == 2: out.append(_rlost("ram"))
+		"kship": # the killer takes off after them
+			if is_killer and int(fl.st) == 2 and float(fl.c) >= KSHIP_LOCK and not bool(fl.ks) and carrying == "" and stun <= 0.0:
+				fl.ks = true
+				out.append({"k": "kship"})
 		"cut": # the killer pulls the power box: every street light on the map goes out
 			if is_killer and has_grid and grid and grid_cuts < GRID_CUTS and grid_wait <= 0.0:
 				grid = false; grid_p = 0.0; grid_reps.clear(); grid_cuts += 1
@@ -280,7 +351,8 @@ func handle(d: Dictionary, from: String) -> Array:
 			if is_killer and i >= 0 and i < roads.size() and int(roads[i].st) == 1:
 				out.append(_caught(i, "ram"))
 		"escape":
-			if free_now(from) and (powered or (hatch >= 0 and d.get("h", false))):
+			if moon and not d.get("h", false): _rboard(from, out) # the Moon's boarding ring puts you in the rocket
+			elif free_now(from) and (powered or (hatch >= 0 and d.get("h", false))):
 				s[from].hp = "escaped"
 				add(from, 150.0)
 				_drop(from)
@@ -468,8 +540,9 @@ func tick(dt: float) -> Array:
 		doom = maxf(doom - dt, 0.0)
 		if doom <= 0.0: # the moon lands: nobody left inside survives (the escape cars are already out)
 			for n in s:
-				if s[n].hp in LIVE and car_of(n) < 0: s[n].hp = "dead"
+				if s[n].hp in LIVE and car_of(n) < 0 and not in_rocket(n): s[n].hp = "dead"
 			_drop_all()
+	_step_flight(dt, out)
 	for i in roads.size(): # the road clock: out of time, the car stops where it is
 		var r: Dictionary = roads[i]
 		if int(r.st) != 1: continue
@@ -580,6 +653,31 @@ func tick(dt: float) -> Array:
 		_step_heli(dt, live, out)
 	return out
 
+## The rocket: the countdown on the pad, then the flight's clock, the boost tank and the damage.
+func _step_flight(dt: float, out: Array) -> void:
+	var st := int(fl.st)
+	if st == 1:
+		fl.t = maxf(float(fl.t) - dt, 0.0)
+		var waiting := 0 # anyone still on the Moon who could yet come
+		for n in s:
+			if s[n].hp in LIVE and not n in (fl.who as Array): waiting += 1
+		if float(fl.t) <= 0.0 or waiting == 0 or (powered and doom == 0.0):
+			fl.st = 2; fl.t = FLIGHT_TIME; fl.c = 0.0
+			out.append({"k": "launch", "who": (fl.who as Array).duplicate()})
+	elif st == 2:
+		fl.c = float(fl.c) + dt
+		fl.t = maxf(float(fl.t) - dt, 0.0)
+		fl.dm = maxf(float(fl.dm) - dt, 0.0)
+		fl.kd = maxf(float(fl.kd) - dt, 0.0)
+		if bool(fl.b):
+			fl.e = maxf(float(fl.e) - dt / BOOST_LEN, 0.0)
+			if float(fl.e) <= 0.0: fl.b = false
+		else: fl.e = minf(float(fl.e) + dt / BOOST_FILL, 1.0)
+		var aboard := 0
+		for n in fl.who:
+			if s.has(n) and s[n].hp in ["ok", "hurt"]: aboard += 1
+		if float(fl.t) <= 0.0 and aboard > 0: out.append(_rlost("time"))
+
 func _step_heli(dt: float, live: int, out: Array) -> void:
 	if int(heli.st) == 0 and live == 1 and s.size() > 1 and heli_ok:
 		for n in s:
@@ -632,7 +730,9 @@ func snapshot() -> Dictionary:
 			snappedf(float(p.get("held", 0.0)), 0.1), bool(p.get("shield", false)), int(p.get("ammo", 0))]
 	var rd := []
 	for r in roads: rd.append([r.st, r.drv, r.who, snappedf(float(r.t), 0.1), r.why, bool(r.get("flat", false))])
-	return {"tp": traps, "sp": spikes, "rd": rd, "k": "gs", "g": gp, "d": gd, "to": to, "pw": powered, "gn": gun, "s": ss, "pl": pallets, "kc": carrying, "ks": snappedf(stun, 0.01), "kp": snappedf(power_cd, 0.1), "ov": over, "hx": hatch, "sc": sc, "dm": snappedf(doom, 0.1), "gt": snappedf(gate_t, 0.1), "hl": [heli.st, snappedf(float(heli.t), 0.1), heli.who, snappedf(float(heli.p), 0.001)],
+	var flv := [fl.st, snappedf(float(fl.t), 0.1), snappedf(float(fl.c), 0.05), fl.who, fl.pil, fl.bst, fl.b, snappedf(float(fl.e), 0.01),
+		snappedf(float(fl.dm), 0.1), snappedf(float(fl.kd), 0.1), fl.ks, fl.hits, fl.why]
+	return {"fl": flv, "tp": traps, "sp": spikes, "rd": rd, "k": "gs", "g": gp, "d": gd, "to": to, "pw": powered, "gn": gun, "s": ss, "pl": pallets, "kc": carrying, "ks": snappedf(stun, 0.01), "kp": snappedf(power_cd, 0.1), "ov": over, "hx": hatch, "sc": sc, "dm": snappedf(doom, 0.1), "gt": snappedf(gate_t, 0.1), "hl": [heli.st, snappedf(float(heli.t), 0.1), heli.who, snappedf(float(heli.p), 0.001)],
 		"dr": doors, "ek": ev_kind if ev_fired else -1, "et": snappedf(ev_t, 0.1), "en": ev_n, "ad": adhan, "pb": [grid, snappedf(grid_p, 0.001), grid_cuts, ceili(grid_wait)] if has_grid else [], "ck": snappedf(clock, 0.1)}
 
 func apply(v: Dictionary) -> void:
@@ -648,6 +748,10 @@ func apply(v: Dictionary) -> void:
 			"esc": float(a[7]) if a.size() > 7 else 0.0, "resc": float(a[8]) if a.size() > 8 else 0.0, "hands": int(a[9]) if a.size() > 9 else 0, "car": int(a[10]) if a.size() > 10 else -1,
 			"held": float(a[11]) if a.size() > 11 else 0.0, "shield": bool(a[12]) if a.size() > 12 else false, "risen": false, "rt": 0.0,
 			"ammo": int(a[13]) if a.size() > 13 else 0}
+	var fv = v.get("fl", [])
+	if fv is Array and (fv as Array).size() >= 13:
+		fl = {"st": int(fv[0]), "t": float(fv[1]), "c": float(fv[2]), "who": (fv[3] as Array).duplicate(), "pil": str(fv[4]), "bst": str(fv[5]),
+			"b": bool(fv[6]), "e": float(fv[7]), "dm": float(fv[8]), "kd": float(fv[9]), "ks": bool(fv[10]), "hits": (fv[11] as Array).map(func(x): return int(x)), "why": str(fv[12])}
 	var tp = v.get("tp", [])
 	if tp is Array: traps = (tp as Array).duplicate(true)
 	var sp = v.get("sp", [])

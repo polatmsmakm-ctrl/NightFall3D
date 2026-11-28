@@ -20,6 +20,9 @@ const ADHAN_LEN = 55;          // the length of assets/sfx/adhan.mp3
 const REACH = 4.5; // generous: positions arrive ~15 times a second
 const CAR_SEATS = 6; // an escape car seats six: every survivor a room can have
 const ROAD_TIME = 120; // from the first one getting into a gate's escape car to the last gate, 600 m on
+// «The Moon», stage 2: the rocket chase (rules.gd has the same numbers and says what they are)
+const LAUNCH_WAIT = 15, FLIGHT_TIME = 210, FLY_LEN = 42000, KSHIP_LOCK = 8;
+const BOOST_LEN = 9, BOOST_FILL = 18, DMG_TIME = 3.5, DMG_MAX = 6;
 // one ability per survivor character (same table and numbers as rules.gd)
 const PERK = { survivor1: 'burst', survivor2: 'fix', survivor3: 'lift', survivor4: 'rise',
   survivor5: 'tough', survivor6: 'sense', survivor7: 'medic', survivor8: 'ghost', survivor9: 'mend',
@@ -39,7 +42,10 @@ class Rules {
     this.gun = !!(opts && opts.gun);
     // «وضع القنّاص» (Kuwait City only): one gate (0), the killer's rifle downs anyone it hits, no moon
     this.sniper = !!(opts && opts.sniper);
-    this.doomTime = opts && opts.map === 'moon' ? DOOM_MOON : DOOM_TIME;
+    this.moon = !!(opts && opts.map === 'moon');
+    this.doomTime = this.moon ? DOOM_MOON : DOOM_TIME;
+    // the rocket: st 0 on the pad, 1 counting down, 2 flying, 3 at the Earth, 4 lost (why ram / time)
+    this.fl = { st: 0, t: 0, c: 0, who: [], pil: '', bst: '', b: false, e: 1, dm: 0, kd: 0, ks: false, hits: [], why: '' };
     this.snipeT = -99;
     // the power box's mode from the room's weather: 1 Halloween (survivors may switch it off too),
     // 2 «بين العصر والمغرب» (the lights start off and come on when someone fixes it)
@@ -141,7 +147,27 @@ class Rules {
   }
   doneCount() { return this.gens.filter((g) => g.done).length; }
   hp(n) { return this.s[n] ? this.s[n].hp : ''; }
-  freeNow(n) { const p = this.s[n]; return !!p && (p.hp === 'ok' || p.hp === 'hurt') && p.locker < 0 && p.car < 0; }
+  freeNow(n) { const p = this.s[n]; return !!p && (p.hp === 'ok' || p.hp === 'hurt') && p.locker < 0 && p.car < 0 && !this.inRocket(n); }
+  inRocket(n) { return (this.fl.st === 1 || this.fl.st === 2) && this.fl.who.includes(n); }
+  rboard(from, out) { // into the Moon's rocket on the boarding ring: the first one steers, the second boosts
+    const f = this.fl, L = this.layout || {};
+    if (!(this.moon && this.powered && this.freeNow(from) && f.st <= 1 && f.who.length < CAR_SEATS)) return;
+    if (L.e && !L.e.some((e) => this.near(from, e, 12))) return;
+    if (f.st === 0) { f.st = 1; f.t = LAUNCH_WAIT; f.pil = from; } else if (!f.bst) f.bst = from;
+    f.who.push(from);
+    this.drop(from);
+    out.push({ k: 'rboard', n: from, pil: f.pil === from, bst: f.bst === from });
+  }
+  rland() { // at the Earth: everyone aboard is out
+    this.fl.st = 3;
+    for (const n of this.fl.who) { const p = this.s[n]; if (p && (p.hp === 'ok' || p.hp === 'hurt')) { p.hp = 'escaped'; this.add(n, 250); } }
+    return { k: 'rland', who: this.fl.who.slice() };
+  }
+  rlost(why) { // rammed or out of time: nobody aboard lives
+    this.fl.st = 4; this.fl.why = why;
+    for (const n of this.fl.who) { const p = this.s[n]; if (p && LIVE.includes(p.hp)) { p.hp = 'dead'; this.add(this.killer, 100); } }
+    return { k: 'rlost', why, who: this.fl.who.slice() };
+  }
   lockerUser(i) { return Object.keys(this.s).find((n) => this.s[n].locker === i) || ''; }
   hookUser(i) { return Object.keys(this.s).find((n) => this.s[n].hp === 'hooked' && this.s[n].hook_i === i) || ''; }
   // «الوحش» eats whoever hangs on his hook a second time: nobody can lift them off (rules.gd eaten())
@@ -156,6 +182,37 @@ class Rules {
     const n = typeof d.n === 'string' ? d.n : '';
     const isKiller = from === this.killer;
     const L = this.layout;
+    const f = this.fl;
+    if (isKiller && f.ks && f.st === 2 && d.k !== 'rram' && d.k !== 'mhit') return out; // in her ship, far above the Moon
+    switch (d.k) { // the rocket chase
+      case 'rboard': this.rboard(from, out); return out;
+      case 'boost':
+        if (f.st === 2 && (from === f.bst || (from === f.pil && !f.bst))) f.b = !!d.on && f.e > 0.05;
+        return out;
+      case 'mhit': {
+        const m = Number.isInteger(d.m) ? d.m : -1;
+        if (f.st === 2 && m >= 0 && m < 5000 && !f.hits.includes(m) && (from === f.pil || (isKiller && f.ks))) {
+          f.hits.push(m);
+          if (isKiller) f.kd = Math.min(f.kd + DMG_TIME, DMG_MAX); else f.dm = Math.min(f.dm + DMG_TIME, DMG_MAX);
+          out.push({ k: 'mhit', m, n: from });
+        }
+        return out;
+      }
+      case 'rland': { // the pilot reached the Earth (the flight runs along -z)
+        const p = this.pos[from];
+        if (f.st === 2 && from === f.pil && (!p || p[2] <= -(FLY_LEN - 200))) out.push(this.rland());
+        return out;
+      }
+      case 'rram':
+        if (isKiller && f.ks && f.st === 2 && this.nearPlayer(from, f.pil, 20)) out.push(this.rlost('ram'));
+        return out;
+      case 'kship': // the killer takes off after them
+        if (isKiller && f.st === 2 && f.c >= KSHIP_LOCK && !f.ks && this.carrying === '' && this.stun <= 0 && (!L.q || this.near(from, L.q, 10))) {
+          f.ks = true;
+          out.push({ k: 'kship' });
+        }
+        return out;
+    }
     if (d.k === 'cut') { // the killer pulls the power box: every street light goes out
       if (isKiller && this.hasGrid && this.grid && this.gridCuts < GRID_CUTS && this.gridWait <= 0 && this.near(from, L.b, 4)) {
         this.grid = false; this.gridP = 0; this.gridReps = {}; this.gridCuts++; this.add(from, 40);
@@ -208,6 +265,7 @@ class Rules {
       case 'escape':
         {
           const viaHatch = this.hatch >= 0 && d.h === true && this.near(from, (L.x || [])[this.hatch]);
+          if (this.moon && !viaHatch) { this.rboard(from, out); break; } // the boarding ring puts you in the rocket
           // on foot through the far gate at the end of a road (the car is the usual way)
           const atEnd = !L.e || L.e.some((e) => this.near(from, e, 10));
           if (this.freeNow(from) && ((this.powered && atEnd) || viaHatch)) { this.s[from].hp = 'escaped'; this.add(from, 150); this.drop(from); }
@@ -382,6 +440,13 @@ class Rules {
         if (r.drv === name) r.drv = r.who[0] || '';
         this.s[name].car = -1;
       }
+      const f = this.fl, k = f.who.indexOf(name); // out of the rocket: the next one aboard steers / boosts
+      if (k >= 0) {
+        f.who.splice(k, 1);
+        if (f.pil === name) { f.pil = f.bst || f.who[0] || ''; if (f.bst === f.pil) f.bst = f.who.find((x) => x !== f.pil) || ''; }
+        else if (f.bst === name) f.bst = f.who.find((x) => x !== f.pil) || '';
+        if (f.who.length === 0 && (f.st === 1 || f.st === 2)) f.st = 0;
+      }
       if (LIVE.includes(this.s[name].hp)) this.s[name].hp = 'dead';
       this.s[name].locker = -1;
       this.drop(name);
@@ -418,11 +483,12 @@ class Rules {
     if (this.powered && this.doom > 0) {
       this.doom = Math.max(this.doom - dt, 0);
       if (this.doom <= 0) { // the moon lands: nobody left inside survives (the escape cars are already out)
-        for (const n in this.s) if (LIVE.includes(this.s[n].hp) && this.s[n].car < 0) this.s[n].hp = 'dead';
+        for (const n in this.s) if (LIVE.includes(this.s[n].hp) && this.s[n].car < 0 && !this.inRocket(n)) this.s[n].hp = 'dead';
         for (const g of this.gens) g.reps = {};
         this.healers = {}; this.carrying = '';
       }
     }
+    this.stepFlight(dt, out);
     for (let i = 0; i < this.roads.length; i++) { // the road clock: out of time, the car stops where it is
       const r = this.roads[i];
       if (r.st !== 1) continue;
@@ -552,6 +618,26 @@ class Rules {
     }
   }
 
+  stepFlight(dt, out) { // the rocket's countdown on the pad, then its flight clock, boost tank and damage
+    const f = this.fl;
+    if (f.st === 1) {
+      f.t = Math.max(f.t - dt, 0);
+      const waiting = Object.keys(this.s).filter((n) => LIVE.includes(this.s[n].hp) && !f.who.includes(n)).length;
+      if (f.t <= 0 || waiting === 0 || (this.powered && this.doom === 0)) {
+        f.st = 2; f.t = FLIGHT_TIME; f.c = 0;
+        out.push({ k: 'launch', who: f.who.slice() });
+      }
+    } else if (f.st === 2) {
+      f.c += dt;
+      f.t = Math.max(f.t - dt, 0);
+      f.dm = Math.max(f.dm - dt, 0); f.kd = Math.max(f.kd - dt, 0);
+      if (f.b) { f.e = Math.max(f.e - dt / BOOST_LEN, 0); if (f.e <= 0) f.b = false; }
+      else f.e = Math.min(f.e + dt / BOOST_FILL, 1);
+      const aboard = f.who.filter((n) => this.s[n] && (this.s[n].hp === 'ok' || this.s[n].hp === 'hurt')).length;
+      if (f.t <= 0 && aboard > 0) out.push(this.rlost('time'));
+    }
+  }
+
   snapshot() {
     const r3 = (v) => Math.round(v * 1000) / 1000;
     const ss = {};
@@ -567,6 +653,8 @@ class Rules {
       sc: Object.fromEntries(Object.entries(this.score).map(([n, v]) => [n, Math.round(v)])),
       rd: this.roads.map((r) => [r.st, r.drv, r.who, Math.round(r.t * 10) / 10, r.why, !!r.flat]),
       tp: this.traps, sp: this.spikes,
+      fl: [this.fl.st, Math.round(this.fl.t * 10) / 10, Math.round(this.fl.c * 20) / 20, this.fl.who, this.fl.pil, this.fl.bst, this.fl.b,
+        Math.round(this.fl.e * 100) / 100, Math.round(this.fl.dm * 10) / 10, Math.round(this.fl.kd * 10) / 10, this.fl.ks, this.fl.hits, this.fl.why],
       pb: this.hasGrid ? [this.grid, r3(this.gridP), this.gridCuts, Math.ceil(this.gridWait)] : [],
       ck: Math.round(this.clock * 10) / 10,
       dr: this.doors, ek: this.evFired ? this.evKind : -1, et: Math.round(this.evT * 10) / 10, en: this.evN, ad: this.adhan,
