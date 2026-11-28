@@ -1546,6 +1546,30 @@ through meteors with the killer's ship behind, and (stage 3) the endings — Ear
   The sky on a flying phone turns the Earth dead ahead and grows it (`disc_r`) as they near it, with the
   giant meteor beside it. `tools/flight.tscn` tests it; `tools/shot34.tscn` photographs it.
 
+## «The Moon», stage 3: the endings (`scripts/ending.gd`, `NFEnding`)
+- Played the moment the rules settle the flight (`rland` / `rlost` → `main._start_ending`) on every
+  phone that is done with the round or was up there: those aboard, the dead and the escaped, the killer
+  if she flew (or if nobody is left on the Moon). Anyone still running about on the Moon plays on.
+  `NFEnding` sits far from everything (`END_O`, y 60 km) with its own camera, sky (stars only) and sun;
+  the HUD is hidden, film bars on, and the results wait for it (`ending.done`; they skip their own
+  victory shot after it). If the round goes on, the screen is handed back.
+- **Won** (`WIN_LEN` 14 s): beside the rocket as it climbs with the giant meteor ahead, right behind it
+  for the near miss (a whoosh, a shake), off to one side as the meteor falls toward the Earth, then behind
+  the rocket as it flies past the planet's edge into the dark — «HUMANITY SURVIVED» and the saved names.
+- **Lost** (rammed or out of time, `LOSE_LEN` **exactly 12 s** before the statistics — the owner): the
+  meteor comes in burning (`glow_shell.gdshader`, a flame trail), the air glows where it enters, it hits
+  at `IMPACT` 4.2 s — flash, fireball (`fireball.gdshader`), a shockwave ring running over the globe, the
+  surface burning, glowing cracks spreading (`earth_break.gdshader`), then the planet **breaks into its
+  twelve pieces**, each flying out along its own direction with molten rock inside and debris rocks
+  streaming — «HUMANITY HAS FALLEN» from 7 s.
+- **His models at full detail**: the Blue Marble (`assets/props/space/earth_pieces.glb`: his 615,480
+  triangles cut into the twelve pieces by `tools/earth_split.py` — every triangle to the piece whose
+  direction is nearest it, nothing dropped; `NFEnding.SEEDS` = the script's directions) and the Faceted
+  Asteroid (`giant_meteor.glb`, his 8192 colour map), maps beside them byte for byte, ETC2.
+- `tools/ending.tscn` tests the defeat, the pieces and the 12 s hold; `tools/flight.tscn` the win;
+  `tools/shot35.tscn` photographs both (over `tools/fly_mock.gd`, a stand-in for main with no map,
+  which `shot34` uses too: the whole Moon does not fit the software renderer's memory here).
+
 ## The three new killers (`killer3` «The Midnight Revenant», `killer4` «Violet Wraith», `killer5` «Ebonwing Seraph»)
 - His sculpts (1.99 M, 1.39 M, 3.11 M triangles), none of them in a T-pose, rigged with
   `rig_character.py --pose tools/rig/<revenant|wraith|seraph>_pose.json --facing keep --hair 5 --bake

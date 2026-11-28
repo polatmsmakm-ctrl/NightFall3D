@@ -29,6 +29,8 @@ var shake_hi := false
 var kiss_cd := {}   # survivor -> when (msec) their last kiss happened, from the events
 var gorilla: Node3D # the owner's gorilla and the horse, after the cat and the dog (scripts/gorilla.gd)
 var flight: NFFlight # «The Moon»: the rocket chase (scripts/flight.gd)
+var ending: NFEnding # «The Moon»: how it ends (scripts/ending.gd), while it plays
+var ending_seen := false # it played on this phone: the results skip their own victory shot
 const SFX := ["knife1", "knife2", "knife3", "knife4", "gunshot", "scream_beast", "crow", "raven", "gate", "heart", "breath", "steps_out", "steps_in", "gen_run", "chase", "ambient", "doom", "rope", "male_pain", "scream1", "scream2", "oof1", "oof2", "oof3",
 	# the owner's sound pack (November): see «The owner's sound pack» in CLAUDE.md
 	"heart_fast", "breath_hurt", "breath_hide", "whimper", "steps_killer", "steps_beast", "steps_hurt", "power_hum", "terror",
@@ -2117,6 +2119,9 @@ func _show_results() -> void:
 	var host: bool = not offline and str(Net.room.get("host", "")) == my_name
 	results = NFResults.new()
 	add_child(results)
+	if ending_seen: out_rows = [] # the Moon's ending was the victory shot
+	if ending and is_instance_valid(ending): ending.finish()
+	ending = null
 	results.setup({"rows": rows, "victory": out_rows, "title": title, "stats": stats, "xp_from": xp_from, "xp_to": xp_from + gain,
 		"escapes": Net.escapes, "kills": Net.kills,
 		# "play again" puts everyone back in the SAME room with the same settings
@@ -3841,8 +3846,13 @@ func _process(dt: float) -> void:
 		flight.setup(self, world.layout_seed)
 	if flight:
 		flight.step(dt)
-		minimap.visible = not flight.shown
-	if rules.over and results == null and (impact_t < 0.0 or impact_t > 3.5): _show_results()
+		minimap.visible = not flight.shown and ending == null
+	if ending and is_instance_valid(ending) and ending.done and not rules.over: # the film is over and the round goes on
+		ending.finish()
+		ending = null
+		ui.visible = true
+		if main_cam: main_cam.make_current()
+	if rules.over and results == null and (impact_t < 0.0 or impact_t > 3.5) and (ending == null or ending.done): _show_results()
 
 func _physics_process(delta: float) -> void:
 	if not started: return
@@ -4541,16 +4551,39 @@ func _flight_event(e: Dictionary) -> void:
 				_feed("A meteor hit the engine!", "spike", Color(1.0, 0.55, 0.3))
 			elif who == rules.killer and rules.in_rocket(my_name): _feed("A meteor hit the killer's ship!", "spike", Color(0.6, 1.0, 0.6))
 		"rland":
+			_start_ending(true, e.get("who", []))
 			NFHaptics.pulse("escape")
 			_feed("The rocket reached the Earth! (%s)" % ", ".join(PackedStringArray(e.get("who", []))), "out", Color(0.5, 1.0, 0.6))
 			if my_role == "killer": _flash("They got away — the rocket reached the Earth")
 		"rlost":
+			_start_ending(false, e.get("who", []))
 			var ram := str(e.get("why", "")) == "ram"
 			_feed("The killer rammed the rocket!" if ram else "The rocket ran out of time", "car", Color(1.0, 0.35, 0.3))
 			if my_name in (e.get("who", []) as Array):
 				_flash("She rammed the rocket — nobody aboard survived" if ram else "Out of time — the rocket was lost")
 				NFHaptics.pulse("impact")
 			elif my_role == "killer": _flash("Rammed! The rocket is gone" if ram else "Their time ran out — the rocket is lost")
+
+## «The Moon», stage 3: the film of how it ends, on every phone that is done with the round or was
+## up there — those aboard (out or lost), the dead and the escaped watching, the killer if she flew
+## after them or if nobody is left on the Moon. Anyone still running about down there plays on.
+func _start_ending(won: bool, who: Array) -> void:
+	if ending != null or ending_seen: return
+	var mine := my_name in who or my_state in ["escaped", "dead"]
+	if my_role == "killer":
+		mine = bool(rules.fl.ks)
+		if not mine:
+			mine = true
+			for n in rules.s:
+				if rules.s[n].hp in Rules.LIVE and not n in who: mine = false
+	if not mine: return
+	ending_seen = true
+	ending = NFEnding.new()
+	add_child(ending)
+	ending.setup(self, won, who.filter(func(n): return rules.hp(str(n)) == "escaped") if won else who)
+	ui.visible = false
+	minimap.visible = false
+	if chase_music: chase_music.stop()
 
 ## The road to show on the HUD: the car I am in, the road I am standing on, the car of the one I
 ## watch; for the killer, an escape car on its way.

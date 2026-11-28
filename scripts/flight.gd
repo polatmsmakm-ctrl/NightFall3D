@@ -433,7 +433,7 @@ func step(dt: float) -> void:
 	elif on_pad: _pad_camera(dt, md)
 	streaks.visible = shown
 	_sky(shown)
-	if not shown and not on_pad and cam.current and m.main_cam: m.main_cam.make_current()
+	if not shown and not on_pad and cam.current and m.main_cam and m.get("ending") == null: m.main_cam.make_current()
 	_sound(dt, shown)
 	if st >= 3 and m.my_role == "killer" and in_space(m.body.position): # the flight is over: back on the pad
 		m.body.position = m.world.kship_spot + Vector3(0, 0.5, 8.0)
@@ -868,7 +868,7 @@ func _sky(on: bool) -> void:
 		if env and env.has_meta("fly_fog"):
 			var ff: Array = env.get_meta("fly_fog")
 			env.fog_enabled = ff[0]; env.volumetric_fog_enabled = ff[1]
-		if m.main_cam: m.main_cam.make_current()
+		if m.main_cam and m.get("ending") == null: m.main_cam.make_current()
 
 func _sound(dt: float, on: bool) -> void:
 	var f := _fl()

@@ -88,7 +88,12 @@ func _ready() -> void:
 		if int(m.rules.fl.st) == 3: break
 	check(int(m.rules.fl.st) == 3 and m.rules.hp("P") == "escaped", "at the Earth: everyone aboard is out (%s)" % m.rules.hp("P"))
 	await frames(10)
-	check(not NFFlight.in_space(m.remotes["K"].pos) or true, "")
+	check(m.ending != null and m.ending.won and m.ending.cam.current, "the ending film plays: HUMANITY SURVIVED")
+	check(m.results == null, "the numbers wait for the film")
+	for i in 1400:
+		await tree.process_frame
+		if m.results != null: break
+	check(m.results != null and m.ending == null, "after the film, the results (%.1f s of film)" % NFEnding.WIN_LEN)
 	print("FLIGHT %s (%d failed)" % ["PASS" if bad == 0 else "FAIL", bad])
 	tree.quit(1 if bad else 0)
 

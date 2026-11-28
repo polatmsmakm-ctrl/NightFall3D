@@ -17,3 +17,5 @@ __pycache__/
 !assets/props/outpost/*.png.import
 !assets/props/moon2/*.jpg.import
 !assets/props/moon2/*.png.import
+!assets/props/space/*.jpg.import
+!assets/props/space/*.png.import
