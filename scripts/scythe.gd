@@ -5,7 +5,7 @@ extends Node3D
 ## handle runs through the fist alongside the forearm (up the arm, the blade over her head), the blade's
 ## inner edge toward where she faces, so it follows the walk and sweeps with the attack clip. In first person the killer's own body is
 ## hidden, so `view()` makes a second scythe held in front of the camera that swings on the attack.
-const USERS := ["killer3", "killer4", "killer5"]
+const USERS := ["killer4"] # the owner: the scythe is the Violet Wraith's alone
 const MODEL := "res://assets/props/scythe.glb"
 # in the model: the pommel at (0.52, -0.93), the handle up and to the left, the blade curling over the top
 const H_MODEL := Vector3(-0.55, 0.83, 0.0)  # along the handle, toward the blade

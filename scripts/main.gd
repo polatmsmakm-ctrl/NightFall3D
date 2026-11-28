@@ -1918,7 +1918,7 @@ func _build_dev_ui(layer: CanvasLayer) -> void:
 	dev_panel.visible = false
 	dev_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
 	dev_panel.offset_left = 8.0 + safe.x; dev_panel.offset_right = 348.0 + safe.x
-	dev_panel.offset_top = (-380.0 if (world and world.map_id == "kuwait") else -268.0) - (54.0 if offline else 0.0); dev_panel.offset_bottom = -46.0
+	dev_panel.offset_top = (-380.0 if (world and world.map_id == "kuwait") else -268.0) - (54.0 if offline else 0.0) - 54.0; dev_panel.offset_bottom = -46.0
 	layer.add_child(dev_panel)
 	var m := MarginContainer.new()
 	for side in ["left", "right", "top", "bottom"]: m.add_theme_constant_override("margin_" + side, 12)
@@ -1943,6 +1943,14 @@ func _build_dev_ui(layer: CanvasLayer) -> void:
 		van_btn.text = "Vanish button: %s" % ("On" if Dev.vanish_tool else "Off"))
 	NFUI.dress(van_btn, "ghost")
 	v.add_child(van_btn)
+	var gen_btn := Button.new() # testing: every generator done and the gates open, at once (online too: the server checks the passkey)
+	gen_btn.text = "Finish all generators + open gates"
+	gen_btn.custom_minimum_size.y = 46
+	gen_btn.pressed.connect(func() -> void:
+		dev_panel.visible = false
+		_dev_gens())
+	NFUI.dress(gen_btn, "bolt")
+	v.add_child(gen_btn)
 	if offline: # trial mode only: what «الوحش» does on his hook, on me, and then I come back
 		var try_btn := Button.new()
 		try_btn.text = "Try: the Beast eats me"
@@ -1981,6 +1989,14 @@ func _build_dev_ui(layer: CanvasLayer) -> void:
 		Dev.set_speed(val)
 		lbl.text = "Speed x%.2f" % Dev.speed)
 	v.add_child(sl)
+
+## Developer tools: every generator done and the gates open now, through the rules like any input.
+func _dev_gens() -> void:
+	if rules == null or rules.powered:
+		_flash("The gates already have power")
+		return
+	_ev({"k": "devgens", "key": Dev.KEY})
+	_flash("Developer: all generators done — the gates are opening")
 
 ## True while a touch belongs to the hidden panel, so the round ignores it.
 func _dev_ui(pos: Vector2) -> bool:
@@ -2401,7 +2417,7 @@ func _draw_ui() -> void:
 	elif esc_i >= 0 and rules.roads[esc_i].drv == my_name: _draw_speedo(Vector2(mid.x, s.y - 112.0), world.esc_cars[esc_i])
 	var doom_up: bool = rules.powered and rules.doom >= 0.0
 	var top := Vector2(mid.x, 96)
-	var in_fl: bool = flight != null and (flight.shown or flight.me_mode() == "pad")
+	var in_fl: bool = flight != null and (flight.shown or flight.me_mode() in ["pad", "lift"])
 	if in_fl: flight.draw_hud(ui, get_viewport().get_visible_rect().size) # the rocket chase's own panel
 	var road := -1 if in_fl else _road_view()
 	if in_fl: pass
@@ -3054,7 +3070,7 @@ func _press(id: String, touch: int) -> void:
 		"crouch":
 			crouch = not crouch
 			if crouch: sprint = false
-		"fboost":
+		"fboost", "fview":
 			if flight: flight.press(id)
 		"nitro":
 			if esc_i >= 0 and not esc_nitro.get(esc_i, false) and rules.roads[esc_i].drv == my_name:
@@ -3249,6 +3265,7 @@ func _input(e: InputEvent) -> void:
 	if (e is InputEventScreenTouch or e is InputEventMouseButton) and e.pressed and Gfx.in_ui(e.position): return
 	if (e is InputEventScreenTouch or e is InputEventMouseButton) and e.pressed and _dev_ui(e.position): return
 	if Gfx.menu_open: return
+	if flight and flight.lever_input(e): return # the rocket's throttle lever
 	if (e is InputEventScreenTouch or e is InputEventMouseButton) and e.pressed:
 		for sb in _sig_buttons():
 			if (sb[0] as Rect2).has_point(e.position):
@@ -3954,7 +3971,7 @@ func _physics_process(delta: float) -> void:
 		body.position = lp[0] + Basis(Vector3.UP, lp[1]) * Vector3(0, 0, 1.1)
 	last_locker = locker
 	if my_role == "survivor": rig.visible = locker < 0 and my_state != "escaped" and spectating == "" and (esc_i < 0 or esc_vis) and not rules.in_rocket(my_name)
-	elif flight: rig.visible = flight.me_mode() == ""
+	elif flight and flight.me_mode() != "": rig.visible = false # (her own body stays hidden in first person on the Moon too: it was shown there)
 	cshape.disabled = pinned or my_state in ["dead", "escaped"]
 	if pinned:
 		body.velocity = Vector3.ZERO

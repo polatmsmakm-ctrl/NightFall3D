@@ -68,6 +68,14 @@ func _ready() -> void:
 	check(m.body.position.z < -NightWorld.WALL - 12.0 and absf(m.body.position.y) < 0.6, "the open gate's vortex takes you through to the pad, and the pad holds you")
 	check(m.warp_rect != null and w.portal_mats.size() == 2 and float(w.portal_mats[0].get_shader_parameter("power")) > 0.5, "a warp flash, and the vortex is racing")
 	check(w.outpost_parts >= 10, "his outpost's buildings handed out over the map (%d)" % w.outpost_parts)
+	var worst := 0.0
+	for e in w.outpost_at + w.moon2_at:
+		var at: Vector3 = e[1]
+		var r: float = e[2]
+		for k in 8:
+			var a := TAU * k / 8.0
+			worst = maxf(worst, absf(w.height(at.x + sin(a) * r * 0.9, at.z + cos(a) * r * 0.9) - at.y))
+	check(worst < 0.25, "every building stands on level ground, none sinking (worst %.2f m)" % worst)
 	check(w.moon2_parts >= 10, "his second batch on the Moon, the bone mountain beyond the wall (%d)" % w.moon2_parts)
 	var eng := 0
 	for gn in w.find_children("*", "Node3D", true, false):
@@ -75,6 +83,24 @@ func _ready() -> void:
 	check(eng == 5, "his Neon Steam Engine is every generator (%d)" % eng)
 	check(float(w._sky_mat.get_shader_parameter("has_p2")) == 1.0, "Jupiter overhead")
 	check(w.moon_rocks > 3000, "his rocks and pebbles all over the ground (%d)" % w.moon_rocks)
+	check(float(w._sky_mat.get_shader_parameter("p2_r")) < 0.1, "Jupiter is far off now (radius %.3f)" % float(w._sky_mat.get_shader_parameter("p2_r")))
+	check(w.rock_shapes > 600, "every rock is solid (%d shapes)" % w.rock_shapes)
+	var rb := w.get_node_or_null("MoonRocks")
+	var tall := 0
+	var blocked := 0
+	if rb:
+		var sp := w.get_world_3d().direct_space_state
+		for c in rb.get_children():
+			if not (c is CollisionShape3D and (c as CollisionShape3D).shape is ConvexPolygonShape3D): continue
+			var cs := c as CollisionShape3D
+			var at: Vector3 = cs.global_position
+			var aim := Vector3(at.x, w.height(at.x, at.z) + 0.2, at.z)
+			if aim.y > at.y + 0.3: continue
+			tall += 1
+			var q := PhysicsRayQueryParameters3D.create(aim + Vector3(6.0, 0, 0), aim)
+			if not sp.intersect_ray(q).is_empty(): blocked += 1
+			if tall >= 40: break
+	check(tall >= 20 and blocked >= tall - 2, "walking into a rock: it stops you (%d of %d)" % [blocked, tall])
 	check(m.rules.hp("P") == "ok", "not out yet on the pad")
 	m.rules.doom = 100.0
 	await frames(10)

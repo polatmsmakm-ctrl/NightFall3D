@@ -24,6 +24,7 @@ const MOON_ROCKET := Vector3(0.0, 0.0, -WALL - 48.0)       # the rocket's foot
 const MOON_BOARD := Vector3(0.0, 0.0, -WALL - 34.0)        # the boarding ramp: within MOON_BOARD_R of it, you are out
 const MOON_BOARD_R := 6.0
 const MOON_EARTH := Vector3(0.38, 0.4, 0.83)               # where the Earth hangs in the sky (unnormalised)
+const MOON_JUPITER := Vector3(-0.82, 0.34, 0.46)            # his Jupiter, far off and low in the west
 const MOON_METEOR := Vector3(-0.55, 0.5, -0.67)            # where the meteor comes from (over the rocket)
 const MOON_HABS := [[-30.0, -20.0, 0.3, 9.0, 7.0, 3.2], [24.0, -30.0, -0.4, 8.0, 6.0, 3.0], [-52.0, -58.0, 1.1, 9.0, 7.0, 3.2],
 	[10.0, -70.0, 0.2, 8.0, 6.0, 3.0], [-70.0, 10.0, 0.9, 9.0, 7.0, 3.2], [-26.0, 42.0, -0.6, 8.0, 6.0, 3.0],
@@ -488,21 +489,55 @@ func _moon_tone(x: float, z: float) -> float:
 
 func height(x: float, z: float) -> float:
 	var h := _raw_h(x, z)
+	if map_id == "moon": return _moon_sites_h(x, z, h)
 	for s in sites:
 		var d := Vector2(x - s[0], z - s[1]).length()
 		if d < s[3] + 7.0:
 			h = lerpf(s[2], h, smoothstep(s[3], s[3] + 7.0, d))
 	return h
 
+## The Moon's level pads: inside a pad its own height, exactly (its building stands on it); between
+## pads whose blends overlap, the nearer pad wins smoothly instead of the later one pulling over the
+## earlier one's floor.
+func _moon_sites_h(x: float, z: float, raw: float) -> float:
+	var wsum := 0.0
+	var ysum := 0.0
+	var wmax := 0.0
+	for s in sites:
+		var d := Vector2(x - s[0], z - s[1]).length()
+		if d >= s[3] + 7.0: continue
+		if d <= s[3]: return s[2]
+		var w := 1.0 - smoothstep(s[3], s[3] + 7.0, d)
+		var w8 := pow(w, 8.0)
+		wsum += w8; ysum += w8 * float(s[2])
+		wmax = maxf(wmax, w)
+	if wsum <= 0.0: return raw
+	return lerpf(raw, ysum / wsum, wmax)
+
 func in_site(x: float, z: float, pad := 0.0) -> bool:
 	for s in sites:
 		if Vector2(x - s[0], z - s[1]).length() < s[3] + pad: return true
 	return false
 
+## «The Moon»: where his buildings and vehicles go is decided before the ground is built, so the ground
+## can be levelled under each one (on a crater's slope they sank in on one side).
+func _plan_moon() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1969 * 7 + layout_seed
+	_outpost_buildings(rng)
+	_moon_extras(rng)
+	for v in [["moon_rover", 5.0, 3], ["moon_titan", 6.0, 2], ["moon_tanker", 7.0, 2]]:
+		for i in int(v[2]):
+			var p := _free_spot(rng, float(v[1]))
+			if p == Vector3.INF: continue
+			var y := _pad_at(p, float(v[1]) * 0.8)
+			moon_plan.append([str(v[0]), Vector3(p.x, y - 0.05, p.z), rng.randf() * TAU, 1.0, 0.85, 0.0, false, str(v[0]), float(v[1])])
+
 func build() -> void:
 	_make_materials()
 	_build_environment()
 	if theme == "rain": _wet()
+	if map_id == "moon" and moon_plan.is_empty(): _plan_moon()
 	_build_terrain()
 	build_step = 1
 	await get_tree().process_frame
@@ -780,6 +815,11 @@ func _build_environment() -> void:
 		if ResourceLoader.exists("res://assets/sky/jupiter.jpg"): # his Jupiter, huge and high overhead
 			_sky_mat.set_shader_parameter("p2_tex", load("res://assets/sky/jupiter.jpg"))
 			_sky_mat.set_shader_parameter("has_p2", 1.0)
+			# far off now (the owner): low in the west, a third of the size it was — still plain to see
+			_sky_mat.set_shader_parameter("p2_dir", MOON_JUPITER.normalized())
+			_sky_mat.set_shader_parameter("p2_r", 0.075)
+		if ResourceLoader.exists("res://assets/sky/moon.jpg"): # the Moon they left, for the flight (off until then)
+			_sky_mat.set_shader_parameter("p3_tex", load("res://assets/sky/moon.jpg"))
 		env.ambient_light_color = Color(0.19, 0.22, 0.3)
 		env.ambient_light_energy = 0.75
 		env.fog_light_color = Color(0.0, 0.0, 0.0)
@@ -5911,13 +5951,8 @@ func _outpost_buildings(rng: RandomNumberGenerator) -> void:
 			var p := _free_spot(rng, r)
 			if p == Vector3.INF: break
 			if absf(p.x) > WALL - r - 3.0 or absf(p.z) > WALL - r - 3.0 or _near_gate_path(p.x, p.z): continue
-			var low := p.y
-			for k in 8: # sit on the lowest ground under it, so no edge floats over a crater
-				var a := TAU * k / 8.0
-				low = minf(low, height(p.x + sin(a) * r * 0.8, p.z + cos(a) * r * 0.8))
-			if _moon_prop("outpost/" + name, Vector3(p.x, low - 0.15, p.z), rng.randf() * TAU, OUTPOST_K, 0.82, 0.0, true):
-				outpost_parts += 1
-				outpost_at.append([name, Vector3(p.x, low, p.z), r])
+			var y := _pad_at(p, r) # the ground is levelled under it (before the terrain is built), so it sits flush
+			moon_plan.append(["outpost/" + name, Vector3(p.x, y - 0.12, p.z), rng.randf() * TAU, OUTPOST_K, 0.82, 0.0, true, "outpost", r])
 			break
 
 ## His second batch for the Moon, every triangle as he made it (assets/props/moon2/), at sizes that
@@ -5927,6 +5962,7 @@ const MOON2 := [["neon_outpost", 9.5, 1, 11.0, 0.85, 0.0], ["pizza", 6.5, 1, 9.0
 	["tech_case", 0.6, 1, 1.5, 0.9, 80.0], ["ammo_crate", 0.65, 1, 1.5, 0.9, 80.0], ["reaper", 1.6, 1, 2.0, 0.0, 110.0]]
 var moon2_parts := 0
 var moon2_at := [] # [name, where, footprint] of each one placed
+var moon_plan: Array = [] # [model, at, yaw, scale, solid, drawn to, recenter, kind, footprint]: planned before the terrain
 func _moon_extras(rng: RandomNumberGenerator) -> void:
 	for e in MOON2:
 		if _model("moon2/" + str(e[0])) == null: continue
@@ -5936,16 +5972,39 @@ func _moon_extras(rng: RandomNumberGenerator) -> void:
 				var p := _free_spot(rng, r)
 				if p == Vector3.INF: break
 				if absf(p.x) > WALL - r - 3.0 or absf(p.z) > WALL - r - 3.0 or _near_gate_path(p.x, p.z): continue
-				var low := p.y
-				for k in 6:
-					var a := TAU * k / 6.0
-					low = minf(low, height(p.x + sin(a) * r * 0.7, p.z + cos(a) * r * 0.7))
-				var n := _moon_prop("moon2/" + str(e[0]), Vector3(p.x, low - 0.05, p.z), rng.randf() * TAU, float(e[1]), float(e[4]), float(e[5]), true)
-				if n:
-					moon2_parts += 1
-					moon2_at.append([str(e[0]), Vector3(p.x, low, p.z), r])
-					if str(e[0]) == "reaper": n.rotation.z = 0.12 # his crimson scythe stuck in the dust, leaning
+				var y := _pad_at(p, r)
+				moon_plan.append(["moon2/" + str(e[0]), Vector3(p.x, y - 0.04, p.z), rng.randf() * TAU, float(e[1]), float(e[4]), float(e[5]), true, str(e[0]), r])
 				break
+
+## Everything planned above, built: each on the level pad the terrain was given under it.
+func _place_moon_plan() -> void:
+	for e in moon_plan:
+		var ns := sites.size()
+		var n := _moon_prop(str(e[0]), e[1], float(e[2]), float(e[3]), float(e[4]), float(e[5]), bool(e[6]))
+		if sites.size() > ns: sites.resize(ns) # (its level pad is already a site, the one the ground was built from)
+		if n == null: continue
+		var kind := str(e[7])
+		var at: Vector3 = e[1]
+		if str(e[0]).begins_with("outpost/"):
+			outpost_parts += 1
+			outpost_at.append([kind, at, float(e[8])])
+		elif str(e[0]).begins_with("moon2/"):
+			moon2_parts += 1
+			moon2_at.append([kind, at, float(e[8])])
+			if kind == "reaper": n.rotation.z = 0.12 # his crimson scythe stuck in the dust, leaning
+
+## The ground a building of footprint radius r stands on: the mean of the ground under it, and that
+## ground levelled (a site: height() flattens it, the terrain is built from height()).
+func _pad_at(p: Vector3, r: float) -> float:
+	var sum := height(p.x, p.z)
+	for k in 8:
+		var a := TAU * k / 8.0
+		sum += height(p.x + sin(a) * r * 0.85, p.z + cos(a) * r * 0.85)
+	var y := sum / 9.0
+	sites.append([p.x, p.z, y, r])
+	return y
+
+func _moon_mountain() -> void:
 	# his skeleton mountain: a ridge of bones beyond the north wall, under the Earth
 	if _model("moon2/skull_mountain"):
 		var n2 := (_model("moon2/skull_mountain").instantiate() as Node3D)
@@ -6010,13 +6069,7 @@ func _moon_rocks() -> void:
 			var key := Vector2i(clampi(int((x + WALL) / CH), 0, nch - 1), clampi(int((z + WALL) / CH), 0, nch - 1))
 			if not buckets.has(key): buckets[key] = []
 			buckets[key].append(xf)
-			if big and kd[0] != "moon_rockfield": # knee-high: something to bump into
-				var cs := CollisionShape3D.new()
-				var bs := BoxShape3D.new()
-				bs.size = Vector3(1.6, 1.2, 1.6) * k
-				cs.shape = bs
-				cs.position = Vector3(x, y + 0.5 * k, z)
-				solids.add_child(cs)
+			_rock_solid(solids, kd[0], xf, x, z) # (xf already carries the mesh's own place in its model)
 		for key in buckets:
 			var list: Array = buckets[key]
 			var mm := MultiMesh.new()
@@ -6033,6 +6086,43 @@ func _moon_rocks() -> void:
 			moon_rocks += list.size()
 	add_child(solids)
 	_moon_pebbles(rng, weak)
+
+## Every rock is solid (the owner): its own convex hull (tools/rock_hulls.py, from his model, which
+## stays as it is), turned and scaled like the rock, as a shape of the map's static body. A rock lower
+## than MOUND_H is a low hump you walk up and over (a wide buried sphere, gentle enough for the feet)
+## instead of a step that would stop you dead; the rock field's boulders are each their own hull.
+const MOUND_H := 0.32
+var rock_shapes := 0
+func _rock_solid(solids: StaticBody3D, model: String, xf: Transform3D, x: float, z: float) -> void:
+	var hulls: Array = NFRockHulls.HULLS.get(model, [])
+	var g := height(x, z)
+	for hp in hulls:
+		var pts := PackedVector3Array()
+		var lo := Vector3(INF, INF, INF)
+		var hi := -lo
+		var flat: Array = hp
+		for j in range(0, flat.size(), 3):
+			var w := xf * Vector3(flat[j], flat[j + 1], flat[j + 2])
+			pts.append(w)
+			lo = lo.min(w); hi = hi.max(w)
+		var top := hi.y - g
+		if top < 0.06: continue # (all but buried)
+		var cs := CollisionShape3D.new()
+		if top < MOUND_H:
+			var a := maxf(maxf(hi.x - lo.x, hi.z - lo.z) * 0.65, top * 2.6)
+			var sp := SphereShape3D.new()
+			sp.radius = (a * a + top * top) / (2.0 * top)
+			cs.shape = sp
+			cs.position = Vector3((lo.x + hi.x) * 0.5, g + top - sp.radius, (lo.z + hi.z) * 0.5)
+		else:
+			var c := (lo + hi) * 0.5
+			for i in pts.size(): pts[i] -= c
+			var cv := ConvexPolygonShape3D.new()
+			cv.points = pts
+			cs.shape = cv
+			cs.position = c
+		solids.add_child(cs)
+		rock_shapes += 1
 
 ## The arch of each gate and the ground just inside it stay clear.
 func _near_gate_path(x: float, z: float) -> bool:
@@ -6108,11 +6198,8 @@ func _build_moon() -> void:
 	var put := func(name: String, pad: float, k: float, solid := 0.85, far := 0.0) -> void:
 		var p := _free_spot(rng, pad)
 		if p != Vector3.INF: _moon_prop(name, p - Vector3(0, 0.05, 0), rng.randf() * TAU, k, solid, far)
-	_outpost_buildings(rng)
-	_moon_extras(rng)
-	for i in 3: put.call("moon_rover", 5.0, 1.0)
-	for i in 2: put.call("moon_titan", 6.0, 1.0)
-	for i in 2: put.call("moon_tanker", 7.0, 1.0)
+	_place_moon_plan()
+	_moon_mountain()
 	# the Stone Guardian: one by the base, one watching the middle of the map
 	var mfront: Vector3 = market.pos + Basis(Vector3.UP, market.yaw) * Vector3(0, 0, 12.5)
 	_moon_prop("moon_guardian", Vector3(mfront.x, height(mfront.x, mfront.z), mfront.z), market.yaw, 1.0, 0.6)

@@ -28,6 +28,10 @@ uniform sampler2D p2_tex : source_color, filter_linear_mipmap, repeat_disable; /
 uniform float has_p2 = 0.0;
 uniform vec3 p2_dir = vec3(0.12, 0.96, -0.25);
 uniform float p2_r = 0.2;
+uniform sampler2D p3_tex : source_color, filter_linear_mipmap, repeat_disable; // the Moon behind the rocket in flight
+uniform float has_p3 = 0.0;
+uniform vec3 p3_dir = vec3(-0.3, 0.1, 1.0);
+uniform float p3_r = 0.3;
 
 float hash(vec3 p) {
 	p = fract(p * 0.3183099 + 0.1);
@@ -109,6 +113,20 @@ void sky() {
 		vec3 pc = ps * (0.08 + 1.25 * plit) * (0.55 + 0.45 * pl) + vec3(1.0, 0.6, 0.3) * pow(1.0 - pl, 4.0) * 0.35 * plit;
 		col += vec3(1.0, 0.65, 0.35) * 0.12 * smoothstep(p2_r * 1.08, p2_r, pa) * (1.0 - pdisc);
 		col = mix(col, pc, pdisc);
+	}
+	if (has_p3 > 0.5) { // the Moon they left, behind the rocket: lit from the same side as the Earth, getting smaller
+		vec3 qd = normalize(p3_dir);
+		float qa = acos(clamp(dot(d, qd), -1.0, 1.0));
+		vec3 qr = normalize(cross(qd, vec3(0.0, 1.0, 0.0)));
+		vec3 qu = cross(qr, qd);
+		vec2 qv = vec2(dot(d, qr), dot(d, qu)) / p3_r;
+		float qdisc = smoothstep(p3_r, p3_r * 0.985, qa);
+		float ql = sqrt(max(0.0, 1.0 - dot(qv, qv)));
+		vec3 qs = texture(p3_tex, vec2(qv.x, -qv.y) * 0.5 + 0.5).rgb;
+		float qlit = smoothstep(-0.75, 0.3, qv.x * 0.75 + qv.y * 0.35 + 0.3);
+		vec3 qc = qs * 1.25 * (0.06 + 1.1 * qlit) * (0.7 + 0.3 * ql);
+		col += vec3(0.6, 0.65, 0.75) * 0.06 * smoothstep(p3_r * 1.1, p3_r, qa) * (1.0 - qdisc);
+		col = mix(col, qc, qdisc);
 	}
 	if (has_meteor > 0.5 && meteor_near > 0.0) { // the meteor: a dark rock with a burning edge, growing
 		vec3 mdir = normalize(meteor_dir);

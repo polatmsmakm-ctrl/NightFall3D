@@ -21,7 +21,7 @@ const REACH = 4.5; // generous: positions arrive ~15 times a second
 const CAR_SEATS = 6; // an escape car seats six: every survivor a room can have
 const ROAD_TIME = 120; // from the first one getting into a gate's escape car to the last gate, 600 m on
 // «The Moon», stage 2: the rocket chase (rules.gd has the same numbers and says what they are)
-const LAUNCH_WAIT = 15, FLIGHT_TIME = 210, FLY_LEN = 42000, KSHIP_LOCK = 8;
+const LAUNCH_WAIT = 15, COUNTDOWN = 5, ROCKET_SEATS = 8, FLIGHT_TIME = 210, FLY_LEN = 42000, KSHIP_LOCK = 10;
 const BOOST_LEN = 9, BOOST_FILL = 18, DMG_TIME = 3.5, DMG_MAX = 6;
 // one ability per survivor character (same table and numbers as rules.gd)
 const PERK = { survivor1: 'burst', survivor2: 'fix', survivor3: 'lift', survivor4: 'rise',
@@ -151,7 +151,7 @@ class Rules {
   inRocket(n) { return (this.fl.st === 1 || this.fl.st === 2) && this.fl.who.includes(n); }
   rboard(from, out) { // into the Moon's rocket on the boarding ring: the first one steers, the second boosts
     const f = this.fl, L = this.layout || {};
-    if (!(this.moon && this.powered && this.freeNow(from) && f.st <= 1 && f.who.length < CAR_SEATS)) return;
+    if (!(this.moon && this.powered && this.freeNow(from) && f.st <= 1 && f.who.length < ROCKET_SEATS)) return;
     if (L.e && !L.e.some((e) => this.near(from, e, 12))) return;
     if (f.st === 0) { f.st = 1; f.t = LAUNCH_WAIT; f.pil = from; } else if (!f.bst) f.bst = from;
     f.who.push(from);
@@ -185,6 +185,13 @@ class Rules {
     const f = this.fl;
     if (isKiller && f.ks && f.st === 2 && d.k !== 'rram' && d.k !== 'mhit') return out; // in her ship, far above the Moon
     switch (d.k) { // the rocket chase
+      case 'devgens': // the owner's developer tools: every generator done, the gates open now (the passkey must match)
+        if (String(d.key || '') === '4343' && !this.powered) {
+          for (const g of this.gens) { g.p = 1; g.done = true; g.reps = {}; }
+          this.gateT = 0;
+          out.push({ k: 'devgens', by: from });
+        }
+        return out;
       case 'rboard': this.rboard(from, out); return out;
       case 'boost':
         if (f.st === 2 && (from === f.bst || (from === f.pil && !f.bst))) f.b = !!d.on && f.e > 0.05;
@@ -204,7 +211,7 @@ class Rules {
         return out;
       }
       case 'rram':
-        if (isKiller && f.ks && f.st === 2 && this.nearPlayer(from, f.pil, 20)) out.push(this.rlost('ram'));
+        if (isKiller && f.ks && f.st === 2 && this.nearPlayer(from, f.pil, 110)) out.push(this.rlost('ram')); // caught within 70 m (positions lag at 300 m/s)
         return out;
       case 'kship': // the killer takes off after them
         if (isKiller && f.st === 2 && f.c >= KSHIP_LOCK && !f.ks && this.carrying === '' && this.stun <= 0 && (!L.q || this.near(from, L.q, 10))) {
@@ -623,7 +630,8 @@ class Rules {
     if (f.st === 1) {
       f.t = Math.max(f.t - dt, 0);
       const waiting = Object.keys(this.s).filter((n) => LIVE.includes(this.s[n].hp) && !f.who.includes(n)).length;
-      if (f.t <= 0 || waiting === 0 || (this.powered && this.doom === 0)) {
+      if (waiting === 0) f.t = Math.min(f.t, COUNTDOWN); // everyone is in: the last five seconds
+      if (f.t <= 0 || (this.powered && this.doom === 0)) {
         f.st = 2; f.t = FLIGHT_TIME; f.c = 0;
         out.push({ k: 'launch', who: f.who.slice() });
       }

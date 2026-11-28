@@ -1601,3 +1601,49 @@ through meteors with the killer's ship behind, and (stage 3) the endings — Ear
   trailing under the rags, swaying), the model hovers 0.5 m up and bobs, and she makes no footsteps.
 - Menus (`CHARS`), `KILLERS` in `server.js` (**Render deploy**), `CHAR_COL`, `MALE` (the Revenant), the
   jumpscare aims higher for the three (they are taller), portraits (`tools/portraits.gd`).
+
+## The rocket, second pass, and the owner's fixes (28 Nov, afternoon)
+- **Lift-off is the survivors' own**: once everyone left alive is aboard (or `LAUNCH_WAIT` 15 s after the
+  first one got in) the pad counts down `COUNTDOWN` 5 s (a big 5-4-3-2-1, a chime and a buzz each second),
+  then the rocket sits at **zero speed** until the pilot pushes the **throttle lever** up
+  (`NFFlight.throttle`, `lever_rect`, `lever_input` from `main._input`; R / F on a keyboard). It stays where
+  it is let go; the rocket gathers speed at `R_ACC` 18 m/s² toward throttle x `CRUISE` (the boost adds the
+  rest up to `ROCKET_MAX`). The pad rocket climbs by the real distance flown (`r_loc.z`), and the flight
+  camera takes over past `LIFT_Z` 180 m (`lifting()`).
+- **Caught at 70 m** (`Rules.CATCH_D`, `NFFlight.catch_dist()`: from the hull, nose to tail; the server
+  allows 110 m for lag). Her ship is now `KILLER_MAX` 280 (faster than the rocket cruising, slower than
+  its boost), gathers speed at `K_ACC` 16, can take off `KSHIP_LOCK` 10 s after lift-off; the exhaust
+  wash is 160 m long and 14 m wide.
+- **Eight seats inside** (`Rules.ROCKET_SEATS` / `ROCKET_SEATS` in rules.js): `NFFlight._make_cabin()`
+  builds a cabin in the core of his rocket where it is widest (his hull is 1.85 m round the axis there,
+  the cabin 1.55 m, `CAB_FRONT` -3.4 .. `CAB_BACK` 3.4): a shell with a porthole by every seat
+  (`shaders/cabin.gdshader`), a wide window in the front bulkhead, a console, light strips, and four rows
+  of two seats (`SEATS`). Everyone aboard sits in their seat on every phone (`_seat_riders`, the `drive`
+  pose at `SEAT_S` 0.85); from outside the hull hides them. The camera button «Inside / Outside» (`fview`)
+  puts the camera at my seat. `tools/flight.tscn` checks that every seat and rider fits inside.
+- **The Moon behind them**: `sky.gdshader` `p3_*` draws his Nightfall moon picture behind the rocket in
+  flight (`NFFlight.MOON_BEHIND`), shrinking with distance (`moon_behind_r`). **Jupiter** is far off now:
+  `NightWorld.MOON_JUPITER`, low in the west, `p2_r` 0.075 (was 0.2 overhead).
+- **The defeat film** (still exactly 12 s): a story clock (`NFEnding.st`) that slows to 0.3x from
+  `SLOW_A` 3.8 to `SLOW_B` 5.6 s so the impact plays in slow motion; five shots (the wide approach, riding
+  in behind the burning meteor, the slow side view as it goes in with a white-out, pulling back over
+  the blast — a shockwave ring racing over the surface and a plume of fire out of the crater — then
+  the planet breaking with a great ring of fire thrown out into space, `shaders/shock_ring.gdshader`,
+  and a fifth of the debris flying at the camera). Title from 9.2 s.
+- **Developer tools: «Finish all generators + open gates»** (`main._dev_gens`): input `devgens` with the
+  passkey, in both rules files (server checks `4343`): every generator done, the gates open next tick.
+- **Every Moon rock is solid**: `tools/rock_hulls.py` writes `scripts/rock_hulls.gd` (`NFRockHulls`): the
+  convex hull of each rock model and of each of the rock field's 17 boulders, from his models (unchanged).
+  `world._rock_solid` gives every rock its hull; one lower than `MOUND_H` 0.32 m is a low wide hump you
+  walk over. The pebbles stay walk-through (a few cm). `rock_shapes` counts them (~1100).
+- **The Moon's buildings no longer sink**: their spots are planned before the terrain (`_plan_moon`,
+  `moon_plan`) and the ground is levelled under each one (`_pad_at` adds a site at the mean height),
+  then `_place_moon_plan` builds them. They used to sit on the lowest ground under them and sank into
+  crater slopes.
+- **The killer's own body in first person on the Moon**: `main` showed it there (the flight's branch set
+  `rig.visible`): her wings, coat and claws filled the camera. Hidden again, as on every map.
+- **The Thorned Scythe is the Violet Wraith's alone** (`NFScythe.USERS`).
+- **Faces follow the head** (`tools/head_rigid.py`, every character file, weights only): the head/neck
+  blend ran through the mouth (the chin was ~85% neck), so every clip that turns the head — the dances
+  most of all — stretched the jaw. Now the face down to under the chin is the Head bone's and the blend
+  is on the neck. Re-run it after re-rigging a character (`asset.extras.head_rigid` marks a done file).

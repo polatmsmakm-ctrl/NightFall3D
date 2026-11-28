@@ -46,6 +46,16 @@ var layer: CanvasLayer
 var ui: Control
 var hid_light: Light3D
 var _cpos := Vector3.ZERO
+var st := 0.0               # the defeat's story clock: it slows right down round the impact (real time stays 12 s)
+var ring: MeshInstance3D    # the shockwave racing over the surface from the impact
+var ring_mat: ShaderMaterial
+var praxis: MeshInstance3D  # the great flat ring thrown out into space as the planet breaks
+var praxis_mat: ShaderMaterial
+var plume: MeshInstance3D   # the column of fire and rock blown back up out of the crater
+var plume_mat: ShaderMaterial
+const SLOW_A := 3.8         # real seconds: the slow motion starts
+const SLOW_B := 5.6         # and ends
+const SLOW := 0.3           # at this speed
 
 func setup(main: Node, did_win: bool, who: Array) -> void:
 	m = main
@@ -298,8 +308,67 @@ func _build_fx() -> void:
 	for i in n:
 		var d := Vector3(rng.randfn(), rng.randfn(), rng.randfn()).normalized()
 		if d.dot(hit_dir) < -0.2: d = (d + hit_dir * 0.9).normalized() # most of it from the struck side
-		debris_v.append([d * R * rng.randf_range(0.95, 1.02), d * rng.randf_range(220.0, 900.0), Vector3(rng.randfn(), rng.randfn(), rng.randfn()).normalized(),
-			rng.randf_range(10.0, 70.0) * (2.0 / 1.0)])
+		var spd := rng.randf_range(220.0, 900.0)
+		var sc := rng.randf_range(10.0, 70.0) * 2.0
+		if not won and i % 5 == 0: # a fifth of it comes straight at the last camera, fast and big
+			d = (CAM_END.normalized() + Vector3(rng.randfn(), rng.randfn(), rng.randfn()) * 0.12).normalized()
+			spd = rng.randf_range(2600.0, 3900.0)
+			sc *= 2.2
+		debris_v.append([d * R * rng.randf_range(0.95, 1.02), d * spd, Vector3(rng.randfn(), rng.randfn(), rng.randfn()).normalized(), sc])
+	if not won: _build_blast(nt)
+
+const CAM_END := Vector3(4300.0, 3100.0, 12500.0) # where the last shot of the defeat looks from
+
+func _ring_quad(mat: ShaderMaterial) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(2.0, 2.0)
+	pm.material = mat
+	mi.mesh = pm
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.visible = false
+	mi.extra_cull_margin = 16000.0
+	add_child(mi)
+	return mi
+
+## The defeat's blast: a shockwave ring over the surface, a plume out of the crater, and the great ring
+## thrown out into space when the planet goes.
+func _build_blast(nt: Texture2D) -> void:
+	ring_mat = ShaderMaterial.new()
+	ring_mat.shader = load("res://shaders/shock_ring.gdshader")
+	ring_mat.set_shader_parameter("noise_tex", nt)
+	ring = _ring_quad(ring_mat)
+	var h := hit_dir * R
+	ring.basis = Basis.looking_at(-hit_dir, Vector3.UP if absf(hit_dir.y) < 0.95 else Vector3.RIGHT) * Basis(Vector3(1, 0, 0), PI / 2.0)
+	ring.position = h * 1.012
+	praxis_mat = ShaderMaterial.new()
+	praxis_mat.shader = load("res://shaders/shock_ring.gdshader")
+	praxis_mat.set_shader_parameter("noise_tex", nt)
+	praxis_mat.set_shader_parameter("col", Color(1.0, 0.45, 0.2))
+	praxis_mat.set_shader_parameter("hot", Color(1.0, 0.9, 0.75))
+	praxis = _ring_quad(praxis_mat)
+	praxis.basis = Basis(Vector3(1, 0, 0), 0.32) * Basis(Vector3(0, 0, 1), -0.18) # nearly level, tipped toward the camera
+	plume = MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = 0.15; cm.bottom_radius = 1.0; cm.height = 1.0; cm.radial_segments = 32; cm.rings = 1
+	cm.cap_top = false; cm.cap_bottom = false
+	plume_mat = ShaderMaterial.new()
+	plume_mat.shader = load("res://shaders/flame.gdshader")
+	plume_mat.set_shader_parameter("core", Color(1.0, 0.85, 0.55))
+	plume_mat.set_shader_parameter("tail", Color(0.9, 0.25, 0.05))
+	plume_mat.set_shader_parameter("power", 0.0)
+	cm.material = plume_mat
+	plume.mesh = cm
+	plume.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	plume.visible = false
+	plume.extra_cull_margin = 16000.0
+	add_child(plume)
+
+## How fast the story runs at real time tt: full speed, then a slow stretch round the impact.
+func _story_rate(tt: float) -> float:
+	var a := smoothstep(SLOW_A - 0.25, SLOW_A + 0.15, tt)
+	var b := 1.0 - smoothstep(SLOW_B - 0.15, SLOW_B + 0.3, tt)
+	return lerpf(1.0, SLOW, a * b)
 
 # ---------------- the timeline ----------------
 func _process(dt: float) -> void:
@@ -377,67 +446,116 @@ func meteor_lose(tt: float) -> Vector3:
 	return h + come * maxf(IMPACT - tt, 0.0) * 2900.0
 
 func _lose(dt: float) -> void:
+	st += dt * _story_rate(t)
+	var s := st # the story's own clock (slower round the impact)
 	var h := hit_dir * R
-	var mp := meteor_lose(t)
-	var mv := (meteor_lose(t + 0.05) - mp) / 0.05
-	_place_meteor(mp, mv, clampf((t - 2.4) / 1.8, 0.0, 1.0))
-	meteor.visible = t < IMPACT + 0.15
+	var come := (hit_dir * 0.75 + Vector3(0.45, 0.42, 0.05)).normalized()
+	var tan := hit_dir.cross(come).normalized()
+	var mp := meteor_lose(s)
+	var mv := (meteor_lose(s + 0.05) - mp) / 0.05
+	var mvn := mv.normalized() if mv.length() > 1.0 else -come
+	_place_meteor(mp, mv, clampf((s - 2.0) / 2.0, 0.0, 1.0))
+	meteor.visible = s < IMPACT + 0.12
 	m_trail.visible = meteor.visible
 	# the air glows orange where it comes through
-	var entry := clampf((t - 2.6) / (IMPACT - 2.6), 0.0, 1.0) if t < IMPACT + 1.0 else maxf(1.0 - (t - IMPACT - 1.0) / 2.0, 0.0)
-	atmo_mat.set_shader_parameter("col", Color(0.3, 0.55, 1.0).lerp(Color(1.0, 0.45, 0.15), entry * 0.6))
+	var entry := clampf((s - 2.6) / (IMPACT - 2.6), 0.0, 1.0) if s < IMPACT + 1.0 else maxf(1.0 - (s - IMPACT - 1.0) / 2.0, 0.0)
+	atmo_mat.set_shader_parameter("col", Color(0.3, 0.55, 1.0).lerp(Color(1.0, 0.45, 0.15), entry * 0.7))
 	atmo_mat.set_shader_parameter("hot_dir", hit_dir)
-	atmo_mat.set_shader_parameter("hot", entry * 2.0)
-	var since := t - IMPACT
+	atmo_mat.set_shader_parameter("hot", entry * 2.6)
+	if t > 2.4 and _once("dive"): # the camera rides in behind it
+		_sfx("car_pass", 4.0, 0.32)
+		_sfx("thunder", 0.0, 0.42)
+	if t > 2.4 and s < IMPACT: shake = maxf(shake, 0.25 + 0.35 * clampf((s - 2.4) / 1.8, 0.0, 1.0))
+	var since := s - IMPACT
 	if since >= 0.0 and _once("impact"):
-		flash = 1.0
+		flash = 1.6 # a white-out
 		shake = 1.0
 		fireball.visible = true
-		_sfx("impact", 4.0, 0.7)
-		_sfx("gen_boom", 2.0, 0.4)
+		_sfx("impact", 6.0, 0.55)
+		_sfx("gen_boom", 4.0, 0.32)
+		_sfx("thunder", 2.0, 0.5)
 		NFHaptics.pulse("impact")
 	if since >= 0.0:
 		var a := clampf(since / 3.2, 0.0, 1.0)
-		fireball.position = h * (1.0 + 0.06 * a)
-		fireball.scale = Vector3.ONE * lerpf(260.0, 1900.0, 1.0 - pow(1.0 - a, 2.5))
+		fireball.position = h * (1.0 + 0.07 * a)
+		fireball.scale = Vector3.ONE * lerpf(260.0, 2100.0, 1.0 - pow(1.0 - a, 2.5))
 		fb_mat.set_shader_parameter("age", a)
 		fireball.visible = a < 1.0
 		for sm in mats:
 			(sm as ShaderMaterial).set_shader_parameter("shock", clampf(since / 3.6, 0.0, 1.0) if since < 3.6 else -1.0)
-			(sm as ShaderMaterial).set_shader_parameter("burn", clampf(since / 3.5, 0.0, 1.0))
-			(sm as ShaderMaterial).set_shader_parameter("crack", clampf((since - 1.2) / 2.2, 0.0, 1.0))
-			(sm as ShaderMaterial).set_shader_parameter("melt", clampf((since - 3.0) / 2.0, 0.0, 1.0))
-		if since > 2.0: shake = maxf(shake, 0.45)
-	# it breaks apart
-	var br := since - 3.2
+			(sm as ShaderMaterial).set_shader_parameter("burn", clampf(since / 3.0, 0.0, 1.0))
+			(sm as ShaderMaterial).set_shader_parameter("crack", clampf((since - 1.0) / 2.0, 0.0, 1.0))
+			(sm as ShaderMaterial).set_shader_parameter("melt", clampf((since - 2.6) / 1.8, 0.0, 1.0))
+		if since > 1.6: shake = maxf(shake, 0.5)
+		# the shockwave over the surface: fast, then slowing, lifting off the curve as it goes
+		if ring:
+			var rk := clampf(since / 2.6, 0.0, 1.0)
+			ring.visible = rk < 1.0
+			var rr := lerpf(80.0, R * 0.95, 1.0 - pow(1.0 - rk, 2.2))
+			ring.scale = Vector3.ONE * maxf(rr * 1.25, 1.0)
+			ring_mat.set_shader_parameter("rad", 0.8)
+			ring_mat.set_shader_parameter("width", 0.05 + 0.05 * rk)
+			ring_mat.set_shader_parameter("alpha", (1.0 - rk) * 1.4)
+		# the plume blown back up out of the crater
+		if plume:
+			var pk := clampf(since / 2.4, 0.0, 1.0)
+			var pl := lerpf(200.0, R * 2.4, 1.0 - pow(1.0 - pk, 2.0))
+			plume.visible = since < 4.5
+			plume.basis = Basis.looking_at(-hit_dir, Vector3.UP if absf(hit_dir.y) < 0.95 else Vector3.RIGHT) * Basis(Vector3(1, 0, 0), -PI / 2.0)
+			plume.basis = plume.basis.scaled(Vector3(R * 0.32 * (0.4 + 0.6 * pk), pl, R * 0.32 * (0.4 + 0.6 * pk)))
+			plume.position = h + hit_dir * pl * 0.5
+			plume_mat.set_shader_parameter("power", 1.6 * (1.0 - smoothstep(2.0, 4.5, since)))
+	# it breaks apart, and a great ring of fire is thrown out into space
+	var br := since - 3.0
 	if br > 0.0:
 		if _once("break"):
-			_sfx("final", 2.0, 0.8)
-			_sfx("impact", 0.0, 0.5)
+			_sfx("final", 3.0, 0.8)
+			_sfx("impact", 2.0, 0.42)
+			_sfx("gen_boom", 2.0, 0.26)
 			shake = 1.0
+			flash = maxf(flash, 0.7)
 			NFHaptics.pulse("impact")
 		for pc in pieces:
 			var nd: Node3D = pc[0]
 			var d: Vector3 = pc[1]
-			nd.position = d * (br * br * 0.035 + br * 0.03) # in the model's own units (it is scaled to R)
-			nd.rotation = Vector3(d.z, d.x, d.y) * br * 0.05
+			nd.position = d * (br * br * 0.055 + br * 0.05) # in the model's own units (it is scaled to R)
+			nd.rotation = Vector3(d.z, d.x, d.y) * br * 0.07
 		atmo_mat.set_shader_parameter("power", maxf(1.4 - br * 0.8, 0.0))
+		if praxis:
+			var xk := clampf(br / 3.4, 0.0, 1.0)
+			praxis.visible = xk < 1.0
+			praxis.position = Vector3.ZERO
+			var xr := lerpf(R * 1.05, R * 5.2, 1.0 - pow(1.0 - xk, 1.8))
+			praxis.scale = Vector3.ONE * xr * 1.15
+			praxis_mat.set_shader_parameter("rad", 0.86)
+			praxis_mat.set_shader_parameter("width", 0.035 + 0.03 * xk)
+			praxis_mat.set_shader_parameter("alpha", 1.6 * (1.0 - xk * xk))
 		var mm := debris.multimesh
-		var nshow := mini(int(br * 160.0), mm.instance_count)
+		var nshow := mini(int(br * 200.0), mm.instance_count)
 		mm.visible_instance_count = nshow
 		for i in nshow:
 			var dv: Array = debris_v[i]
 			var p: Vector3 = (dv[0] as Vector3) + (dv[1] as Vector3) * br
 			var b := Basis((dv[2] as Vector3), br * 1.3 + float(i)).scaled(Vector3.ONE * float(dv[3]))
 			mm.set_instance_transform(i, Transform3D(b, p))
-	# the camera: the planet and the meteor coming in, closer for the hit, then pulling away from the wreck
-	if t < 2.6:
-		_cam(Vector3(3200.0, 4200.0, 16500.0), Vector3(2600.0, 2900.0, 1800.0), dt, 50.0, 1.0)
-	elif since < 1.6:
-		_cam(h + hit_dir * 5200.0 + Vector3(3600.0, 1400.0, -600.0), h + Vector3(0, 200.0, 0), dt, 50.0, 2.0)
-	else:
-		var k := clampf((since - 1.6) / 6.0, 0.0, 1.0)
-		_cam(Vector3(3600.0, 2600.0, 10500.0) * (1.0 + 0.25 * k), Vector3(400.0, 600.0, 0.0), dt, 50.0, 1.2)
+	# the camera, five shots
+	if t < 2.4: # 1. the blue planet, the fire coming at it from far off
+		var k := clampf(t / 2.4, 0.0, 1.0)
+		_cam(Vector3(3200.0, 4200.0, 16500.0).lerp(Vector3(3400.0, 3900.0, 13800.0), k), Vector3(2600.0, 2900.0, 1800.0), dt, 50.0, 1.0)
+	elif t < SLOW_A: # 2. riding in behind it: the planet filling the frame, its fire streaming past
+		var at := mp - mvn * RM * 4.2 + tan * RM * 1.5 + hit_dir.cross(tan).normalized() * RM * 0.5
+		_cam(at, mp + mvn * RM * 6.0, dt, lerpf(58.0, 72.0, clampf((t - 2.4) / 1.4, 0.0, 1.0)), 0.0)
+	elif t < SLOW_B: # 3. slow motion, from the side, low over the clouds: it goes in
+		var k := clampf((t - SLOW_A) / (SLOW_B - SLOW_A), 0.0, 1.0)
+		var at := h + hit_dir * lerpf(1300.0, 1500.0, k) + tan * lerpf(4600.0, 4300.0, k) - come * 600.0
+		_cam(at, h + hit_dir * 350.0, dt, 46.0, 0.0)
+	elif since < 3.0: # 4. pulling back and up from the blast: the ring over the surface, the plume
+		var k := clampf((t - SLOW_B) / 3.0, 0.0, 1.0)
+		var at := h + hit_dir * lerpf(2000.0, 7000.0, k) + tan * lerpf(5200.0, 9500.0, k) + hit_dir.cross(tan).normalized() * lerpf(0.0, 2500.0, k)
+		_cam(at, h * lerpf(1.1, 0.6, k), dt, 50.0, 2.5)
+	else: # 5. the planet comes apart, its ring and its rocks thrown out past the camera
+		var k := clampf(br / 3.4, 0.0, 1.0)
+		_cam(CAM_END * (1.0 + 0.18 * k), Vector3(300.0, 400.0, 0.0), dt, lerpf(50.0, 56.0, k), 1.4)
 
 func _place_meteor(p: Vector3, v: Vector3, hot: float) -> void:
 	meteor.position = p
@@ -461,6 +579,13 @@ func _draw_ui() -> void:
 	ui.draw_rect(Rect2(0, 0, vs.x, bar), Color.BLACK)
 	ui.draw_rect(Rect2(0, vs.y - bar, vs.x, bar), Color.BLACK)
 	if flash > 0.0: ui.draw_rect(Rect2(Vector2.ZERO, vs), Color(1.0, 0.95, 0.85, minf(flash, 1.0)))
+	if not won and t > 2.4 and st < IMPACT: # the dive: heat at the edges of the frame
+		var hk := clampf((st - 2.4) / (IMPACT - 2.4), 0.0, 1.0)
+		for i in 6:
+			var w := vs.x * (0.02 + 0.03 * float(i))
+			var c := Color(1.0, 0.4, 0.1, 0.05 * hk)
+			ui.draw_rect(Rect2(0, 0, w, vs.y), c)
+			ui.draw_rect(Rect2(vs.x - w, 0, w, vs.y), c)
 	var font: Font = Net.font
 	var title := ""
 	var tc := Color.WHITE
@@ -469,10 +594,10 @@ func _draw_ui() -> void:
 		title = "HUMANITY SURVIVED"
 		tc = Color(0.75, 0.9, 1.0)
 		a = clampf((t - 11.0) / 1.2, 0.0, 1.0)
-	elif not won and t > 7.0:
+	elif not won and t > 9.2:
 		title = "HUMANITY HAS FALLEN"
 		tc = Color(1.0, 0.35, 0.25)
-		a = clampf((t - 7.0) / 1.5, 0.0, 1.0)
+		a = clampf((t - 9.2) / 1.2, 0.0, 1.0)
 	if title != "":
 		var y := vs.y * 0.46
 		ui.draw_string_outline(font, Vector2(0, y), title, HORIZONTAL_ALIGNMENT_CENTER, vs.x, 64, 10, Color(0, 0, 0, 0.85 * a))

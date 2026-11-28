@@ -35,26 +35,75 @@ func _ready() -> void:
 	await frames(4)
 	check(m.rules.in_rocket("P") and str(m.rules.fl.pil) == "P", "on the ring: into the rocket, at the controls")
 	await frames(10)
-	check(int(m.rules.fl.st) == 2, "nobody else to wait for: lift-off at once (st %d)" % int(m.rules.fl.st))
-	check(m.flight.me_mode() == "lift" and m.flight.cam.current, "lifting off, watched from the pad (%s)" % m.flight.me_mode())
-	await frames(40)
-	check(w.rocket.position.y > 3.0, "the rocket rises off its mount (%.1f m)" % w.rocket.position.y)
+	check(int(m.rules.fl.st) == 1 and float(m.rules.fl.t) <= Rules.COUNTDOWN, "nobody else to wait for: the five-second countdown (st %d, %.1f s)" % [int(m.rules.fl.st), float(m.rules.fl.t)])
 	for i in 400:
+		await tree.physics_frame
+		if int(m.rules.fl.st) == 2: break
+	check(int(m.rules.fl.st) == 2, "lift-off after the countdown")
+	await frames(30)
+	check(m.flight.me_mode() == "lift" and m.flight.cam.current and m.flight.r_vel.z == 0.0, "on the pad at zero speed until the throttle goes up (%s, %.1f m/s)" % [m.flight.me_mode(), m.flight.r_vel.z])
+	check(m.flight.lever_on(), "the pilot has the throttle lever")
+	# the lever by touch: press it at the top
+	var vs: Vector2 = m.get_viewport().get_visible_rect().size
+	var lr: Rect2 = m.flight.lever_rect(vs)
+	var te := InputEventScreenTouch.new()
+	te.index = 3; te.pressed = true; te.position = Vector2(lr.get_center().x, lr.position.y + 10.0)
+	m._input(te)
+	check(m.flight.throttle > 0.95, "a touch at the top of the lever: full throttle (%.2f)" % m.flight.throttle)
+	te.pressed = false
+	m._input(te)
+	for i in 60: await tree.physics_frame
+	check(m.flight.r_vel.z > 5.0 and m.flight.r_vel.z < 40.0, "it gathers speed slowly (%.1f m/s after 1 s)" % m.flight.r_vel.z)
+	check(w.rocket.position.y > NightWorld.MOON_ROCKET.y + 2.0, "the rocket rises off its mount (%.1f m)" % (w.rocket.position.y - NightWorld.MOON_ROCKET.y))
+	for i in 600:
 		await tree.physics_frame
 		if m.flight.me_mode() == "fly": break
 	await frames(5)
 	check(m.flight.me_mode() == "fly" and m.flight.shown and m.flight.cam.current, "in flight, the flight camera on")
 	check(NFFlight.in_space(m.body.position), "my position is up in the flight (%s)" % m.body.position.snappedf(1))
-	for i in 200: await tree.physics_frame
+	for i in 700: await tree.physics_frame
 	var v0: float = m.flight.r_vel.z
-	check(absf(v0 - NFFlight.CRUISE) < 15.0 or float(m.rules.fl.dm) > 0.0, "cruising at %d m/s" % roundi(v0))
+	check(absf(v0 - NFFlight.CRUISE) < 15.0 or float(m.rules.fl.dm) > 0.0, "full throttle: cruising at %d m/s" % roundi(v0))
+	m.flight.throttle = 0.5
+	for i in 400: await tree.physics_frame
+	check(absf(m.flight.r_vel.z - NFFlight.CRUISE * 0.5) < 10.0 or float(m.rules.fl.dm) > 0.0, "half throttle: %d m/s" % roundi(m.flight.r_vel.z))
+	m.flight.throttle = 1.0
+	# the cabin: eight seats inside the hull, me in the first
+	check(m.flight.cabin != null and NFFlight.SEATS.size() == 8, "the cabin has eight seats")
+	var inside_ok := true
+	for sp in NFFlight.SEATS:
+		var p3: Vector3 = sp
+		# the seat's back and a rider's shoulders reach ~0.3 m out, the head ~0.75 m up, knees 0.5 m forward
+		for q in [p3 + Vector3(0.32 * signf(p3.x), 0.0, 0.0), p3 + Vector3(0.25 * signf(p3.x), 0.8, 0.0), p3 + Vector3(0.0, -0.5, -0.55)]:
+			if Vector2(q.x, q.y).length() > NFFlight.CAB_R - 0.05 or q.z < NFFlight.CAB_FRONT or q.z > NFFlight.CAB_BACK: inside_ok = false
+	check(inside_ok and NFFlight.CAB_R < 1.8, "every seat and rider fits inside the cabin, and the cabin inside the hull (r %.2f)" % NFFlight.CAB_R)
+	await frames(3)
+	m.flight._seat_riders() # (main's physics step puts my body back each tick; on screen the seat wins, it runs last)
+	var seat0: Vector3 = m.flight.seat_xf(0).origin
+	check(m.rig.visible and m.rig.global_position.distance_to(seat0) < 0.05, "my character sits in seat 1 (%.2f m off)" % m.rig.global_position.distance_to(seat0))
 	var btn: Array = m._buttons()
-	check(btn.size() == 1 and btn[0][3] == "fboost", "alone aboard: the pilot has the boost button")
+	var ids := btn.map(func(b): return b[3])
+	check("fboost" in ids and "fview" in ids, "alone aboard: the pilot has the boost and the camera button (%s)" % str(ids))
+	m._press("fview", 0)
+	await frames(3)
+	var cl: Vector3 = m.flight.rocket.global_transform.affine_inverse() * m.flight.cam.global_position
+	check(m.flight.inside and Vector2(cl.x, cl.y).length() < NFFlight.CAB_R and cl.z > NFFlight.CAB_FRONT and cl.z < NFFlight.CAB_BACK and not m.rig.visible, "the inside view: the camera in the cabin at my seat (%s)" % cl.snappedf(0.01))
+	m._press("fview", 0)
+	await frames(2)
+	check(not m.flight.inside, "and back outside")
+	# her ship this near is a catch: 70 m from the hull
+	var kl0: Vector3 = m.flight.k_loc
+	m.flight.k_loc = m.flight.r_loc + Vector3(30.0, 0.0, -(NFFlight.ROCKET_HALF + 55.0))
+	check(m.flight.catch_dist() < 70.0, "she is %.0f m off the hull: caught" % m.flight.catch_dist())
+	m.flight.k_loc = m.flight.r_loc + Vector3(30.0, 0.0, -(NFFlight.ROCKET_HALF + 80.0))
+	check(m.flight.catch_dist() > 70.0, "at %.0f m: not yet" % m.flight.catch_dist())
+	m.flight.k_loc = kl0
+	var vb: float = m.flight.r_vel.z
 	m._press("fboost", 0)
 	await frames(2)
 	check(bool(m.rules.fl.b), "the boost is on")
 	for i in 120: await tree.physics_frame
-	check(m.flight.r_vel.z > NFFlight.CRUISE + 20.0 or float(m.rules.fl.dm) > 0.0, "boosting: %d m/s" % roundi(m.flight.r_vel.z))
+	check(m.flight.r_vel.z > vb + 40.0 or float(m.rules.fl.dm) > 0.0, "boosting: %d -> %d m/s" % [roundi(vb), roundi(m.flight.r_vel.z)])
 	check(float(m.rules.fl.e) < 1.0, "the boost tank drains (%.2f)" % float(m.rules.fl.e))
 	# fly into a meteor on purpose
 	var tgt := -1
@@ -114,8 +163,10 @@ func _rules_only() -> void:
 	check(not r.free_now("A") and r.handle({"k": "hit", "n": "A"}, "K").is_empty() and r.hp("A") == "ok", "rules: nobody can touch them aboard")
 	r.handle({"k": "kship"}, "K")
 	check(not bool(r.fl.ks), "rules: her ship cannot leave before the rocket")
-	for i in 160: r.tick(0.1)
-	check(int(r.fl.st) == 2, "rules: lift-off when the countdown ends (C stayed behind)")
+	for i in 60: r.tick(0.1)
+	check(int(r.fl.st) == 1, "rules: still waiting for C after 6 s")
+	for i in 100: r.tick(0.1)
+	check(int(r.fl.st) == 2, "rules: lift-off when the wait ends (C stayed behind)")
 	r.handle({"k": "boost", "on": true}, "A")
 	check(not bool(r.fl.b), "rules: only the booster fires the boost")
 	r.handle({"k": "boost", "on": true}, "B")
@@ -144,5 +195,19 @@ func _rules_only() -> void:
 	t.tick(0.1); t.tick(0.1)
 	t.handle({"k": "escape"}, "A")
 	t.tick(0.1)
+	check(int(t.fl.st) == 1 and float(t.fl.t) <= Rules.COUNTDOWN, "rules: everyone aboard — five seconds")
+	for i in 52: t.tick(0.1)
+	check(int(t.fl.st) == 2, "rules: and lift-off")
 	for i in int(Rules.FLIGHT_TIME * 10.0) + 20: t.tick(0.1)
+	var big := Rules.new()
+	big.moon = true
+	var eight := []
+	for i in 9: eight.append({"name": "S%d" % i, "role": "survivor", "char": "survivor1"})
+	eight.append({"name": "K", "role": "killer", "char": "killer"})
+	big.setup(5, 2, 0, 0, eight, 1)
+	big.gate_delay = 0.0
+	for g in big.gens: g.p = 1.0; g.done = true
+	big.tick(0.1); big.tick(0.1)
+	for i in 9: big.handle({"k": "escape"}, "S%d" % i)
+	check((big.fl.who as Array).size() == 8 and not big.in_rocket("S8"), "rules: the rocket seats eight, a ninth stays behind")
 	check(int(t.fl.st) == 4 and str(t.fl.why) == "time" and t.hp("A") == "dead", "rules: the clock runs out — lost")

@@ -14,17 +14,23 @@ const TUBE_X := 70.0        # how far off the line a ship may stray, side to sid
 const TUBE_Y := 46.0        # and up and down
 const CRUISE := 235.0       # the rocket without the boost (m/s; the HUD shows it as it is)
 const ROCKET_MAX := 300.0   # with the boost
-const KILLER_MAX := 320.0   # her ship
+const KILLER_MAX := 280.0   # her ship: faster than the rocket cruising, slower than its boost
 const DMG_MUL := 0.5        # a damaged engine: this much of the speed
-const LIFT := 4.0           # seconds of lift-off on the Moon before the rocket is in the pilot's hands
+const LIFT := 4.0           # (the meteors' timing: about when the rocket leaves the pad)
+const LIFT_Z := 180.0       # metres climbed off the pad before the flight camera takes over
+const R_ACC := 18.0         # the rocket gathers speed this fast (m/s²): 0 to cruise in about 13 s
+const R_DEC := 26.0         # and loses it this fast when the throttle comes back
+const K_ACC := 16.0         # her ship
+const SEAT_S := 0.85        # the riders in the cabin, at this scale
+const EYE_UP := 0.6         # the inside camera: this far over the seat's hips
 const K_LIFT := 3.0         # and her ship's
-const WASH_L := 110.0       # her ship in the rocket's exhaust: this far behind it
-const WASH_R := 10.0        # and this near its line, it slows her down: she has to come alongside
+const WASH_L := 160.0       # her ship in the rocket's exhaust: this far behind it
+const WASH_R := 14.0        # and this near its line, it slows her down: she has to come alongside
 const WASH_MUL := 0.82
 const R_ROCKET := 3.4       # the rocket's radius (meteors, the ram) and half its length
 const ROCKET_HALF := 11.0
 const R_KSHIP := 3.8
-const RAM_D := 8.0          # her ship this near the rocket's line: rammed
+const RAM_D := Rules.CATCH_D # her ship this near the rocket: caught
 const VIEW := 3800.0        # meteors drawn this far ahead
 const SPAN_X := 170.0       # meteors crossing the line wrap round out here
 const SPAN_Y := 120.0
@@ -76,6 +82,11 @@ var k_lift_n: Node3D        # her ship rising off the pad (every phone)
 var shown := false          # the flight's own camera is in use on this phone
 var bot_k := false          # trial mode: the computer killer flies (this phone flies her)
 var bot_wait := -1.0
+var throttle := 0.0         # the pilot's lever, 0..1 of the cruise speed
+var lever_id := -2          # the touch on the lever (-1 the mouse, -2 none)
+var inside := false         # the camera in the cabin, at my seat
+var cabin: Node3D           # the cabin inside the rocket: eight seats
+var count_s := -1           # the last second of the countdown announced
 
 func setup(main: Node, seed: int) -> void:
 	m = main
@@ -89,6 +100,8 @@ func setup(main: Node, seed: int) -> void:
 	rocket = _make_rocket()
 	add_child(rocket)
 	rocket.visible = false
+	cabin = _make_cabin()
+	rocket.add_child(cabin)
 	kship = _make_kship()
 	add_child(kship)
 	kship.visible = false
@@ -157,7 +170,7 @@ func _gen_meteors(seed: int) -> void:
 			2: sp = rng.randf_range(30.0, 80.0) * (1.0 + 0.5 * f)
 			3: sp = rng.randf_range(16.0, 38.0) * (1.0 + 0.5 * f)
 		# where the line will be when the rocket gets here, give or take: kind 2 is at z then
-		var t0 := LIFT + z / 250.0
+		var t0 := LIFT + 6.5 + z / CRUISE # (the rocket gathers speed for ~13 s, then cruises)
 		met.append([z, rng.randf_range(-TUBE_X - 12.0, TUBE_X + 12.0), rng.randf_range(-TUBE_Y - 8.0, TUBE_Y + 8.0), r, kind, sp,
 			rng.randf() * TAU, rng.randi() % 2, rng.randf_range(0.1, 0.9) * (1.0 if rng.randf() < 0.5 else -1.0), t0])
 
@@ -254,6 +267,168 @@ func _make_rocket() -> Node3D:
 	key.position = Vector3(6.0, 9.0, -4.0)
 	n.add_child(key)
 	return n
+
+## The eight seats, in the rocket's own frame (nose toward -z, up +y): four rows of two inside the core,
+## where his model is widest (about 1.85 m round the axis there; the cabin is 1.55 m round, so all of
+## it, seats and riders, is inside the hull). Each is where a rider's hips sit.
+const CAB_R := 1.55
+const CAB_FRONT := -3.4
+const CAB_BACK := 3.4
+const CAB_FLOOR := -0.95
+const SEATS := [Vector3(-0.55, -0.42, -2.4), Vector3(0.55, -0.42, -2.4), Vector3(-0.55, -0.42, -0.8), Vector3(0.55, -0.42, -0.8),
+	Vector3(-0.55, -0.42, 0.8), Vector3(0.55, -0.42, 0.8), Vector3(-0.55, -0.42, 2.4), Vector3(0.55, -0.42, 2.4)]
+
+func _cab_mat(part: int) -> ShaderMaterial:
+	var sm := ShaderMaterial.new()
+	sm.shader = load("res://shaders/cabin.gdshader")
+	sm.set_shader_parameter("part", part)
+	sm.set_shader_parameter("radius", CAB_R)
+	return sm
+
+func _box(parent: Node3D, size: Vector3, at: Vector3, mat: Material, rot := Vector3.ZERO) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = size
+	mi.mesh = bm
+	mi.material_override = mat
+	mi.position = at
+	mi.rotation = rot
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(mi)
+	return mi
+
+## The cabin: a round shell with a porthole by every seat, a floor, a wide window in the front bulkhead,
+## a console under it, light strips overhead and the eight seats. Built in code.
+func _make_cabin() -> Node3D:
+	var c := Node3D.new()
+	c.name = "Cabin"
+	# the shell along z: a tube, its normals inward
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	const SEG := 40
+	var zs := [CAB_FRONT, -1.7, 0.0, 1.7, CAB_BACK]
+	for i in SEG:
+		var a0 := TAU * float(i) / SEG
+		var a1 := TAU * float(i + 1) / SEG
+		for j in zs.size() - 1:
+			var p := [Vector3(cos(a0) * CAB_R, sin(a0) * CAB_R, zs[j]), Vector3(cos(a1) * CAB_R, sin(a1) * CAB_R, zs[j]),
+				Vector3(cos(a1) * CAB_R, sin(a1) * CAB_R, zs[j + 1]), Vector3(cos(a0) * CAB_R, sin(a0) * CAB_R, zs[j + 1])]
+			for q in [0, 1, 2, 0, 2, 3]:
+				var v: Vector3 = p[q]
+				st.set_normal(-Vector3(v.x, v.y, 0.0).normalized())
+				st.add_vertex(v)
+	var shell := MeshInstance3D.new()
+	shell.mesh = st.commit()
+	shell.material_override = _cab_mat(0)
+	shell.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	c.add_child(shell)
+	# the two bulkheads: discs (the front one has the window)
+	for k in 2:
+		var dz: float = CAB_FRONT if k == 0 else CAB_BACK
+		var ds := SurfaceTool.new()
+		ds.begin(Mesh.PRIMITIVE_TRIANGLES)
+		for i in SEG:
+			var a0 := TAU * float(i) / SEG
+			var a1 := TAU * float(i + 1) / SEG
+			for v in [Vector3(0, 0, dz), Vector3(cos(a0) * CAB_R, sin(a0) * CAB_R, dz), Vector3(cos(a1) * CAB_R, sin(a1) * CAB_R, dz)]:
+				ds.set_normal(Vector3(0, 0, 1.0 if k == 0 else -1.0))
+				ds.add_vertex(v)
+		var disc := MeshInstance3D.new()
+		disc.mesh = ds.commit()
+		disc.material_override = _cab_mat(1 if k == 0 else 2)
+		disc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		c.add_child(disc)
+	var floor_m := StandardMaterial3D.new()
+	floor_m.albedo_color = Color(0.2, 0.21, 0.23)
+	floor_m.roughness = 0.8
+	var half := sqrt(CAB_R * CAB_R - CAB_FLOOR * CAB_FLOOR) - 0.04
+	_box(c, Vector3(half * 2.0, 0.04, CAB_BACK - CAB_FRONT - 0.04), Vector3(0, CAB_FLOOR, 0), floor_m)
+	var stripe := StandardMaterial3D.new()
+	stripe.albedo_color = Color(0.95, 0.55, 0.15)
+	stripe.emission_enabled = true
+	stripe.emission = Color(0.95, 0.5, 0.12)
+	stripe.emission_energy_multiplier = 0.6
+	_box(c, Vector3(0.06, 0.012, CAB_BACK - CAB_FRONT - 0.2), Vector3(0, CAB_FLOOR + 0.026, 0), stripe) # down the aisle
+	# the console under the front window, its screens lit
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color(0.1, 0.11, 0.13)
+	dark.roughness = 0.4
+	dark.metallic = 0.4
+	_box(c, Vector3(2.1, 0.55, 0.5), Vector3(0, -0.45, CAB_FRONT + 0.27), dark, Vector3(-0.35, 0, 0))
+	var scr := StandardMaterial3D.new()
+	scr.albedo_color = Color(0.1, 0.5, 0.6)
+	scr.emission_enabled = true
+	scr.emission = Color(0.25, 0.85, 1.0)
+	scr.emission_energy_multiplier = 1.4
+	for x in [-0.62, 0.0, 0.62]:
+		_box(c, Vector3(0.42, 0.26, 0.02), Vector3(x, -0.3, CAB_FRONT + 0.47), scr, Vector3(-0.35, 0, 0))
+	# light strips overhead and two soft lights
+	var lamp := StandardMaterial3D.new()
+	lamp.albedo_color = Color(1, 1, 1)
+	lamp.emission_enabled = true
+	lamp.emission = Color(0.85, 0.92, 1.0)
+	lamp.emission_energy_multiplier = 2.5
+	for x in [-0.38, 0.38]:
+		_box(c, Vector3(0.1, 0.03, CAB_BACK - CAB_FRONT - 0.6), Vector3(x, sqrt(CAB_R * CAB_R - x * x) - 0.05, 0), lamp)
+	for z in [-1.6, 1.6]:
+		var ol := OmniLight3D.new()
+		ol.light_color = Color(0.85, 0.9, 1.0)
+		ol.light_energy = 1.1
+		ol.omni_range = 4.2
+		ol.position = Vector3(0, 1.0, z)
+		c.add_child(ol)
+	# the seats: a cushion, a reclined back, a headrest (orange), all on a pedestal; facing the nose
+	var seat_m := StandardMaterial3D.new()
+	seat_m.albedo_color = Color(0.17, 0.18, 0.21)
+	seat_m.roughness = 0.75
+	var head_m := StandardMaterial3D.new()
+	head_m.albedo_color = Color(0.85, 0.38, 0.12)
+	head_m.roughness = 0.6
+	for sp in SEATS:
+		var p: Vector3 = sp
+		_box(c, Vector3(0.52, 0.1, 0.5), p + Vector3(0, -0.14, 0.02), seat_m)
+		_box(c, Vector3(0.52, 0.78, 0.09), p + Vector3(0, 0.27, 0.3), seat_m, Vector3(-0.2, 0, 0))
+		_box(c, Vector3(0.3, 0.2, 0.09), p + Vector3(0, 0.76, 0.4), head_m, Vector3(-0.2, 0, 0))
+		_box(c, Vector3(0.2, -CAB_FLOOR + p.y - 0.19, 0.2), Vector3(p.x, (CAB_FLOOR + p.y - 0.19) / 2.0, p.z + 0.05), dark)
+	return c
+
+## Where rider k sits, as a transform for their character's root (it faces +z, so turned to the nose).
+func seat_xf(k: int) -> Transform3D:
+	var sp: Vector3 = SEATS[clampi(k, 0, SEATS.size() - 1)]
+	var local := Transform3D(Basis(Vector3.UP, PI).scaled(Vector3.ONE * SEAT_S), sp - Vector3(0, NFCar.HIPS_Y * SEAT_S, 0))
+	return rocket.global_transform * local
+
+## Everyone aboard in their seat while the rocket is out in the flight (inside the hull, so from the
+## chase camera nobody shows; from the cabin camera they do). My own character too, unless I am
+## looking out of my own eyes.
+func _seat_riders() -> void:
+	var f := _fl()
+	var on: bool = int(f.st) == 2 and rocket.visible
+	if not on: return
+	var who: Array = f.who
+	for k in who.size():
+		var n := str(who[k])
+		var nd: Node3D = null
+		var rg: CharacterRig = null
+		if n == m.my_name:
+			rg = m.get("rig")
+			if rg == null: continue
+			rg.global_transform = seat_xf(k)
+			rg.visible = not (inside and shown)
+		elif m.remotes.has(n):
+			var r = m.remotes[n]
+			nd = r.node
+			rg = r.rig
+			if nd == null or rg == null: continue
+			nd.global_transform = seat_xf(k)
+			nd.visible = true
+			rg.position = Vector3.ZERO
+			rg.rotation = Vector3.ZERO
+			if r.get("torch") != null: (r.torch as Node3D).visible = false
+			if r.get("gun") != null: (r.gun as Node3D).visible = false
+		else: continue
+		rg.reach_clear()
+		rg.play("drive")
 
 ## His spaceship for her, nose down the line, two blue engines.
 func _make_kship() -> Node3D:
@@ -361,7 +536,11 @@ func me_mode() -> String:
 		return ""
 	if not m.rules.in_rocket(m.my_name): return ""
 	if st == 1: return "pad"
-	return "lift" if clk < LIFT else "fly"
+	return "lift" if lifting() else "fly"
+
+## The rocket is still climbing off the pad (in the pilot's hands already, the pad camera watching).
+func lifting() -> bool:
+	return r_loc.z < LIFT_Z
 
 func flying(mode := "") -> bool:
 	var md := me_mode() if mode == "" else mode
@@ -380,10 +559,10 @@ func rocket_world() -> Vector3:
 func kship_world() -> Vector3:
 	return to_world(k_loc)
 
-## The speed the rocket aims for: the boost, minus a damaged engine.
+## The speed the rocket aims for: where the pilot holds the throttle, the boost on top, minus a damaged engine.
 func rocket_target() -> float:
 	var f := _fl()
-	var v := ROCKET_MAX if (bool(f.b) and float(f.e) > 0.0) else CRUISE
+	var v := throttle * CRUISE + ((ROCKET_MAX - CRUISE) if (bool(f.b) and float(f.e) > 0.0 and throttle > 0.05) else 0.0)
 	if float(f.dm) > 0.0: v *= DMG_MUL
 	return v
 
@@ -415,13 +594,15 @@ func step(dt: float) -> void:
 		k_on = bool(f.ks) and k_t >= K_LIFT
 	else:
 		k_on = false
-	rocket.visible = st == 2 and clk >= LIFT - 0.05 and st != 4
+	rocket.visible = st == 2 and not lifting() and st != 4
 	kship.visible = k_on and st == 2
 	rocket.global_position = rocket_world()
 	_orient(rocket, r_vel, dt, 1.0)
 	kship.global_position = kship_world()
 	_orient(kship, k_vel, dt, 1.4)
 	_flames(dt)
+	_seat_riders()
+	_countdown()
 	var watch := _watch_point()
 	var on_pad: bool = md in ["pad", "lift", "klift"]
 	shown = watch != Vector3.INF
@@ -443,6 +624,19 @@ func step(dt: float) -> void:
 	dmg_fx.emitting = st == 2 and float(f.dm) > 0.0
 	k_dmg_fx.emitting = k_on and float(f.kd) > 0.0
 
+## The last five seconds on the pad: a beep and a buzz each second, aboard.
+func _countdown() -> void:
+	var f := _fl()
+	if int(f.st) != 1 or not m.rules.in_rocket(m.my_name) or float(f.t) > Rules.COUNTDOWN:
+		count_s = -1
+		return
+	var sec := ceili(float(f.t))
+	if sec != count_s:
+		count_s = sec
+		m._sfx("chime", null, -3.0, 1.0 + 0.08 * float(5 - sec))
+		NFHaptics.pulse("tick")
+		trauma = maxf(trauma, 0.08 * float(6 - sec))
+
 ## Where this phone's flight camera looks from (INF: it is not in use). Mine, or the one I watch.
 func _watch_point() -> Vector3:
 	var md := me_mode()
@@ -450,7 +644,7 @@ func _watch_point() -> Vector3:
 	if md == "kfly": return kship_world()
 	var sp: String = m.spectating
 	if sp != "" and int(_fl().st) == 2:
-		if m.rules.in_rocket(sp) and clk >= LIFT: return rocket_world()
+		if m.rules.in_rocket(sp) and not lifting(): return rocket_world()
 		if sp == m.rules.killer and k_on: return kship_world()
 	return Vector3.INF
 
@@ -487,11 +681,10 @@ func _pad_rocket(dt: float) -> void:
 	var st := int(_fl().st)
 	var base := NightWorld.MOON_ROCKET + Vector3(0, 0.5, 0)
 	if st >= 2:
-		var t := clk if st == 2 else 30.0
-		var h := 2.2 * t * t + 2.0 * t
+		var h := r_loc.z if st == 2 else 5000.0 # it climbs as fast as the pilot pushes it
 		w.rocket.position = base + Vector3(0, h, 0)
 		w.rocket.visible = h < 3000.0
-		if not w.rocket.has_meta("fire") and h > 0.0:
+		if not w.rocket.has_meta("fire") and st == 2:
 			w.rocket.set_meta("fire", true)
 			var fm := _flame_mat(Color(0.85, 0.9, 1.0), Color(1.0, 0.45, 0.1), 9.0)
 			for k in 5:
@@ -628,7 +821,7 @@ func _follow_rocket(dt: float) -> void:
 	if pil == m.my_name: p = m.body.position
 	elif m.remotes.has(pil): p = m.remotes[pil].pos
 	if p == Vector3.INF or not in_space(p):
-		if clk < LIFT: r_loc = Vector3.ZERO; r_vel = Vector3(0, 0, 60.0)
+		if p == Vector3.INF: r_loc = Vector3.ZERO; r_vel = Vector3.ZERO
 		return
 	var l := _predict(r_sample, to_flight(p))
 	if l.distance_to(r_loc) > 300.0: r_loc = l
@@ -667,13 +860,20 @@ func step_me(dt: float) -> void:
 		stick = Vector2(float(Input.is_key_pressed(KEY_D)) - float(Input.is_key_pressed(KEY_A)),
 			float(Input.is_key_pressed(KEY_S)) - float(Input.is_key_pressed(KEY_W)))
 	match md:
-		"pad", "lift": # inside the rocket on the pad (the camera watches it from outside)
+		"pad": # inside the rocket on the pad (the camera watches it from outside)
 			m.body.position = NightWorld.MOON_BOARD
-			if md == "lift" and is_pilot():
-				r_loc = Vector3.ZERO
-				r_vel = Vector3(0, 0, 40.0)
+			if is_pilot():
+				r_loc = Vector3.ZERO; r_vel = Vector3.ZERO; throttle = 0.0
+		"lift": # off the pad: the pilot's throttle lifts it, straight up the line
+			if is_pilot():
+				_throttle_keys(dt)
+				_fly(dt, Vector2.ZERO, true)
+				r_loc.x = 0.0; r_loc.y = 0.0; r_vel.x = 0.0; r_vel.y = 0.0
+				m.body.position = rocket_world()
+			else: m.body.position = NightWorld.MOON_BOARD
 		"fly":
 			if is_pilot():
+				_throttle_keys(dt)
 				_fly(dt, stick, true)
 				_collide(r_loc, R_ROCKET, ROCKET_HALF)
 				if not sent_land and r_loc.z >= Rules.FLY_LEN:
@@ -683,7 +883,7 @@ func step_me(dt: float) -> void:
 		"klift":
 			m.body.position = m.world.kship_spot
 			k_loc = Vector3(0, 0, -60.0)
-			k_vel = Vector3(0, 0, 80.0)
+			k_vel = Vector3(0, 0, 50.0)
 		"kfly":
 			_fly(dt, stick, false)
 			_collide(k_loc, R_KSHIP, 6.0)
@@ -691,7 +891,13 @@ func step_me(dt: float) -> void:
 			_ram_check()
 	m.body.velocity = Vector3.ZERO
 
-## Fly a ship: the stick moves it about the line; forward it runs up to its top speed by itself.
+## Desktop: W/S steer up and down, R / F push the throttle up and back.
+func _throttle_keys(dt: float) -> void:
+	if Input.is_key_pressed(KEY_R): throttle = minf(throttle + dt * 0.6, 1.0)
+	if Input.is_key_pressed(KEY_F): throttle = maxf(throttle - dt * 0.6, 0.0)
+
+## Fly a ship: the stick moves it about the line; forward the rocket goes as fast as its throttle says
+## (gathering speed slowly from nothing), her ship runs up to its top speed by itself.
 func _fly(dt: float, stick: Vector2, is_rocket: bool) -> void:
 	var f := _fl()
 	var loc := r_loc if is_rocket else k_loc
@@ -702,7 +908,8 @@ func _fly(dt: float, stick: Vector2, is_rocket: bool) -> void:
 	var side_a: float
 	if is_rocket:
 		top = rocket_target()
-		acc = 70.0 if top > vel.z else 140.0
+		var boosting := bool(f.b) and float(f.e) > 0.0
+		acc = (R_ACC * (1.7 if boosting else 1.0)) if top > vel.z else R_DEC
 		side = 36.0; side_a = 80.0
 	else:
 		top = KILLER_MAX * (DMG_MUL if float(f.kd) > 0.0 else 1.0)
@@ -711,7 +918,7 @@ func _fly(dt: float, stick: Vector2, is_rocket: bool) -> void:
 		if d.z > 0.0 and d.z < WASH_L and Vector2(d.x, d.y).length() < WASH_R and rocket.visible:
 			top *= WASH_MUL
 			trauma = maxf(trauma, 0.25)
-		acc = 32.0 if top > vel.z else 120.0
+		acc = K_ACC if top > vel.z else 60.0
 		side = 38.0; side_a = 42.0 # heavier: she cannot jink like the rocket
 	if m.rules.over: stick = Vector2.ZERO
 	vel.z = move_toward(vel.z, top, acc * dt)
@@ -731,12 +938,16 @@ func _fly(dt: float, stick: Vector2, is_rocket: bool) -> void:
 ## Her ship against the rocket: the phone flying her says when they touch.
 func _ram_check() -> void:
 	if sent_ram or not rocket.visible or int(_fl().st) != 2: return
+	if catch_dist() < RAM_D:
+		sent_ram = true
+		m._ev({"k": "rram"})
+
+## How far her ship is from the rocket's hull (nose to tail, not its middle).
+func catch_dist() -> float:
 	var d := r_loc - k_loc
 	var dz := maxf(absf(d.z) - ROCKET_HALF, 0.0)
 	var dxy := Vector2(d.x, d.y).length()
-	if sqrt(dxy * dxy + dz * dz) < RAM_D:
-		sent_ram = true
-		m._ev({"k": "rram"})
+	return sqrt(dxy * dxy + dz * dz)
 
 ## Trial mode: the computer killer takes her ship once she could have reached it, and flies it here.
 func _bot_fly(dt: float) -> void:
@@ -755,7 +966,7 @@ func _bot_fly(dt: float) -> void:
 		return
 	bot_k = true
 	if k_t < K_LIFT:
-		k_loc = Vector3(0, 0, -60.0); k_vel = Vector3(0, 0, 80.0)
+		k_loc = Vector3(0, 0, -60.0); k_vel = Vector3(0, 0, 50.0)
 		if m.remotes.has(kn): m.remotes[kn].pos = m.world.kship_node.global_position if m.world.kship_node else m.world.kship_spot
 		return
 	# chase the rocket: come up beside it out of the exhaust, then swing in; dodge what is in front
@@ -774,9 +985,7 @@ func _bot_fly(dt: float) -> void:
 	var st := (aim - Vector2(k_loc.x, k_loc.y)) / 18.0
 	_fly(dt, Vector2(clampf(st.x, -1.0, 1.0), clampf(-st.y, -1.0, 1.0)), false)
 	if m.remotes.has(kn): m.remotes[kn].pos = kship_world()
-	var dz := maxf(absf(d.z) - ROCKET_HALF, 0.0)
-	var dxy := Vector2(d.x, d.y).length()
-	if not sent_ram and rocket.visible and sqrt(dxy * dxy + dz * dz) < RAM_D:
+	if not sent_ram and rocket.visible and catch_dist() < RAM_D:
 		sent_ram = true
 		for e in m.rules.handle({"k": "rram"}, kn): m._on_event(e)
 	for i in met.size(): # her own meteors (the rules hear it as her)
@@ -797,7 +1006,20 @@ func _camera(dt: float) -> void:
 	var t := cam_target()
 	if not cam.current: cam.make_current()
 	look_idle += dt
-	if look_idle > 1.0: look = look.lerp(Vector2.ZERO, 1.0 - exp(-2.5 * dt))
+	if look_idle > 1.0 and not inside: look = look.lerp(Vector2.ZERO, 1.0 - exp(-2.5 * dt))
+	var k: int = (_fl().who as Array).find(m.my_name)
+	if inside and t == rocket and k >= 0: # from my seat: the cabin round me, space through the windows
+		var sp: Vector3 = SEATS[k]
+		var eye := rocket.global_transform * (sp + Vector3(0, EYE_UP, -0.02))
+		var b2 := rocket.global_transform.basis.orthonormalized() * Basis.from_euler(Vector3(look.y * 0.8, look.x, 0.0))
+		trauma = maxf(trauma - dt * 1.4, 0.0)
+		var tt2 := Time.get_ticks_msec() / 1000.0
+		var sh2 := trauma * trauma
+		cam.global_transform = Transform3D(b2, eye)
+		cam.rotate_object_local(Vector3(1, 0, 0), sh2 * 0.05 * sin(tt2 * 41.0) + 0.002 * sin(tt2 * 23.0) * clampf(r_vel.z / 300.0, 0.0, 1.0))
+		cam.rotate_object_local(Vector3(0, 0, 1), sh2 * 0.05 * sin(tt2 * 31.0 + 1.3))
+		cam.fov = lerpf(cam.fov, 74.0 + Gfx.fov_add, 1.0 - exp(-4.0 * dt))
+		return
 	var v: Vector3 = r_vel if t == rocket else k_vel
 	var spd := v.z
 	var back := 32.0 if t == rocket else 22.0
@@ -843,6 +1065,12 @@ func _streaks(_dt: float) -> void:
 		mmesh.set_instance_transform(i, Transform3D(Basis().scaled(Vector3(1, 1, l)), c + rel))
 
 ## On this phone: while the flight is on the screen, the Earth is straight ahead and grows as they near it.
+const MOON_BEHIND := Vector3(-0.28, 0.12, 1.0) # behind the rocket (it flies along -z), a little up and to the left
+
+## How big the Moon behind them looks (radians of radius) this far along: a sphere seen from further off.
+static func moon_behind_r(k: float) -> float:
+	return atan(1.0 / (1.35 + 15.0 * clampf(k, 0.0, 1.0)))
+
 func _sky(on: bool) -> void:
 	var sm: ShaderMaterial = m.world._sky_mat if m.world else null
 	if sm == null: return
@@ -852,6 +1080,10 @@ func _sky(on: bool) -> void:
 		sm.set_shader_parameter("disc_r", lerpf(0.13, 0.62, near_k * near_k))
 		sm.set_shader_parameter("meteor_dir", Vector3(0.34, 0.24, -0.9).normalized())
 		sm.set_shader_parameter("meteor_near", lerpf(0.25, 0.42, near_k))
+		# the Moon they took off from, behind them (look back): huge at first, smaller every kilometre
+		sm.set_shader_parameter("has_p3", 1.0)
+		sm.set_shader_parameter("p3_dir", MOON_BEHIND.normalized())
+		sm.set_shader_parameter("p3_r", moon_behind_r(near_k))
 		if not sky_set:
 			sky_set = true
 			var env: Environment = m.world.env
@@ -864,6 +1096,7 @@ func _sky(on: bool) -> void:
 		sm.set_shader_parameter("moon_dir", NightWorld.MOON_EARTH.normalized())
 		sm.set_shader_parameter("disc_r", 0.12)
 		sm.set_shader_parameter("meteor_dir", NightWorld.MOON_METEOR.normalized())
+		sm.set_shader_parameter("has_p3", 0.0)
 		var env: Environment = m.world.env
 		if env and env.has_meta("fly_fog"):
 			var ff: Array = env.get_meta("fly_fog")
@@ -874,7 +1107,7 @@ func _sound(dt: float, on: bool) -> void:
 	var f := _fl()
 	var near := false
 	if on: near = true
-	elif int(f.st) == 2 and clk < LIFT + 2.0 and m.body.position.distance_to(NightWorld.MOON_ROCKET) < 300.0: near = true
+	elif int(f.st) == 2 and r_loc.z < LIFT_Z * 3.0 and m.body.position.distance_to(NightWorld.MOON_ROCKET) < 300.0: near = true
 	var boost := bool(f.b) and float(f.e) > 0.0
 	var want := -8.0 if near else -60.0
 	if not eng.playing and near: eng.play()
@@ -890,7 +1123,7 @@ func _sound(dt: float, on: bool) -> void:
 func on_event(e: Dictionary) -> void:
 	match str(e.get("k", "")):
 		"launch":
-			r_loc = Vector3.ZERO; r_vel = Vector3(0, 0, 40.0)
+			r_loc = Vector3.ZERO; r_vel = Vector3.ZERO; throttle = 0.0 # it leaves the pad at the pilot's hand
 			sent_land = false; sent_ram = false
 			if m.body.position.distance_to(NightWorld.MOON_ROCKET) < 200.0 or me_mode() != "": shake(0.6)
 		"mhit":
@@ -949,11 +1182,28 @@ func draw_hud(ui: CanvasItem, vs: Vector2) -> void:
 	var c := Vector2(vs.x / 2.0, 0.0)
 	var font: Font = Net.font
 	if md == "pad":
-		_panel(ui, Rect2(c + Vector2(-260, 70), Vector2(520, 96)))
 		var who := (f.who as Array).size()
-		_txt(ui, font, c + Vector2(0, 108), "Lift-off in %d" % ceili(float(f.t)), 40, Color(1.0, 0.85, 0.4))
-		var role := "You steer the rocket" if is_pilot() else ("You fire the boost" if is_boost() else "You're aboard")
-		_txt(ui, font, c + Vector2(0, 148), "%s — %d aboard" % [role, who], 18, Color(0.85, 0.95, 1.0))
+		var role := "You fly the rocket — throttle up after lift-off" if is_pilot() else ("You fire the boost" if is_boost() else "You're aboard")
+		if float(f.t) <= Rules.COUNTDOWN: # the last five seconds, big in the middle
+			var sec := ceili(float(f.t))
+			var ph := fmod(float(f.t), 1.0)
+			var sz := int(150.0 + 60.0 * ph)
+			_txt(ui, font, Vector2(vs.x / 2.0, vs.y * 0.42 + sz * 0.35), "%d" % maxi(sec, 1), sz, Color(1.0, 0.82, 0.35, 0.5 + 0.5 * ph), 600.0)
+			_panel(ui, Rect2(c + Vector2(-260, 70), Vector2(520, 70)))
+			_txt(ui, font, c + Vector2(0, 100), "LIFT-OFF IN %d" % maxi(sec, 1), 30, Color(1.0, 0.85, 0.4))
+			_txt(ui, font, c + Vector2(0, 128), "%s — %d aboard" % [role, who], 16, Color(0.85, 0.95, 1.0))
+		else:
+			_panel(ui, Rect2(c + Vector2(-260, 70), Vector2(520, 96)))
+			_txt(ui, font, c + Vector2(0, 108), "Waiting for the others — %d" % ceili(float(f.t)), 34, Color(1.0, 0.85, 0.4))
+			_txt(ui, font, c + Vector2(0, 148), "%s — %d aboard (seats 8)" % [role, who], 18, Color(0.85, 0.95, 1.0))
+		return
+	if md == "lift":
+		_panel(ui, Rect2(c + Vector2(-260, 70), Vector2(520, 96)))
+		_txt(ui, font, c + Vector2(0, 108), "%d m" % roundi(r_loc.z), 40, Color(0.6, 0.9, 1.0))
+		if is_pilot():
+			_txt(ui, font, c + Vector2(0, 148), "Push the throttle up to lift off" if throttle < 0.05 else "Climbing — %d m/s" % roundi(r_vel.z), 18, Color(1.0, 0.9, 0.6))
+			_draw_lever(ui, vs)
+		else: _txt(ui, font, c + Vector2(0, 148), "%s is flying — %d m/s" % [str(f.pil), roundi(r_vel.z)], 18, Color(0.85, 0.95, 1.0))
 		return
 	if st != 2 or not shown: return
 	var me_k: bool = md == "kfly" or (m.spectating != "" and m.spectating == m.rules.killer)
@@ -1001,9 +1251,9 @@ func draw_hud(ui: CanvasItem, vs: Vector2) -> void:
 			mc = Color(1.0, 0.75, 0.4)
 			_bracket(ui, rocket.global_position, Color(1.0, 0.75, 0.3), "ROCKET")
 		else:
-			msg = "The killer is %d m behind" % roundi(gap) if gap > 0.0 else "The killer is ahead"
+			msg = "The killer is %d m behind — 70 m and she has you" % roundi(gap) if gap > 0.0 else "The killer is ahead"
 			mc = Color(1.0, 0.4, 0.3) if gap < 400.0 else Color(1.0, 0.75, 0.6)
-			if gap < 160.0: msg = "SHE'S RIGHT BEHIND YOU!"
+			if gap < 250.0: msg = "SHE'S RIGHT BEHIND YOU! %d m" % roundi(gap)
 			_bracket(ui, kship.global_position, Color(1.0, 0.25, 0.2), "KILLER")
 		_txt(ui, font, c + Vector2(0, 240), msg, 22, mc)
 	elif bool(f.ks) and not me_k:
@@ -1017,9 +1267,10 @@ func draw_hud(ui: CanvasItem, vs: Vector2) -> void:
 	if hit_flash > 0.0: ui.draw_rect(Rect2(Vector2.ZERO, vs), Color(1.0, 0.45, 0.2, 0.35 * hit_flash))
 	# who does what
 	var role := ""
-	if md == "fly": role = "Steer with the stick — dodge the meteors" if is_pilot() and is_boost() else ("Steer with the stick — dodge the meteors" if is_pilot() else ("Boost when it's clear — %s steers" % str(f.pil) if is_boost() else "Passenger — %s steers" % str(f.pil)))
-	elif md == "kfly": role = "Catch the rocket and ram it — stay out of its exhaust"
+	if md == "fly": role = "Stick steers, the lever sets your speed — dodge the meteors" if is_pilot() and is_boost() else ("Stick steers, the lever sets your speed — dodge the meteors" if is_pilot() else ("Boost when it's clear — %s steers" % str(f.pil) if is_boost() else "Passenger — %s steers" % str(f.pil)))
+	elif md == "kfly": role = "Get within 70 m of the rocket — stay out of its exhaust"
 	if role != "": _txt(ui, font, Vector2(vs.x / 2.0, vs.y - 28.0), role, 16, Color(0.85, 0.9, 1.0))
+	if md == "fly" and is_pilot(): _draw_lever(ui, vs)
 
 func _panel(ui: CanvasItem, r: Rect2) -> void:
 	ui.draw_rect(r, Color(0.02, 0.03, 0.06, 0.72))
@@ -1055,12 +1306,85 @@ func _bracket(ui: CanvasItem, w: Vector3, col: Color, label: String) -> void:
 ## The boost button for whoever has it (the second one aboard, or the pilot flying alone).
 func buttons(vs: Vector2) -> Array:
 	var md := me_mode()
-	if md != "fly" or not is_boost(): return []
+	var out := []
+	if md == "fly" and m.rules.in_rocket(m.my_name):
+		out.append([Vector2(vs.x - 120.0, vs.y - 330.0), 44.0, "Outside" if inside else "Inside", "fview", true, "eye"])
+	if md != "fly" or not is_boost(): return out
 	var f := _fl()
 	var on := bool(f.b)
-	return [[Vector2(vs.x - 150.0, vs.y - 150.0), 70.0, "Boost off" if on else ("Boost" if float(f.e) > 0.1 else "Charging"), "fboost", float(f.e) > 0.1 or on, "nitro"]]
+	out.append([Vector2(vs.x - 150.0, vs.y - 150.0), 70.0, "Boost off" if on else ("Boost" if float(f.e) > 0.1 else "Charging"), "fboost", float(f.e) > 0.1 or on, "nitro"])
+	return out
+
+# ---------------- the pilot's throttle lever ----------------
+func lever_on() -> bool:
+	return m.rules != null and is_pilot() and me_mode() in ["lift", "fly"]
+
+func lever_rect(vs: Vector2) -> Rect2:
+	return Rect2(vs.x - 330.0, vs.y - 340.0, 84.0, 300.0)
+
+## A touch on the lever: it stays where it is let go, like a real throttle. Returns true if it was the lever's.
+func lever_input(e: InputEvent) -> bool:
+	if not lever_on():
+		lever_id = -2
+		return false
+	var r := lever_rect(m.get_viewport().get_visible_rect().size)
+	var grab := r.grow(26.0)
+	if e is InputEventScreenTouch:
+		if e.pressed and lever_id == -2 and grab.has_point(e.position):
+			lever_id = e.index
+			_lever_set(e.position.y, r)
+			return true
+		if not e.pressed and e.index == lever_id:
+			lever_id = -2
+			return true
+	elif e is InputEventScreenDrag and e.index == lever_id:
+		_lever_set(e.position.y, r)
+		return true
+	elif e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT:
+		if e.pressed and lever_id == -2 and grab.has_point(e.position):
+			lever_id = -1
+			_lever_set(e.position.y, r)
+			return true
+		if not e.pressed and lever_id == -1:
+			lever_id = -2
+			return true
+	elif e is InputEventMouseMotion and lever_id == -1:
+		_lever_set(e.position.y, r)
+		return true
+	return false
+
+func _lever_set(y: float, r: Rect2) -> void:
+	var was := throttle
+	throttle = clampf(1.0 - (y - r.position.y - 22.0) / (r.size.y - 44.0), 0.0, 1.0)
+	if int(was * 10.0) != int(throttle * 10.0): NFHaptics.pulse("tick")
+
+func _draw_lever(ui: CanvasItem, vs: Vector2) -> void:
+	var r := lever_rect(vs)
+	var font: Font = Net.font
+	_panel(ui, r)
+	var top := r.position.y + 22.0
+	var bot := r.end.y - 22.0
+	var x := r.get_center().x
+	ui.draw_line(Vector2(x, top), Vector2(x, bot), Color(1, 1, 1, 0.18), 10.0, true)
+	var hy := lerpf(bot, top, throttle)
+	ui.draw_line(Vector2(x, bot), Vector2(x, hy), Color(0.45, 0.8, 1.0, 0.85), 10.0, true)
+	for i in 5: # ticks every quarter
+		var ty := lerpf(bot, top, float(i) / 4.0)
+		ui.draw_line(Vector2(r.position.x + 10.0, ty), Vector2(r.position.x + 22.0, ty), Color(1, 1, 1, 0.45), 2.0)
+	var real := clampf(r_vel.z / CRUISE, 0.0, 1.2) # where the speed has got to (it follows the lever slowly)
+	var ry := lerpf(bot, top, minf(real, 1.0))
+	ui.draw_line(Vector2(r.end.x - 22.0, ry), Vector2(r.end.x - 8.0, ry), Color(1.0, 0.8, 0.3), 3.0)
+	ui.draw_rect(Rect2(Vector2(x - 30.0, hy - 13.0), Vector2(60.0, 26.0)), Color(0.85, 0.9, 1.0, 0.95))
+	ui.draw_rect(Rect2(Vector2(x - 30.0, hy - 13.0), Vector2(60.0, 26.0)), Color(0.2, 0.45, 0.8), false, 2.0)
+	_txt(ui, font, Vector2(x, hy + 6.0), "%d%%" % roundi(throttle * 100.0), 14, Color(0.05, 0.1, 0.2), 80.0)
+	_txt(ui, font, Vector2(x, r.position.y - 10.0), "THROTTLE", 14, Color(0.8, 0.9, 1.0), 120.0)
+	_txt(ui, font, Vector2(x, r.end.y + 20.0), "→ %d" % roundi(rocket_target()), 14, Color(1.0, 0.85, 0.5), 120.0)
 
 func press(id: String) -> void:
+	if id == "fview":
+		inside = not inside
+		look = Vector2.ZERO
+		NFHaptics.pulse("tick")
 	if id == "fboost":
 		var f := _fl()
 		m._ev({"k": "boost", "on": not bool(f.b)})

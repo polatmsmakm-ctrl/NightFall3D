@@ -24,9 +24,10 @@ func _ready() -> void:
 		add_child(e)
 		e.setup(m, won, ["Rashid", "Sara"])
 		e.set_process(false)
-		var times: Array = [1.5, 4.8, 8.6, 12.6] if won else [1.5, 3.9, 4.6, 6.0, 8.6, 11.6]
+		var times: Array = [1.5, 4.8, 8.6, 12.6] if won else [1.5, 3.0, 3.7, 4.6, 5.3, 6.4, 7.8, 9.0, 10.2, 11.6]
 		for tt in times:
 			e.t = 0.0
+			e.st = 0.0
 			e.played.clear()
 			# run the film up to tt in steps so the camera has settled where it would be
 			var k := 0.0

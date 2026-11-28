@@ -4,6 +4,7 @@ extends RefCounted
 ## in trial mode this copy runs on the phone. Keep the two files in step.
 
 const NEED := 5
+const DEV_KEY := "4343" # the developer tools' passkey (scripts/dev.gd): the testing shortcut needs it
 const GEN_TIME := 60.0
 const HEAL_TIME := 8.0
 const SELF_HEAL_TIME := 12.0
@@ -38,10 +39,13 @@ const ROAD_TIME := 120.0 # from the first one getting into a gate's escape car t
 ## It lifts off LAUNCH_WAIT after the first one is in (at once when nobody else is left to come, or when
 ## the meteor lands), then has FLIGHT_TIME to fly FLY_LEN through the meteors to the Earth. The killer's
 ## ship may take off KSHIP_LOCK after it; if she rams the rocket, everyone in it is lost.
-const LAUNCH_WAIT := 15.0
+const LAUNCH_WAIT := 15.0 # the longest it waits for the others to get in
+const COUNTDOWN := 5.0    # once nobody else is left to come: five seconds, then lift-off
+const ROCKET_SEATS := 8   # the rocket's cabin seats eight
+const CATCH_D := 70.0     # her ship this near the rocket: caught
 const FLIGHT_TIME := 210.0
 const FLY_LEN := 42000.0    # metres from the Moon to the Earth (the flight runs along -z, NFFlight)
-const KSHIP_LOCK := 8.0
+const KSHIP_LOCK := 10.0
 const BOOST_LEN := 9.0      # a full tank of boost lasts this long
 const BOOST_FILL := 18.0    # and fills again in this long
 const DMG_TIME := 3.5       # a meteor strike: the engine coughs this long (stacks up to DMG_MAX)
@@ -202,7 +206,7 @@ func in_rocket(name: String) -> bool:
 
 ## Into the rocket: the first one in steers, the second boosts, the rest ride.
 func _rboard(from: String, out: Array) -> void:
-	if not (moon and powered and free_now(from) and int(fl.st) <= 1 and (fl.who as Array).size() < CAR_SEATS): return
+	if not (moon and powered and free_now(from) and int(fl.st) <= 1 and (fl.who as Array).size() < ROCKET_SEATS): return
 	if int(fl.st) == 0:
 		fl.st = 1; fl.t = LAUNCH_WAIT; fl.pil = from
 	elif str(fl.bst) == "": fl.bst = from
@@ -292,6 +296,12 @@ func handle(d: Dictionary, from: String) -> Array:
 	var kind := str(d.get("k", ""))
 	if is_killer and bool(fl.ks) and int(fl.st) == 2 and not kind in ["rram", "mhit"]: return out # in her ship, far above the Moon
 	match kind:
+		"devgens": # the owner's developer tools: every generator done, the gates open now (the passkey must match)
+			if str(d.get("key", "")) == DEV_KEY and not powered:
+				for g in gens:
+					g.p = 1.0; g.done = true; g.reps.clear()
+				gate_t = 0.0
+				out.append({"k": "devgens", "by": from})
 		"rboard": _rboard(from, out)
 		"boost": # the second one aboard (or the pilot flying alone) fires the boost
 			if int(fl.st) == 2 and (from == str(fl.bst) or (from == str(fl.pil) and str(fl.bst) == "")):
@@ -661,7 +671,8 @@ func _step_flight(dt: float, out: Array) -> void:
 		var waiting := 0 # anyone still on the Moon who could yet come
 		for n in s:
 			if s[n].hp in LIVE and not n in (fl.who as Array): waiting += 1
-		if float(fl.t) <= 0.0 or waiting == 0 or (powered and doom == 0.0):
+		if waiting == 0: fl.t = minf(float(fl.t), COUNTDOWN) # everyone is in: the last five seconds
+		if float(fl.t) <= 0.0 or (powered and doom == 0.0):
 			fl.st = 2; fl.t = FLIGHT_TIME; fl.c = 0.0
 			out.append({"k": "launch", "who": (fl.who as Array).duplicate()})
 	elif st == 2:

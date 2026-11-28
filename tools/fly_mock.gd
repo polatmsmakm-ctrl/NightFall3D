@@ -15,6 +15,24 @@ var offline := true
 var bot = null
 var main_cam: Camera3D
 var over_hold := false
+var rig: CharacterRig
+
+## Eight aboard, each in their own seat (the cabin shots): me and seven others with their characters.
+func crew() -> void:
+	var cs := ["survivor1", "survivor2", "survivor3", "survivor5", "survivor6", "survivor7", "survivor8", "survivor9"]
+	var who := ["P", "B", "C", "D", "E", "F", "G", "H"]
+	for i in 8:
+		var rg := CharacterRig.new()
+		rg.setup(cs[i], CharacterRig.ANIMS, false, false)
+		if i == 0:
+			body.add_child(rg)
+			rig = rg
+		else:
+			var nd := Node3D.new()
+			add_child(nd)
+			nd.add_child(rg)
+			remotes[who[i]] = {"node": nd, "rig": rg}
+	rules.fl.who = who
 
 func setup(seed := 4242) -> void:
 	world = NightWorld.new()
