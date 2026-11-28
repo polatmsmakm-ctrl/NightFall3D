@@ -777,6 +777,9 @@ func _build_environment() -> void:
 			_sky_mat.set_shader_parameter("meteor_tex", load("res://assets/sky/meteor.jpg"))
 			_sky_mat.set_shader_parameter("has_meteor", 1.0)
 		_sky_mat.set_shader_parameter("meteor_dir", MOON_METEOR.normalized())
+		if ResourceLoader.exists("res://assets/sky/jupiter.jpg"): # his Jupiter, huge and high overhead
+			_sky_mat.set_shader_parameter("p2_tex", load("res://assets/sky/jupiter.jpg"))
+			_sky_mat.set_shader_parameter("has_p2", 1.0)
 		env.ambient_light_color = Color(0.19, 0.22, 0.3)
 		env.ambient_light_energy = 0.75
 		env.fog_light_color = Color(0.0, 0.0, 0.0)
@@ -2544,9 +2547,13 @@ func _build_objectives() -> void:
 		_box(body, Vector3(0.08, 1.6, 0.08), Vector3(0.6, 1.8, 0.3), _mat.metal)
 		_box(body, Vector3(0.08, 1.6, 0.08), Vector3(0.6, 1.8, -0.3), _mat.metal)
 		var lamp_mat := _emissive(Color(1.0, 0.85, 0.5))
-		var modelled := _swap_model(body, "generator")
+		var modelled := false
+		if map_id == "moon" and _model("moon2/neon_engine"): # his Neon Steam Engine, every triangle, on the Moon
+			modelled = _swap_model(body, "moon2/neon_engine", 0.0, NEON_K)
+			if modelled: _sit_on_ground(_last_model, NEON_K)
+		else: modelled = _swap_model(body, "generator")
 		if modelled: # its own lamp and beacons light up when it is done, like the bulbs did
-			var gm := prop_glow(_last_model, Color(1.0, 0.85, 0.5), 0.0, true)
+			var gm := prop_glow(_last_model, Color(1.0, 1.0, 1.0) if map_id == "moon" else Color(1.0, 0.85, 0.5), 0.0, true)
 			if gm: lamp_mat = gm
 		for z in ([] if modelled else [0.3, -0.3]):
 			var bulb := MeshInstance3D.new()
@@ -2769,6 +2776,22 @@ func portal_flash(i: int) -> void:
 	if i < 0 or i >= portal_mats.size(): return
 	var tw := create_tween()
 	tw.tween_method(func(v: float): portal_mats[i].set_shader_parameter("flash", v), 1.0, 0.0, 0.7)
+
+const NEON_K := 1.16 # his Neon Steam Engine as a generator: 2.2 m long, the size the old one was
+
+## Lift a model so its lowest point is on its parent's floor (Meshy models are centred on their middle).
+func _sit_on_ground(n: Node3D, k: float) -> void:
+	if n == null: return
+	var low := INF
+	for mi in n.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		var t := Transform3D()
+		var up: Node = m
+		while up != null and up != n:
+			t = (up as Node3D).transform * t
+			up = up.get_parent()
+		low = minf(low, (t * m.get_aabb()).position.y)
+	if low < INF: n.position.y -= low * k
 
 func _gate_model() -> String:
 	return "moon_gate" if map_id == "moon" and _model("moon_gate") else "gate"
@@ -5894,6 +5917,46 @@ func _outpost_buildings(rng: RandomNumberGenerator) -> void:
 				outpost_at.append([name, Vector3(p.x, low, p.z), r])
 			break
 
+## His second batch for the Moon, every triangle as he made it (assets/props/moon2/), at sizes that
+## fit: [name, scale, how many, footprint radius for the free-spot search, solid, drawn to (0 = always)].
+const MOON2 := [["neon_outpost", 9.5, 1, 11.0, 0.85, 0.0], ["pizza", 6.5, 1, 9.0, 0.9, 0.0], ["gangster_car", 2.6, 1, 3.5, 0.85, 120.0],
+	["turret", 1.5, 2, 2.5, 0.6, 110.0], ["water_tank", 3.2, 2, 3.0, 0.5, 140.0], ["supply_box", 0.8, 1, 1.8, 0.9, 90.0],
+	["tech_case", 0.6, 1, 1.5, 0.9, 80.0], ["ammo_crate", 0.65, 1, 1.5, 0.9, 80.0], ["reaper", 1.6, 1, 2.0, 0.0, 110.0]]
+var moon2_parts := 0
+var moon2_at := [] # [name, where, footprint] of each one placed
+func _moon_extras(rng: RandomNumberGenerator) -> void:
+	for e in MOON2:
+		if _model("moon2/" + str(e[0])) == null: continue
+		for c in int(e[2]):
+			var r: float = e[3]
+			for t in 40:
+				var p := _free_spot(rng, r)
+				if p == Vector3.INF: break
+				if absf(p.x) > WALL - r - 3.0 or absf(p.z) > WALL - r - 3.0 or _near_gate_path(p.x, p.z): continue
+				var low := p.y
+				for k in 6:
+					var a := TAU * k / 6.0
+					low = minf(low, height(p.x + sin(a) * r * 0.7, p.z + cos(a) * r * 0.7))
+				var n := _moon_prop("moon2/" + str(e[0]), Vector3(p.x, low - 0.05, p.z), rng.randf() * TAU, float(e[1]), float(e[4]), float(e[5]), true)
+				if n:
+					moon2_parts += 1
+					moon2_at.append([str(e[0]), Vector3(p.x, low, p.z), r])
+					if str(e[0]) == "reaper": n.rotation.z = 0.12 # his crimson scythe stuck in the dust, leaning
+				break
+	# his skeleton mountain: a ridge of bones beyond the north wall, under the Earth
+	if _model("moon2/skull_mountain"):
+		var n2 := (_model("moon2/skull_mountain").instantiate() as Node3D)
+		var k := 42.0
+		n2.scale = Vector3(k, k, k)
+		add_child(n2)
+		_sit_on_ground(n2, k)
+		n2.position += Vector3(10.0, -3.0, WALL + 58.0)
+		n2.rotation.y = PI
+		n2.add_to_group("far")
+		for mi in n2.find_children("*", "MeshInstance3D", true, false):
+			(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		moon2_parts += 1
+
 ## His rocks strewn all over the ground (the owner: "a lot, so it suits the vibe of the Moon"): his
 ## asteroid and iron-vein stones and his boulder field, hundreds of them, as one MultiMesh per kind
 ## per 40 m chunk (each chunk culled on its own, his models' own LODs further off), most of them
@@ -6043,6 +6106,7 @@ func _build_moon() -> void:
 		var p := _free_spot(rng, pad)
 		if p != Vector3.INF: _moon_prop(name, p - Vector3(0, 0.05, 0), rng.randf() * TAU, k, solid, far)
 	_outpost_buildings(rng)
+	_moon_extras(rng)
 	for i in 3: put.call("moon_rover", 5.0, 1.0)
 	for i in 2: put.call("moon_titan", 6.0, 1.0)
 	for i in 2: put.call("moon_tanker", 7.0, 1.0)

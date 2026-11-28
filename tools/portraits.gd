@@ -2,12 +2,14 @@ extends Node
 ## Renders a head-and-shoulders portrait of every character into assets/ui/portraits/<id>.png for the
 ## Social Sidebar and profiles. xvfb-run -a godot --rendering-driver opengl3 --path . res://tools/portraits.tscn
 
-const IDS := ["killer", "killer2", "survivor1", "survivor2", "survivor3", "survivor4", "survivor5", "survivor6", "survivor7", "survivor8", "survivor9", "survivor10"]
+const IDS := ["killer", "killer2", "killer3", "killer4", "killer5", "survivor1", "survivor2", "survivor3", "survivor4", "survivor5", "survivor6", "survivor7", "survivor8", "survivor9", "survivor10"]
 
 func _ready() -> void:
 	var out := ProjectSettings.globalize_path("res://assets/ui/portraits")
 	DirAccess.make_dir_recursive_absolute(out)
+	var only := OS.get_environment("NF_IDS").split(",", false) # just some of them
 	for id in IDS:
+		if only.size() > 0 and not id in only: continue
 		var vp := SubViewport.new()
 		vp.size = Vector2i(384, 384)
 		vp.transparent_bg = false

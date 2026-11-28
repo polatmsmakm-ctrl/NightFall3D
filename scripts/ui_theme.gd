@@ -27,6 +27,9 @@ const CHAR_COL := {
 	"survivor9": Color(0.52, 0.36, 0.86),
 	"survivor10": Color(0.80, 0.20, 0.18),
 	"killer2": Color(0.62, 0.44, 0.36),
+	"killer3": Color(0.42, 0.44, 0.5),
+	"killer4": Color(0.6, 0.35, 0.95),
+	"killer5": Color(0.92, 0.9, 0.86),
 }
 
 static var _theme: Theme

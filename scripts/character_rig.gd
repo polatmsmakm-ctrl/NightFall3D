@@ -6,12 +6,12 @@ extends Node3D
 ## the list can name clips the owner has not supplied yet: drop sprint.glb / hit.glb / fall.glb /
 ## standup.glb / cheer.glb in and the game starts using them with no code change.
 const ANIMS := ["idle", "walk", "run", "sprint", "crouchwalk", "hide", "attack", "injured", "dying",
-	"vault", "carry", "carried", "hang", "crawl", "repair", "hit", "fall", "standup", "slump", "drive", "hookhang", "struggle", "unhook", "draped", "impaled", "impaled_kick"]
+	"vault", "carry", "carried", "hang", "crawl", "repair", "hit", "fall", "standup", "slump", "drive", "hookhang", "struggle", "unhook", "draped", "impaled", "impaled_kick", "float"]
 const ONCE := ["hit", "fall", "attack", "vault", "standup", "unhook"] # played through once, then back to the state pose
-const LOOPING := ["impaled", "impaled_kick", "draped", "dance_pop", "dance_funny", "dance_break", "dance_mom", "hookhang", "struggle", "crawl_back", "reach_help", "injured_walk", "climb_wall", "climb", "idle", "walk", "run", "sprint", "crouchwalk", "hide", "injured", "carry", "carried", "hang", "crawl", "repair", "campfire", "wave", "clap", "dance", "cheer", "slump", "drive"]
+const LOOPING := ["float", "impaled", "impaled_kick", "draped", "dance_pop", "dance_funny", "dance_break", "dance_mom", "hookhang", "struggle", "crawl_back", "reach_help", "injured_walk", "climb_wall", "climb", "idle", "walk", "run", "sprint", "crouchwalk", "hide", "injured", "carry", "carried", "hang", "crawl", "repair", "campfire", "wave", "clap", "dance", "cheer", "slump", "drive"]
 ## Campfire emotes. There is no Mixamo clip for these in assets/anims, so they are posed here on the
 ## same skeleton: drop wave.glb / clap.glb / dance.glb in and the real clip is used instead.
-const EMOTES := {"wave": 2.4, "clap": 2.2, "dance": 4.0, "slump": 3.0, "drive": 3.0, "draped": 2.6, "impaled": 3.4, "impaled_kick": 0.9}
+const EMOTES := {"wave": 2.4, "clap": 2.2, "dance": 4.0, "slump": 3.0, "drive": 3.0, "draped": 2.6, "impaled": 3.4, "impaled_kick": 0.9, "float": 3.2}
 const EMOTE_BONES := ["mixamorig_Hips", "mixamorig_Spine", "mixamorig_Spine1", "mixamorig_Spine2",
 	"mixamorig_Neck", "mixamorig_Head",
 	"mixamorig_LeftShoulder", "mixamorig_LeftArm", "mixamorig_LeftForeArm", "mixamorig_LeftHand",
@@ -19,6 +19,8 @@ const EMOTE_BONES := ["mixamorig_Hips", "mixamorig_Spine", "mixamorig_Spine1", "
 	"mixamorig_LeftUpLeg", "mixamorig_LeftLeg", "mixamorig_RightUpLeg", "mixamorig_RightLeg"]
 
 var model: Node3D
+var flier := false # the Violet Wraith: «float» in place of the walk and run, and hovering
+var _fly_t := 0.0
 var skeleton: Skeleton3D
 var hunch: NFHunch # «الوحش» only
 var player := AnimationPlayer.new()
@@ -60,6 +62,7 @@ func setup(char_name: String, anims: Array = ANIMS, close_up := false, sss := tr
 			var mat := (mi as MeshInstance3D).get_active_material(s) as BaseMaterial3D
 			if mat: mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	skeleton = model.find_children("*", "Skeleton3D", true, false)[0]
+	flier = char_name == "killer4"
 	if char_name == "killer2": # «الوحش»: hunched over whatever clip plays (the first modifier, before the IK)
 		hunch = NFHunch.new()
 		skeleton.add_child(hunch)
@@ -279,6 +282,32 @@ func _emote_world(a: String, bone: String, ph: float) -> Quaternion:
 				"mixamorig_LeftUpLeg": return _w(KNEE, -1.30) * _w(FWD, 0.14)
 				"mixamorig_RightLeg": return _w(KNEE, 1.75)
 				"mixamorig_LeftLeg": return _w(KNEE, 1.75)
+		"float":
+			# the Violet Wraith (killer4) never walks: she hangs in the air, leaning in, both clawed
+			# hands reaching out in front of her, the legs trailing slack under the rags, swaying
+			var sw := sin(ph * TAU)
+			var sw2 := sin(ph * TAU * 2.0 + 1.1)
+			match bone:
+				"mixamorig_Hips": return _w(side, 0.10 + 0.03 * sw)
+				"mixamorig_Spine": return _w(side, 0.08)
+				"mixamorig_Spine1": return _w(side, 0.06) * _w(UP, 0.04 * sw)
+				"mixamorig_Spine2": return _w(side, 0.05)
+				"mixamorig_Neck": return _w(side, -0.05)
+				"mixamorig_Head": return _w(side, -0.08 + 0.04 * sw2)
+				"mixamorig_RightShoulder": return _w(R_LIFT, 0.08)
+				"mixamorig_LeftShoulder": return _w(L_LIFT, 0.08)
+				"mixamorig_RightArm": return _w(UP, 1.3 + 0.06 * sw2) * _w(R_LIFT, -0.12 + 0.05 * sw)
+				"mixamorig_LeftArm": return _w(UP, -1.3 - 0.06 * sw2) * _w(L_LIFT, -0.12 - 0.05 * sw)
+				"mixamorig_RightForeArm": return _w(UP, 0.22 + 0.05 * sw)
+				"mixamorig_LeftForeArm": return _w(UP, -0.22 - 0.05 * sw)
+				"mixamorig_RightHand": return _w(R_LIFT, -0.25)
+				"mixamorig_LeftHand": return _w(L_LIFT, -0.25)
+				"mixamorig_RightUpLeg": return _w(KNEE, -0.18 - 0.05 * sw) * _w(FWD, -0.05)
+				"mixamorig_LeftUpLeg": return _w(KNEE, -0.12 + 0.05 * sw) * _w(FWD, 0.05)
+				"mixamorig_RightLeg": return _w(KNEE, 0.35)
+				"mixamorig_LeftLeg": return _w(KNEE, 0.3)
+				"mixamorig_RightFoot": return _w(KNEE, -0.5)
+				"mixamorig_LeftFoot": return _w(KNEE, -0.5)
 		"impaled":
 			# hung on the hook through the chest (scripts/hook_pose.gd lifts them onto it and puts the
 			# hands round the point): slumped a little forward round it, the head hanging, the legs
@@ -390,7 +419,7 @@ func _emote_anim(a: String, skel_path: String, char_rest: Vector3) -> Animation:
 		for k in steps + 1:
 			out.rotation_track_insert_key(tr, out.length * float(k) / steps, keys[k])
 	# the hop: in hips local space z is the vertical axis and -z is up
-	var dip := {"dance": [3.0, 4.0], "clap": [0.0, 1.0], "wave": [1.2, 3.0], "slump": [0.0, 1.0], "drive": [0.0, 1.0], "draped": [0.0, 1.0], "impaled": [0.0, 1.0], "impaled_kick": [0.0, 1.0]}
+	var dip := {"dance": [3.0, 4.0], "clap": [0.0, 1.0], "wave": [1.2, 3.0], "slump": [0.0, 1.0], "drive": [0.0, 1.0], "draped": [0.0, 1.0], "impaled": [0.0, 1.0], "impaled_kick": [0.0, 1.0], "float": [0.0, 1.0]}
 	if float(dip[a][0]) > 0.0:
 		var tr := out.add_track(Animation.TYPE_POSITION_3D)
 		out.track_set_path(tr, NodePath("%s:mixamorig_Hips" % skel_path))
@@ -490,6 +519,9 @@ func set_anim_rate(every: int) -> void:
 	_anim_n = 0
 
 func _process(dt: float) -> void:
+	if flier and model: # half a metre off the ground, rising and sinking slowly
+		_fly_t += dt
+		model.position.y = 0.5 + 0.12 * sin(_fly_t * 1.7)
 	if anim_every <= 1 or player == null: return
 	_anim_acc += dt
 	_anim_n += 1
@@ -498,8 +530,12 @@ func _process(dt: float) -> void:
 		_anim_acc = 0.0
 		_anim_n = 0
 
+const FLOAT_OVER := ["idle", "walk", "run", "sprint", "crouchwalk", "injured", "carry", "climb", "crawl"]
 func play(anim: String, speed := 1.0) -> void:
 	if anim == "carried" and player.has_animation("draped"): anim = "draped" # over her shoulder now
+	if flier and anim in FLOAT_OVER: # the Violet Wraith floats wherever the others would walk or run
+		speed = 1.0
+		anim = "float"
 	if current == anim and player.speed_scale == speed: return
 	if not player.has_animation(anim): return
 	current = anim

@@ -1492,6 +1492,36 @@ through meteors with the killer's ship behind, and (stage 3) the endings — Ear
   backup are in `art/outpost/` (`.gdignore`: not imported, not in the IPA). `world._outpost_buildings`
   hands the buildings out over the map at `OUTPOST_K` 32 (12 of them, the smaller ones twice; 7 on older
   phones), each sunk to the lowest ground under it with a box of collision (`_moon_prop(..., recenter)`).
+- **His second batch** (`assets/props/moon2/`, every triangle as he sent it, maps moved out byte for byte
+  by `glb_external.py`): **his Neon Steam Engine is every generator on the Moon** (`NEON_K` 1.16, 2.2 m
+  long, `_sit_on_ground`; its neon glow map dark until the generator is done, then lit white-green);
+  `_moon_extras` hands out the Neon Outpost (x9.5), the Pizza Hut front (x6.5), the 1930s gangster car,
+  two tripod turrets, two water tanks on stands, the supply box, the armoured tech case, the ammo crate
+  and his Crimson Reaper scythe stuck in the dust (`MOON2`: scale, count, footprint, solid, draw range);
+  his **Skeleton Mountain** (x42) stands beyond the north wall under the Earth (`far` group, no shadow).
+  **Jupiter** hangs high overhead (`assets/sky/jupiter.jpg`, his Jupiter's Swirl rendered face on;
+  `sky.gdshader` `p2_*`). These models are 0.6-2 M triangles each, full detail at his rule; Godot's own
+  LODs take them down with distance. If the Moon is slow on a phone, they are the first suspects.
 - `tools/moon.tscn` tests it. His props were baked with `prop_bake.py` at about twice the first proposal
   (gate 120k / 4096, ramparts 60k, rocket 300k / 4096, rovers and statue 120k, tanker 100k, rocks kept
   whole); his originals are untouched.
+
+## The three new killers (`killer3` «The Midnight Revenant», `killer4` «Violet Wraith», `killer5` «Ebonwing Seraph»)
+- His sculpts (1.99 M, 1.39 M, 3.11 M triangles), none of them in a T-pose, rigged with
+  `rig_character.py --pose tools/rig/<revenant|wraith|seraph>_pose.json --facing keep --hair 5 --bake
+  --external` at **100k / 2048 for the round and 200k / 4096 for `_hi`** (the owner's yes on the numbers).
+  The joints were read off grid renders (front / side, 1.95 m, 0.1 m lines). Scales 1.12 / 1.15 / 1.2.
+  `extra` helper lines: the Revenant's coat sides go with the hips and spine, not the arms (they hung
+  off the arms in big flaps); the Seraph's praying hands and forearms ride on `Spine1` (they stay
+  clasped on her chest whatever the clip does: her arm bones run down behind the wings, so the wings
+  sweep with the arms) and her wings on `Spine2`. Only the Revenant has finger bones (`add_fingers.py`:
+  the Wraith's claw is not found, the Seraph's hand bone has only feathers round it).
+- **The Thorned Scythe** (`assets/props/scythe.glb`, his model as sent) in their right hand
+  (`scripts/scythe.gd`, `NFScythe`): placed every frame from the hand (the handle through the fist along
+  the knuckles when there are finger bones, else across the forearm), on every other phone; in first
+  person a second one in front of the camera that sweeps on the attack (`NFScythe.view` / `swing`).
+- **The Violet Wraith flies** (the owner): `CharacterRig.flier` — every walk / run / idle / carry clip is
+  replaced by `float` (posed in code: leaning in, both clawed hands reaching out in front, the legs
+  trailing under the rags, swaying), the model hovers 0.5 m up and bobs, and she makes no footsteps.
+- Menus (`CHARS`), `KILLERS` in `server.js` (**Render deploy**), `CHAR_COL`, `MALE` (the Revenant), the
+  jumpscare aims higher for the three (they are taller), portraits (`tools/portraits.gd`).

@@ -15,3 +15,5 @@ __pycache__/
 *.uid
 !assets/props/outpost/*.jpg.import
 !assets/props/outpost/*.png.import
+!assets/props/moon2/*.jpg.import
+!assets/props/moon2/*.png.import

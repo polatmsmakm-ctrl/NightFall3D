@@ -10,7 +10,7 @@ const MAPS := {"forest": "The Forest", "village": "The Abandoned Village", "fare
 const THEMES := {"normal": "Night", "fog": "Fog", "rain": "Rain", "snow": "Snow", "halloween": "Halloween", "sunset": "Late Afternoon"}
 const THEME_ICON := {"normal": "moon", "fog": "fog", "rain": "rain", "snow": "star", "halloween": "skull", "sunset": "sun"}
 const VERSION := "v1.4"
-const CHARS := {"killer": "The Killer", "survivor1": "The Survivor", "survivor2": "The Nomad", "survivor3": "The Sheriff", "survivor4": "Crimson Valkyrie", "survivor5": "Battle-Scarred", "survivor6": "Night Sentinel", "survivor7": "The Researcher", "survivor8": "Night Rose", "survivor9": "Bloom", "survivor10": "Crimson Adventurer", "killer2": "The Beast"}
+const CHARS := {"killer": "The Killer", "survivor1": "The Survivor", "survivor2": "The Nomad", "survivor3": "The Sheriff", "survivor4": "Crimson Valkyrie", "survivor5": "Battle-Scarred", "survivor6": "Night Sentinel", "survivor7": "The Researcher", "survivor8": "Night Rose", "survivor9": "Bloom", "survivor10": "Crimson Adventurer", "killer2": "The Beast", "killer3": "The Midnight Revenant", "killer4": "Violet Wraith", "killer5": "Ebonwing Seraph"}
 const SECRET := "survivor4" # hidden: only on phones Net.has_secret() is true for
 const ERRORS := {"no_room": "No room with that code", "room_full": "The room is full", "in_game": "The game in this room has started",
 	"killer_taken": "There's already a killer in the room", "offline": "Your friend is offline", "invite_later": "Your friend is offline — the invite reaches them when they come on (up to 20 minutes)", "bad_name": "Names must be 2 to 16 characters with no spaces",

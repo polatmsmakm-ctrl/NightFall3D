@@ -24,6 +24,10 @@ uniform sampler2D meteor_tex : source_color, filter_linear_mipmap, repeat_disabl
 uniform float has_meteor = 0.0;
 uniform vec3 meteor_dir = vec3(-0.5, 0.45, -0.74);
 uniform float meteor_near : hint_range(0.0, 1.0) = 0.0;
+uniform sampler2D p2_tex : source_color, filter_linear_mipmap, repeat_disable; // a second planet (Jupiter, high overhead)
+uniform float has_p2 = 0.0;
+uniform vec3 p2_dir = vec3(0.12, 0.96, -0.25);
+uniform float p2_r = 0.2;
 
 float hash(vec3 p) {
 	p = fract(p * 0.3183099 + 0.1);
@@ -92,6 +96,20 @@ void sky() {
 		col += vec3(0.25, 0.5, 1.0) * 0.5 * smoothstep(r * 1.12, r, ang) * (1.0 - disc);
 	}
 	col = mix(col, mooncol * 1.6, disc);
+	if (has_p2 > 0.5) { // Jupiter: banded, lit from the side, a soft amber rim
+		vec3 pd = normalize(p2_dir);
+		float pa = acos(clamp(dot(d, pd), -1.0, 1.0));
+		vec3 pr = normalize(cross(pd, vec3(0.0, 0.0, 1.0)));
+		vec3 pu = cross(pr, pd);
+		vec2 pv = vec2(dot(d, pr), dot(d, pu)) / p2_r;
+		float pdisc = smoothstep(p2_r, p2_r * 0.985, pa);
+		float pl = sqrt(max(0.0, 1.0 - dot(pv, pv)));
+		vec3 ps = texture(p2_tex, vec2(pv.x, -pv.y) * 0.5 + 0.5).rgb;
+		float plit = smoothstep(-0.7, 0.4, pv.x * 0.7 - pv.y * 0.3 + 0.2);
+		vec3 pc = ps * (0.08 + 1.25 * plit) * (0.55 + 0.45 * pl) + vec3(1.0, 0.6, 0.3) * pow(1.0 - pl, 4.0) * 0.35 * plit;
+		col += vec3(1.0, 0.65, 0.35) * 0.12 * smoothstep(p2_r * 1.08, p2_r, pa) * (1.0 - pdisc);
+		col = mix(col, pc, pdisc);
+	}
 	if (has_meteor > 0.5 && meteor_near > 0.0) { // the meteor: a dark rock with a burning edge, growing
 		vec3 mdir = normalize(meteor_dir);
 		float ma = acos(clamp(dot(d, mdir), -1.0, 1.0));

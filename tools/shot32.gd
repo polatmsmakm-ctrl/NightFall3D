@@ -50,6 +50,12 @@ func _ready() -> void:
 		var r: float = e[2]
 		var dir := Vector3(at.x, 0, at.z).normalized() if Vector3(at.x, 0, at.z).length() > 1.0 else Vector3(0, 0, 1)
 		views.append(["32_outpost_" + str(e[0]), at - dir * (r * 2.6) + Vector3(0, r * 0.55 + 2.0, 0), at + Vector3(0, r * 0.35, 0)])
+	for e in w.moon2_at:
+		var at2: Vector3 = e[1]
+		var r2: float = maxf(e[2], 2.0)
+		views.append(["32_m2_" + str(e[0]), at2 + Vector3(r2 * 1.6, r2 * 0.6 + 1.2, r2 * 1.9), at2 + Vector3(0, r2 * 0.3, 0)])
+	views.append(["32_jupiter", Vector3(0, 1.7, -60), Vector3(4, 40, -66)])
+	views.append(["32_mountain", Vector3(0, 2.0, 60), Vector3(10, 14, 170)])
 	for v in views:
 		var hit := only == ""
 		for tok in only.split(",", false): if str(v[0]).begins_with(tok): hit = true

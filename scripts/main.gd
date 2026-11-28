@@ -40,7 +40,7 @@ const SFX_LOOPS := ["heart", "heart_fast", "breath", "breath_hurt", "breath_hide
 	"steps_beast", "steps_hurt", "gen_run", "chase", "ambient", "power_hum", "terror", "moon_rumble", "amb_night", "amb_sea",
 	"amb_garage", "amb_storm", "amb_cold", "breath_m", "breath_f", "breath_hurt_m", "heal_other", "heal_self", "steps_approach"]
 const NIMBLE_VAULT := 0.65 # «Light Feet»: her vaults take 65% of the time
-const MALE := ["survivor2", "survivor3", "killer2"] # the other characters (the killer «البركة القرمزية» too) use the female voice clips
+const MALE := ["survivor2", "survivor3", "killer2", "killer3"] # the other characters (the killer «البركة القرمزية» too) use the female voice clips
 const TERROR_RADIUS := 24.0 # survivors start to feel the killer inside this distance
 const CHASE_NEAR := 16.0     # the chase music plays when she is this close on foot, even unseen (never while she drives)
 ## quick signals: what the three buttons say, their icon, and how they look on a team-mate's screen
@@ -127,6 +127,7 @@ var look_id := -1
 var sprint := false
 var crouch := false
 var attack_t := 0.0
+var scythe_view: Node3D # the new killers' Thorned Scythe in first person
 var attack_cd := 0.0
 var hit_sent := false
 var boost_t := 0.0
@@ -358,6 +359,7 @@ func _build_player(char_name: String, at: Vector3) -> void:
 		cam.fov = 80.0 + Gfx.fov_add
 		cam.near = 0.1
 		rig.visible = false
+		if NFScythe.uses(char_name): scythe_view = NFScythe.view(cam) # her scythe in front of the camera
 		lamp.position = Vector3(0, 0.3, -0.5)
 		lamp.light_energy = 0.8; lamp.omni_range = 11.0
 	else: # third person
@@ -393,6 +395,10 @@ func _add_remote(p: Dictionary) -> void:
 	var r := CharacterRig.new()
 	node.add_child(r)
 	r.setup(str(p.char), CharacterRig.ANIMS, false, false) # the round model: only my own character gets the close-up one
+	if NFScythe.uses(str(p.char)): # the Thorned Scythe in her right hand
+		var sc := NFScythe.new()
+		node.add_child(sc)
+		sc.setup(r)
 	node.position = world.spawn_point(str(p.role), int(p.slot))
 	if p.get("dummy", false): # trial-mode practice target
 		var gp: Vector3 = world.gen_points[0]
@@ -660,7 +666,7 @@ func _start_scare() -> void:
 
 func _aim_scare() -> void:
 	if scare_cam == null: return
-	var head := _pos_of(rules.killer) + Vector3(0, 1.74, 0) # her face while she lifts (the old killer's sat at 1.62)
+	var head := _pos_of(rules.killer) + Vector3(0, {"killer3": 2.0, "killer4": 2.05, "killer5": 2.0}.get(chars.get(rules.killer, ""), 1.74), 0) # her face while she lifts (the old killer's sat at 1.62; the new three stand taller)
 	var fwd := Basis(Vector3.UP, _yaw_of(rules.killer)) * Vector3(0, 0, 1)
 	var shake := Vector3(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0), 0.0) * 0.012
 	scare_cam.global_position = head + fwd * 0.52 + Vector3(0, 0.05, 0) + shake
@@ -3074,6 +3080,7 @@ func _press(id: String, touch: int) -> void:
 				_sfx("swing%d" % randi_range(1, 2), null, -4.0, randf_range(0.95, 1.05))
 				hit_sent = false
 				rig.play("attack", 2.0)
+				NFScythe.swing(scythe_view)
 		"power":
 			if sniping: # x4 -> x8 -> off
 				scope = (scope + 1) % NFSniper.ZOOMS.size()
@@ -3645,7 +3652,7 @@ func _process(dt: float) -> void:
 			sk = "beast" if chars.get(n, "killer") == "killer2" else "killer"
 			if sk == "killer" and my_role == "survivor" and body.position.distance_to(r.node.position) < TERROR_RADIUS: sk = "approach" # coming for me
 		elif st == "hurt": sk = "hurt"
-		_steps(r.steps, r.node.position, moving, anim == "run", 4.0 if r.role == "killer" else (-14.0 if ghost else 0.0), sk)
+		_steps(r.steps, r.node.position, moving and chars.get(n, "") != "killer4", anim == "run", 4.0 if r.role == "killer" else (-14.0 if ghost else 0.0), sk) # (the Wraith flies: no steps)
 		if anim == "run" and r.node.visible and my_role == "killer" and r.role == "survivor" and not ghost:
 			r.step -= dt
 			if r.step <= 0.0:
@@ -3920,7 +3927,7 @@ func _physics_process(delta: float) -> void:
 	var my_sk := ""
 	if my_role == "killer": my_sk = "beast" if chars.get(my_name, "killer") == "killer2" else "killer"
 	elif my_state == "hurt": my_sk = "hurt"
-	_steps(my_steps, body.position, not pinned and spd > 0.4 and not crouch and body.is_on_floor(), spd > 2.6, -8.0, my_sk)
+	_steps(my_steps, body.position, not pinned and spd > 0.4 and not crouch and body.is_on_floor() and chars.get(my_name, "") != "killer4", spd > 2.6, -8.0, my_sk)
 	last_state = my_state
 	if not offline and spectating == "" and my_state != "escaped": # spectators stop reporting a position
 		send_t -= delta

@@ -68,6 +68,12 @@ func _ready() -> void:
 	check(m.body.position.z < -NightWorld.WALL - 12.0 and absf(m.body.position.y) < 0.6, "the open gate's vortex takes you through to the pad, and the pad holds you")
 	check(m.warp_rect != null and w.portal_mats.size() == 2 and float(w.portal_mats[0].get_shader_parameter("power")) > 0.5, "a warp flash, and the vortex is racing")
 	check(w.outpost_parts >= 10, "his outpost's buildings handed out over the map (%d)" % w.outpost_parts)
+	check(w.moon2_parts >= 10, "his second batch on the Moon, the bone mountain beyond the wall (%d)" % w.moon2_parts)
+	var eng := 0
+	for gn in w.find_children("*", "Node3D", true, false):
+		if gn.scene_file_path.ends_with("neon_engine.glb"): eng += 1
+	check(eng == 5, "his Neon Steam Engine is every generator (%d)" % eng)
+	check(float(w._sky_mat.get_shader_parameter("has_p2")) == 1.0, "Jupiter overhead")
 	check(w.moon_rocks > 3000, "his rocks and pebbles all over the ground (%d)" % w.moon_rocks)
 	check(m.rules.hp("P") == "ok", "not out yet on the pad")
 	m.rules.doom = 100.0
