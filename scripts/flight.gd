@@ -351,7 +351,7 @@ func _make_cabin() -> Node3D:
 	_box(c, Vector3(0.06, 0.012, CAB_BACK - CAB_FRONT - 0.2), Vector3(0, CAB_FLOOR + 0.026, 0), stripe) # down the aisle
 	# the console under the front window, its screens lit
 	var dark := StandardMaterial3D.new()
-	dark.albedo_color = Color(0.1, 0.11, 0.13)
+	dark.albedo_color = Color(0.2, 0.21, 0.24)
 	dark.roughness = 0.4
 	dark.metallic = 0.4
 	_box(c, Vector3(2.1, 0.55, 0.5), Vector3(0, -0.45, CAB_FRONT + 0.27), dark, Vector3(-0.35, 0, 0))
@@ -370,16 +370,16 @@ func _make_cabin() -> Node3D:
 	lamp.emission_energy_multiplier = 2.5
 	for x in [-0.38, 0.38]:
 		_box(c, Vector3(0.1, 0.03, CAB_BACK - CAB_FRONT - 0.6), Vector3(x, sqrt(CAB_R * CAB_R - x * x) - 0.05, 0), lamp)
-	for z in [-1.6, 1.6]:
+	for z in [-2.4, 0.0, 2.4]:
 		var ol := OmniLight3D.new()
-		ol.light_color = Color(0.85, 0.9, 1.0)
-		ol.light_energy = 1.1
-		ol.omni_range = 4.2
+		ol.light_color = Color(0.88, 0.92, 1.0)
+		ol.light_energy = 1.5
+		ol.omni_range = 3.8
 		ol.position = Vector3(0, 1.0, z)
 		c.add_child(ol)
 	# the seats: a cushion, a reclined back, a headrest (orange), all on a pedestal; facing the nose
 	var seat_m := StandardMaterial3D.new()
-	seat_m.albedo_color = Color(0.17, 0.18, 0.21)
+	seat_m.albedo_color = Color(0.3, 0.31, 0.35)
 	seat_m.roughness = 0.75
 	var head_m := StandardMaterial3D.new()
 	head_m.albedo_color = Color(0.85, 0.38, 0.12)

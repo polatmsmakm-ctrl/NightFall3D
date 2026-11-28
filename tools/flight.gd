@@ -199,6 +199,15 @@ func _rules_only() -> void:
 	for i in 52: t.tick(0.1)
 	check(int(t.fl.st) == 2, "rules: and lift-off")
 	for i in int(Rules.FLIGHT_TIME * 10.0) + 20: t.tick(0.1)
+	var dv := Rules.new()
+	dv.moon = true
+	dv.setup(5, 2, 0, 0, [{"name": "A", "role": "survivor", "char": "survivor1"}, {"name": "K", "role": "killer", "char": "killer"}], 1)
+	dv.handle({"k": "devgens", "key": "1234"}, "A")
+	dv.tick(0.1)
+	check(not dv.powered and dv.done_count() == 0, "rules: the testing shortcut needs the passkey")
+	dv.handle({"k": "devgens", "key": "4343"}, "A")
+	dv.tick(0.1)
+	check(dv.powered and dv.done_count() >= Rules.NEED and (dv.gates[0] as Dictionary).open, "rules: developer tools — every generator done, the gates open at once")
 	var big := Rules.new()
 	big.moon = true
 	var eight := []

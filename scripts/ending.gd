@@ -350,7 +350,7 @@ func _build_blast(nt: Texture2D) -> void:
 	praxis.basis = Basis(Vector3(1, 0, 0), 0.32) * Basis(Vector3(0, 0, 1), -0.18) # nearly level, tipped toward the camera
 	plume = MeshInstance3D.new()
 	var cm := CylinderMesh.new()
-	cm.top_radius = 0.15; cm.bottom_radius = 1.0; cm.height = 1.0; cm.radial_segments = 32; cm.rings = 1
+	cm.top_radius = 0.45; cm.bottom_radius = 1.0; cm.height = 1.0; cm.radial_segments = 32; cm.rings = 1 # (the top is at the crater: hot there, fading as it widens out)
 	cm.cap_top = false; cm.cap_bottom = false
 	plume_mat = ShaderMaterial.new()
 	plume_mat.shader = load("res://shaders/flame.gdshader")
@@ -468,7 +468,7 @@ func _lose(dt: float) -> void:
 	if t > 2.4 and s < IMPACT: shake = maxf(shake, 0.25 + 0.35 * clampf((s - 2.4) / 1.8, 0.0, 1.0))
 	var since := s - IMPACT
 	if since >= 0.0 and _once("impact"):
-		flash = 1.6 # a white-out
+		flash = 1.25 # a white-out
 		shake = 1.0
 		fireball.visible = true
 		_sfx("impact", 6.0, 0.55)
@@ -502,9 +502,9 @@ func _lose(dt: float) -> void:
 			var pl := lerpf(200.0, R * 2.4, 1.0 - pow(1.0 - pk, 2.0))
 			plume.visible = since < 4.5
 			plume.basis = Basis.looking_at(-hit_dir, Vector3.UP if absf(hit_dir.y) < 0.95 else Vector3.RIGHT) * Basis(Vector3(1, 0, 0), -PI / 2.0)
-			plume.basis = plume.basis.scaled(Vector3(R * 0.32 * (0.4 + 0.6 * pk), pl, R * 0.32 * (0.4 + 0.6 * pk)))
+			plume.basis = plume.basis.scaled(Vector3(R * 0.42 * (0.3 + 0.7 * pk), pl, R * 0.42 * (0.3 + 0.7 * pk)))
 			plume.position = h + hit_dir * pl * 0.5
-			plume_mat.set_shader_parameter("power", 1.6 * (1.0 - smoothstep(2.0, 4.5, since)))
+			plume_mat.set_shader_parameter("power", 0.75 * smoothstep(0.0, 0.3, since) * (1.0 - smoothstep(1.6, 4.0, since)))
 	# it breaks apart, and a great ring of fire is thrown out into space
 	var br := since - 3.0
 	if br > 0.0:
@@ -570,7 +570,7 @@ func _place_meteor(p: Vector3, v: Vector3, hot: float) -> void:
 	m_trail.basis = Basis.looking_at(back, Vector3.UP if absf(back.y) < 0.95 else Vector3.RIGHT) * Basis(Vector3(1, 0, 0), PI / 2.0) # the wide end at the rock
 	m_trail.scale = Vector3(1.0, l / (RM * 9.0), 1.0)
 	m_trail.position = p + back * (l * 0.5 + RM * 0.4)
-	(m_trail.mesh.material as ShaderMaterial).set_shader_parameter("power", 0.06 + 0.32 * hot)
+	(m_trail.mesh.material as ShaderMaterial).set_shader_parameter("power", 0.05 + 0.17 * hot)
 
 # ---------------- on the screen ----------------
 func _draw_ui() -> void:
