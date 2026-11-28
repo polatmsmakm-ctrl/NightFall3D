@@ -1570,6 +1570,18 @@ through meteors with the killer's ship behind, and (stage 3) the endings — Ear
   `tools/shot35.tscn` photographs both (over `tools/fly_mock.gd`, a stand-in for main with no map,
   which `shot34` uses too: the whole Moon does not fit the software renderer's memory here).
 
+## «Lagging and dark points on every map» (the owner, 28 Nov) and the start screen's people
+- `Gfx.TIER` 5 re-applies the strong-phone defaults once: SMAA at 90% with MetalFX spatial (not MetalFX
+  temporal, which rebuilds each frame from the last ones, so a bad pixel lingers), **Medium effects**
+  (volumetric fog and the torch's shadows stay, screen-space reflections off), the moon's shadow map at
+  4096 (8192 is gone), volumetric fog at 48³ everywhere, no bounce light, and **no ambient occlusion**:
+  SSAO is now its own setting, «Ambient occlusion» (`Gfx.ao`, off), because at half size it was the
+  prime suspect for the dark points. All of it can be turned back on in the settings. If the dots stay,
+  ask the owner for a screenshot with «Performance monitor» on.
+- **The camp's people face the front** (`NFLobby._face_front`): the cast, the room's killer and the chosen
+  character stand facing the viewer, not the fire, and all of them stand in the clear strip between the
+  menu and the right-hand panels (`P_SEATS`, `P_STAND`), never half behind a panel.
+
 ## The three new killers (`killer3` «The Midnight Revenant», `killer4` «Violet Wraith», `killer5` «Ebonwing Seraph»)
 - His sculpts (1.99 M, 1.39 M, 3.11 M triangles), none of them in a T-pose, rigged with
   `rig_character.py --pose tools/rig/<revenant|wraith|seraph>_pose.json --facing keep --hair 5 --bake

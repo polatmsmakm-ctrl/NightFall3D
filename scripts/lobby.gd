@@ -28,8 +28,11 @@ const HOOK_AT := Vector3(4.9, 0.0, -0.2)
 ## there the 3D scenery is not built at all; the characters stand on the painted ground, placed by where
 ## their feet are in the picture (pixels of the painting), lit by its fire.
 const Paint := preload("res://scripts/paint.gd")
-const P_SEATS := [Vector2(782.0, 652.0), Vector2(866.0, 664.0), Vector2(952.0, 652.0), Vector2(1012.0, 646.0), Vector2(1030.0, 668.0), Vector2(620.0, 700.0)] # right of the fire first: the menu covers the left
-const P_STAND := Vector2(1090.0, 790.0)      # the chosen character, big, between the menu and the map card
+## Everyone stands in the clear strip between the menu on the left and the column of panels on the
+## right (painting x 650 .. 980 on the phone's screen), facing the front: nobody half behind a panel
+## (the owner, 28 Nov).
+const P_SEATS := [Vector2(700.0, 662.0), Vector2(935.0, 660.0), Vector2(745.0, 640.0), Vector2(978.0, 645.0), Vector2(890.0, 630.0), Vector2(660.0, 640.0)]
+const P_STAND := Vector2(815.0, 742.0)       # the chosen character, big, in front in the middle of the clear strip
 const P_STALK := [Vector2(1222.0, 604.0), Vector2(892.0, 598.0), Vector2(1112.0, 592.0), Vector2(1000.0, 612.0), Vector2(782.0, 600.0)]
 
 var stock: Array[Node3D] = []     # the shipped cast, shown when we are not in a room
@@ -602,17 +605,22 @@ func _ground(px: Vector2) -> Vector3:
 func _stand() -> Vector3:
 	return _ground(P_STAND) if painted else STAND
 
-## Put a rig on seat i round the fire, facing the fire, with a soft shadow under it.
+## Put a rig on seat i round the fire, with a soft shadow under it. On the owner's painting everyone
+## stands facing the front (the one holding the phone), not turned toward the fire: side-on and
+## back-on figures looked odd on the start screen (the owner, 28 Nov).
 func _place_seat(r: Node3D, i: int) -> void:
 	if painted:
 		r.position = _ground(P_SEATS[i % P_SEATS.size()])
-		var f := _ground(Paint.CAMP_FIRE)
-		r.rotation.y = atan2(f.x - r.position.x, f.z - r.position.z)
+		_face_front(r)
 		_blob(r)
 		return
 	var st: Array = SEATS[i % SEATS.size()]
 	r.position = Vector3(sin(st[0]) * st[1], 0, -cos(st[0]) * st[1])
 	r.rotation.y = atan2(-r.position.x, -r.position.z)
+
+## Turn a rig on the painted camp to face the camera.
+func _face_front(r: Node3D) -> void:
+	r.rotation.y = atan2(cam.position.x - r.position.x, cam.position.z - r.position.z)
 
 ## A soft dark patch under someone on the painted ground (there is no 3D ground to take a shadow).
 func _blob(r: Node3D) -> void:
@@ -725,8 +733,8 @@ func preview(char_id: String, label := "", dir := 0.0) -> void:
 	_slide_from = sp + Vector3(dir * 1.9, 0.0, 0.35)
 	_slide = 1.0 if dir != 0.0 else 0.0
 	me_rig.position = _slide_from if dir != 0.0 else sp
-	if painted: # toward the viewer, turned a little to the fire
-		me_rig.rotation.y = atan2(-sp.x, cam.position.z - sp.z) - 0.28
+	if painted: # straight toward the viewer
+		me_rig.rotation.y = atan2(cam.position.x - sp.x, cam.position.z - sp.z)
 		_blob(me_rig)
 	else: me_rig.rotation.y = atan2(CAM_IDLE[0].x - STAND.x, CAM_IDLE[0].z - STAND.z)
 	me_label = _tag(label, Color(1, 0.88, 0.6), 2.15)
@@ -774,6 +782,7 @@ func set_cast(players: Array, me: String) -> void:
 		if killer:
 			r.position = _ground(P_STALK[0]) if painted else KILLER_AT
 			r.rotation.y = atan2(-r.position.x, -r.position.z)
+			if painted: _face_front(r)
 			r.play("idle")
 		else:
 			_place_seat(r, int(d.seat))

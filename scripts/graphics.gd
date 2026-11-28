@@ -35,7 +35,7 @@ var strong := false
 ## among them). It gets its own start: the lighter Mobile renderer from the second launch, settings
 ## that hold 60 there, and a governor that may go further down (resolution to 70%, a steady 30).
 var weak := false
-const TIER := 4 # raise it to re-apply the strong-device defaults once on every phone
+const TIER := 5 # raise it to re-apply the strong-device defaults once on every phone
 const WEAK_TIER := 1 # the same for the older-phone defaults
 ## This launch is the last one on Forward+ before the lighter renderer takes over (the renderer only
 ## changes at start-up): its heavy effects stay off meanwhile.
@@ -52,6 +52,11 @@ var eye := true        # «Eye adaptation»: the picture brightens / darkens as 
 var dof := true        # «Depth of field»: a soft background behind the victory shot and the kiss
 var water_ref := true  # «Reflections»: the sea, the lagoon and wet roads mirror the lights (Ultra effects)
 var bounce := false    # «Bounce light»: light picks up colour off nearby walls (Pro Max; heavy, off at first)
+## «Ambient occlusion»: the screen-space darkening where things meet. Off by default since TIER 5: drawn
+## at half size it sprinkled dark points over every map on the owner's 18 Pro Max (grass, fronds,
+## fences, the edges of models), and it was one of the heaviest passes; the maps already darken the
+## ground under walls and objects without it (world._ground_ao, the contact-shadow blobs).
+var ao := false
 signal look_changed
 
 # runtime-only reductions made by the governor (not saved)
@@ -203,7 +208,7 @@ func apply() -> void:
 	var sharp := sharp_sh and s >= 2 and not weak and engine_hd()
 	# «Sharp shadows»: the moon's map at 8192 on a strong phone (4096 otherwise) and a softer filter.
 	# This is filtering (PCF), not the soft-shadow method that drew black squares on the iPhone.
-	RenderingServer.directional_shadow_atlas_set_size(8192 if (sharp and strong) else [1024, 2048, 4096][s], true)
+	RenderingServer.directional_shadow_atlas_set_size([1024, 2048, 4096][s], true) # (8192 on a strong phone cost a lot for little)
 	RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_HIGH if sharp else
 		[RenderingServer.SHADOW_QUALITY_HARD, RenderingServer.SHADOW_QUALITY_SOFT_LOW, RenderingServer.SHADOW_QUALITY_SOFT_MEDIUM][s])
 	if engine_hd(): # how fine the high-end effects are drawn (NFLook decides which ones are on)
@@ -219,7 +224,7 @@ func apply() -> void:
 		RenderingServer.environment_set_ssil_quality(RenderingServer.ENV_SSIL_QUALITY_MEDIUM if bounce_on() else RenderingServer.ENV_SSIL_QUALITY_LOW, true, 0.5, 2, 50.0, 300.0)
 		RenderingServer.environment_set_sdfgi_ray_count(RenderingServer.ENV_SDFGI_RAY_COUNT_16)
 		RenderingServer.environment_set_sdfgi_frames_to_converge(RenderingServer.ENV_SDFGI_CONVERGE_IN_15_FRAMES)
-		RenderingServer.environment_set_volumetric_fog_volume_size(64 if fx >= 2 else 48, 64 if fx >= 2 else 40) # 96³ was 3.4x the work
+		RenderingServer.environment_set_volumetric_fog_volume_size(48, 40) # (64³ on High effects was the costliest pass left)
 		RenderingServer.environment_set_volumetric_fog_filter_active(true)
 		RenderingServer.sub_surface_scattering_set_quality(RenderingServer.SUB_SURFACE_SCATTERING_QUALITY_MEDIUM if maxed() else RenderingServer.SUB_SURFACE_SCATTERING_QUALITY_LOW)
 	# sharper ground at a glancing angle, and models keep their full detail further away
@@ -245,9 +250,15 @@ func _load() -> void:
 		# (TIER 3, after "the game lags" on the 18 Pro Max: 90% of the screen's 2868 x 1320 rebuilt
 		# with FSR — the same picture at 460 ppi for a fifth fewer pixels — and SMAA in place of MSAA.)
 		# (TIER 4, the graphics pass: MetalFX temporal on the iPhone in place of SMAA + FSR.)
+		# (TIER 5, "lagging and dark points on every map" on the 18 Pro Max: no ambient occlusion,
+		# no MetalFX temporal (it rebuilds each frame from the last ones, so a bad pixel lingers and
+		# spreads), SMAA at 90% with MetalFX spatial, medium effects (volumetric fog and the torch's
+		# shadows stay; screen-space reflections off), the moon's shadow map at 4096 not 8192, and
+		# no bounce light. Every one of them can be turned back on in the settings.)
 		preset = 2
-		shadows = PRESETS[2][0]; aa = 3; scale_idx = 1; effects = PRESETS[2][3]
+		shadows = 2; aa = 2; scale_idx = 1; effects = 1
 		fps_idx = 2
+		ao = false; bounce = false
 		if ok:
 			brightness = clampf(float(c.get_value("g", "bright", brightness)), 0.6, 1.6)
 			_load_controls(c)
@@ -289,6 +300,7 @@ func _load_controls(c: ConfigFile) -> void:
 	dof = bool(c.get_value("g", "dof", dof))
 	water_ref = bool(c.get_value("g", "wref", water_ref))
 	bounce = bool(c.get_value("g", "bounce", bounce))
+	ao = bool(c.get_value("g", "ao", ao))
 
 func _save() -> void:
 	var c := ConfigFile.new()
@@ -299,7 +311,7 @@ func _save() -> void:
 	c.set_value("g", "sens", look_sens); c.set_value("g", "fov", fov_add)
 	c.set_value("g", "btn", btn_scale); c.set_value("g", "btn_a", btn_alpha)
 	c.set_value("g", "sharp", sharp_sh); c.set_value("g", "eye", eye); c.set_value("g", "dof", dof)
-	c.set_value("g", "wref", water_ref); c.set_value("g", "bounce", bounce)
+	c.set_value("g", "wref", water_ref); c.set_value("g", "bounce", bounce); c.set_value("g", "ao", ao)
 	c.set_value("g", "tier", TIER if strong else 0)
 	c.set_value("g", "weak", WEAK_TIER if weak else 0)
 	c.save(PATH)
@@ -449,6 +461,7 @@ func _build_ui() -> void:
 	_row(v, "dof", "Depth of field", ["Off", "On"])
 	_row(v, "wref", "Water reflections", ["Off", "On"])
 	_row(v, "bounce", "Bounce light (Pro Max)", ["Off", "On"])
+	_row(v, "ao", "Ambient occlusion", ["Off", "On"])
 	_row(v, "perf", "Performance monitor", ["Off", "On"])
 	_engine_note = Label.new()
 	_engine_note.add_theme_font_size_override("font_size", 15)
@@ -567,7 +580,7 @@ func _refresh() -> void:
 	_opts["aa"].select(aa); _opts["scale"].select(scale_idx); _opts["effects"].select(effects)
 	_opts["engine"].select(0 if engine_next_hd() else 1)
 	_opts["sharp"].select(1 if sharp_sh else 0); _opts["eye"].select(1 if eye else 0); _opts["dof"].select(1 if dof else 0)
-	_opts["wref"].select(1 if water_ref else 0); _opts["bounce"].select(1 if bounce else 0)
+	_opts["wref"].select(1 if water_ref else 0); _opts["bounce"].select(1 if bounce else 0); _opts["ao"].select(1 if ao else 0)
 	_engine_note.visible = engine_next_hd() != engine_hd()
 	_engine_note.text = "Close and reopen the game to change the renderer"
 
@@ -589,6 +602,7 @@ func _on_select(i: int, key: String) -> void:
 		"dof": dof = i == 1
 		"wref": water_ref = i == 1
 		"bounce": bounce = i == 1
+		"ao": ao = i == 1
 	_reset_runtime()
 	_refresh(); _save(); apply()
 

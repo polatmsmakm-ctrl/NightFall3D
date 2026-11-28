@@ -19,7 +19,7 @@ static func apply(env: Environment, kind: String) -> void:
 	if env == null or not hd(): return
 	var fx := Gfx.eff_effects()
 	# ambient occlusion: the dark where things meet the ground and each other
-	env.ssao_enabled = fx >= 1
+	env.ssao_enabled = fx >= 1 and Gfx.ao # off unless picked: it sprinkled dark points on the iPhone (Gfx.ao)
 	env.ssao_radius = 1.3
 	# (softer than before: at half resolution a strong, detailed occlusion sprinkled dark specks
 	# over grass, fronds and fences — one suspect for the black dots on the owner's screen)
