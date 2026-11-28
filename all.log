@@ -1,0 +1,1612 @@
+=== online forest
+O ok   connected to the server
+O ok   room made (9847)
+O ok   the second phone joined
+O ok   the round started online (role killer)
+O ok   the other phone is in my round
+O ok   its position reaches me ((-12.3, -0.5, -34.5))
+O ok   I am the killer
+O ok   the bot's repair: generator 2 moves on my phone (0.020 -> 0.070)
+O ok   I see it repairing (repair)
+O ok   hit 1 -> hurt (server: hurt)
+O ok   hit 2 -> down (server: down)
+O ok   picked up (carrying Bot)
+O ok   hooked (hooked)
+O ok   the power went through the server (cd 19.7)
+O RESULT PASS
+ERROR: 46 RID allocations of type 'PN13RendererDummy14TextureStorage12DummyTextureE' were leaked at exit.
+ERROR: 3 RID allocations of type 'N13RendererDummy15MaterialStorage11DummyShaderE' were leaked at exit.
+ERROR: 4 resources still in use at exit (run with --verbose for details).
+--- bot
+B started forest as survivor sniper false
+B survivor gens null hp  at -37.9,-0.5,-28.6,0.0
+B survivor gens [0,0,0,0,0,0,0] hp ok at -37.9,-0.5,-28.6,0.0
+B survivor gens [0,0,0,0,0,0,0] hp ok at -37.9,-0.5,-28.6,0.0
+B survivor gens [0,0,0,0,0,0,0] hp ok at -37.9,-0.5,-28.6,0.0
+B survivor gens [0,0,0,0,0,0,0] hp ok at -37.9,-0.5,-28.6,0.0
+B survivor gens [0,0,0.007,0,0,0,0] hp ok at -12.3,-0.4,-34.5,0.0
+B survivor gens [0,0,0.04,0,0,0,0] hp ok at -12.3,-0.4,-34.5,0.0
+B survivor gens [0,0,0.073,0,0,0,0] hp ok at -12.3,-0.4,-34.5,0.0
+B event {"k":"hurt","n":"Bot","s":"hurt"}
+B survivor gens [0,0,0.098,0,0,0,0] hp hurt at -12.3,-0.4,-34.5,0.0
+B event {"k":"hurt","n":"Bot","s":"down"}
+B survivor gens [0,0,0.117,0,0,0,0] hp down at -12.3,-0.4,-34.5,0.0
+B survivor gens [0,0,0.117,0,0,0,0] hp carried at -12.3,-0.4,-34.5,0.0
+B event {"k":"hooked","n":"Bot","s":"hooked"}
+B event {"k":"power"}
+B survivor gens [0,0,0.117,0,0,0,0] hp escaped at -12.3,-0.4,-34.5,0.0
+--- server
+NightFall server on :8099
+=== online kuwait-sniper
+O ok   connected to the server
+O ok   room made (4126)
+O ok   the second phone joined
+O ok   the round started online (role killer)
+O ok   the other phone is in my round
+O ok   its position reaches me ((-8.0, 0.1, 50.0))
+O ok   «وضع القنّاص» on both sides (rules true, map true)
+O ok   I am the killer
+O ok   I climb the tower (y 12.4)
+O ok   lying down with the rifle
+O ok   scope x4
+O ok   the shot downs the other phone, through the server (down)
+O ok   and it bleeds (120 s)
+O ok   no moon
+O RESULT PASS
+ERROR: 46 RID allocations of type 'PN13RendererDummy14TextureStorage12DummyTextureE' were leaked at exit.
+ERROR: 3 RID allocations of type 'N13RendererDummy15MaterialStorage11DummyShaderE' were leaked at exit.
+ERROR: 4 resources still in use at exit (run with --verbose for details).
+--- bot
+B started kuwait-sniper as survivor sniper true
+B survivor gens null hp  at -8.0,0.1,50.0,0.0
+B survivor gens [0,0,0,0,0,0,0] hp ok at -8.0,0.1,50.0,0.0
+B survivor gens [0,0,0,0,0,0,0] hp ok at -8.0,0.1,50.0,0.0
+B survivor gens [0,0,0,0,0,0,0] hp ok at -8.0,0.1,50.0,0.0
+B survivor gens [0,0,0,0,0,0,0] hp ok at -8.0,0.1,50.0,0.0
+B survivor gens [0,0,0,0,0,0,0] hp ok at -8.0,0.1,50.0,0.0
+B survivor gens [0,0,0,0,0,0,0] hp ok at -8.0,0.1,50.0,0.0
+B survivor gens [0,0,0,0,0,0,0] hp ok at -8.0,0.1,50.0,0.0
+B survivor gens [0,0,0,0,0,0,0] hp ok at -8.0,0.1,50.0,0.0
+B survivor gens [0,0,0,0,0,0,0] hp ok at -8.0,0.1,50.0,0.0
+B survivor gens [0,0,0,0,0,0,0] hp ok at -8.0,0.1,50.0,0.0
+B survivor gens [0,0,0,0,0,0,0] hp ok at -8.0,0.1,50.0,0.0
+B survivor gens [0,0,0,0,0,0,0] hp ok at -8.0,0.1,50.0,0.0
+B survivor gens [0,0,0,0,0,0,0] hp ok at -8.0,0.1,50.0,0.0
+B survivor gens [0,0,0,0,0,0,0] hp ok at -8.0,0.1,50.0,0.0
+B survivor gens [0,0,0,0,0,0,0] hp ok at -8.0,0.1,50.0,0.0
+B event {"k":"snipe","by":"Tester","n":"Bot","p":[-8,1.25,49.99]}
+B survivor gens [0,0,0,0,0,0,0] hp escaped at -8.0,0.1,50.0,0.0
+.4,-34.5,0.0
+B survivor gens [0,0,0.117,0,0,0,0] hp escaped at -12.3,-0.4,-34.5,0.0
+B survivor gens [0,0,0.117,0,0,0,0] hp escaped at -12.3,-0.4,-34.5,0.0
+B survivor gens [0,0,0.117,0,0,0,0] hp escaped at -12.3,-0.4,-34.5,0.0
+B survivor gens [0,0,0.117,0,0,0,0] hp escaped at -12.3,-0.4,-34.5,0.0
+B survivor gens [0,0,0.117,0,0,0,0] hp escaped at -12.3,-0.4,-34.5,0.0
+B survivor gens [0,0,0.117,0,0,0,0] hp escaped at -12.3,-0.4,-34.5,0.0
+B survivor gens [0,0,0.117,0,0,0,0] hp escaped at -12.3,-0.4,-34.5,0.0
+B survivor gens [0,0,0.117,0,0,0,0] hp escaped at -12.3,-0.4,-34.5,0.0
+B survivor gens [0,0,0.117,0,0,0,0] hp escaped at -12.3,-0.4,-34.5,0.0
+B survivor gens [0,0,0.117,0,0,0,0] hp escaped at -12.3,-0.4,-34.5,0.0
+B survivor gens [0,0,0.117,0,0,0,0] hp escaped at -12.3,-0.4,-34.5,0.0
+B survivor gens [0,0,0.117,0,0,0,0] hp escaped at -12.3,-0.4,-34.5,0.0
+B survivor gens [0,0,0.117,0,0,0,0] hp escaped at -12.3,-0.4,-34.5,0.0
+B survivor gens [0,0,0.117,0,0,0,0] hp escaped at -12.3,-0.4,-34.5,0.0
+B survivor gens [0,0,0.117,0,0,0,0] hp escaped at -12.3,-0.4,-34.5,0.0
+B survivor gens [0,0,0.117,0,0,0,0] hp escaped at -12.3,-0.4,-34.5,0.0
+B survivor gens [0,0,0.117,0,0,0,0] hp escaped at -12.3,-0.4,-34.5,0.0
+B survivor gens [0,0,0.117,0,0,0,0] hp escaped at -12.3,-0.4,-34.5,0.0
+B survivor gens [0,0,0.117,0,0,0,0] hp escaped at -12.3,-0.4,-34.5,0.0
+--- server
+NightFall server on :8099
+ok    the room gets a 4-5 digit code  3815
+ok    the maker is the host
+ok    a friend joins with the code alone
+ok    the host sees them in the room  2
+ok    a wrong code is refused
+ok    a third player joins the same room
+ok    nobody is given the hidden character on joining
+ok    a gift reaches the friend it is for  {"t":"gift","from":"Badr","on":true}
+ok    the hidden character can be picked by a phone that asks for it
+ok    rooms start on the normal theme
+ok    the new desert map is allowed  rubkhali
+ok    the theme reaches the other players  snow
+ok    the car park map is allowed  garage
+ok    the beach map is allowed  beach
+ok    the host can pick the foggy weather  fog
+ok    only the host changes the theme
+ok    an emote reaches the others  {"t":"emote","n":"Rashid","k":1,"d":"dance"}
+ok    the sender does not get their own emote back
+ok    start sends map + theme + seed  {"map":"rubkhali","theme":"snow"}
+ok    everyone is in the player list
+ok    a survivor signal reaches the other survivor
+ok    the killer never sees survivor signals
+ok    the same seed plans the same event for everyone  event 0 at 94s, adhan at 80s
+ok    the event lands between 1 and 3 minutes
+ok    the doors come from the layout the clients send
+ok    the snapshot carries the running event  {"ek":0,"et":20}
+ok    and the call to prayer
+ok    closing a door reaches the other players  {"k":"door","i":0,"on":true,"by":"Rashid"}
+ok    the snapshot carries the door states  [true,false]
+ok    the room keeps getting snapshots
+ok    one survivor takes two seconds to unhook  2s
+ok    two survivors do it faster, and the event says how many  1.1s with 2 hands
+ok    the snapshot carries the unhook progress and the hands on it  [0.2,1]
+ok    play again keeps the same room  3815
+ok    with the same players
+ok    a hit stuns her for 3 s and costs a shot  [{"k":"shot","n":"A","hit":true,"left":2},{"k":"stun","by":"gun"}]
+ok    out of range it misses, whatever the phone says
+ok    three shots and the gun is empty
+ok    the snapshot carries the shots left and the mode
+ok    no gun outside the mode
+ok    the host switches the gun mode on for the room
+ok    a friend in a room shows as «in a room»  {"Rashid":"room"}
+ok    an invite to an offline friend is kept
+ok    and handed over when he comes online
+ok    the profile carries the character and a clean line  {"name":"Saud","lv":3,"xp":10,"esc":1,"kills":0,"rounds":2,"ch":"survivor6","bio":"هلا b","seen":0}
+ok    a reconnecting phone gets its name back (no «name taken»)
+ok    and the old socket is closed
+ok    the server is still up after malformed messages
+ok    another phone cannot take a username that is owned
+ok    a sent request shows under Sent
+ok    the friend gets it under Requests  [{"name":"Rashid","display":"Rashid","ch":"","lv":0}]
+ok    and a live notice
+ok    accepted: friends on both sides
+ok    and each sees the other online
+ok    a display name reaches friends
+ok    a declined request is gone on both sides
+ok    a request to a name nobody has is refused
+ok    unfriending removes both sides
+ok    the owner keeps his token
+
+all server checks passed
+=== road
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+  ok   hooks: 9 in the map + 18 along the roads
+  ok   an escape car behind each gate
+   car 0 at (0.0, -0.1, -128.0), 16.0 m past the gate, 584 m to go, floor 0.05
+  ok   car 0 waits on the road past its gate
+  ok   and points down the road
+  ok   the last gate is 600 m from the first
+  ok   9 hooks stand on road 0
+   car 1 at (0.0, 0.0, 128.0), 16.0 m past the gate, 584 m to go, floor 0.05
+  ok   car 1 waits on the road past its gate
+  ok   and points down the road
+  ok   the last gate is 600 m from the first
+  ok   9 hooks stand on road 1
+  ok   out only at the last gate
+  ok   no car to board before the gates have power
+  ok   gates open
+  ok   next to it the button is «Get in and drive»
+  ok   first one in drives; the clock runs (119.9 s)
+  ok   in the car you are not free to be hit or to repair
+  ok   the second one rides with them
+  ok   D sits in the passenger seat (0.00 m)
+  ok   the escape car seats six (the killer's two)
+  ok   six seat spots, apart and inside the body ([(0.42, 0.184465, -0.080299), (-0.42, 0.184025, -0.300301), (0.42, 0.212285, -1.170357), (-0.42, 0.212285, -1.170357), (0.42, 0.250645, -1.990433), (-0.42, 0.250645, -1.990433)])
+  ok   a seventh does not fit (6 in)
+  ok   no gas until the key has turned (0.0 m)
+  ok   my body rides in the seat
+   drove 48.7 m in 4 s, 50.4 km/h, 535 m left
+  ok   it drives down the road, capped at 50 km/h
+  ok   the HUD shows this road
+  ok   my position (what the others get) is the car's
+  ok   through the last gate: driver escaped, rider escaped
+  ok   the car is done and I am out of it
+  ok   one in each car
+  ok   the moon lands; the cars are already out (P ok, D hurt)
+  ok   rammed: thrown out, down
+  ok   beside the car, on the road (2.7 m)
+  ok   the car stopped dead
+  ok   a hook within 32 m
+  ok   out of time: the car stops, D is down
+  ok   the killer sees the escape car's road on the HUD
+  ok   her car hits theirs: D down
+  ok   garage car 0 sits on its road (y 0.05)
+  ok   garage car 1 sits on its road (y 4.75)
+ROAD DONE bad=0
+ERROR: 184 RID allocations of type 'PN13RendererDummy14TextureStorage12DummyTextureE' were leaked at exit.
+ERROR: 3 RID allocations of type 'N13RendererDummy15MaterialStorage11DummyShaderE' were leaked at exit.
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+ERROR: 4 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:795)
+=== hud
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+anisotropic materials on the forest: 45
+  ok   anisotropic filtering across the map's materials (45)
+  ok   no 2D multisampling (the HUD draws its own smooth edges; it cost a full-screen resolve every frame)
+  ok   the parked car's colour map is 4096 (4096)
+  ok   at high quality
+  FAIL the feed: D went down (D is down)
+  FAIL the feed: hooked, then P saved D (P saved D)
+   feed now: ["The gates have power — get out!", "Generator done — 5 of 5", "P saved D", "D is on the hook", "D is down"]
+  ok   the feed: a generator done
+  FAIL the feed: the gates are open
+  ok   never more than five lines
+  ok   lines fade away (0 left)
+  ok   struck: the red arc points back at the killer
+  ok   straight ahead is the top of the ring ((0.0, -1.0))
+  ok   the gate arrow shows once the gates have power
+  ok   «حجم الأزرار»: buttons 30% bigger
+  ok   «مجال الرؤية»: +10° live (80.0, was 70.0)
+  ok   «حساسية الكاميرا» 200%: a drag turns twice as far (0.120)
+  ok   a pressed button dips
+  ok   the four control sliders are in the settings panel
+  ok   and they are saved
+  ok   «طريقة اللعب»: the survivors' tips
+  ok   and the killer's tab
+hud check: FAILED 3
+ERROR: HUD FAIL
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] _ready (res://tools/hud.gd:123)
+       [1] frames (res://tools/hud.gd:14)
+ERROR: 46 RID allocations of type 'PN13RendererDummy14TextureStorage12DummyTextureE' were leaked at exit.
+ERROR: 3 RID allocations of type 'N13RendererDummy15MaterialStorage11DummyShaderE' were leaked at exit.
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+ERROR: 12 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:795)
+=== tex
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+survivor6: survivor6.glb
+  ok   the survivor6 model is loaded
+   triangles: 39000
+  ok   a material
+  ok   albedo map present
+   albedo: survivor6_col.png  2048x2048  BC7 (high quality)  mipmaps true
+  ok   albedo comes from the lossless survivor6_col.png
+  ok   albedo imported at full size 2048
+  ok   albedo has mipmaps
+  ok   albedo is not the low-quality compression
+  ok   albedo has its ASTC copy for the iPhone
+  ok   normal map present
+   normal: survivor6_nrm.png  2048x2048  BC7 (high quality)  mipmaps true
+  ok   normal comes from the lossless survivor6_nrm.png
+  ok   normal imported at full size 2048
+  ok   normal has mipmaps
+  ok   normal is not the low-quality compression
+  ok   normal has its ASTC copy for the iPhone
+  ok   roughness map present
+   roughness: survivor6_mr.png  2048x2048  DXT1 (low)  mipmaps true
+  ok   roughness comes from the lossless survivor6_mr.png
+  ok   roughness imported at full size 2048
+  ok   roughness has mipmaps
+  ok   roughness has its ETC2 copy for the iPhone
+  ok   metallic map present
+   metallic: survivor6_mr.png  2048x2048  DXT1 (low)  mipmaps true
+  ok   metallic comes from the lossless survivor6_mr.png
+  ok   metallic imported at full size 2048
+  ok   metallic has mipmaps
+  ok   metallic has its ETC2 copy for the iPhone
+  ok   anisotropic filtering
+  ok   rigged, plays idle
+survivor6_hi: survivor6_hi.glb
+  ok   the survivor6_hi model is loaded
+   triangles: 121788
+  ok   a material
+  ok   albedo map present
+   albedo: survivor6_hi_col.png  4096x4096  BC7 (high quality)  mipmaps true
+  ok   albedo comes from the lossless survivor6_hi_col.png
+  ok   albedo imported at full size 4096
+  ok   albedo has mipmaps
+  ok   albedo is not the low-quality compression
+  ok   albedo has its ASTC copy for the iPhone
+  ok   normal map present
+   normal: survivor6_hi_nrm.png  4096x4096  BC7 (high quality)  mipmaps true
+  ok   normal comes from the lossless survivor6_hi_nrm.png
+  ok   normal imported at full size 4096
+  ok   normal has mipmaps
+  ok   normal is not the low-quality compression
+  ok   normal has its ASTC copy for the iPhone
+  ok   roughness map present
+   roughness: survivor6_hi_mr.png  4096x4096  DXT1 (low)  mipmaps true
+  ok   roughness comes from the lossless survivor6_hi_mr.png
+  ok   roughness imported at full size 4096
+  ok   roughness has mipmaps
+  ok   roughness has its ETC2 copy for the iPhone
+  ok   metallic map present
+   metallic: survivor6_hi_mr.png  4096x4096  DXT1 (low)  mipmaps true
+  ok   metallic comes from the lossless survivor6_hi_mr.png
+  ok   metallic imported at full size 4096
+  ok   metallic has mipmaps
+  ok   metallic has its ETC2 copy for the iPhone
+  ok   anisotropic filtering
+  ok   rigged, plays idle
+  ok   killer: colour from killer_col.jpg (killer_col.jpg)
+  ok   killer: colour at high quality (BC7 (high quality))
+  ok   killer: normal map not low quality (BC7 (high quality))
+  ok   killer_hi: colour from killer_hi_col.jpg (killer_hi_col.jpg)
+  ok   killer_hi: colour at high quality (BC7 (high quality))
+  ok   killer_hi: normal map not low quality (BC7 (high quality))
+  ok   survivor1: colour from survivor1_col.jpg (survivor1_col.jpg)
+  ok   survivor1: colour at high quality (BC7 (high quality))
+  ok   survivor1: normal map not low quality (BC7 (high quality))
+  ok   survivor5_hi: colour from survivor5_hi_col.jpg (survivor5_hi_col.jpg)
+  ok   survivor5_hi: colour at high quality (BC7 (high quality))
+  ok   survivor5_hi: normal map not low quality (BC7 (high quality))
+  ok   survivor8_hi: colour from survivor8_hi_col.jpg (survivor8_hi_col.jpg)
+  ok   survivor8_hi: colour at high quality (BC7 (high quality))
+  ok   survivor8_hi: normal map not low quality (BC7 (high quality))
+tex check: all good
+=== drive
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+  ok   the car is there
+   forest car at (-46.0, -0.1, 52.0) yaw 3.16
+  ok   next to it the button says اركب
+  ok   in the driver's seat, the cabin around him
+  ok   the driver's door is its own piece
+  ok   with a dark inside panel
+  ok   the AnimationPlayer plays get_in
+  ok   the door swings open as he gets in (0.95)
+  ok   the camera starts outside the door
+  ok   no gas until he is in and the door is shut
+  ok   seated, door shut (-0.00)
+  ok   the key turns: the starter plays
+  ok   the three car sounds are loaded
+  ok   the engine loop comes up under the starter (0.55)
+  ok   from the seat: the gloves on the wheel, her body hidden on my phone
+  ok   behind the car: she sits at the wheel herself (drive)
+   hands to the rim between frames: 0.185 m; the IK ran 288 times, its own miss 0.000 m; shoulder to grip 0.336 m
+  ok   the hand IK runs
+  ok   both hands on the steering wheel (0.000 m off)
+  ok   her head under the roof (1.42 m)
+  ok   a gear button by the speedometer (Gear 1)
+  ok   second gear: up to 70 km/h
+  ok   third gear: up to 90 km/h
+  ok   and back to first
+  ok   the camera is at the driver's eyes (0.00 m off)
+  ok   the attack button switches to the camera behind the car
+  ok   and back into the seat
+  ok   no swing at the wheel
+  ok   the car has the radio song
+  ok   the power button turns the radio on
+  ok   the button now says سكّر الراديو (Radio off)
+  ok   and off again (paused, not restarted)
+  ok   the killer's own body is out of the way
+  ok   the car hit the survivor: hurt
+  ok   gas: 11.0 m/s, 16.2 m
+  ok   the wheels turn while it drives (-0.78 rad)
+  ok   a steering wheel with two gloved hands on it
+   touching /root/Main/@Node3D@294/Terrain normal (0.02, 1.0, 0.03)
+   touching /root/Main/@Node3D@294/Terrain normal (0.02, 1.0, 0.03)
+  ok   the killer rides with it (what the others are sent)
+  ok   steering turns it (-0.88 rad)
+  ok   the steering wheel turns with it (2.30 rad)
+  ok   the speedometer reads 40 km/h
+  ok   pulling back brakes, then reverses (-4.5)
+  ok   at the wheel the button says انزل
+  ok   getting out: key off, the door opens first
+  ok   and shuts behind him
+  ok   out, first person again, cabin hidden
+  ok   left on, the radio keeps playing after he gets out
+  ok   out: her body back to first person (hidden, full size)
+  ok   the camera is back at his own eyes
+  ok   standing beside it, not inside it (1.9 m)
+  ok   the killer's body is solid again
+  ok   the car has four wheels on axles (4)
+  ok   picked the survivor up
+  ok   carrying, next to the car: «حطّه بالسيارة»
+  ok   in the car with the survivor
+  ok   the survivor sits in the passenger seat (0.01 m off)
+  ok   slumped, at 0.72 of their size (slump)
+   victim's head joint 1.33 m above the car's floor line (headliner 1.645)
+  ok   the victim's head is inside the car (1.33 m)
+  ok   the slump pose is built on the rig
+  ok   pulled up at a hook: «انزل وعلّق» (car_hook)
+  ok   hung on the hook straight from the car: hooked
+  ok   the car stays put once he is out
+   forest: 8 parked cars to take
+  ok   the map's parked cars can be taken (8)
+  ok   next to a parked car: «اركب» (car_in, 0)
+   took parked car 0: 0.56 m from its spot, driving true
+  ok   she is in that car, in its spot (0.56 m)
+  ok   facing the way it was parked
+  ok   and the car she left stands where she parked it
+  ok   garage: the car is on the roof (y 4.8)
+  ok   garage: every bay's car can be taken (83)
+   garage: standing at (83.1, 4.7, 23.0) button car_in
+   garage: car at (85.5, 0.8, -11.4)
+  ok   drove down the ramp to the floor (lowest y 0.8)
+  ok   the car follows the killer's position
+  ok   his door opened and shut (AnimationPlayer) and the engine started on my phone too
+  ok   the killer sits at the wheel on my phone (drive)
+  ok   no heartbeat while she drives, even right next to me
+  ok   headlights on while someone drives
+  ok   the headlamps start in front of the bumper, a long beam with them, the lamps glow
+  ok   radio off while his f is 0
+  ok   his radio plays on my phone, from the car
+  ok   the car flies past me: the pass-by sound
+  ok   he gets out: his door opens on my phone, engine off
+  ok   he got out: lights off, he is back
+  ok   he left it on: the radio keeps playing from the parked car
+  ok   and stops when his switch says off
+  ok   she took a parked car: the same swap on my phone
+drive check: all good
+ERROR: 138 RID allocations of type 'PN13RendererDummy14TextureStorage12DummyTextureE' were leaked at exit.
+ERROR: 3 RID allocations of type 'N13RendererDummy15MaterialStorage11DummyShaderE' were leaked at exit.
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+ERROR: 4 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:795)
+=== props
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+== forest: models 57, fortress sections 58, campfires 3
+  ok   fortress around the map
+  ok   the gallows sets how high a survivor hangs
+  FAIL both gate leaves ride the sliding doors
+  ok   the gate's sign is its own glow map
+  ok   the generator's lamp is its own glow map
+  ok   burning barrels became campfires
+  ok   cars are the Land Cruiser (8)
+  ok   the killer's car is parked
+   killer car at (-46.0, -0.1, 52.0) yaw 3.96
+  ok   near where the killer starts
+  ok   its wheels are on the ground
+SCRIPT ERROR: Invalid access to property or key 'global_position' on a base object of type 'Nil'.
+          at: _ready (res://tools/props.gd:54)
+          GDScript backtrace (most recent call first):
+              [0] _ready (res://tools/props.gd:54)
+=== ui
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+layout survivor: 9 buttons, interact r=50.0 fx=0.803
+default interact centre on 1280x720 = (1028.0, 632.0) (was 1028, 632)
+saved + reloaded: fx=0.5 r=70.0 killer untouched=62.0
+after reset: fx=0.803 r=50.0
+survivor buttons: ["crouch", "heal", "interact", "item", "light", "sig", "sprint", "vault"]
+icons: { "sprint": "shoe", "interact": "hand", "crouch": "crouch", "vault": "jump", "heal": "heal", "item": "item", "light": "light", "sig": "chat" }
+interact at a generator: ["Drop", "plank", true]
+panel closed: 0
+panel open: 5 first rect=[P: (740.0, 1038.444), S: (220.0, 48.0)]
+sent: open=false live=1 k=1 from=P
+one message per player: 2 D now says k=2
+after it expires: 1
+team: ["P", "D"] D=hooked t=20 icon=hook
+loading: map=fareej tip len=63 f=0.4 busy=true
+loading freed: true
+results up=true rows=3 xp 200->475 escapes 1->2
+victory shot first: escaped on stage=1 seconds=4.8
+row order (points first): ["P:escaped:275", "D:dead:0", "K:killer:0"]
+xp bar animating: 200.0 -> 475
+xp bar arrived: 475.0
+killer buttons: ["attack", "interact", "power", "trap"] (no sig button for the killer)
+killer interact over a downed survivor: ["Pick up", "carry"]
+chars page list=14 (killer included in trial) current=survivor1
+after one step: survivor2 card visible=true swipe pad=true
+back: survivor1
+level progress: xp=475 level=2 bar=0.46
+ERROR: 92 RID allocations of type 'PN13RendererDummy14TextureStorage12DummyTextureE' were leaked at exit.
+ERROR: 3 RID allocations of type 'N13RendererDummy15MaterialStorage11DummyShaderE' were leaked at exit.
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+ERROR: 4 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:795)
+=== smoke
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+S props: hooks=27 lockers=10 pallets=9 windows=9 dummy=hurt
+S walk=1.73 sprint=4.32 anim=sprint
+S ctx near dummy: [&"heal"]
+S healed dummy -> ok hold={  }
+S vault: side now=-1.25 (was +1.2) vaulting=false
+S in locker=0 visible=false ctx=locker_out
+S out locker=-1 dist=1.1
+S pallet ctx=pallet
+S pallet state=1 node down visible=false vault ctx=true
+S blocked by pallet: side=4.86
+S vaulted pallet: side=5.16
+S self heal -> ok item left=false
+S repairing=rep reps=["P"]
+S powered=true hold cleared=true
+S past gate, not out yet: ok z=115.2 floor=true
+S at the escape car ctx=board
+S in the car=1 driver=P
+S end of road by car: left=6.0 banner=2.9 spectating=D
+S escaped=escaped over=true (dummy ok)
+K first person: arm=0.0 rig visible=false dummy=ok
+K hit 1 -> hurt
+K hit 2 -> down
+K ctx=pickup
+K carrying=D dummy=carried
+K at hook ctx=hook dummy follows dist=81.46
+K hooked: hooked hooks=1 t=59.6 at hook dist=1.52
+K power cd=19.9 boost=3.4
+K pallet ctx=break
+K pallet after break=2
+K locker ctx=search
+K hook timer out: dead over=true results=true
+ERROR: 92 RID allocations of type 'PN13RendererDummy14TextureStorage12DummyTextureE' were leaked at exit.
+ERROR: 3 RID allocations of type 'N13RendererDummy15MaterialStorage11DummyShaderE' were leaked at exit.
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+ERROR: 4 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:795)
+=== map
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+rubkhali built in ms=10622 ready=true
+objectives: gens=7 hooks=27 lockers=10 pallets=9 windows=9 hatches=5 gates=2
+camps: buildings=11 tents=6 wrecks=7 animals=9 palms=85
+dunes: lowest=-4.8 highest=3.6 (wall top is 12)
+ground=sand fog=0.022 storm grains=170
+weather: sun in the sky=1.0 sunlight=(1.0, 0.91, 0.74, 1.0) x2.4 elevation=37.0 deg  ambient=(0.72, 0.6, 0.44, 1.0) x1.5
+the round's dust surge: fog 0.022 -> 0.05 (no lights to put out at noon)
+it passes: fog back to 0.022
+gates powered: sky blood=0.69 sunlight=(1.0, 0.5296, 0.3665, 1.0) x3.19 near=0.6
+the other maps are still night: forest sun=0.0 moonlight=(0.55, 0.65, 0.95, 1.0)
+seeded: same seed same gens=true other seed differs=true
+animal walked=1.78m  with collision=0 (must be 0)
+walked into the tent: local z=-0.72 (front edge is 3.5) surface=indoor
+locker in the tent: ctx=locker_in
+gate at (0.0, 1.49491, -112.0) outside check at road end=true
+picked up -> scare=0.57 camera=killer close-up
+after the scare: scare=0.0 camera back=true
+forest+snow built in ms=11250
+snow: fog=0.012 ambient=(0.23, 0.27, 0.38, 1.0) moon=(0.72, 0.82, 1.0, 1.0) snow caps=11 pumpkins=0 webs=0 flakes/leaves=90 breath=2
+forest+halloween built in ms=12153
+halloween: fog=0.011 ambient=(0.13, 0.13, 0.16, 1.0) moon=(0.62, 0.68, 0.82, 1.0) snow caps=0 pumpkins=123 webs=49 flakes/leaves=25 breath=0
+rubkhali + halloween: pumpkins=123 webs=49 wrecks=7
+emote clips on the preview: ["wave", "dance", "clap"] available=[true, true, true]
+waving: anim=wave length=4.1 tracks=22
+dancing: anim=dance tracks=22
+friend clapping: anim=clap seated cast=1
+ERROR: 230 RID allocations of type 'PN13RendererDummy14TextureStorage12DummyTextureE' were leaked at exit.
+ERROR: 3 RID allocations of type 'N13RendererDummy15MaterialStorage11DummyShaderE' were leaked at exit.
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+ERROR: 7 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:795)
+=== win
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+1 rescuing: took 2.0s  hands in the event=1
+2 rescuing: took 1.1s  hands in the event=2
+3 rescuing: took 0.7s  hands in the event=3
+the snapshot tells everyone: progress=0.4 hands=2
+one lets go: hands=1
+both let go: progress back to 0.15 (nobody is rescued)
+at 06:00 the camp is the owner's painting (fixed)
+at 12:00 the camp is the owner's painting (fixed)
+at 18:00 the camp is the owner's painting (fixed)
+at 23:00 the camp is the owner's painting (fixed)
+at the gate: 2 of 4 players (only the ones who got out)
+dead men are not in the shot: true
+the numbers wait: statistics hidden=true buttons hidden=true
+in front of the camera: 2 of 2
+the camera moves round them: 0.95 m
+then the statistics: visible=true gate gone=true buttons back=true camera home=(0.0, 1.6, 7.4)
+xp bar runs after the shot: 400.0 of 400
+nobody escaped: shot skipped=true statistics up=true
+ERROR: 230 RID allocations of type 'PN13RendererDummy14TextureStorage12DummyTextureE' were leaked at exit.
+ERROR: 3 RID allocations of type 'N13RendererDummy15MaterialStorage11DummyShaderE' were leaked at exit.
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+ERROR: 4 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:795)
+=== camp
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+stands at the fire: survivor5 (last played survivor5)
+friends at the fire: ["بدر"]  stock hidden=true
+blood moon=false hook=false daily={ "text": "Kill 3 survivors as the killer", "have": 1, "need": 3, "done": false, "whisper": "A blinking generator is close to done — finish it first" }
+card title=Survivor logo=true poster=true
+camp as forest: the owner's painting, unchanged (map_id=painted)
+camp as village: the owner's painting, unchanged (map_id=painted)
+camp as fareej: the owner's painting, unchanged (map_id=painted)
+camp as rubkhali: the owner's painting, unchanged (map_id=painted)
+camp as garage: the owner's painting, unchanged (map_id=painted)
+camp as beach: the owner's painting, unchanged (map_id=painted)
+stalker visible 272/400 ticks, spots used=4
+tap on بدر picks: بدر   tap on empty sky picks: ''
+emote wave: playing=wave length=4.09999990463257
+emote dance: playing=dance length=3.33333301544189
+emote clap: playing=clap length=2.20000004768372
+in a room on the beach: camp=painted stalker hidden (a player is the killer)=true
+brightness 140%: camp exposure=1.0
+camp check done
+ERROR: 46 RID allocations of type 'PN13RendererDummy14TextureStorage12DummyTextureE' were leaked at exit.
+ERROR: 3 RID allocations of type 'N13RendererDummy15MaterialStorage11DummyShaderE' were leaked at exit.
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+ERROR: 7 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:795)
+=== beach
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+built: huts=8 palms=87 wet sand + shells=46
+objectives: gens=7 hooks=27 lockers=10 pallets=9 hatches=5 doors=9 gates=2
+the ground: dry sand y=-0.1  at the shore y=-0.2  out in the lagoon y=-2.2  water sits at -0.55
+footsteps=sand
+objectives standing in the lagoon: 9 of 48
+  ok   the killer starts on the dry sand, this side of the wading wall (-52.0, 18.0, ground -0.30)
+  ok   and so does her body in the round (z 18.0)
+the lagoon is closed off further out: false
+walked toward the sea: z=57.6 y=0.5 (wading=false)
+model scatter draw calls=24
+same seed, same beach: true
+ERROR: 46 RID allocations of type 'PN13RendererDummy14TextureStorage12DummyTextureE' were leaked at exit.
+ERROR: 3 RID allocations of type 'N13RendererDummy15MaterialStorage11DummyShaderE' were leaked at exit.
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+ERROR: 4 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:795)
+=== gun
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+  ok   every survivor starts with 3 shots
+  ok   a hit: she is dizzy 3 s, one shot gone
+  ok   no gun outside the mode
+  ok   the snapshot carries the mode and the shots left
+  ok   the gun button is there in the mode (["sprint", "interact", "crouch", "vault", "heal", "item", "light", "sig", "gun"])
+   aim: camera (3.0, 2.6, 3.2) fwd (0.0, -0.25, -0.97), her at (3.0, -0.1, -8.6), me at (3.0, -0.1, 0.0)
+  ok   the pistol is out, lowered by the hip
+   lowered: hand (2.66, 0.93, 0.04), gun (2.71, 0.93, 0.12), miss 0.000
+  ok   the right arm holds it there (IK within 0.00 m)
+  ok   the gun is in the hand (0.09 m)
+  ok   the left arm swings free while it is lowered
+  ok   the button raises it in both hands (1.00)
+  ok   aimed at shoulder height (1.33 vs 1.41)
+  ok   and it follows the camera up (1.37 -> 1.84)
+  ok   and down (1.10)
+   after the shot: stun 2.1, shots left 2
+  ok   the shot is counted
+  ok   aimed at her with a clear line, it hits and she is dizzy
+  ok   a moment after the shot it goes down again (0.00)
+  ok   a survivor sees the teammate's name over the head
+  ok   and the teammate's body through walls
+  ok   but no name over the killer
+  ok   a vanished player does not show on this phone
+  ok   with the tools unlocked and the switch on, the «Vanish» button is in the round
+  ok   pressing it hides me (sent as v in my st)
+  ok   the map draws its icons
+  ok   the killer sees no names
+  ok   the tools open only with 4343
+  ok   and lock again
+  ok   friends' status: in a round, in a room, offline
+GUN DONE bad=0
+ERROR: 92 RID allocations of type 'PN13RendererDummy14TextureStorage12DummyTextureE' were leaked at exit.
+ERROR: 3 RID allocations of type 'N13RendererDummy15MaterialStorage11DummyShaderE' were leaked at exit.
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+ERROR: 4 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:795)
+=== gfx
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+  ok   texture blood drawn
+  ok   texture drag drawn
+  ok   texture oil drawn
+  ok   texture dirt drawn
+  ok   texture puddle drawn
+  ok   texture puddle_orm drawn
+  ok   texture soft drawn
+  ok   texture streak drawn
+  ok   button picture gun
+  ok   button picture bag
+  ok   button picture vault
+  ok   button picture crouch
+  ok   button picture torch
+  ok   button picture sig
+  ok   button picture heal
+  ok   button picture hand
+  ok   button picture sprint
+  ok   map picture gen_on
+  ok   map picture gen_off
+  ok   map picture market
+  ok   map picture hook
+  ok   map picture gate_n
+  ok   map picture gate_s
+  ok   map picture hatch
+forest: 60 decals, 3 fires
+  ok   blood under the hooks, oil by the generators, stains about (60)
+  ok   every campfire burns with real flames (3 of 3)
+  ok   no colour-correction curve (it burnt the colours on screen)
+  ok   no rain on a dry night
+  ok   MetalFX stays off away from Metal
+  ok   the rain falls
+  ok   puddles shine (18)
+  ok   nothing laid in the lagoon (0 near the road/pier)
+  ok   the lightning lights the map (0.54 -> 2.04)
+  ok   and fades back
+  ok   the rain look
+  ok   the owner's horses and camels (9 models)
+  ok   the horses move on their own clips (6)
+  ok   dunes on the horizon (12)
+  ok   forest floor patches (12)
+  ok   the owner's moon in the sky
+  ok   his Milky Way photograph is the night sky
+  ok   a sprinting turn leans her into it (-0.19 rad)
+  ok   and a sprint tips her forward (0.06 rad)
+  ok   never while hung, carried or seated
+  ok   no rain under the car park's slab
+GFX DONE bad=0
+ERROR: 230 RID allocations of type 'PN13RendererDummy14TextureStorage12DummyTextureE' were leaked at exit.
+ERROR: 3 RID allocations of type 'N13RendererDummy15MaterialStorage11DummyShaderE' were leaked at exit.
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+ERROR: 4 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:795)
+=== city
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+  ok   City Life: 24 blocks (24)
+  ok   towers, neon and street lamps (84 parts)
+  ok   and the same bones as every map: 7 generators, hooks, 2 gates, lockers
+  ok   the streets are streets, the blocks are not
+  ok   footsteps on pavement
+  ok   occluders: walls and towers hide what is behind them (85)
+  ok   occlusion culling is on
+  ok   visibility ranges on the small and middle-sized things (1296)
+  ok   his cars and lantern trees in the city (10)
+  ok   his cyberpunk city round the outside (6)
+  ok   Bloom is playable
+  ok   Bloom's perk: «تفتّح»
+  ok   she mends herself after 45 s hurt and alone
+  ok   the blood system runs on his models (pool, smear, drop)
+  ok   the blow: a spray of drops in the air (18)
+  ok   and a pool spreading under her
+  ok   the drops fall and land (19 landed)
+  ok   every pool lies on the ground under her, not floating or sunk
+  ok   hurt, she drips as she walks (4 more drops)
+  ok   and the drops lie along the way she went (14)
+  ok   the first pool keeps spreading
+  ok   and holds the wound with one hand
+  ok   healed, the hand comes away
+  ok   and the bleeding stops
+  ok   an old pool has dried (0.88)
+  ok   and is gone at the end of its life
+  ok   a wall behind her takes the splash (1)
+  ok   down, she drags a smear behind her (4)
+  ok   «الوحش» moves hunched (NFHunch on his skeleton)
+  ok   but sits straight at the wheel
+  ok   and hunches again on foot
+  ok   he screams when the chase starts
+  ok   the ravens fly (10)
+  ok   the rain is heard in «مطر»
+  ok   a shot: flash, smoke, the bullet and the case (6 new)
+  ok   a far character's skeleton is posed less often (every 6 frames)
+  ok   «منخفض»: shorter view, simpler models sooner
+  FAIL «مراقب الأداء» shows draw calls, triangles and memory
+  ok   forest: his props are there (146)
+  ok   forest: ravens have somewhere to sit
+  ok   rubkhali: his props are there (184)
+  ok   rubkhali: ravens have somewhere to sit
+  ok   beach: his props are there (91)
+  ok   beach: ravens have somewhere to sit
+city: 1 failed
+ERROR: 184 RID allocations of type 'PN13RendererDummy14TextureStorage12DummyTextureE' were leaked at exit.
+ERROR: 3 RID allocations of type 'N13RendererDummy15MaterialStorage11DummyShaderE' were leaked at exit.
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+ERROR: 4 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:795)
+=== kuwait
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+  ok   Kuwait City is built (1046 placed pieces)
+  ok   the same bones as every map
+  ok   nothing the round needs is in the sea (0)
+  ok   the Gulf Road and the car park are kept clear
+  ok   the land is flat, the sea floor drops away east
+  ok   sand by the water, paving on the land
+  ok   the power box stands, and the street lights are on
+  ok   the street lights hang on it (70)
+  ok   sodium-gold cones down from the lamp heads (45) and palms lit from their feet (20)
+  ok   the lamps bloom and carry a glare
+  ok   the killer cuts the power: every street light goes out (0 still lit)
+  ok   at the box the button is «صلّح الكهرباء»
+  ok   fixed: the street is lit again (70)
+  ok   straight after the repair it cannot be cut again (59 s to wait)
+  ok   after the wait: the second cut
+  ok   and no third
+  ok   kerbs to walk and drive up onto (4)
+  ok   at the kerb the jump button lights up
+  ok   the mosque stands where the market was
+  ok   the snapshot carries the box (online phones follow it)
+  ok   Halloween is grey, not red (ambient (0.13, 0.13, 0.16, 1.0))
+  ok   its lights are on to begin with (16)
+  ok   a power box on the map, 123 pumpkins about
+  ok   at the box a survivor can «اطفي الكهرباء»
+  ok   switched off: every lamp of the map goes out (0 still lit)
+  ok   and the night is the old Halloween dark (ambient 0.44, moon 0.14)
+  ok   (the killer has no «اطفي»: hers is the cut)
+  ok   fixed: the lights and the night come back
+  ok   and it cannot be switched off again straight away
+  ok   the street lights start off, a power box on the map
+  ok   it is afternoon: the sun is high (2.20)
+  ok   an hour later it is going down, red-gold (1.60)
+  ok   five minutes: the sun is gone and it is pitch dark (0.44)
+  ok   at the box: «شغّل أنوار الشارع»
+  ok   on: the lamps light the night (17 lamps)
+  ok   the moon has come up on the other side (34°)
+  ok   and the killer can cut them again
+kuwait: 0 failed
+ERROR: 138 RID allocations of type 'PN13RendererDummy14TextureStorage12DummyTextureE' were leaked at exit.
+ERROR: 3 RID allocations of type 'N13RendererDummy15MaterialStorage11DummyShaderE' were leaked at exit.
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+ERROR: 4 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:795)
+=== sniper
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+  ok   the sniper mode builds the tower on Kuwait City
+  ok   the rifle waits on its crate on the roof
+  ok   she starts at the foot of the stairs
+  ok   (not at the rifle yet)
+  ok   on the stairs she plays the climbing clip (made from the walk)
+  ok   she climbs both flights to the roof (y 12.4, x -8.8)
+  ok   every rig has «climb»
+  ok   by the crate: «خذ القنّاصة»
+  ok   she lies down with the rifle in her hands
+  ok   her eye is down at the parapet (0.59)
+  ok   the interact button is «قوم»
+  ok   «سكوب»: x4 (fov 20.0)
+  ok   again: x8 (fov 10.0)
+  ok   through the scope the view turns slower
+  ok   crawling to the edge, she stays on the roof (y 13.0, z 96.5)
+  ok   crawling: the crawl clip goes out to every phone
+  ok   one bullet and she is down (down)
+  ok   the bolt: a beat before the next shot
+  ok   a miss is a miss
+  ok   unlimited bullets
+  ok   (only the killer can fire it)
+  ok   it drops even a survivor with «جلد قاسي»
+  ok   «قوم»: up again, the rifle back on its crate
+  ok   the generators done: a countdown first (9.9 s), the gates still shut
+  ok   the countdown goes out in the snapshot
+  ok   half way: 4.9 s left
+  ok   power: only the gate on the towers' side opens
+  ok   and no moon comes down
+  ok   nobody boards behind the shut gate
+WARNING: Property agent_height is ceiled to cell_height voxel units and loses precision.
+     at: generator_bake_from_source_geometry_data (modules/navigation_3d/3d/nav_mesh_generator_3d.cpp:366)
+WARNING: Property agent_max_climb is floored to cell_height voxel units and loses precision.
+     at: generator_bake_from_source_geometry_data (modules/navigation_3d/3d/nav_mesh_generator_3d.cpp:369)
+WARNING: Property agent_radius is ceiled to cell_size voxel units and loses precision.
+     at: generator_bake_from_source_geometry_data (modules/navigation_3d/3d/nav_mesh_generator_3d.cpp:372)
+ERROR: Navigation region synchronization error. More than 2 edges tried to occupy the same map rasterization space. This is a logical error in the navigation mesh caused by overlap or too densely placed edges.
+   at: _build_step_find_edge_connection_pairs (modules/navigation_3d/3d/nav_region_builder_3d.cpp:212)
+  ok   a survivor is stopped at the foot of the stairs (x 14.9)
+  ok   the computer killer climbs to the rifle (y 13.0)
+  ok   and lies on the roof
+sniper: 0 failed
+ERROR: 92 RID allocations of type 'PN13RendererDummy14TextureStorage12DummyTextureE' were leaked at exit.
+ERROR: 3 RID allocations of type 'N13RendererDummy15MaterialStorage11DummyShaderE' were leaked at exit.
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+ERROR: 4 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:795)
+=== batch
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+  ok   «بين العصر والمغرب»: the sun sets over four minutes
+  ok   «المسعف» replaces the character's own perk, only for whoever picked it
+  ok   the medic heals another in 4 s (ok)
+  ok   and himself in 8 s, and the kit is still there (ok, item true)
+  ok   one survivor left: the helicopter comes for A
+  ok   everyone hears it (event heli 1)
+  ok   it arrives and lets the ladder down
+  ok   it is in the snapshot
+  ok   A takes the ladder
+  ok   half way up, the killer cannot reach her
+  ok   at the top: out, and the round is over
+  ok   caught before the ladder: the helicopter leaves at once
+  ok   another phone sees the countdown (9.9 s)
+  ok   the billboard shows his picture from the start
+  ok   high up on the main street
+  ok   seen from the road, nothing stands in front of it (3/3)
+  ok   the developer tools' button: the video takes the screen
+  ok   and stops back to his picture
+  ok   four police cars (4)
+  ok   their lights go round from the start (2 flashing now)
+  ok   and the sirens are silent
+  ok   the gates open: the sirens start
+  ok   boats on the water (3)
+  ok   and they ride the swell (0.324 m)
+  ok   the sea is the wave shader
+  ok   the waves move
+  ok   «المسعف» carries the first-aid kit
+  ok   in his hand (0.23 m)
+  ok   nobody else does
+  ok   the sniper rifle is his model now
+  ok   a spot for the rescue helicopter
+  ok   the helicopter flies in
+  ok   with its own lights and a police light bar (10 lamps)
+  ok   and louder
+  ok   it hovers, the ladder down
+  ok   the ladder reaches the ground (0.2 m off)
+  ok   next to it: «امسك السلم واطلع»
+  ok   climbing (1.1 m up)
+  ok   at the top: rescued
+BATCH PASS
+ERROR: 46 RID allocations of type 'PN13RendererDummy14TextureStorage12DummyTextureE' were leaked at exit.
+ERROR: 3 RID allocations of type 'N13RendererDummy15MaterialStorage11DummyShaderE' were leaked at exit.
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+ERROR: 4 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:795)
+=== catdog
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+  ok   cat: model and skeleton load (30 bones)
+  ok   cat: the mesh is skinned to it
+  ok   cat: colour and normal maps
+  ok   cat: tail chain 5, legs 0.22 m
+  ok   cat: the legs move with the speed
+  ok   dog: model and skeleton load (30 bones)
+  ok   dog: the mesh is skinned to it
+  ok   dog: colour and normal maps
+  ok   dog: tail chain 5, legs 0.50 m
+  ok   dog: the legs move with the speed
+  ok   dog: the mouth is at the front of the head (0.69 m out, 0.63 up)
+  ok   the round has the cat and dog, waiting
+  ok   nobody sees them before a repair starts
+  ok   the first repair brings the cat (state 1, gen 2)
+  ok   it comes from a little way off (8.9 m)
+  ok   another phone starts it at the same spot (0.08 m: the first has walked a few frames)
+  ok   it stays round the people at the generator (97 of 141)
+  ok   it walks about (9.6 m)
+  ok   its paws stay on the ground (0 off of 141)
+  ok   it meows (7) and does things: { "sit": 2, "circle": 1, "groom": 1 }
+  ok   the generator done: the dog comes
+  ok   from the dark, well away (14.9 m)
+  ok   stalks, stops, runs at it
+  ok   barks once as it goes
+  ok   bites and holds the cat in its mouth
+  ok   shakes it, swallows it
+  ok   the owner's dark sound with the eating, and no scream from the cat
+  ok   with blood (9 splashes, 162 drops landed)
+  ok   and runs off: both gone, once a round
+CATDOG PASS 0
+ERROR: 46 RID allocations of type 'PN13RendererDummy14TextureStorage12DummyTextureE' were leaked at exit.
+ERROR: 3 RID allocations of type 'N13RendererDummy15MaterialStorage11DummyShaderE' were leaked at exit.
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+ERROR: 4 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:795)
+=== gorilla
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+  ok   gorilla: model on the Mixamo skeleton
+  ok   gorilla: colour and normal maps
+  ok   gorilla: its clips
+  ok   gorilla: head at 1.68 m before scaling
+  ok   gorilla: the run moves its legs
+  ok   gorilla: a hand reaches where it is sent (0.000 m)
+  ok   «الوحش»: his second hook cannot be lifted off
+  ok   the other killer: a second hook can be lifted as before
+  ok   the round has the meal and the gorilla
+  ok   the second hook: the meal begins (1 surfaces on the shader)
+    cut: [-0.01, 0.68, 1.14, 1.51, 1.68, 1.79] feet 0.14
+  ok   legs, thighs, stomach, chest, neck: the cut climbs each stage
+  ok   the last stage leaves only a ball round the head
+  ok   bites with every stage (5)
+  ok   dead: what is left stays on the hook
+  ok   the head up at the hook (0.00 m lifted, head 1.79, hook 1.88)
+  ok   on the same hook
+  ok   blood under the hook (72 pools, 136 drops landed)
+  ok   no see-through outline of the whole body
+  ok   me: eaten, no struggling off it
+  ok   the gorilla waits (not even loaded) until the dog has gone
+  ok   the dog gone: the gorilla's turn comes
+  ok   the scene starts: the gorilla and the horse
+  ok   a titan: its head 3.1 m up
+  ok   it comes from the dark (30 m)
+    phases [1, 2, 3, 4, 5, 6, 7, 8, 9] rips 1 bites 4 splashes 9
+  ok   the horse rears and goes down
+  ok   the head torn off, in its hand
+  ok   held up, thrown, and lying on the ground
+  ok   the head rests on the ground (0.15 m off)
+  ok   bites into the body (4)
+  ok   lifts it over its face (5.0 m) and swallows it
+  ok   with blood (9 splashes)
+  ok   and goes; the head stays
+GORILLA PASS 0
+ERROR: 46 RID allocations of type 'PN13RendererDummy14TextureStorage12DummyTextureE' were leaked at exit.
+ERROR: 3 RID allocations of type 'N13RendererDummy15MaterialStorage11DummyShaderE' were leaked at exit.
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+ERROR: 4 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:795)
+=== kiss
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+  ok   a kiss heals the one kissed
+  ok   not again straight away
+  ok   again after 25 s
+  ok   never the killer
+  ok   not someone on the ground
+  ok   the round has the kiss
+  ok   no Kiss button before the shakes
+  ok   three shakes: «Kiss» next to her
+  ok   she is healed
+  ok   the two of them are in the kiss
+    t 0.07 sep 0.598 gap 0.878 u (0.83205, 0.0, 0.5547)  body (3.003117, -0.087062, 0.002078) node (3.896883, -0.087062, 0.597922)  rigA (3.003117, -0.087062, 0.002078) rigB (3.896883, -0.087062, 0.597922)  rotA 0.47 rotB -0.82  lipsA (3.040274, 1.696461, 0.028756) lipsB (3.680303, 1.655538, 0.651086)  headA (2.952909, 1.621461, -0.029487) headB (3.767668, 1.580538, 0.709329)
+    t 0.52 sep 0.524 gap 0.587 u (0.83205, 0.0, 0.5547)  body (3.13957, -0.087062, 0.096452) node (3.757286, -0.087062, 0.508263)  rigA (3.13957, -0.087062, 0.096452) rigB (3.757286, -0.087062, 0.508263)  rotA 0.98 rotB -1.06  lipsA (3.175122, 1.686847, 0.171316) lipsB (3.675924, 1.66429, 0.478793)  headA (3.087757, 1.611847, 0.113072) headB (3.76329, 1.58929, 0.537037)
+    t 1.02 sep 0.402 gap 0.126 u (0.83205, 0.0, 0.5547)  body (3.258261, -0.087062, 0.2129) node (3.604146, -0.087062, 0.44349)  rigA (3.258261, -0.087062, 0.2129) rigB (3.604146, -0.087062, 0.44349)  rotA 0.98 rotB -2.16  lipsA (3.349427, 1.676883, 0.320967) lipsB (3.463105, 1.649066, 0.37783)  headA (3.225636, 1.604787, 0.230293) headB (3.579739, 1.578773, 0.465463)
+    t 1.52 sep 0.329 gap 0.016 u (0.83205, 0.0, 0.5547)  body (3.300387, -0.087062, 0.227837) node (3.574156, -0.087062, 0.410349)  rigA (3.300387, -0.087062, 0.227837) rigB (3.574156, -0.087062, 0.410349)  rotA 0.98 rotB -2.16  lipsA (3.414195, 1.686976, 0.333687) lipsB (3.435394, 1.646417, 0.331372)  headA (3.273432, 1.616807, 0.228272) headB (3.562175, 1.577471, 0.42969)
+    t 2.02 sep 0.316 gap 0.018 u (0.83205, 0.0, 0.5547)  body (3.319844, -0.087062, 0.20966) node (3.583451, -0.087062, 0.385398)  rigA (3.319844, -0.087062, 0.20966) rigB (3.583451, -0.087062, 0.385398)  rotA 0.98 rotB -2.16  lipsA (3.437112, 1.697862, 0.291569) lipsB (3.458465, 1.65646, 0.292357)  headA (3.295998, 1.624819, 0.18558) headB (3.585144, 1.587064, 0.390908)
+    t 2.52 sep 0.306 gap 0.012 u (0.83205, 0.0, 0.5547)  body (3.33776, -0.087062, 0.19262) node (3.592289, -0.087062, 0.362307)  rigA (3.33776, -0.087062, 0.19262) rigB (3.592289, -0.087062, 0.362307)  rotA 0.98 rotB -2.16  lipsA (3.470356, 1.695359, 0.256742) lipsB (3.486221, 1.669095, 0.254778)  headA (3.331213, 1.622564, 0.15221) headB (3.615337, 1.599548, 0.355254)
+    t 3.02 sep 0.317 gap 0.007 u (0.83205, 0.0, 0.5547)  body (3.337773, -0.087062, 0.183391) node (3.600804, -0.087062, 0.358745)  rigA (3.337773, -0.087062, 0.183391) rigB (3.600804, -0.087062, 0.358745)  rotA 0.98 rotB -2.16  lipsA (3.495582, 1.67416, 0.244788) lipsB (3.512306, 1.668865, 0.232449)  headA (3.359666, 1.603853, 0.142941) headB (3.645254, 1.600019, 0.335557)
+    t 3.52 sep 0.332 gap 0.010 u (0.83205, 0.0, 0.5547)  body (3.323987, -0.087062, 0.19031) node (3.599719, -0.087062, 0.374131)  rigA (3.323987, -0.087062, 0.19031) rigB (3.599719, -0.087062, 0.374131)  rotA 0.98 rotB -2.16  lipsA (3.460164, 1.685909, 0.269181) lipsB (3.493671, 1.64695, 0.236233)  headA (3.319543, 1.616038, 0.163805) headB (3.620753, 1.579786, 0.33476)
+    t 4.02 sep 0.293 gap 0.182 u (0.83205, 0.0, 0.5547)  body (3.278176, -0.087062, 0.186953) node (3.620437, -0.087062, 0.415127)  rigA (3.278176, -0.087062, 0.186953) rigB (3.620437, -0.087062, 0.415127)  rotA 0.98 rotB -1.07  lipsA (3.342893, 1.697581, 0.239374) lipsB (3.505242, 1.665409, 0.324857)  headA (3.243753, 1.621748, 0.170499) headB (3.601648, 1.590953, 0.392404)
+    closest lips 0.015 m, hands to her back 0.06 m, lean 1.00
+  ok   their lips meet (0.015 m)
+  ok   arms round each other (wrists within 0.06 m of the other's back)
+  ok   leaning in, heads tipped
+  ok   face to face
+  ok   and they let go
+  ok   the button is gone until the next shakes
+  ok   try-out: on the hook, being eaten
+  ok   try-out: only the head left, and not dead
+  ok   try-out: back on my feet where I stood
+KISS PASS 0
+ERROR: 46 RID allocations of type 'PN13RendererDummy14TextureStorage12DummyTextureE' were leaked at exit.
+ERROR: 3 RID allocations of type 'N13RendererDummy15MaterialStorage11DummyShaderE' were leaked at exit.
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+ERROR: 4 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:795)
+=== safety
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+  ok   Godot has the Logger class (4.5)
+ERROR: Resource file not found: res://assets/chars/survivor99.glb (expected type: unknown)
+   at: _load (core/io/resource_loader.cpp:351)
+   GDScript backtrace (most recent call first):
+       [0] setup (res://scripts/character_rig.gd:37)
+       [1] _ready (res://tools/safety.gd:19)
+  ok   a missing survivor model falls back (res://assets/chars/survivor99.glb)
+ERROR: Resource file not found: res://assets/chars/nothing_here.glb (expected type: unknown)
+   at: _load (core/io/resource_loader.cpp:351)
+   GDScript backtrace (most recent call first):
+       [0] setup (res://scripts/character_rig.gd:37)
+       [1] _ready (res://tools/safety.gd:24)
+  ok   a missing creature model gives up cleanly
+  ok   the failure is in the crash trail
+ERROR: Resource file not found: res://assets/chars/not_a_model.glb (expected type: unknown)
+   at: _load (core/io/resource_loader.cpp:351)
+   GDScript backtrace (most recent call first):
+       [0] _ready (res://tools/safety.gd:29)
+  ok   the engine's error is in the trail
+04:44:12 ERR Resource file not found: res://assets/chars/survivor99.glb (expected type: unknown) (_load)
+04:44:12 model failed to load: res://assets/chars/survivor99.glb
+04:44:12 ERR Resource file not found: res://assets/chars/nothing_here.glb (expected type: unknown) (_load)
+04:44:12 model failed to load: res://assets/chars/nothing_here.glb
+04:44:12 ERR Resource file not found: res://assets/chars/not_a_model.glb (expected type: unknown) (_load)
+OK  gorilla.glb
+OK  survivor10.glb
+OK  survivor9.glb
+OK  arabian-horse.glb
+OK  gorilla_col.png
+  ok   the model test loads the gorilla here
+safety: 0 failed
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+=== adventurer
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+  ok   every triangle of his model is there (218997 of 218997)
+  ok   his colour and normal maps at 2048 (2048, 2048)
+  ok   on the cast's skeleton
+  ok   plays idle
+  ok   plays run
+  ok   plays crouchwalk
+  ok   plays repair
+  ok   plays vault
+  ok   plays hang
+  ok   plays crawl
+  ok   plays dying
+  ok   a skin mask for the stand
+  ok   on the character stand
+  ok   her perk: Light Feet
+  ok   her colour on the team bar
+  ok   playable in a round
+  ok   Light Feet: a vault takes 0.65 s (0.65)
+adventurer: 0 failed
+ERROR: 46 RID allocations of type 'PN13RendererDummy14TextureStorage12DummyTextureE' were leaked at exit.
+ERROR: 3 RID allocations of type 'N13RendererDummy15MaterialStorage11DummyShaderE' were leaked at exit.
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+ERROR: 4 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:795)
+=== sounds
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+  ok   music kept: ambient.mp3
+  ok   music kept: chase.mp3
+  ok   music kept: doom.mp3
+  ok   music kept: campfire.mp3
+  ok   music kept: radio.mp3
+  ok   music kept: adhan.mp3
+  ok   every sound loads (74; missing [])
+  ok   the loops loop ([])
+  ok   the beach: the night around it
+  ok   and the sea
+  ok   loud by the water (-15.8 dB)
+  ok   the beast's tread
+  ok   her heavy tread
+  ok   a survivor limping: the slow, exhausted steps
+  ok   and the ordinary ones otherwise
+  ok   she is right there: the fast heartbeat (danger 0.87)
+  ok   the car: door, brakes, the radio's static
+SOUNDS PASS 0
+ERROR: 46 RID allocations of type 'PN13RendererDummy14TextureStorage12DummyTextureE' were leaked at exit.
+ERROR: 3 RID allocations of type 'N13RendererDummy15MaterialStorage11DummyShaderE' were leaked at exit.
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+ERROR: 18 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:795)
+=== extreme
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+  ok   every survivor has the perk of their character
+  ok   «جلد قاسي»: the first blow does nothing
+  ok   the second one does
+  ok   «يد المصلّح» repairs faster (0.217 vs 0.167)
+  ok   «جناح الفالكيري» gets up by herself after 20 s down
+  ok   «طب ميداني» heals faster (0.60 in 3 s)
+  ok   at most 4 traps; the newest take the oldest places
+  ok   stepping in one holds you (4.0 s)
+  ok   and lets go
+  ok   the beach's north gate stands on the pier
+  ok   on the deck over the water (y 0.45)
+  ok   walking along the pier (10.4 m)
+  ok   through the north gate onto its road
+  ok   up the ramp onto the deck from the sand (z 43.4, y 0.45)
+  ok   the trap shows to a survivor close by
+  ok   close to it: «فك الفخ»
+  ok   walking into it: held (3.9 s)
+  ok   and cannot move while held
+  ok   let go after 4 s
+  ok   my perk: «يد المصلّح»
+  ok   the driver has a nitro button
+   with nitro: 80.6 km/h (top 81)
+  ok   nitro: past 50 km/h, flames out of the back
+  ok   only once a run
+  ok   over the spikes: the tyres burst, the car crawls
+   final shot: done true who P t 1.00 scale 1.00
+  ok   the last one down: slow motion (true), a camera circling them (true)
+  ok   and back to normal
+WARNING: Property agent_height is ceiled to cell_height voxel units and loses precision.
+     at: generator_bake_from_source_geometry_data (modules/navigation_3d/3d/nav_mesh_generator_3d.cpp:366)
+WARNING: Property agent_max_climb is floored to cell_height voxel units and loses precision.
+     at: generator_bake_from_source_geometry_data (modules/navigation_3d/3d/nav_mesh_generator_3d.cpp:369)
+WARNING: Property agent_radius is ceiled to cell_size voxel units and loses precision.
+     at: generator_bake_from_source_geometry_data (modules/navigation_3d/3d/nav_mesh_generator_3d.cpp:372)
+ERROR: Navigation region synchronization error. More than 2 edges tried to occupy the same map rasterization space. This is a logical error in the navigation mesh caused by overlap or too densely placed edges.
+   at: _build_step_find_edge_connection_pairs (modules/navigation_3d/3d/nav_region_builder_3d.cpp:212)
+  ok   trial mode as a survivor: a computer killer
+  ok   she baked her way round the map
+  ok   she sees me, chases and puts me down (2 hits)
+  ok   picks me up and hangs me on a hook (hooked)
+  ok   the round goes on my list
+  ok   the board puts the best first
+  ok   the board, the character stand with its perk and the help page draw
+EXTREME DONE bad=0
+ERROR: 230 RID allocations of type 'PN13RendererDummy14TextureStorage12DummyTextureE' were leaked at exit.
+ERROR: 3 RID allocations of type 'N13RendererDummy15MaterialStorage11DummyShaderE' were leaked at exit.
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+ERROR: 4 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:795)
+=== drive (strong device)
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+  ok   the car is there
+  ok   a strong device starts on «فائق»
+  ok   and plays the round with the close-up model (killer_hi.glb)
+   forest car at (-46.0, -0.1, 52.0) yaw 3.16
+  ok   next to it the button says اركب
+  ok   in the driver's seat, the cabin around him
+  ok   the driver's door is its own piece
+  ok   with a dark inside panel
+  ok   the AnimationPlayer plays get_in
+  ok   the door swings open as he gets in (0.95)
+  ok   the camera starts outside the door
+  ok   no gas until he is in and the door is shut
+  ok   seated, door shut (-0.00)
+  ok   the key turns: the starter plays
+  ok   the three car sounds are loaded
+  ok   the engine loop comes up under the starter (0.56)
+  ok   from the seat: the gloves on the wheel, her body hidden on my phone
+  ok   behind the car: she sits at the wheel herself (drive)
+   hands to the rim between frames: 0.191 m; the IK ran 288 times, its own miss 0.000 m; shoulder to grip 0.339 m
+  ok   the hand IK runs
+  ok   both hands on the steering wheel (0.000 m off)
+  ok   her head under the roof (1.42 m)
+  ok   a gear button by the speedometer (Gear 1)
+  ok   second gear: up to 70 km/h
+  ok   third gear: up to 90 km/h
+  ok   and back to first
+  ok   the camera is at the driver's eyes (0.00 m off)
+  ok   the attack button switches to the camera behind the car
+  ok   and back into the seat
+  ok   no swing at the wheel
+  ok   the car has the radio song
+  ok   the power button turns the radio on
+  ok   the button now says سكّر الراديو (Radio off)
+  ok   and off again (paused, not restarted)
+  ok   the killer's own body is out of the way
+  ok   the car hit the survivor: hurt
+  ok   gas: 11.0 m/s, 16.2 m
+  ok   the wheels turn while it drives (-0.78 rad)
+  ok   a steering wheel with two gloved hands on it
+   touching /root/Main/@Node3D@294/Terrain normal (0.02, 1.0, 0.03)
+   touching /root/Main/@Node3D@294/Terrain normal (0.02, 1.0, 0.03)
+  ok   the killer rides with it (what the others are sent)
+  ok   steering turns it (-0.88 rad)
+  ok   the steering wheel turns with it (2.30 rad)
+  ok   the speedometer reads 40 km/h
+  ok   pulling back brakes, then reverses (-4.5)
+  ok   at the wheel the button says انزل
+  ok   getting out: key off, the door opens first
+  ok   and shuts behind him
+  ok   out, first person again, cabin hidden
+  ok   left on, the radio keeps playing after he gets out
+  ok   out: her body back to first person (hidden, full size)
+  ok   the camera is back at his own eyes
+  ok   standing beside it, not inside it (1.9 m)
+  ok   the killer's body is solid again
+  ok   the car has four wheels on axles (4)
+  ok   picked the survivor up
+  ok   carrying, next to the car: «حطّه بالسيارة»
+  ok   in the car with the survivor
+  ok   the survivor sits in the passenger seat (0.01 m off)
+  ok   slumped, at 0.72 of their size (slump)
+   victim's head joint 1.33 m above the car's floor line (headliner 1.645)
+  ok   the victim's head is inside the car (1.33 m)
+  ok   the slump pose is built on the rig
+  ok   pulled up at a hook: «انزل وعلّق» (car_hook)
+  ok   hung on the hook straight from the car: hooked
+  ok   the car stays put once he is out
+   forest: 8 parked cars to take
+  ok   the map's parked cars can be taken (8)
+  ok   next to a parked car: «اركب» (car_in, 0)
+   took parked car 0: 0.56 m from its spot, driving true
+  ok   she is in that car, in its spot (0.56 m)
+  ok   facing the way it was parked
+  ok   and the car she left stands where she parked it
+  ok   garage: the car is on the roof (y 4.8)
+  ok   garage: every bay's car can be taken (82)
+   garage: standing at (83.1, 4.7, 23.0) button car_in
+   garage: car at (85.5, 0.8, -11.4)
+  ok   drove down the ramp to the floor (lowest y 0.8)
+  ok   the car follows the killer's position
+  ok   his door opened and shut (AnimationPlayer) and the engine started on my phone too
+  ok   the killer sits at the wheel on my phone (drive)
+  ok   no heartbeat while she drives, even right next to me
+  ok   headlights on while someone drives
+  ok   the headlamps start in front of the bumper, a long beam with them, the lamps glow
+  ok   radio off while his f is 0
+  ok   his radio plays on my phone, from the car
+  ok   the car flies past me: the pass-by sound
+  ok   he gets out: his door opens on my phone, engine off
+  ok   he got out: lights off, he is back
+  ok   he left it on: the radio keeps playing from the parked car
+  ok   and stops when his switch says off
+  ok   she took a parked car: the same swap on my phone
+drive check: all good
+ERROR: 138 RID allocations of type 'PN13RendererDummy14TextureStorage12DummyTextureE' were leaked at exit.
+ERROR: 3 RID allocations of type 'N13RendererDummy15MaterialStorage11DummyShaderE' were leaked at exit.
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+ERROR: 4 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:795)
+=== weak (older iPhone)
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+
+  ok   seen as an older phone
+  ok   the next launch runs the Mobile renderer
+  ok   a locked 60 to start with (60)
+  ok   85% resolution (0.85)
+  ok   moon shadows, MSAA 2x, light effects
+  ok   done once: saved, so the player's own choices stand afterwards
+  ok   simpler model detail sooner (lod 2.0)
+   after 20 steps down: scale 0.70, shadows 0, effects 0, fps 30
+  ok   resolution down to 70%
+  ok   shadows and effects given away
+  ok   and a steady 30 as the last step
+  ok   the forest builds
+  FAIL every lamp fades out at 32 m (105 of 112)
+  ok   the round uses the light character models
+  ok   and I can walk (2.5 m)
+WEAK DONE bad=1
+ERROR: 46 RID allocations of type 'PN13RendererDummy14TextureStorage12DummyTextureE' were leaked at exit.
+ERROR: 3 RID allocations of type 'N13RendererDummy15MaterialStorage11DummyShaderE' were leaked at exit.
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+ERROR: 4 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:795)
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+Vulkan 1.4.335 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 21.1.8, 256 bits)
+libpulse.so.0: cannot open shared object file: No such file or directory
+libpulse.so.0: cannot open shared object file: No such file or directory
+ALSA lib confmisc.c:855:(parse_card) [error.core] cannot find card '0'
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_card_inum returned error: No such file or directory
+ALSA lib confmisc.c:422:(snd_func_concat) [error.core] error evaluating strings
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_concat returned error: No such file or directory
+ALSA lib confmisc.c:1342:(snd_func_refer) [error.core] error evaluating name
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_refer returned error: No such file or directory
+ALSA lib conf.c:5734:(snd_config_expand) [error.core] Evaluate error: No such file or directory
+ALSA lib pcm.c:2722:(snd_pcm_open_noupdate) [error.pcm] Unknown PCM default
+ERROR: Condition "status < 0" is true. Returning: ERR_CANT_OPEN
+   at: init_output_device (drivers/alsa/audio_driver_alsa.cpp:90)
+WARNING: All audio drivers failed, falling back to the dummy driver.
+     at: initialize (servers/audio_server.cpp:244)
+
+shot survivor10
+shot killer2
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+Vulkan 1.4.335 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 21.1.8, 256 bits)
+libpulse.so.0: cannot open shared object file: No such file or directory
+libpulse.so.0: cannot open shared object file: No such file or directory
+ALSA lib confmisc.c:855:(parse_card) [error.core] cannot find card '0'
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_card_inum returned error: No such file or directory
+ALSA lib confmisc.c:422:(snd_func_concat) [error.core] error evaluating strings
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_concat returned error: No such file or directory
+ALSA lib confmisc.c:1342:(snd_func_refer) [error.core] error evaluating name
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_refer returned error: No such file or directory
+ALSA lib conf.c:5734:(snd_config_expand) [error.core] Evaluate error: No such file or directory
+ALSA lib pcm.c:2722:(snd_pcm_open_noupdate) [error.pcm] Unknown PCM default
+ERROR: Condition "status < 0" is true. Returning: ERR_CANT_OPEN
+   at: init_output_device (drivers/alsa/audio_driver_alsa.cpp:90)
+WARNING: All audio drivers failed, falling back to the dummy driver.
+     at: initialize (servers/audio_server.cpp:244)
+
+shot 26_tower
+shot 26_stairs
+shot 26_prone
+shot 26_scope_x4
+shot 26_scope_x8
+shot 26_car_lights
+shot 26_car_lights_front
+shot26 done
+ERROR: 3 shaders of type SceneForwardClusteredShaderRD were never freed
+   at: ~ShaderRD (servers/rendering/renderer_rd/shader_rd.cpp:1044)
+ERROR: 3 RID allocations of type 'N10RendererRD15MaterialStorage6ShaderE' were leaked at exit.
+ERROR: 46 RID allocations of type 'N10RendererRD14TextureStorage7TextureE' were leaked at exit.
+WARNING: 91 RIDs of type "Texture" were leaked.
+     at: finalize (servers/rendering/rendering_device.cpp:7191)
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+ERROR: 4 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:795)
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+Vulkan 1.4.335 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 21.1.8, 256 bits)
+libpulse.so.0: cannot open shared object file: No such file or directory
+libpulse.so.0: cannot open shared object file: No such file or directory
+ALSA lib confmisc.c:855:(parse_card) [error.core] cannot find card '0'
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_card_inum returned error: No such file or directory
+ALSA lib confmisc.c:422:(snd_func_concat) [error.core] error evaluating strings
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_concat returned error: No such file or directory
+ALSA lib confmisc.c:1342:(snd_func_refer) [error.core] error evaluating name
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_refer returned error: No such file or directory
+ALSA lib conf.c:5734:(snd_config_expand) [error.core] Evaluate error: No such file or directory
+ALSA lib pcm.c:2722:(snd_pcm_open_noupdate) [error.pcm] Unknown PCM default
+ERROR: Condition "status < 0" is true. Returning: ERR_CANT_OPEN
+   at: init_output_device (drivers/alsa/audio_driver_alsa.cpp:90)
+WARNING: All audio drivers failed, falling back to the dummy driver.
+     at: initialize (servers/audio_server.cpp:244)
+
+shot 25_blood_hit
+shot 25_blood_trail
+shot 25_blood_pool
+shot 25_sunset_1_afternoon
+shot 25_sunset_2_golden
+shot 25_sunset_3_red
+shot 25_sunset_4_dusk
+shot 25_sunset_5_dark
+shot 25_sunset_6_lights_on_moon_rising
+shot 25_sunset_7_moon_up
+shot 25_halloween_lit
+shot 25_halloween_off
+shot25 done
+ERROR: 3 shaders of type SceneForwardClusteredShaderRD were never freed
+   at: ~ShaderRD (servers/rendering/renderer_rd/shader_rd.cpp:1044)
+ERROR: 3 RID allocations of type 'N10RendererRD15MaterialStorage6ShaderE' were leaked at exit.
+ERROR: 138 RID allocations of type 'N10RendererRD14TextureStorage7TextureE' were leaked at exit.
+WARNING: 273 RIDs of type "Texture" were leaked.
+     at: finalize (servers/rendering/rendering_device.cpp:7191)
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+ERROR: 4 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:795)
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+Vulkan 1.4.335 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 21.1.8, 256 bits)
+libpulse.so.0: cannot open shared object file: No such file or directory
+libpulse.so.0: cannot open shared object file: No such file or directory
+ALSA lib confmisc.c:855:(parse_card) [error.core] cannot find card '0'
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_card_inum returned error: No such file or directory
+ALSA lib confmisc.c:422:(snd_func_concat) [error.core] error evaluating strings
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_concat returned error: No such file or directory
+ALSA lib confmisc.c:1342:(snd_func_refer) [error.core] error evaluating name
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_refer returned error: No such file or directory
+ALSA lib conf.c:5734:(snd_config_expand) [error.core] Evaluate error: No such file or directory
+ALSA lib pcm.c:2722:(snd_pcm_open_noupdate) [error.pcm] Unknown PCM default
+ERROR: Condition "status < 0" is true. Returning: ERR_CANT_OPEN
+   at: init_output_device (drivers/alsa/audio_driver_alsa.cpp:90)
+WARNING: All audio drivers failed, falling back to the dummy driver.
+     at: initialize (servers/audio_server.cpp:244)
+
+shot 24_kw_reference
+shot 24_kw_road
+shot 24_kw_towers
+shot 24_kw_assembly
+shot 24_kw_park
+shot 24_kw_power_cut
+shot 24_kw_map
+shot24 done
+ERROR: 3 shaders of type SceneForwardClusteredShaderRD were never freed
+   at: ~ShaderRD (servers/rendering/renderer_rd/shader_rd.cpp:1044)
+ERROR: 3 RID allocations of type 'N10RendererRD15MaterialStorage6ShaderE' were leaked at exit.
+ERROR: 46 RID allocations of type 'N10RendererRD14TextureStorage7TextureE' were leaked at exit.
+WARNING: 91 RIDs of type "Texture" were leaked.
+     at: finalize (servers/rendering/rendering_device.cpp:7191)
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+ERROR: 11 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:795)
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+Vulkan 1.4.335 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 21.1.8, 256 bits)
+libpulse.so.0: cannot open shared object file: No such file or directory
+libpulse.so.0: cannot open shared object file: No such file or directory
+ALSA lib confmisc.c:855:(parse_card) [error.core] cannot find card '0'
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_card_inum returned error: No such file or directory
+ALSA lib confmisc.c:422:(snd_func_concat) [error.core] error evaluating strings
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_concat returned error: No such file or directory
+ALSA lib confmisc.c:1342:(snd_func_refer) [error.core] error evaluating name
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_refer returned error: No such file or directory
+ALSA lib conf.c:5734:(snd_config_expand) [error.core] Evaluate error: No such file or directory
+ALSA lib pcm.c:2722:(snd_pcm_open_noupdate) [error.pcm] Unknown PCM default
+ERROR: Condition "status < 0" is true. Returning: ERR_CANT_OPEN
+   at: init_output_device (drivers/alsa/audio_driver_alsa.cpp:90)
+WARNING: All audio drivers failed, falling back to the dummy driver.
+     at: initialize (servers/audio_server.cpp:244)
+
+shot 23_city_street
+shot 23_city_towers
+shot 23_monster_run
+shot 23_monster_idle
+shot 23_gun_flash
+shot 23_gun_smoke
+beach: 91 of his props
+shot 23_beach_props
+rubkhali: 184 of his props
+shot 23_rubkhali_props
+forest: 147 of his props
+shot 23_forest_props
+shot23 done
+ERROR: 3 shaders of type SceneForwardClusteredShaderRD were never freed
+   at: ~ShaderRD (servers/rendering/renderer_rd/shader_rd.cpp:1044)
+ERROR: 3 RID allocations of type 'N10RendererRD15MaterialStorage6ShaderE' were leaked at exit.
+ERROR: 184 RID allocations of type 'N10RendererRD14TextureStorage7TextureE' were leaked at exit.
+WARNING: 364 RIDs of type "Texture" were leaked.
+     at: finalize (servers/rendering/rendering_device.cpp:7191)
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+ERROR: 4 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:795)
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+Vulkan 1.4.335 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 21.1.8, 256 bits)
+libpulse.so.0: cannot open shared object file: No such file or directory
+libpulse.so.0: cannot open shared object file: No such file or directory
+ALSA lib confmisc.c:855:(parse_card) [error.core] cannot find card '0'
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_card_inum returned error: No such file or directory
+ALSA lib confmisc.c:422:(snd_func_concat) [error.core] error evaluating strings
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_concat returned error: No such file or directory
+ALSA lib confmisc.c:1342:(snd_func_refer) [error.core] error evaluating name
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_refer returned error: No such file or directory
+ALSA lib conf.c:5734:(snd_config_expand) [error.core] Evaluate error: No such file or directory
+ALSA lib pcm.c:2722:(snd_pcm_open_noupdate) [error.pcm] Unknown PCM default
+ERROR: Condition "status < 0" is true. Returning: ERR_CANT_OPEN
+   at: init_output_device (drivers/alsa/audio_driver_alsa.cpp:90)
+WARNING: All audio drivers failed, falling back to the dummy driver.
+     at: initialize (servers/audio_server.cpp:244)
+
+shot 20_hud
+shot 20_settings
+shot 20_settings_controls
+shot 20_help_survivor
+shot 20_help_killer
+ERROR: 3 shaders of type SceneForwardClusteredShaderRD were never freed
+   at: ~ShaderRD (servers/rendering/renderer_rd/shader_rd.cpp:1044)
+ERROR: 3 RID allocations of type 'N10RendererRD15MaterialStorage6ShaderE' were leaked at exit.
+ERROR: 46 RID allocations of type 'N10RendererRD14TextureStorage7TextureE' were leaked at exit.
+WARNING: 91 RIDs of type "Texture" were leaked.
+     at: finalize (servers/rendering/rendering_device.cpp:7191)
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+ERROR: 11 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:795)
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+Vulkan 1.4.335 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 21.1.8, 256 bits)
+libpulse.so.0: cannot open shared object file: No such file or directory
+libpulse.so.0: cannot open shared object file: No such file or directory
+ALSA lib confmisc.c:855:(parse_card) [error.core] cannot find card '0'
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_card_inum returned error: No such file or directory
+ALSA lib confmisc.c:422:(snd_func_concat) [error.core] error evaluating strings
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_concat returned error: No such file or directory
+ALSA lib confmisc.c:1342:(snd_func_refer) [error.core] error evaluating name
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_refer returned error: No such file or directory
+ALSA lib conf.c:5734:(snd_config_expand) [error.core] Evaluate error: No such file or directory
+ALSA lib pcm.c:2722:(snd_pcm_open_noupdate) [error.pcm] Unknown PCM default
+ERROR: Condition "status < 0" is true. Returning: ERR_CANT_OPEN
+   at: init_output_device (drivers/alsa/audio_driver_alsa.cpp:90)
+WARNING: All audio drivers failed, falling back to the dummy driver.
+     at: initialize (servers/audio_server.cpp:244)
+
+shot 21_car_waits
+ctx by the car: board
+shot 21_driving
+shot 21_last_gate
+shots done
+ERROR: 3 shaders of type SceneForwardClusteredShaderRD were never freed
+   at: ~ShaderRD (servers/rendering/renderer_rd/shader_rd.cpp:1044)
+ERROR: 3 RID allocations of type 'N10RendererRD15MaterialStorage6ShaderE' were leaked at exit.
+ERROR: 46 RID allocations of type 'N10RendererRD14TextureStorage7TextureE' were leaked at exit.
+WARNING: 91 RIDs of type "Texture" were leaked.
+     at: finalize (servers/rendering/rendering_device.cpp:7191)
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)
+ERROR: 12 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:795)
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+Vulkan 1.4.335 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 21.1.8, 256 bits)
+libpulse.so.0: cannot open shared object file: No such file or directory
+libpulse.so.0: cannot open shared object file: No such file or directory
+ALSA lib confmisc.c:855:(parse_card) [error.core] cannot find card '0'
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_card_inum returned error: No such file or directory
+ALSA lib confmisc.c:422:(snd_func_concat) [error.core] error evaluating strings
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_concat returned error: No such file or directory
+ALSA lib confmisc.c:1342:(snd_func_refer) [error.core] error evaluating name
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_refer returned error: No such file or directory
+ALSA lib conf.c:5734:(snd_config_expand) [error.core] Evaluate error: No such file or directory
+ALSA lib pcm.c:2722:(snd_pcm_open_noupdate) [error.pcm] Unknown PCM default
+ERROR: Condition "status < 0" is true. Returning: ERR_CANT_OPEN
+   at: init_output_device (drivers/alsa/audio_driver_alsa.cpp:90)
+WARNING: All audio drivers failed, falling back to the dummy driver.
+     at: initialize (servers/audio_server.cpp:244)
+
+rain: decals 78, rain node true, fires 3
+shot 22_rain_hook
+shot 22_rain_lightning
+shot 22_campfire
+shot 22_fareej_grade_oil
+shot 22_desert_horse
+shot 22_desert_dunes
+shot 22_moon_a
+shot 22_moon_b
+shot 22_garage_grade
+shot 22_gun_low
+shot 22_gun_aim
+Godot Engine v4.5.stable.official.876b29033 - https://godotengine.org
+Vulkan 1.4.335 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 21.1.8, 256 bits)
+libpulse.so.0: cannot open shared object file: No such file or directory
+libpulse.so.0: cannot open shared object file: No such file or directory
+ALSA lib confmisc.c:855:(parse_card) [error.core] cannot find card '0'
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_card_inum returned error: No such file or directory
+ALSA lib confmisc.c:422:(snd_func_concat) [error.core] error evaluating strings
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_concat returned error: No such file or directory
+ALSA lib confmisc.c:1342:(snd_func_refer) [error.core] error evaluating name
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_refer returned error: No such file or directory
+ALSA lib conf.c:5734:(snd_config_expand) [error.core] Evaluate error: No such file or directory
+ALSA lib pcm.c:2722:(snd_pcm_open_noupdate) [error.pcm] Unknown PCM default
+ERROR: Condition "status < 0" is true. Returning: ERR_CANT_OPEN
+   at: init_output_device (drivers/alsa/audio_driver_alsa.cpp:90)
+WARNING: All audio drivers failed, falling back to the dummy driver.
+     at: initialize (servers/audio_server.cpp:244)
+
+shot 19_drive_straight
+shot 19_drive_turning
+shot 19_passenger
+shot 19_driver_side
+shot 19_outside
+shots done
