@@ -25,7 +25,7 @@ const TIPS := [
 	"Horses and camels won't hurt you, but they distract the killer",
 ]
 const NAMES := {"forest": "The Forest", "village": "The Abandoned Village", "fareej": "The Fareej", "rubkhali": "The Empty Quarter",
-	"garage": "The Car Park", "beach": "The Beach", "city": "City Life", "kuwait": "Kuwait City"}
+	"garage": "The Car Park", "beach": "The Beach", "city": "City Life", "kuwait": "Kuwait City", "moon": "The Moon"}
 const THEME_NAMES := {"snow": "Snow", "halloween": "Halloween"}
 
 var map_id := "forest"
@@ -96,6 +96,24 @@ func _draw_preview(r: Rect2) -> void:
 	rng.seed = hash(map_id)
 	var base := r.position.y + r.size.y * 0.66
 	match map_id:
+		"moon": # black sky, stars, the Earth, grey dust, the rocket on the pad
+			_pad.draw_rect(r, Color(0.0, 0.0, 0.01, a))
+			for i in 90:
+				_pad.draw_circle(r.position + Vector2(rng.randf() * r.size.x, rng.randf() * r.size.y * 0.62), rng.randf_range(0.6, 1.6), Color(0.9, 0.92, 1.0, rng.randf_range(0.3, 0.9) * a))
+			var ec := r.position + Vector2(r.size.x * 0.76, r.size.y * 0.24)
+			_pad.draw_circle(ec, r.size.y * 0.13, Color(0.12, 0.3, 0.7, a))
+			_pad.draw_circle(ec + Vector2(-r.size.y * 0.03, -r.size.y * 0.02), r.size.y * 0.06, Color(0.25, 0.5, 0.25, a))
+			_pad.draw_arc(ec, r.size.y * 0.135, 0, TAU, 40, Color(0.4, 0.65, 1.0, 0.6 * a), 2.0)
+			_pad.draw_rect(Rect2(r.position + Vector2(0, r.size.y * 0.62), Vector2(r.size.x, r.size.y * 0.38)), Color(0.32, 0.32, 0.33, a))
+			for i in 5:
+				var cc := r.position + Vector2(r.size.x * rng.randf(), r.size.y * rng.randf_range(0.7, 0.95))
+				_pad.draw_set_transform(cc, 0.0, Vector2(1.0, 0.3))
+				_pad.draw_circle(Vector2.ZERO, rng.randf_range(10.0, 26.0), Color(0.2, 0.2, 0.21, a))
+				_pad.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+			var rx := r.position.x + r.size.x * 0.32
+			var ry := base
+			_pad.draw_colored_polygon(PackedVector2Array([Vector2(rx, ry - r.size.y * 0.46), Vector2(rx - 9.0, ry - r.size.y * 0.36), Vector2(rx - 9.0, ry), Vector2(rx + 9.0, ry), Vector2(rx + 9.0, ry - r.size.y * 0.36)]), Color(0.9, 0.9, 0.92, a))
+			_pad.draw_rect(Rect2(Vector2(rx - 22.0, ry - r.size.y * 0.4), Vector2(5.0, r.size.y * 0.4)), Color(0.35, 0.2, 0.12, a))
 		"forest":
 			for depth in 2:
 				var col := Color(0.03, 0.05, 0.05, a) if depth == 0 else Color(0.015, 0.025, 0.03, a)

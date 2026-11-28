@@ -7,7 +7,7 @@ const { Rules } = require('./rules');
 
 const PORT = process.env.PORT || 8080;
 const MAX_PLAYERS = 7;
-const MAPS = ['forest', 'village', 'fareej', 'rubkhali', 'garage', 'beach', 'city', 'kuwait'];
+const MAPS = ['forest', 'village', 'fareej', 'rubkhali', 'garage', 'beach', 'city', 'kuwait', 'moon'];
 const THEMES = ['normal', 'fog', 'rain', 'snow', 'halloween', 'sunset'];
 const HIDDEN = ['survivor4']; // never handed out: only a phone that has it unlocked asks for it
 const CHARS = ['killer', 'survivor1', 'survivor2', 'survivor3', 'survivor4', 'survivor5', 'survivor6', 'survivor7', 'survivor8', 'survivor9', 'survivor10'];
@@ -338,8 +338,10 @@ const handlers = {
     r.state = 'game';
     r.seed = Math.floor(Math.random() * 1e9);
     const players = r.members.map((m, i) => ({ name: m.name, role: m.role, char: m.char, perk: m.role === 'survivor' ? (m.perk || '') : '', slot: i }));
-    r.rules = new Rules(players, r.seed, { gun: !!r.gun, theme: r.theme, sniper: !!r.sniper && r.map === 'kuwait' });
-    broadcast(r, { t: 'started', map: r.map, theme: r.theme || 'normal', gun: !!r.gun, sniper: !!r.sniper && r.map === 'kuwait', seed: r.seed, players });
+    // the Moon has no weather (no air): it plays its own night, or Halloween
+    const theme = r.map === 'moon' && !['normal', 'halloween'].includes(r.theme || 'normal') ? 'normal' : (r.theme || 'normal');
+    r.rules = new Rules(players, r.seed, { gun: !!r.gun, theme, sniper: !!r.sniper && r.map === 'kuwait', map: r.map });
+    broadcast(r, { t: 'started', map: r.map, theme, gun: !!r.gun, sniper: !!r.sniper && r.map === 'kuwait', seed: r.seed, players });
     notifyRoom(r);
   },
   lobby(c) { // host sends everyone back to the lobby

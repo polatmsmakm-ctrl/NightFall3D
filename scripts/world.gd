@@ -16,6 +16,19 @@ const MAP_ROAD := 60.0  # how much of each road the big map draws past the gate
 const ESC_AT := 16.0    # the survivors' escape car waits this far past the gate
 const ESC_TOP := 14.0   # its top speed (50 km/h): the killer's second gear is 19.5, so she can catch it
 const ROAD_HOOKS := 9   # hooks along each road, one every 60 m (after the map's own, so those keep their numbers)
+# «The Moon»: both gates are in the south wall and open onto the launch pad, where the rocket waits.
+# No escape roads there: reaching the boarding ramp at the rocket's foot is the way out.
+const MOON_GATE_X := 40.0                      # the two gates, x = -40 and +40 on the south wall
+const MOON_PAD := Vector4(-56.0, 56.0, -WALL, -WALL - 74.0) # the launch pad's floor: x from..to, z from..to
+const MOON_ROCKET := Vector3(0.0, 0.0, -WALL - 48.0)       # the rocket's foot
+const MOON_BOARD := Vector3(0.0, 0.0, -WALL - 34.0)        # the boarding ramp: within MOON_BOARD_R of it, you are out
+const MOON_BOARD_R := 6.0
+const MOON_EARTH := Vector3(0.38, 0.4, 0.83)               # where the Earth hangs in the sky (unnormalised)
+const MOON_METEOR := Vector3(-0.55, 0.5, -0.67)            # where the meteor comes from (over the rocket)
+const MOON_HABS := [[-30.0, -20.0, 0.3, 9.0, 7.0, 3.2], [24.0, -30.0, -0.4, 8.0, 6.0, 3.0], [-52.0, -58.0, 1.1, 9.0, 7.0, 3.2],
+	[10.0, -70.0, 0.2, 8.0, 6.0, 3.0], [-70.0, 10.0, 0.9, 9.0, 7.0, 3.2], [-26.0, 42.0, -0.6, 8.0, 6.0, 3.0],
+	[20.0, 58.0, 0.4, 9.0, 7.0, 3.2], [-62.0, 74.0, 2.0, 8.0, 6.0, 3.0], [70.0, -62.0, 1.4, 8.0, 6.0, 3.0], [82.0, 62.0, -0.9, 9.0, 7.0, 3.2]]
+var craters := [] # «The Moon»: [x, z, radius, depth], decided from a fixed seed so every phone has the same ground
 
 # each: x, z, yaw, width, depth, wall height
 const FOREST_BUILDINGS := [
@@ -251,6 +264,16 @@ func configure(id: String, seed := 1, th := "normal") -> void:
 		grass_per_chunk = 0
 		fog_density = 0.016  # damp basement air, thin enough that the far strip lights still read
 		moon_dir = Vector3(0.3, 0.5, -0.81).normalized()
+	elif id == "moon": # «The Moon»: grey dust and craters, habitat modules, the base, the Earth in a black sky
+		noise.seed = 1969
+		noise.frequency = 0.009
+		relief = 0.9
+		tree_count = 0
+		grass_per_chunk = 0
+		fog_density = 0.0035 # no air: you see far, the dark is what hides her
+		moon_dir = MOON_EARTH.normalized()
+		buildings = MOON_HABS.duplicate(true)
+		_plan_craters()
 	elif id == "fareej": # a Kuwaiti neighbourhood: walled houses on streets around the market, flat sandy ground
 		noise.seed = 77
 		relief = 0.0
@@ -297,10 +320,10 @@ func configure(id: String, seed := 1, th := "normal") -> void:
 	gen_spots.append(mbase + mrot * Vector3(-11.5, -0.05, MARKET_D / 2.0 + 4.6))
 	gen_spots.append(mbase + mrot * Vector3(11.5, -0.05, MARKET_D / 2.0 + 4.6))
 	var order := _shuffled(gen_spots.size(), rng)
-	for k in 7: gen_points.append(gen_spots[order[k]])
+	for k in (5 if id == "moon" else 7): gen_points.append(gen_spots[order[k]]) # the Moon: five, all of them needed
 	# doorways, and 9 pallets out of them
 	for b in buildings: door_points.append([_local(b, Vector3(0, 0, b[4] / 2.0)), b[2]])
-	if id != "kuwait": door_points.append([mbase + mrot * Vector3(0, 0, -MARKET_D / 2.0), market.yaw]) # (Kuwait City: the mosque stands there)
+	if not id in ["kuwait", "moon"]: door_points.append([mbase + mrot * Vector3(0, 0, -MARKET_D / 2.0), market.yaw]) # (Kuwait City: the mosque stands there; the Moon: the base)
 	order = _shuffled(door_points.size(), rng)
 	for k in mini(9, door_points.size()): pallet_points.append(door_points[order[k]])
 	# lockers and vault windows: the first 8 buildings, plus the market
@@ -311,12 +334,17 @@ func configure(id: String, seed := 1, th := "normal") -> void:
 	if id == "kuwait": # either side of the mosque, outside it
 		locker_points.append([mbase + mrot * Vector3(21.0, 0, 2.0), market.yaw])
 		locker_points.append([mbase + mrot * Vector3(-21.0, 0, 2.0), market.yaw])
+	elif id == "moon": # either side of the base's hub
+		locker_points.append([mbase + mrot * Vector3(12.6, 0, -4.3), market.yaw])
+		locker_points.append([mbase + mrot * Vector3(-12.6, 0, -4.3), market.yaw])
 	else:
 		locker_points.append([mbase + mrot * Vector3(12.6, 0, -4.3), market.yaw])
 		locker_points.append([mbase + mrot * Vector3(-12.6, 0, -4.3), market.yaw])
 		window_points.append([mbase + mrot * Vector3(-MARKET_W / 2.0, 0, 1.0), mrot * Vector3(-1, 0, 0)])
 	# 2 exit gates on opposite edges
-	for g in [[0.0, -WALL, 0.0], [0.0, WALL, PI]]:
+	var gdefs := [[0.0, -WALL, 0.0], [0.0, WALL, PI]]
+	if id == "moon": gdefs = [[-MOON_GATE_X, -WALL, 0.0], [MOON_GATE_X, -WALL, 0.0]] # both onto the launch pad
+	for g in gdefs:
 		sites.append([g[0], g[1], _raw_h(g[0], g[1]), 8.0])
 		var gy := _raw_h(g[0], g[1])
 		if id == "beach" and g[1] > 0.0: gy = PIER_Y # out across the lagoon: the gate stands on the pier
@@ -335,12 +363,13 @@ func configure(id: String, seed := 1, th := "normal") -> void:
 	_plan_road()
 	_plan_trees()
 	if has_power_box(): _plan_power_box() # decided with the layout: the server hears where it is
-	_plan_heli() # where the rescue helicopter lets its ladder down (layout.k)
+	if id != "moon": _plan_heli() # where the rescue helicopter lets its ladder down (layout.k); none on the Moon
 
 ## The hooks along each escape road: one every 60 m on alternating sides of the lane, so a car
 ## the killer stops can be emptied onto the nearest one.
 func _plan_road() -> void:
 	road_hook0 = hook_points.size()
+	if map_id == "moon": return # no roads: the gates open onto the launch pad
 	for g in gate_points:
 		var gp: Vector3 = g[0]
 		var b := Basis(Vector3.UP, float(g[1]))
@@ -369,6 +398,7 @@ func surface_at(pos: Vector3) -> String:
 	if map_id in ["garage", "city"]: return "indoor" # bare concrete / pavement everywhere
 	if map_id == "kuwait": return "sand" if pos.x > KW_SAND else "indoor"
 	if map_id == "beach": return "sand"
+	if map_id == "moon": return "indoor" if pos.z < -WALL + 0.5 else "sand" # the pad's concrete, else dust
 	var ml: Vector3 = Basis(Vector3.UP, market.yaw).inverse() * (pos - market.pos)
 	if absf(ml.x) < MARKET_W / 2.0 + 2.0 and ml.z > -MARKET_D / 2.0 - 0.3 and ml.z < MARKET_D / 2.0 + 16.0: return "indoor"
 	for b in buildings:
@@ -414,7 +444,47 @@ func _raw_h(x: float, z: float) -> float:
 		h -= smoothstep(BEACH_SHORE - 16.0, BEACH_SHORE + 44.0, z) * 3.4
 	elif map_id == "kuwait": # the sand slopes into the Gulf on the east side
 		h -= smoothstep(KW_SHORE - 2.0, KW_SHORE + 26.0, x) * 3.4
+	elif map_id == "moon":
+		h += _crater_h(x, z)
+		h *= smoothstep(-WALL + 4.0, -WALL + 26.0, z) # flat toward the south wall: the gates and the pad stand at 0
 	return h
+
+## «The Moon»'s craters: a bowl, a raised rim and a little ejecta round it. Fixed seed (every phone),
+## kept clear of the habitats, the base, the middle and the south wall.
+func _plan_craters() -> void:
+	var cr := RandomNumberGenerator.new()
+	cr.seed = 1969
+	var tries := 0
+	while craters.size() < 26 and tries < 600:
+		tries += 1
+		var r := cr.randf_range(5.0, 17.0) if craters.size() > 2 else cr.randf_range(18.0, 24.0)
+		var x := cr.randf_range(-WALL + r * 0.6, WALL - r * 0.6)
+		var z := cr.randf_range(-WALL + 30.0 + r, WALL - r * 0.6)
+		var ok := Vector2(x, z).length() > r + 12.0 and Vector2(x - 58.0, z - 2.0).length() > r + 26.0
+		for b in MOON_HABS:
+			if Vector2(x - b[0], z - b[1]).length() < r + maxf(b[3], b[4]) + 4.0: ok = false
+		for c in craters:
+			if Vector2(x - c[0], z - c[1]).length() < r + c[2] + 3.0: ok = false
+		if ok: craters.append([x, z, r, r * cr.randf_range(0.13, 0.2)])
+
+func _crater_h(x: float, z: float) -> float:
+	var h := 0.0
+	for c in craters:
+		var d := Vector2(x - c[0], z - c[1]).length() / float(c[2])
+		if d > 2.2: continue
+		var dep: float = c[3]
+		if d < 1.0: h -= dep * (1.0 - d * d) * 1.15
+		h += dep * 0.42 * exp(-pow((d - 1.0) / 0.22, 2.0)) # the rim
+	return h
+
+## How light or dark the dust is here: dark crater floors, bright rims, a few darker maria.
+func _moon_tone(x: float, z: float) -> float:
+	var t := 1.0 + noise.get_noise_2d(x * 0.35 + 300.0, z * 0.35) * 0.22
+	for c in craters:
+		var d := Vector2(x - c[0], z - c[1]).length() / float(c[2])
+		if d < 1.0: t *= 0.8 + 0.2 * d
+		elif d < 1.6: t *= 1.0 + 0.16 * (1.0 - absf(d - 1.15) / 0.45)
+	return t
 
 func height(x: float, z: float) -> float:
 	var h := _raw_h(x, z)
@@ -449,12 +519,14 @@ func build() -> void:
 	_build_extras()
 	_build_doors()
 	if map_id == "kuwait": _build_mosque() # his mosque where the market would be
+	elif map_id == "moon": _build_moon_base() # the base's hub where the market would be
 	elif map_id != "garage": _build_market()
 	if map_id != "kuwait" and has_power_box(): _build_power_box()
 	grid_all = theme in ["halloween", "sunset"] # the whole map hangs on the box (Kuwait City otherwise: its street lights)
 	build_step = 2
 	await get_tree().process_frame
-	if not map_id in ["garage", "kuwait"]: _build_scatter() # the garage and Kuwait City park their own cars
+	if not map_id in ["garage", "kuwait", "moon"]: _build_scatter() # the garage and Kuwait City park their own cars
+	if map_id == "moon": _build_moon()
 	_build_theme_props()
 	if map_id == "rubkhali": _build_animals()
 	_build_scenery()
@@ -462,7 +534,7 @@ func build() -> void:
 	_build_trees()
 	build_step = 3
 	await get_tree().process_frame
-	if not map_id in ["garage", "city", "kuwait"]:
+	if not map_id in ["garage", "city", "kuwait", "moon"]:
 		_build_rocks()
 		await _build_grass()
 	build_step = 4
@@ -554,6 +626,14 @@ func _make_materials() -> void:
 	_sky_noise = _noise_tex(0.02, 512)
 	_mat.ground = _pbr(Color(0.12, 0.12, 0.11), Color(0.34, 0.32, 0.28), 0.02, Vector3(0.12, 0.12, 0.12), 1.0)
 	_mat.ground.vertex_color_use_as_albedo = true # grass green / sand yellow painted per vertex
+	if map_id == "moon" and ResourceLoader.exists("res://assets/maps/moon_dust.jpg"): # the owner's lunar dust
+		var gm := ShaderMaterial.new()
+		gm.shader = load("res://shaders/moon_ground.gdshader")
+		gm.set_shader_parameter("dust", load("res://assets/maps/moon_dust.jpg"))
+		gm.set_shader_parameter("dust_n", load("res://assets/maps/moon_dust_n.png"))
+		gm.set_shader_parameter("macro", _noise_tex(0.03, 256))
+		_mat.ground = gm
+		_mat.hab = _pbr(Color(0.6, 0.61, 0.63), Color(0.74, 0.75, 0.77), 0.05, Vector3(0.6, 0.6, 0.6), 0.5, 0.25) # white habitat panels
 	_mat.wood = _pbr(Color(0.07, 0.05, 0.035), Color(0.2, 0.15, 0.1), 0.03, Vector3(1.4, 0.12, 1.4), 0.85)
 	_mat.metal = _pbr(Color(0.12, 0.06, 0.04), Color(0.3, 0.3, 0.32), 0.015, Vector3(0.5, 0.5, 0.5), 0.55, 0.8)
 	_mat.concrete = _pbr(Color(0.2, 0.2, 0.19), Color(0.42, 0.42, 0.4), 0.03, Vector3(0.4, 0.4, 0.4), 0.9)
@@ -684,6 +764,26 @@ func _build_environment() -> void:
 		env.adjustment_saturation = 0.92
 		env.tonemap_white = 8.0
 		env.glow_hdr_threshold = 1.5
+	if map_id == "moon": # no air: a black sky full of his stars, the Earth hanging in it, no clouds, no haze
+		_sky_mat.set_shader_parameter("space", 1.0)
+		_sky_mat.set_shader_parameter("disc_r", 0.12)
+		if ResourceLoader.exists("res://assets/sky/earth.jpg"):
+			_sky_mat.set_shader_parameter("moon_tex", load("res://assets/sky/earth.jpg"))
+			_sky_mat.set_shader_parameter("has_moon_tex", 1.0)
+		if ResourceLoader.exists("res://assets/sky/moon_stars.jpg"):
+			_sky_mat.set_shader_parameter("night_tex", load("res://assets/sky/moon_stars.jpg"))
+			_sky_mat.set_shader_parameter("has_night_tex", 1.0)
+		if ResourceLoader.exists("res://assets/sky/meteor.jpg"):
+			_sky_mat.set_shader_parameter("meteor_tex", load("res://assets/sky/meteor.jpg"))
+			_sky_mat.set_shader_parameter("has_meteor", 1.0)
+		_sky_mat.set_shader_parameter("meteor_dir", MOON_METEOR.normalized())
+		env.ambient_light_color = Color(0.19, 0.22, 0.3)
+		env.ambient_light_energy = 0.75
+		env.fog_light_color = Color(0.0, 0.0, 0.0)
+		env.fog_height_density = 0.0
+		env.fog_sky_affect = 0.0
+		env.adjustment_saturation = 0.9
+		env.adjustment_contrast = 1.16
 	# lighter nights (the owner asked for it): the dark is still there, but the map reads
 	if map_id != "rubkhali":
 		env.ambient_light_energy *= 2.0
@@ -704,6 +804,7 @@ func _build_environment() -> void:
 	moon.light_color = Color(0.55, 0.65, 0.95)
 	moon.light_energy = 1.1
 	if map_id == "rubkhali": moon.light_color = Color(0.78, 0.72, 0.6) # dusty moonlight
+	elif map_id == "moon": moon.light_color = Color(0.62, 0.74, 1.0) # earthshine: cold and blue
 	match theme:
 		"fog":
 			moon.light_color = Color(0.6, 0.68, 0.88)
@@ -807,6 +908,7 @@ func _build_terrain() -> void:
 					var gcol := Color(0.42, 0.56, 0.34).lerp(Color(1.0, 0.86, 0.6), _sandiness(wx, wz))
 					if map_id == "rubkhali": gcol = Color(0.86, 0.71, 0.46)
 					elif map_id == "garage": gcol = Color(0.17, 0.17, 0.18) # bare concrete under the slab
+					elif map_id == "moon": gcol = Color(0.62, 0.61, 0.6) * _moon_tone(wx, wz) # grey dust (its picture on top)
 					if theme == "snow": gcol = gcol.lerp(Color(0.92, 0.95, 1.0), 0.88)
 					elif theme == "halloween": gcol = gcol.darkened(0.45)
 					cols.append(gcol.darkened(_ground_ao(wx, wz))) # shade under walls and buildings
@@ -838,6 +940,7 @@ func _build_terrain() -> void:
 	cs.shape = shape
 	body.add_child(cs)
 	for k in 4: # invisible map border; the two gate sides leave an opening for the escape road
+		if map_id == "moon" and k == 2: continue # the Moon: the south side opens onto the launch pad
 		for part in ([-1.0, 1.0] if k % 2 == 0 else [0.0]):
 			var w := CollisionShape3D.new()
 			var bs := BoxShape3D.new()
@@ -919,6 +1022,7 @@ func _box(parent: Node3D, size: Vector3, pos: Vector3, mat: Material, occlude :=
 func _build_buildings() -> void:
 	var idx := 0
 	var wall_mat: Material = _mat.concrete if map_id == "city" else _mat.wood # shop fronts in the city
+	if map_id == "moon": wall_mat = _mat.hab # white habitat panels
 	for b in buildings:
 		var w: float = b[3]; var d: float = b[4]; var hgt: float = b[5]
 		var t := 0.2
@@ -941,13 +1045,18 @@ func _build_buildings() -> void:
 		_box(body, Vector3(fw, hgt, t), Vector3(-w / 2.0 + fw / 2.0, y0 + hgt / 2.0, d / 2.0), wall_mat)
 		_box(body, Vector3(fw, hgt, t), Vector3(w / 2.0 - fw / 2.0, y0 + hgt / 2.0, d / 2.0), wall_mat)
 		_box(body, Vector3(1.3, hgt - 2.2, t), Vector3(0, y0 + 2.2 + (hgt - 2.2) / 2.0, d / 2.0), wall_mat)
-		# leaning sheet-metal roof
-		_box(body, Vector3(w + 1.0, 0.1, d + 1.0), Vector3(0, y0 + hgt + 0.3, 0), _mat.metal, false, Vector3(0, 0, 0.1))
+		# leaning sheet-metal roof (a habitat on the Moon: a flat white one with trim, posts and ports)
+		if map_id == "moon": _hab_dress(body, w, d, hgt, y0)
+		else: _box(body, Vector3(w + 1.0, 0.1, d + 1.0), Vector3(0, y0 + hgt + 0.3, 0), _mat.metal, false, Vector3(0, 0, 0.1))
 		_snow_cap(body, Vector3(w + 1.0, 0.1, d + 1.0), Vector3(0, y0 + hgt + 0.3, 0), Vector3(0, 0, 0.1))
-		if idx % 3 == 0: # a weak flickering lamp inside some buildings (no shadows)
+		if map_id == "moon": # a habitat: a light strip over the door, an antenna, a cold lamp inside
+			_mesh_box(body, Vector3(1.6, 0.08, 0.1), Vector3(0, y0 + 2.45, d / 2.0 + 0.12), _emissive(Color(0.55, 0.8, 1.0)))
+			_box(body, Vector3(0.08, 2.2, 0.08), Vector3(w / 2.0 - 0.8, y0 + hgt + 1.4, -d / 2.0 + 0.8), _mat.metal)
+			_mesh_box(body, Vector3(0.14, 0.14, 0.14), Vector3(w / 2.0 - 0.8, y0 + hgt + 2.55, -d / 2.0 + 0.8), _emissive(Color(1.0, 0.15, 0.1)))
+		if idx % 3 == 0 or map_id == "moon": # a weak flickering lamp inside some buildings (no shadows)
 			var l := OmniLight3D.new()
 			l.position = Vector3(0, y0 + hgt - 0.5, 0)
-			l.light_color = Color(1.0, 0.62, 0.3)
+			l.light_color = Color(1.0, 0.62, 0.3) if map_id != "moon" else Color(0.7, 0.85, 1.0)
 			l.light_energy = 1.6
 			l.omni_range = 7.0
 			body.add_child(l)
@@ -2465,10 +2574,15 @@ func _build_objectives() -> void:
 	sides.name = "PerimeterWall"
 	for sx in [-1.0, 1.0]:
 		_box(sides, Vector3(1.4, wall_h, WALL * 2.0 + 1.4), Vector3(sx * WALL, wall_y, 0), _mat.concrete, true)
+	if map_id == "moon": # no gate in the north wall there: both are in the south one
+		_box(sides, Vector3(WALL * 2.0 + 1.4, wall_h, 1.4), Vector3(0, wall_y, WALL), _mat.concrete, true)
 	add_child(sides)
 	_build_fortress(sides)
 	var open_w := 7.0 # gate opening width
 	var open_h := 6.0
+	if map_id == "moon": # the crystal gateway's arch is 4.3 m across
+		open_w = 4.2
+		open_h = 6.6
 	for g in gate_points:
 		var gy: float = g[0].y
 		# a gate up on a roof needs a taller wall around it than one standing on the ground
@@ -2480,6 +2594,9 @@ func _build_objectives() -> void:
 		body.rotation.y = g[1]
 		var seg := WALL - open_w / 2.0
 		for sx in [-1.0, 1.0]:
+			if map_id == "moon": # two gates in one wall: each walls off its own half of it
+				var gx: float = g[0].x
+				seg = ((gx - open_w / 2.0) - (-WALL if gx < 0.0 else 0.0)) if sx < 0.0 else ((WALL if gx > 0.0 else 0.0) - (gx + open_w / 2.0))
 			_box(body, Vector3(seg, gh, 1.4), Vector3(sx * (open_w / 2.0 + seg / 2.0), gmid, 0), _mat.concrete, true)
 			_box(body, Vector3(1.8, gtop + 1.5 - bottom, 2.0), Vector3(sx * (open_w / 2.0 + 0.9), (gtop + 1.5 + bottom) / 2.0, 0), _mat.concrete) # gate towers
 		_box(body, Vector3(open_w, gtop - (gy + open_h), 1.4), Vector3(0, (gtop + gy + open_h) / 2.0, 0), _mat.concrete)
@@ -2501,7 +2618,7 @@ func _build_objectives() -> void:
 		sign.mesh = bm
 		sign.position = Vector3(0, gy + open_h + 0.7, 0.8)
 		body.add_child(sign)
-		var gate_ps := _model("gate")
+		var gate_ps := _model(_gate_model())
 		if gate_ps: # the modelled gate: its frame on the wall line, its two leaves riding the sliding doors
 			for ch in body.get_children():
 				if ch is MeshInstance3D: (ch as MeshInstance3D).visible = false
@@ -2514,19 +2631,7 @@ func _build_objectives() -> void:
 			models_used += 1
 			var gmat := prop_glow(gn, Color(1.0, 0.15, 0.1), 2.0, true) # the EXIT sign and the beacons: red, then green
 			if gmat: sign_mat = gmat
-			for k in 2: # moved by hand: the gate is not in the scene yet, so there is no global transform
-				var leaf := gn.find_child("leaf_l" if k == 0 else "leaf_r", true, false) as Node3D
-				if leaf == null: continue
-				var t := leaf.transform
-				var up := leaf.get_parent() as Node3D
-				while up != null and up != gn:
-					t = up.transform * t
-					up = up.get_parent() as Node3D
-				t = (doors[k] as Node3D).transform.affine_inverse() * gn.transform * t
-				leaf.owner = null # it leaves the gate scene for the door body
-				leaf.get_parent().remove_child(leaf)
-				(doors[k] as Node3D).add_child(leaf)
-				leaf.transform = t
+			if map_id == "moon": _build_portal(body, gy, open_w)
 		if gy > bottom + 0.1: # wall the opening off underneath a raised gate
 			_box(body, Vector3(open_w, gy - bottom, 1.4), Vector3(0, (gy + bottom) / 2.0, 0), _mat.concrete)
 		var light := OmniLight3D.new()
@@ -2544,6 +2649,7 @@ func _build_objectives() -> void:
 			body.add_child(tl)
 		add_child(body)
 		gate_nodes.append({"doors": doors, "light": light, "mat": sign_mat, "state": 0, "open_w": open_w})
+		if map_id == "moon": continue # no road behind it: the gate opens onto the launch pad
 		# the escape road: a 600 m walled lane behind the gate (local -z is "out"), the escape car
 		# waiting at its start, hooks and crash barriers along it, and the last gate at its end
 		var road_mat := _flat(Color(0.07, 0.065, 0.06), 0.8)
@@ -2631,8 +2737,44 @@ func _build_objectives() -> void:
 ## The owner's fortress wall along the whole perimeter, inside face toward the map: one MultiMesh
 ## per side (so the sides behind you are culled), each section standing on the lowest ground under
 ## it, and the gate sides stopping at the gate model's fences. The old concrete stays as collision.
+## «The Moon»: a vortex of light in the crystal arch (shaders/portal.gdshader) and a light that pulses
+## with it. Shut it turns slowly; when the gates have power it races, and stepping in takes you through
+## to the rocket (main._portal). `portal_mats` in gate order.
+var portal_mats: Array[ShaderMaterial] = []
+var portal_lights: Array[OmniLight3D] = []
+func _build_portal(body: Node3D, gy: float, open_w: float) -> void:
+	var mi := MeshInstance3D.new()
+	var qm := QuadMesh.new()
+	qm.size = Vector2(open_w + 0.1, 7.2)
+	var sm := ShaderMaterial.new()
+	sm.shader = load("res://shaders/portal.gdshader")
+	sm.set_shader_parameter("aspect", 7.2 / (open_w + 0.1))
+	sm.set_shader_parameter("arch", (open_w + 0.1) / 2.0 / 7.2)
+	qm.material = sm
+	mi.mesh = qm
+	mi.position = Vector3(0, gy + 3.6, 0)
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	body.add_child(mi)
+	var l := OmniLight3D.new()
+	l.position = Vector3(0, gy + 3.0, 2.2)
+	l.light_color = Color(0.45, 0.55, 1.0)
+	l.light_energy = 1.4
+	l.omni_range = 14.0
+	body.add_child(l)
+	portal_mats.append(sm)
+	portal_lights.append(l)
+
+## The flash in a portal as someone goes through it.
+func portal_flash(i: int) -> void:
+	if i < 0 or i >= portal_mats.size(): return
+	var tw := create_tween()
+	tw.tween_method(func(v: float): portal_mats[i].set_shader_parameter("flash", v), 1.0, 0.0, 0.7)
+
+func _gate_model() -> String:
+	return "moon_gate" if map_id == "moon" and _model("moon_gate") else "gate"
+
 func _build_fortress(sides: Node3D) -> void:
-	var ps := _model("wall")
+	var ps := _model("moon_wall" if map_id == "moon" and _model("moon_wall") else "wall")
 	if ps == null: return
 	var inst := ps.instantiate()
 	var src: MeshInstance3D = null
@@ -2646,13 +2788,25 @@ func _build_fortress(sides: Node3D) -> void:
 	inst.free()
 	for ch in sides.get_children():
 		if ch is MeshInstance3D: (ch as MeshInstance3D).visible = false
-	var big := 1.35 if map_id == "rubkhali" else 1.0 # the dunes are high: so is the wall
+	var big := 1.35 if map_id == "rubkhali" else (1.5 if map_id == "moon" else 1.0) # the dunes are high: so is the wall
 	var step := WALL_SEG * 0.96 * big                 # end pillars overlap
 	var runs := [] # [start point, unit direction along the run, length, yaw facing inward]
 	if map_id != "kuwait": # Kuwait City's east side is the open sea
 		runs.append([Vector3(WALL + 0.4, 0, -WALL), Vector3(0, 0, 1), WALL * 2.0, -PI / 2.0])
 	runs.append([Vector3(-WALL - 0.4, 0, -WALL), Vector3(0, 0, 1), WALL * 2.0, PI / 2.0])
-	for zs in [-1.0, 1.0]:
+	if map_id == "moon": # the north wall whole, the south wall either side of each gate, and round the pad
+		var zn := WALL + 0.4
+		var zs0 := -WALL - 0.4
+		var gx := MOON_GATE_X
+		runs.append([Vector3(-WALL, 0, zn), Vector3(1, 0, 0), WALL * 2.0, PI])
+		runs.append([Vector3(-WALL, 0, zs0), Vector3(1, 0, 0), WALL - gx - GATE_HALF, 0.0])
+		runs.append([Vector3(-gx + GATE_HALF, 0, zs0), Vector3(1, 0, 0), 2.0 * (gx - GATE_HALF), 0.0])
+		runs.append([Vector3(gx + GATE_HALF, 0, zs0), Vector3(1, 0, 0), WALL - gx - GATE_HALF, 0.0])
+		# the launch pad's own ramparts, facing in toward the rocket
+		runs.append([Vector3(MOON_PAD.x - 0.4, 0, MOON_PAD.z - 1.0), Vector3(0, 0, -1), MOON_PAD.z - MOON_PAD.w, PI / 2.0])
+		runs.append([Vector3(MOON_PAD.y + 0.4, 0, MOON_PAD.z - 1.0), Vector3(0, 0, -1), MOON_PAD.z - MOON_PAD.w, -PI / 2.0])
+		runs.append([Vector3(MOON_PAD.x, 0, MOON_PAD.w - 0.4), Vector3(1, 0, 0), MOON_PAD.y - MOON_PAD.x, 0.0])
+	for zs in ([] if map_id == "moon" else [-1.0, 1.0]):
 		var z: float = zs * (WALL + 0.4)
 		var yaw := 0.0 if zs < 0.0 else PI
 		var gx := INF
@@ -2687,6 +2841,7 @@ func _build_fortress(sides: Node3D) -> void:
 
 ## True when a position has reached the end of a gate's escape road.
 func is_outside_gate(i: int, pos: Vector3) -> bool:
+	if map_id == "moon": return Vector2(pos.x - MOON_BOARD.x, pos.z - MOON_BOARD.z).length() < MOON_BOARD_R and pos.y < MOON_BOARD.y + 4.0
 	var gp: Vector3 = gate_points[i][0]
 	var outward := Vector3(gp.x, 0, gp.z).normalized()
 	var rel := pos - gp
@@ -2705,6 +2860,7 @@ func road_left(i: int, pos: Vector3) -> float:
 
 ## The road (past the gate, between its walls) this point is on, -1 none.
 func road_at(pos: Vector3) -> int:
+	if map_id == "moon": return -1
 	for i in gate_points.size():
 		var gp: Vector3 = gate_points[i][0]
 		var out := Basis(Vector3.UP, float(gate_points[i][1])) * Vector3(0, 0, -1)
@@ -2714,16 +2870,19 @@ func road_at(pos: Vector3) -> int:
 
 ## Where gate i's escape car waits, and where its road ends (the last gate).
 func esc_start(i: int) -> Vector3:
+	if map_id == "moon": return MOON_BOARD
 	var g: Array = gate_points[i]
 	var at: Vector3 = (g[0] as Vector3) + Basis(Vector3.UP, float(g[1])) * Vector3(0, 0, -ESC_AT)
 	return Vector3(at.x, (g[0] as Vector3).y, at.z)
 
 func road_end(i: int) -> Vector3:
+	if map_id == "moon": return MOON_BOARD # the server's «escape on foot» check: within 10 m of it
 	var g: Array = gate_points[i]
 	return (g[0] as Vector3) + Basis(Vector3.UP, float(g[1])) * Vector3(0, 0, -ROAD_LEN)
 
 ## One escape car waiting just past each gate, its nose down the road: the survivors' way out.
 func _place_escape_cars() -> void:
+	if map_id == "moon": return # the rocket is the way out (stage 2 flies it)
 	var ps := _model("car_drive") if _model("car_drive") else _model("car")
 	for gi in gate_points.size():
 		var c := NFCar.new()
@@ -2753,6 +2912,12 @@ func set_gate_state(i: int, open: bool) -> void:
 	g.light.light_color = c
 	g.light.light_energy = 3.0 if open else 2.0
 	g.mat.emission = c
+	var pi := gate_nodes.find(g)
+	if pi >= 0 and pi < portal_mats.size(): # the vortex races and brightens, the light goes white-blue
+		var pm := portal_mats[pi]
+		create_tween().tween_method(func(v: float): pm.set_shader_parameter("power", v), 0.0 if open else 1.0, 1.0 if open else 0.0, 3.0)
+		portal_lights[pi].light_color = Color(0.6, 0.8, 1.0) if open else Color(0.45, 0.55, 1.0)
+		portal_lights[pi].light_energy = 4.0 if open else 1.4
 	if open: # the two door leaves slide apart into the wall
 		var k := 0
 		for door in g.doors:
@@ -3264,7 +3429,9 @@ func _apply_look() -> void:
 # 0..1: the moon swells as it falls toward the map (drives the sky shader and the moonlight)
 func set_moon_near(v: float) -> void:
 	if _sky_mat == null: return
-	_sky_mat.set_shader_parameter("near", clampf(v, 0.0, 1.0))
+	if map_id == "moon": # the Earth stays where it is: it is the meteor that comes down
+		_sky_mat.set_shader_parameter("meteor_near", clampf(v, 0.0, 1.0))
+	else: _sky_mat.set_shader_parameter("near", clampf(v, 0.0, 1.0))
 	if _blood and v > 0.03: moon.light_energy = _moon_base + 2.2 * v * v
 
 func set_market_dark(dark: bool) -> void:
@@ -3904,7 +4071,7 @@ func _build_particles() -> void:
 	leaves.preprocess = leaves.lifetime
 	leaves.visibility_aabb = AABB(Vector3(-22, -14, -22), Vector3(44, 26, 44))
 	leaves.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	leaves.emitting = map_id != "garage" # nothing falls from the sky under a concrete slab
+	leaves.emitting = not map_id in ["garage", "moon"] # nothing falls from the sky under a concrete slab, or on the Moon
 	add_child(leaves)
 	if theme == "rain":
 		leaves.emitting = false
@@ -5026,6 +5193,7 @@ func take_parked(i: int) -> void:
 	drive_car.put(to, to_yaw)
 
 func _place_drive_car() -> void:
+	if map_id == "moon": return # no Land Cruiser on the Moon
 	var cands: Array = []
 	if map_id == "garage":
 		var rx: float = (GAR_RAMP_X[0] + GAR_RAMP_X[1]) / 2.0
@@ -5558,3 +5726,441 @@ func _build_sniper_tower() -> void:
 	_blob(Vector3(0, 0, bz), 16.0)
 
 var rifle_stand: Node3D # the rifle lying on its crate (hidden while she has it)
+
+# ---------------- «The Moon» ----------------
+var moon_props := 0          # the owner's models placed on the Moon (the tests count them)
+var rocket: Node3D           # the escape rocket on its pad (stage 2 flies it)
+var board_ring: MeshInstance3D
+
+## One of the owner's Moon models standing on the ground, with a box of collision fitted to its own
+## bounds (shrunk a little so you can press up against it), drawn up to `far` metres.
+func _moon_prop(name: String, at: Vector3, yaw: float, k := 1.0, solid := 0.85, far := 0.0) -> Node3D:
+	var ps := _model(name)
+	if ps == null: return null
+	var n := ps.instantiate() as Node3D
+	n.scale = Vector3(k, k, k)
+	var box := AABB()
+	var first := true
+	for mi in n.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		var t := Transform3D()
+		var up: Node = m
+		while up != null and up != n:
+			t = (up as Node3D).transform * t
+			up = up.get_parent()
+		var b := t * m.get_aabb()
+		box = b if first else box.merge(b)
+		first = false
+		if far > 0.0: m.visibility_range_end = far
+	var body := StaticBody3D.new()
+	body.position = at
+	body.rotation.y = yaw
+	if solid > 0.0 and not first:
+		var cs := CollisionShape3D.new()
+		var bs := BoxShape3D.new()
+		bs.size = Vector3(box.size.x * k * solid, box.size.y * k, box.size.z * k * solid)
+		cs.shape = bs
+		cs.position = (box.position + box.size / 2.0) * k
+		body.add_child(cs)
+	body.add_child(n)
+	add_child(body)
+	if not first: sites.append([at.x, at.z, at.y, maxf(box.size.x, box.size.z) * k * 0.55 + 1.0])
+	moon_props += 1
+	return n
+
+## The base's hub where the market would be: a domed cylinder with lit ports, an airlock on each side,
+## a dish and floodlights. The two lockers and two of the generators stand round it.
+func _build_moon_base() -> void:
+	var rot := Basis(Vector3.UP, market.yaw)
+	var c: Vector3 = market.pos
+	var body := StaticBody3D.new()
+	body.position = c
+	body.rotation.y = market.yaw
+	var hub := MeshInstance3D.new()
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = 6.0; cyl.bottom_radius = 6.2; cyl.height = 4.0; cyl.radial_segments = 40
+	cyl.material = _mat.hab
+	hub.mesh = cyl
+	hub.position.y = 2.0
+	body.add_child(hub)
+	var dome := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = 6.0; sm.height = 6.0; sm.is_hemisphere = true; sm.radial_segments = 40; sm.rings = 14
+	sm.material = _mat.hab
+	dome.mesh = sm
+	dome.position.y = 4.0
+	dome.scale = Vector3(1, 0.7, 1)
+	body.add_child(dome)
+	var cs := CollisionShape3D.new()
+	var cshape := CylinderShape3D.new()
+	cshape.radius = 6.2; cshape.height = 8.0
+	cs.shape = cshape
+	cs.position.y = 4.0
+	body.add_child(cs)
+	var port := _emissive(Color(0.55, 0.8, 1.0))
+	for k in 10: # lit ports round the hub
+		var a := TAU * k / 10.0
+		_mesh_box(body, Vector3(1.1, 0.5, 0.1), Vector3(sin(a) * 6.08, 2.6, cos(a) * 6.08), port, Vector3(0, a, 0))
+	for sx in [-1.0, 1.0]: # an airlock either side
+		_box(body, Vector3(3.2, 3.0, 3.0), Vector3(sx * 7.2, 1.5, 0), _mat.hab)
+		_mesh_box(body, Vector3(0.1, 2.0, 1.4), Vector3(sx * 8.82, 1.2, 0), _flat(Color(0.08, 0.09, 0.1), 0.4, 0.6))
+		_mesh_box(body, Vector3(0.12, 0.12, 1.6), Vector3(sx * 8.84, 2.4, 0), port)
+	_box(body, Vector3(0.25, 7.0, 0.25), Vector3(3.0, 7.5, -3.0), _mat.metal) # the dish on its mast
+	var dish := MeshInstance3D.new()
+	var dm := SphereMesh.new()
+	dm.radius = 1.6; dm.height = 1.0; dm.is_hemisphere = true
+	dm.material = _mat.hab
+	dish.mesh = dm
+	dish.position = Vector3(3.0, 11.2, -3.0)
+	dish.rotation = Vector3(-2.2, 0.6, 0)
+	body.add_child(dish)
+	_mesh_box(body, Vector3(0.2, 0.2, 0.2), Vector3(3.0, 11.1, -3.0), _emissive(Color(1.0, 0.15, 0.1)))
+	_sign_text(body, "TRANQUILITY BASE", Vector3(0, 3.55, 6.2), 64, Color(0.7, 0.9, 1.0))
+	add_child(body)
+	sites.append([c.x, c.z, c.y, 9.0])
+	var glow := OmniLight3D.new()
+	glow.position = c + Vector3(0, 3.2, 0) + rot * Vector3(0, 0, 7.2)
+	glow.light_color = Color(0.6, 0.8, 1.0)
+	glow.light_energy = 2.4
+	glow.omni_range = 16.0
+	add_child(glow)
+	_amb_light(glow, true)
+	_blob(c, 7.5)
+
+## A habitat's dressing: a flat roof with a rim, dark corner posts and a skirt, a lit port either side,
+## a roof hatch and a box of kit on top.
+func _hab_dress(body: StaticBody3D, w: float, d: float, hgt: float, y0: float) -> void:
+	var dark := _flat(Color(0.14, 0.15, 0.17), 0.5, 0.6)
+	var port := _emissive(Color(0.55, 0.8, 1.0))
+	_box(body, Vector3(w + 0.4, 0.3, d + 0.4), Vector3(0, y0 + hgt + 0.15, 0), _mat.hab)
+	_mesh_box(body, Vector3(w + 0.5, 0.12, d + 0.5), Vector3(0, y0 + hgt + 0.32, 0), dark)
+	_mesh_box(body, Vector3(w + 0.06, 0.45, d + 0.06), Vector3(0, y0 + 0.22, 0), dark)
+	for cx in [-1.0, 1.0]:
+		for cz in [-1.0, 1.0]:
+			_mesh_box(body, Vector3(0.3, hgt + 0.2, 0.3), Vector3(cx * w / 2.0, y0 + hgt / 2.0, cz * d / 2.0), dark)
+	for sx in [-1.0, 1.0]:
+		_mesh_box(body, Vector3(0.06, 0.5, 1.2), Vector3(sx * (w / 2.0 + 0.11), y0 + 2.1, -d / 4.0), port)
+	_mesh_box(body, Vector3(1.6, 0.3, 1.6), Vector3(-w / 4.0, y0 + hgt + 0.45, d / 6.0), dark)
+	_mesh_box(body, Vector3(1.2, 0.7, 0.9), Vector3(w / 4.0, y0 + hgt + 0.65, -d / 5.0), _mat.metal)
+
+## A floodlight mast: a pole, a head, a cold light down at the ground in front of it (tilt: how far down).
+func _moon_mast(at: Vector3, yaw: float, energy := 3.0, reach := 22.0, tilt := 1.05) -> void:
+	var body := StaticBody3D.new()
+	body.position = at
+	body.rotation.y = yaw
+	_box(body, Vector3(0.22, 7.0, 0.22), Vector3(0, 3.5, 0), _mat.metal)
+	_mesh_box(body, Vector3(1.4, 0.35, 0.5), Vector3(0, 7.0, 0.3), _mat.metal, Vector3(-0.5, 0, 0))
+	_mesh_box(body, Vector3(1.2, 0.08, 0.3), Vector3(0, 6.85, 0.5), _emissive(Color(0.85, 0.92, 1.0)), Vector3(-0.5, 0, 0))
+	var l := SpotLight3D.new()
+	l.position = Vector3(0, 6.8, 0.6)
+	l.rotation.x = -tilt
+	l.light_color = Color(0.82, 0.9, 1.0)
+	l.light_energy = energy
+	l.spot_range = reach
+	l.spot_angle = 52.0
+	body.add_child(l)
+	_amb_light(l)
+	add_child(body)
+	_blob(at, 0.8)
+
+## His rocks strewn all over the ground (the owner: "a lot, so it suits the vibe of the Moon"): his
+## asteroid and iron-vein stones and his boulder field, hundreds of them, as one MultiMesh per kind
+## per 40 m chunk (each chunk culled on its own, his models' own LODs further off), most of them
+## small, a few knee-high with a box to stop you; and thousands of little code-built pebbles between.
+var moon_rocks := 0
+func _rock_mesh(name: String) -> Array: # [mesh, the transform it has inside its model]
+	var ps := _model(name)
+	if ps == null: return []
+	var n := ps.instantiate() as Node3D
+	var out := []
+	for c in n.find_children("*", "MeshInstance3D", true, false):
+		var mi := c as MeshInstance3D
+		var t := Transform3D()
+		var up: Node = mi
+		while up != null and up != n:
+			t = (up as Node3D).transform * t
+			up = up.get_parent()
+		var mesh: Mesh = mi.mesh
+		for si in mesh.get_surface_count():
+			if mesh.surface_get_material(si) == null and mi.get_active_material(si): mesh.surface_set_material(si, mi.get_active_material(si))
+		out = [mesh, t]
+		break
+	n.free()
+	return out
+
+func _moon_rocks() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1969 * 13 # the same on every phone: the knee-high ones block
+	var kinds := [["moon_rock2", 0.12, 0.55, 520], ["moon_rock1", 0.1, 0.5, 420], ["moon_rockfield", 0.25, 0.6, 40]]
+	var weak := 0.55 if Gfx.weak else 1.0
+	const CH := 40.0
+	var nch := int(ceil(WALL * 2.0 / CH))
+	var solids := StaticBody3D.new()
+	solids.name = "MoonRocks"
+	for kd in kinds:
+		var mt := _rock_mesh(kd[0])
+		if mt.is_empty(): continue
+		var buckets := {}
+		for i in int(float(kd[3]) * weak):
+			var x := rng.randf_range(-WALL + 2.0, WALL - 2.0)
+			var z := rng.randf_range(-WALL + 2.0, WALL - 2.0)
+			var big := rng.randf() < 0.07
+			var k := rng.randf_range(0.55, 0.9) if big else rng.randf_range(float(kd[1]), float(kd[2])) * (0.6 + rng.randf() * 0.7)
+			if in_site(x, z, 0.6 + k) or _near_gate_path(x, z): continue
+			var y := height(x, z) - 0.06 * k
+			var b := Basis(Vector3.UP, rng.randf() * TAU) * Basis(Vector3(1, 0, 0), rng.randf_range(-0.25, 0.25))
+			var xf := Transform3D(b.scaled(Vector3(k, k * rng.randf_range(0.7, 1.1), k)), Vector3(x, y, z)) * (mt[1] as Transform3D)
+			var key := Vector2i(clampi(int((x + WALL) / CH), 0, nch - 1), clampi(int((z + WALL) / CH), 0, nch - 1))
+			if not buckets.has(key): buckets[key] = []
+			buckets[key].append(xf)
+			if big and kd[0] != "moon_rockfield": # knee-high: something to bump into
+				var cs := CollisionShape3D.new()
+				var bs := BoxShape3D.new()
+				bs.size = Vector3(1.6, 1.2, 1.6) * k
+				cs.shape = bs
+				cs.position = Vector3(x, y + 0.5 * k, z)
+				solids.add_child(cs)
+		for key in buckets:
+			var list: Array = buckets[key]
+			var mm := MultiMesh.new()
+			mm.transform_format = MultiMesh.TRANSFORM_3D
+			mm.mesh = mt[0]
+			mm.instance_count = list.size()
+			for i in list.size(): mm.set_instance_transform(i, list[i])
+			var mmi := MultiMeshInstance3D.new()
+			mmi.multimesh = mm
+			mmi.visibility_range_end = 75.0 if kd[0] != "moon_rockfield" else 120.0
+			mmi.visibility_range_end_margin = 8.0
+			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if kd[0] != "moon_rockfield" else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+			add_child(mmi)
+			moon_rocks += list.size()
+	add_child(solids)
+	_moon_pebbles(rng, weak)
+
+## The arch of each gate and the ground just inside it stay clear.
+func _near_gate_path(x: float, z: float) -> bool:
+	for g in gate_points:
+		var gp: Vector3 = g[0]
+		if absf(x - gp.x) < 5.0 and z < gp.z + 14.0: return true
+	return false
+
+## Little grey pebbles everywhere between his rocks: one lumpy 40-triangle stone, thousands of times.
+func _moon_pebbles(rng: RandomNumberGenerator, weak: float) -> void:
+	var sm := SphereMesh.new()
+	sm.radius = 0.5; sm.height = 0.8; sm.radial_segments = 7; sm.rings = 4
+	var st := SurfaceTool.new()
+	st.create_from(sm, 0)
+	var arr := st.commit_to_arrays()
+	var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+	var nz := FastNoiseLite.new()
+	nz.frequency = 2.0
+	for i in verts.size(): verts[i] *= 1.0 + nz.get_noise_3dv(verts[i] * 3.0) * 0.35
+	arr[Mesh.ARRAY_VERTEX] = verts
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	var st2 := SurfaceTool.new()
+	st2.create_from(mesh, 0)
+	st2.generate_normals()
+	mesh = st2.commit()
+	mesh.surface_set_material(0, _pbr(Color(0.2, 0.2, 0.2), Color(0.42, 0.41, 0.4), 0.2, Vector3(1, 1, 1), 0.95))
+	const CH := 30.0
+	var nch := int(ceil(WALL * 2.0 / CH))
+	var buckets := {}
+	for i in int(16000 * weak):
+		var x := rng.randf_range(-WALL + 1.0, WALL - 1.0)
+		var z := rng.randf_range(-WALL + 1.0, WALL - 1.0)
+		if in_site(x, z, 0.3): continue
+		var k := rng.randf_range(0.04, 0.2) * (1.0 if rng.randf() < 0.85 else 2.2)
+		var b := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(k, k * rng.randf_range(0.5, 0.9), k * rng.randf_range(0.8, 1.3)))
+		var key := Vector2i(clampi(int((x + WALL) / CH), 0, nch - 1), clampi(int((z + WALL) / CH), 0, nch - 1))
+		if not buckets.has(key): buckets[key] = []
+		buckets[key].append(Transform3D(b, Vector3(x, height(x, z) - 0.03, z)))
+	for key in buckets:
+		var list: Array = buckets[key]
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = mesh
+		mm.instance_count = list.size()
+		for i in list.size(): mm.set_instance_transform(i, list[i])
+		var mmi := MultiMeshInstance3D.new()
+		mmi.multimesh = mm
+		mmi.visibility_range_end = 45.0
+		mmi.visibility_range_end_margin = 6.0
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(mmi)
+		moon_rocks += list.size()
+
+## Solar panels on their legs: cover you can see under.
+func _solar_array(at: Vector3, yaw: float) -> void:
+	var body := StaticBody3D.new()
+	body.position = at
+	body.rotation.y = yaw
+	var panel := _flat(Color(0.05, 0.08, 0.2), 0.25, 0.7, 0.0)
+	for k in 3:
+		var x := (k - 1) * 2.4
+		_box(body, Vector3(0.12, 1.2, 0.12), Vector3(x, 0.6, 0), _mat.metal)
+		_box(body, Vector3(2.2, 0.06, 1.6), Vector3(x, 1.35, 0), panel, false, Vector3(0.55, 0, 0))
+	add_child(body)
+	sites.append([at.x, at.z, at.y, 4.0])
+
+## The rest of the Moon: the owner's rovers, tanker, statue and rocks about the map, solar panels,
+## floodlight masts, and the launch pad beyond the south gates.
+func _build_moon() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1969 * 7 + layout_seed
+	var put := func(name: String, pad: float, k: float, solid := 0.85, far := 0.0) -> void:
+		var p := _free_spot(rng, pad)
+		if p != Vector3.INF: _moon_prop(name, p - Vector3(0, 0.05, 0), rng.randf() * TAU, k, solid, far)
+	for i in 3: put.call("moon_rover", 5.0, 1.0)
+	for i in 2: put.call("moon_titan", 6.0, 1.0)
+	for i in 2: put.call("moon_tanker", 7.0, 1.0)
+	# the Stone Guardian: one by the base, one watching the middle of the map
+	var mfront: Vector3 = market.pos + Basis(Vector3.UP, market.yaw) * Vector3(0, 0, 12.5)
+	_moon_prop("moon_guardian", Vector3(mfront.x, height(mfront.x, mfront.z), mfront.z), market.yaw, 1.0, 0.6)
+	put.call("moon_guardian", 4.0, 1.25, 0.6)
+	for i in (8 if Gfx.weak else 12): put.call("moon_rock1", 2.5, rng.randf_range(0.9, 1.5), 0.7, 130.0) # the big ones: cover
+	for i in (10 if Gfx.weak else 16): put.call("moon_rock2", 2.0, rng.randf_range(0.8, 1.4), 0.7, 110.0)
+	_moon_rocks()
+	for b in buildings: # solar panels beside every other habitat
+		if rng.randf() < 0.5:
+			var sp := _local(b, Vector3(b[3] / 2.0 + 3.5, 0, 0))
+			if not in_site(sp.x, sp.z, 1.0): _solar_array(Vector3(sp.x, height(sp.x, sp.z), sp.z), b[2] + PI / 2.0)
+	for i in 8: # floodlight masts about the map
+		var p := _free_spot(rng, 2.0)
+		if p != Vector3.INF: _moon_mast(p, rng.randf() * TAU, 2.6, 20.0)
+	_build_launch_pad()
+	_build_moon_outside()
+
+## Beyond the south gates: the pad, the rocket on its mount, the gantry, the boarding ring, floodlights.
+func _build_launch_pad() -> void:
+	var x0 := MOON_PAD.x; var x1 := MOON_PAD.y; var z0 := MOON_PAD.z; var z1 := MOON_PAD.w
+	var floor_mat := (_mat.ground as Material).duplicate() as Material
+	if floor_mat is ShaderMaterial: (floor_mat as ShaderMaterial).set_shader_parameter("tint", 0.55)
+	var body := StaticBody3D.new()
+	body.name = "LaunchPad"
+	_box(body, Vector3(x1 - x0, 1.0, z0 - z1), Vector3((x0 + x1) / 2.0, -0.47, (z0 + z1) / 2.0), floor_mat) # top 3 cm over the ground it covers
+	for wx in [x0 - 0.7, x1 + 0.7]: # its walls: collision (the ramparts are drawn over them)
+		_box(body, Vector3(1.4, 16.0, z0 - z1 + 1.4), Vector3(wx, 1.0, (z0 + z1) / 2.0), _mat.concrete)
+	_box(body, Vector3(x1 - x0 + 2.8, 16.0, 1.4), Vector3((x0 + x1) / 2.0, 1.0, z1 - 0.7), _mat.concrete)
+	for ch in body.get_children(): # the walls are not drawn: his ramparts stand on their line
+		if ch is MeshInstance3D and (ch as MeshInstance3D).position.y > 0.0: (ch as MeshInstance3D).visible = false
+	# the mount under the rocket, with a trench for the flame
+	var r := MOON_ROCKET
+	var mount := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = 11.0; cm.bottom_radius = 12.0; cm.height = 0.5; cm.radial_segments = 48
+	cm.material = _mat.concrete
+	mount.mesh = cm
+	mount.position = r + Vector3(0, 0.25, 0)
+	body.add_child(mount)
+	var mcs := CollisionShape3D.new()
+	var msh := CylinderShape3D.new()
+	msh.radius = 12.0; msh.height = 0.5
+	mcs.shape = msh
+	mcs.position = r + Vector3(0, 0.25, 0)
+	body.add_child(mcs)
+	var stripe := _flat(Color(0.95, 0.75, 0.1), 0.6, 0.0, 0.6)
+	for k in 16: # hazard marks round its edge
+		var a := TAU * k / 16.0
+		_mesh_box(body, Vector3(2.2, 0.04, 0.5), r + Vector3(sin(a) * 10.4, 0.52, cos(a) * 10.4), stripe, Vector3(0, a + PI / 2.0, 0))
+	# the rocket
+	var rps := _model("moon_rocket")
+	if rps:
+		rocket = rps.instantiate() as Node3D
+		rocket.position = r + Vector3(0, 0.5, 0)
+		add_child(rocket)
+		moon_props += 1
+	var rcs := CollisionShape3D.new() # his rocket stands in its own tower on its own platform: one box round them
+	var rsh := BoxShape3D.new()
+	rsh.size = Vector3(12.0, 26.0, 9.6)
+	rcs.shape = rsh
+	rcs.position = r + Vector3(0, 13.5, 0)
+	body.add_child(rcs)
+	var beacon := OmniLight3D.new() # red warning lights up the tower
+	beacon.position = r + Vector3(0, 20.0, 0)
+	beacon.light_color = Color(1.0, 0.15, 0.08)
+	beacon.light_energy = 1.6
+	beacon.omni_range = 18.0
+	body.add_child(beacon)
+	# the boarding ring: walk into it once the gates are open and you are out
+	board_ring = MeshInstance3D.new()
+	var tm := TorusMesh.new()
+	tm.inner_radius = MOON_BOARD_R - 0.5; tm.outer_radius = MOON_BOARD_R; tm.rings = 48
+	var ring_mat := _emissive(Color(0.3, 1.0, 0.5))
+	ring_mat.emission_energy_multiplier = 5.0
+	tm.material = ring_mat
+	board_ring.mesh = tm
+	board_ring.position = MOON_BOARD + Vector3(0, 0.05, 0)
+	board_ring.scale = Vector3(1, 0.15, 1)
+	body.add_child(board_ring)
+	var beam := MeshInstance3D.new() # a column of green light over the ring: you see where to run from the gate
+	var bc := CylinderMesh.new()
+	bc.top_radius = MOON_BOARD_R * 0.9; bc.bottom_radius = MOON_BOARD_R; bc.height = 14.0; bc.cap_top = false; bc.cap_bottom = false
+	var bmat := StandardMaterial3D.new()
+	bmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	bmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	bmat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	bmat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	bmat.albedo_texture = _beam_tex()
+	bmat.albedo_color = Color(0.25, 1.0, 0.45, 0.5)
+	bc.material = bmat
+	beam.mesh = bc
+	beam.position = MOON_BOARD + Vector3(0, 7.0, 0)
+	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	body.add_child(beam)
+	_mesh_box(body, Vector3(7.0, 1.6, 0.2), MOON_BOARD + Vector3(0, 3.6, -MOON_BOARD_R - 0.9), _flat(Color(0.03, 0.08, 0.05), 0.6))
+	_sign_text(body, "BOARD THE ROCKET", MOON_BOARD + Vector3(0, 3.6, -MOON_BOARD_R - 0.75), 170, Color(0.5, 1.0, 0.65))
+	_sign_text(body, "LAUNCH PAD", Vector3(0, 8.0, z0 - 1.6), 160, Color(0.75, 0.88, 1.0)) # read from the map, over the rampart
+	add_child(body)
+	var bl := OmniLight3D.new()
+	bl.position = MOON_BOARD + Vector3(0, 2.5, 0)
+	bl.light_color = Color(0.35, 1.0, 0.55)
+	bl.light_energy = 2.2
+	bl.omni_range = 12.0
+	add_child(bl)
+	for p in [Vector3(x0 + 5.0, 0, z1 + 6.0), Vector3(x1 - 5.0, 0, z1 + 6.0), Vector3(x0 + 5.0, 0, z0 - 8.0), Vector3(x1 - 5.0, 0, z0 - 8.0)]:
+		var aim := Vector2(r.x - p.x, r.z - p.z)
+		_moon_mast(p, atan2(aim.x, aim.y), 9.0, 70.0, 0.18) # floodlights on the rocket
+
+## A fade from the bottom up, for a column of light.
+func _beam_tex() -> GradientTexture2D:
+	var g := Gradient.new()
+	g.set_color(0, Color(1, 1, 1, 1))
+	g.set_color(1, Color(1, 1, 1, 0))
+	var t := GradientTexture2D.new()
+	t.gradient = g
+	t.fill_from = Vector2(0, 1)
+	t.fill_to = Vector2(0, 0)
+	t.width = 4; t.height = 64
+	return t
+
+## The ground beyond the walls (so the horizon is grey dust, not black) and a few rocks out there.
+func _build_moon_outside() -> void:
+	var mat := (_mat.ground as Material).duplicate() as Material
+	if mat is ShaderMaterial: (mat as ShaderMaterial).set_shader_parameter("tint", 0.5)
+	var far := 700.0
+	for part in [[Vector3(0, 0, HALF + far / 2.0), Vector2(far * 2.0 + SIZE, far)], [Vector3(0, 0, -HALF - far / 2.0), Vector2(far * 2.0 + SIZE, far)],
+			[Vector3(HALF + far / 2.0, 0, 0), Vector2(far, SIZE)], [Vector3(-HALF - far / 2.0, 0, 0), Vector2(far, SIZE)]]:
+		var mi := MeshInstance3D.new()
+		var pm := PlaneMesh.new()
+		pm.size = part[1]
+		pm.material = mat
+		mi.mesh = pm
+		mi.position = (part[0] as Vector3) + Vector3(0, -0.35, 0)
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.add_to_group("far")
+		add_child(mi)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4004
+	var ps := _model("moon_rockfield")
+	if ps == null: return
+	for i in 14: # boulder fields on the horizon
+		var a := rng.randf() * TAU
+		var d := HALF + rng.randf_range(60.0, 200.0)
+		var n := ps.instantiate() as Node3D
+		n.position = Vector3(sin(a) * d, -0.4, cos(a) * d)
+		n.rotation.y = rng.randf() * TAU
+		var k := rng.randf_range(2.5, 5.0)
+		n.scale = Vector3(k, k, k)
+		n.add_to_group("far")
+		add_child(n)

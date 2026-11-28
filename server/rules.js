@@ -7,6 +7,7 @@ const GUN_SHOTS = 3, GUN_RANGE = 22, GUN_STUN = 3;
 const KISS_CD = 25; // seconds before either of the two can kiss again (rules.gd KISS_CD)
 const GATE_DELAY = 10; // the generators are done: the gates open this long after
 const DOOM_TIME = 120; // once the gates have power the moon falls: this long to get out
+const DOOM_MOON = 210; // «The Moon»: 3:30 to reach the rocket before the meteor hits
 const MASH_STEP = 0.03, MASH_DECAY = 0.1;
 const RESCUE_TIME = 2; // seconds to lift someone off a hook; two of you halve it // "free yourself": keep tapping or the bar drains
 const LIVE = ['ok', 'hurt', 'down', 'carried', 'hooked'];
@@ -38,6 +39,7 @@ class Rules {
     this.gun = !!(opts && opts.gun);
     // «وضع القنّاص» (Kuwait City only): one gate (0), the killer's rifle downs anyone it hits, no moon
     this.sniper = !!(opts && opts.sniper);
+    this.doomTime = opts && opts.map === 'moon' ? DOOM_MOON : DOOM_TIME;
     this.snipeT = -99;
     // the power box's mode from the room's weather: 1 Halloween (survivors may switch it off too),
     // 2 «بين العصر والمغرب» (the lights start off and come on when someone fixes it)
@@ -409,7 +411,7 @@ class Rules {
     if (!this.powered && this.gateT === 0) {
       this.gateT = -1;
       this.powered = true;
-      this.doom = this.sniper ? -1 : DOOM_TIME; // (no moon in the sniper mode)
+      this.doom = this.sniper ? -1 : this.doomTime; // (no moon in the sniper mode)
       for (const g of this.gens) g.reps = {};
       this.gates.forEach((g, gi) => { if (gi === 0 || !this.sniper) g.open = true; });
     }

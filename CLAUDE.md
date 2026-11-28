@@ -1441,3 +1441,48 @@ field» (the kiss and the victory shot), «Water reflections» (SSR on Ultra eff
 park and the sea maps: `look_kind` "water" for Kuwait City and the beach), «Bounce light (Pro Max)»
 (SSIL at medium quality; off by default: it is a suspect from the black-blocks recording), and on the
 Pro Max on Ultra the view distance goes to 260 m (`Gfx.view_dist`). 120 fps was already in «Frame rate».
+
+## «The Moon» (`moon`) — stage 1 of the owner's Moon / rocket escape (stages 2 and 3 to come)
+His brief: five generators, the gates open onto a rocket, 3:30 to escape, then (stage 2) a rocket chase
+through meteors with the killer's ship behind, and (stage 3) the endings — Earth survives or breaks apart.
+- **Stage 1 (this)**: the map. `NightWorld.configure("moon")`: grey dust over craters (`_plan_craters`, a
+  fixed seed, `_crater_h` bowl + rim, `_moon_tone` darker floors / brighter rims) with his Lunar Dust
+  texture tiled over it (`assets/maps/moon_dust.jpg` + `_n.png`, a seamless crop of his tile), ten white
+  habitat modules (`MOON_HABS`, `_mat.hab`), **the base** in the market's place (`_build_moon_base`: a
+  domed hub, airlocks, a dish, «TRANQUILITY BASE»), his rovers, the titan rover, the tanker, two Stone
+  Guardian statues, his asteroid rocks and boulder fields (`_moon_prop`: a box of collision fitted to
+  the model's own bounds), solar panels, floodlight masts. **Exactly five generators** (`NEED` was
+  already 5; the other maps place 7).
+- **Both gates are in the south wall** (`MOON_GATE_X` ±40), his Moonlit Crystal Gateway
+  (`assets/props/moon_gate.glb`, 4.2 m arch: `open_w` 4.2 there) with a sheet of blue light in the arch
+  for the doors; his Ramparts (`moon_wall.glb`, x1.5) round the map and the pad. No roads, escape cars,
+  road hooks, killer's car, helicopter, ravens, cat/dog/gorilla, adhan or weather (server and phone both
+  turn a weather into `normal`; Halloween stays).
+- **The launch pad** beyond the gates (`MOON_PAD`, walled), his Escape Rocket (`moon_rocket.glb`, 26 m,
+  with its own tower) on a mount, floodlights on it, and the green **boarding ring** at `MOON_BOARD`:
+  once the gates have power, standing in it is the escape (`is_outside_gate`; `road_end` = the ring, so
+  the server's «within 10 m of `layout.e`» check agrees). Survivors' gate arrow turns into «Rocket %d m».
+- **Sky** (`sky.gdshader` `space`, `disc_r`, `meteor_*`): black, his starfield over the whole sky
+  (`assets/sky/moon_stars.jpg`), **the Earth** (`assets/sky/earth.jpg`, his Blue Marble rendered face on,
+  lit side and a blue rim) and, once the gates open, **the meteor** (`assets/sky/meteor.jpg`, his
+  Faceted Asteroid) growing with a burning edge — `set_moon_near` drives `meteor_near` on this map.
+  Earthshine for the light (cold blue).
+- **3:30**: `Rules.DOOM_MOON` 210 (`rules.doom_time`; `rules.js` `doomTime` from `opts.map`, which
+  `server.js` now passes) — **Render deploy**. «Get out before the meteor hits!».
+- **The gates are portals** (the owner: "a light like time turning … into the next dimension for the
+  rocket"): a vortex in each arch (`shaders/portal.gdshader`, `world._build_portal`, `portal_mats`):
+  a slow dim swirl while shut, racing and bright once the gates have power (`set_gate_state` tweens
+  `power`). Stepping into an open one (`main._portal`) takes you through to the pad 15 m short of the
+  ring, with a blue-white flash on the screen, a shake, a buzz and a flash in the arch
+  (`portal_flash`); other phones see the jump as a jump (no slide) and the arch flash. Survivors and
+  the killer alike; no server change (positions are the phone's own).
+- **The floor** (`shaders/moon_ground.gdshader`): his dust at three scales and angles (no tiling shows),
+  macro mottling, nearly colourless regolith, and his normal map turned into a world-space bump (the
+  terrain has no UVs or tangents); the pad and the ground beyond the walls use it at a darker `tint`.
+- **His rocks everywhere** (`_moon_rocks`, `moon_rocks` counts): his asteroid and iron-vein stones and his
+  boulder field, ~1000 of them as one MultiMesh per kind per 40 m chunk (drawn to 75 m, his models'
+  own LODs further off; 7% knee-high with a box), the big ones as cover (`_moon_prop`), and ~16k
+  code-built pebbles (40 triangles each, 30 m chunks, drawn to 45 m). About half on older phones.
+- `tools/moon.tscn` tests it. His props were baked with `prop_bake.py` at about twice the first proposal
+  (gate 120k / 4096, ramparts 60k, rocket 300k / 4096, rovers and statue 120k, tanker 100k, rocks kept
+  whole); his originals are untouched.

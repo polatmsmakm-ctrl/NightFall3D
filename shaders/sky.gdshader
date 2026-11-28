@@ -15,6 +15,15 @@ uniform float day : hint_range(0.0, 1.0) = 0.0;  // 0 night, 1 daylight (the sta
 uniform float warm : hint_range(0.0, 1.0) = 0.0; // dawn / dusk colour
 uniform float sun : hint_range(0.0, 1.0) = 0.0;  // 1 = daylight sandstorm: the disc is the sun
 uniform float sun_disc : hint_range(0.0, 1.0) = 0.0; // «بين العصر والمغرب»: the disc is the sun in a clear sky
+// The Moon map: no air (a black sky full of stars, no clouds, no glow at the horizon), the disc is
+// the Earth (its own picture in moon_tex, with a thin blue atmosphere on its rim), and a meteor
+// that grows as the doom clock runs down (meteor_near 0..1).
+uniform float space : hint_range(0.0, 1.0) = 0.0;
+uniform float disc_r = 0.055;
+uniform sampler2D meteor_tex : source_color, filter_linear_mipmap, repeat_disable;
+uniform float has_meteor = 0.0;
+uniform vec3 meteor_dir = vec3(-0.5, 0.45, -0.74);
+uniform float meteor_near : hint_range(0.0, 1.0) = 0.0;
 
 float hash(vec3 p) {
 	p = fract(p * 0.3183099 + 0.1);
@@ -33,12 +42,17 @@ void sky() {
 	// the Empty Quarter at noon: no blue left, the whole sky is the dust in the air
 	vec3 storm = mix(vec3(0.88, 0.68, 0.42), vec3(0.58, 0.46, 0.33), pow(h, 0.45));
 	col = mix(col, storm, sun);
+	col = mix(col, vec3(0.002, 0.002, 0.004), space);
 	float nightly = (1.0 - day) * (1.0 - sun) * (1.0 - 0.6 * warm);
 	if (has_night_tex > 0.5) {
 		float az = atan(d.x, d.z) / 6.2831853 + 0.5;
 		float u = 1.0 - abs(1.0 - 2.0 * fract(az)); // 0 -> 1 -> 0 round the sky: mirrored, no seam
 		float el = asin(clamp(d.y, 0.0, 1.0)) / 1.5707963;
 		vec3 photo = texture(night_tex, vec2(u, 0.97 - el * 0.92)).rgb;
+		if (space > 0.5) { // the whole sky, and brighter: nothing in the way
+			vec2 suv = vec2(u, 0.96 - (d.y * 0.5 + 0.5) * 0.92);
+			col = texture(night_tex, suv).rgb * 1.8;
+		} else
 		col = mix(col, photo * 0.9, nightly * smoothstep(-0.04, 0.18, d.y));
 	} else {
 		vec3 cell = floor(d * 220.0);
@@ -48,7 +62,7 @@ void sky() {
 	}
 	vec3 md = normalize(moon_dir);
 	float ang = acos(clamp(dot(d, md), -1.0, 1.0));
-	float r = 0.055 * (1.0 + 2.0 * near + 9.0 * near * near * near);
+	float r = disc_r * (1.0 + 2.0 * near + 9.0 * near * near * near);
 	float disc = smoothstep(r, r * 0.96, ang);
 	vec3 right = normalize(cross(md, vec3(0.0, 1.0, 0.0)));
 	vec3 up = cross(right, md);
@@ -69,9 +83,30 @@ void sky() {
 		mooncol = mix(surf * 1.25, red, blood) * (0.8 + 0.2 * limb);
 	}
 	vec3 halo = mix(mix(vec3(0.5, 0.6, 0.8), mix(vec3(1.0, 0.82, 0.45), vec3(1.0, 0.45, 0.18), warm * sun_disc), sd), vec3(0.95, 0.12, 0.06), blood);
-	col += halo * (exp(-ang * 9.0 / (1.0 + 4.0 * near)) * (0.35 + 0.5 * near + 0.75 * sd) + exp(-ang * 40.0 / (1.0 + 4.0 * near)) * (0.4 + 0.6 * sd));
+	halo = mix(halo, vec3(0.25, 0.5, 1.0), space);
+	col += halo * (1.0 - 0.75 * space) * (exp(-ang * 9.0 / (1.0 + 4.0 * near)) * (0.35 + 0.5 * near + 0.75 * sd) + exp(-ang * 40.0 / (1.0 + 4.0 * near)) * (0.4 + 0.6 * sd));
+	if (space > 0.5) { // the Earth: day side lit from the left, a soft terminator, a blue rim
+		vec3 surf = texture(moon_tex, vec2(muv.x, -muv.y) * 0.5 + 0.5).rgb;
+		float lit = smoothstep(-0.55, 0.35, -muv.x * 0.8 + muv.y * 0.3 + 0.25);
+		mooncol = surf * (0.12 + 1.5 * lit) + vec3(0.2, 0.45, 1.0) * pow(1.0 - limb, 3.0) * (0.3 + 0.9 * lit);
+		col += vec3(0.25, 0.5, 1.0) * 0.5 * smoothstep(r * 1.12, r, ang) * (1.0 - disc);
+	}
 	col = mix(col, mooncol * 1.6, disc);
-	if (d.y > 0.0) {
+	if (has_meteor > 0.5 && meteor_near > 0.0) { // the meteor: a dark rock with a burning edge, growing
+		vec3 mdir = normalize(meteor_dir);
+		float ma = acos(clamp(dot(d, mdir), -1.0, 1.0));
+		float mr = 0.012 + 0.5 * meteor_near * meteor_near * meteor_near + 0.06 * meteor_near;
+		vec3 mright = normalize(cross(mdir, vec3(0.0, 1.0, 0.0)));
+		vec3 mup = cross(mright, mdir);
+		vec2 mu = vec2(dot(d, mright), dot(d, mup)) / mr;
+		float mdisc = smoothstep(mr, mr * 0.97, ma);
+		float ml = sqrt(max(0.0, 1.0 - dot(mu, mu)));
+		vec3 rock = texture(meteor_tex, vec2(mu.x, -mu.y) * 0.5 + 0.5).rgb * (0.35 + 0.9 * smoothstep(-0.6, 0.6, -mu.x + mu.y * 0.4));
+		vec3 fire = vec3(1.0, 0.42, 0.12) * pow(1.0 - ml, 2.5) * (1.5 + 3.0 * meteor_near);
+		col += vec3(1.0, 0.35, 0.1) * exp(-(ma - mr) / (mr * 0.35 + 0.01)) * step(mr, ma) * (0.4 + 1.6 * meteor_near);
+		col = mix(col, rock + fire, mdisc);
+	}
+	if (d.y > 0.0 && space < 0.5) {
 		vec2 cuv = d.xz / (d.y + 0.15) * 0.25 + TIME * vec2(0.004, 0.0015);
 		float n = texture(noise_tex, cuv).r * 0.6 + texture(noise_tex, cuv * 2.7 + TIME * 0.003).r * 0.4;
 		float cl = smoothstep(0.5, 0.8, n) * smoothstep(0.0, 0.2, d.y);

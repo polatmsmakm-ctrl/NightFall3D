@@ -6,7 +6,7 @@ extends CanvasLayer
 signal start_game(cfg: Dictionary)
 
 const MAPS := {"forest": "The Forest", "village": "The Abandoned Village", "fareej": "The Fareej", "rubkhali": "The Empty Quarter",
-	"garage": "The Car Park", "beach": "The Beach", "city": "City Life", "kuwait": "Kuwait City"}
+	"garage": "The Car Park", "beach": "The Beach", "city": "City Life", "kuwait": "Kuwait City", "moon": "The Moon"}
 const THEMES := {"normal": "Night", "fog": "Fog", "rain": "Rain", "snow": "Snow", "halloween": "Halloween", "sunset": "Late Afternoon"}
 const THEME_ICON := {"normal": "moon", "fog": "fog", "rain": "rain", "snow": "star", "halloween": "skull", "sunset": "sun"}
 const VERSION := "v1.4"

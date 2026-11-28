@@ -26,6 +26,8 @@ const SNIPE_CD := 1.2      # a bolt-action: this long between shots, no limit on
 var snipe_t := -99.0
 const GATE_DELAY := 10.0 # the generators are done: the gates open this long after (a countdown on every phone)
 const DOOM_TIME := 120.0 # once the gates have power the moon falls: this long to get out
+const DOOM_MOON := 210.0 # «The Moon»: 3:30 to reach the rocket before the meteor hits
+var doom_time := DOOM_TIME # this round's (main sets DOOM_MOON on the Moon; rules.js: opts.map)
 const MASH_STEP := 0.03 # each tap on "free yourself"
 const MASH_DECAY := 0.1 # lost per second, so you have to keep hammering the button
 const RESCUE_TIME := 2.0 # seconds to lift someone off a hook; two of you halve it
@@ -458,7 +460,7 @@ func tick(dt: float) -> Array:
 	if not powered and gate_t == 0.0:
 		gate_t = -1.0
 		powered = true
-		doom = -1.0 if sniper else DOOM_TIME # (the sniper mode has no moon: it ends when they are all dead or out)
+		doom = -1.0 if sniper else doom_time # (the sniper mode has no moon: it ends when they are all dead or out)
 		for g in gens: g.reps.clear()
 		for gi in gates.size():
 			if gi == 0 or not sniper: gates[gi].open = true

@@ -256,6 +256,7 @@ func _start(c: Dictionary) -> void:
 		lobby_scene.queue_free()
 		lobby_scene = null
 	theme = str(c.get("theme", "normal"))
+	if str(c.map) == "moon" and not theme in ["normal", "halloween"]: theme = "normal" # no weather without air (server.js does the same)
 	loading = NFLoading.new() # covers the screen while the map builds itself over the next frames
 	loading.setup(str(c.map), theme)
 	add_child(loading)
@@ -268,6 +269,7 @@ func _start(c: Dictionary) -> void:
 	rules = Rules.new()
 	rules.gun = bool(c.get("gun", false)) # «وضع السلاح»: the host's choice, sent with start
 	rules.sniper = world.sniper
+	if world.map_id == "moon": rules.doom_time = Rules.DOOM_MOON # 3:30 to the rocket before the meteor hits
 	rules.setup(world.gen_points.size(), world.gate_points.size(), world.pallet_points.size(), world.hatch_points.size(),
 		c.players, int(c.get("seed", 1)) if not offline else randi() % 1000000, world.door_points.size())
 	rules.has_grid = world.has_power_box() # Kuwait City; every map in Halloween and «بين العصر والمغرب»
@@ -883,7 +885,7 @@ func _step_beds(dt: float, danger: float) -> void:
 	_bed_vol("terror", lerpf(-30.0, -12.0, danger) if danger > 0.05 and not chasing else -60.0, dt)
 	# the moon (or the sun) coming down: a rumble that grows over the last two minutes
 	var doom_k := 0.0
-	if rules.doom > 0.0 and rules.powered: doom_k = 1.0 - clampf(rules.doom / Rules.DOOM_TIME, 0.0, 1.0)
+	if rules.doom > 0.0 and rules.powered: doom_k = 1.0 - clampf(rules.doom / rules.doom_time, 0.0, 1.0)
 	_bed_vol("moon_rumble", lerpf(-26.0, -4.0, doom_k) if doom_k > 0.0 and impact_t < 0.0 else -60.0, dt, 1.0)
 	# me on the hook
 	_bed_vol("whimper", -14.0 if my_state == "hooked" else -60.0, dt)
@@ -1757,6 +1759,11 @@ func _draw_gate(mid: Vector2) -> void:
 		bd = Vector2(best.x - body.position.x, best.z - body.position.z).length()
 		word = "Car %d m"
 		if bd < 4.0: return
+	if world.map_id == "moon" and body.position.z < -NightWorld.WALL: # through the gate: the arrow points at the rocket
+		best = NightWorld.MOON_BOARD
+		bd = Vector2(best.x - body.position.x, best.z - body.position.z).length()
+		word = "Rocket %d m"
+		on_road = 99
 	for gi in ([] if on_road >= 0 else range(world.gate_points.size())):
 		if rules.sniper and gi != 0: continue # «وضع القنّاص»: the one gate, on the towers' side
 		var p: Vector3 = world.gate_points[gi][0]
@@ -1772,11 +1779,47 @@ func _draw_gate(mid: Vector2) -> void:
 	var col := Color(0.45, 1.0, 0.55, beat)
 	ui.draw_circle(at, 23.0, Color(0.03, 0.06, 0.04, 0.8), true, -1.0, true)
 	ui.draw_arc(at, 23.0, 0, TAU, 40, col, 2.5, true)
-	NFIcons.draw(ui, "car" if on_road >= 0 else "out", at, 26.0, col)
+	NFIcons.draw(ui, "car" if on_road >= 0 and on_road < 99 else "out", at, 26.0, col)
 	var tip := at + d * 33.0
 	var sd := Vector2(-d.y, d.x)
 	ui.draw_colored_polygon(PackedVector2Array([tip + d * 13.0, tip - sd * 9.0, tip + sd * 9.0]), col)
 	_text(at + Vector2(0, 42.0), word % roundi(bd), 18, col, 200.0)
+
+## «The Moon»: once the gates have power, stepping into a gate's vortex takes you through to the
+## launch pad, short of the rocket (you still have to run for the ring). Survivors and the killer
+## alike; a flash in the arch on every phone comes from seeing the jump. The rules never hear of it:
+## positions are the phone's own, and the server only checks the boarding ring's distance.
+var portal_cd := 0.0
+var warp_rect: ColorRect
+func _portal(dt: float) -> void:
+	portal_cd = maxf(portal_cd - dt, 0.0)
+	if warp_rect and warp_rect.color.a > 0.0:
+		warp_rect.color.a = maxf(warp_rect.color.a - dt * 1.3, 0.0)
+	if world == null or world.map_id != "moon" or not rules.powered or body == null or portal_cd > 0.0: return
+	if my_role == "survivor" and not my_state in ["ok", "hurt"]: return
+	if driving: return
+	var p := body.global_position
+	for i in world.gate_points.size():
+		var gp: Vector3 = world.gate_points[i][0]
+		if absf(p.x - gp.x) < 2.0 and p.z < gp.z - 0.1 and p.z > gp.z - 2.0:
+			portal_cd = 2.0
+			world.portal_flash(i)
+			body.global_position = Vector3(gp.x * 0.3, 0.4, NightWorld.MOON_BOARD.z + 15.0)
+			body.velocity = Vector3(0, 0, -2.0)
+			if warp_rect == null:
+				warp_rect = ColorRect.new()
+				warp_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				warp_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+				var cm := CanvasItemMaterial.new()
+				cm.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+				warp_rect.material = cm
+				(hud_layer if hud_layer else self).add_child(warp_rect)
+			warp_rect.color = Color(0.55, 0.72, 1.0, 1.0)
+			_shake(0.6)
+			NFHaptics.pulse("grab")
+			_sfx("gate", gp + Vector3(0, 3, 0), 4.0)
+			_flash("Through the portal — get to the rocket!" if my_role == "survivor" else "Through the portal — stop them at the rocket!")
+			break
 
 func _flash(t: String) -> void:
 	flash = t
@@ -2104,6 +2147,7 @@ func _round_event(dt: float) -> void:
 func _adhan() -> void:
 	if rules.adhan == adhan_state: return
 	adhan_state = rules.adhan
+	if world.map_id == "moon": return # no call to prayer on the Moon
 	if adhan_state == 1:
 		if not ResourceLoader.exists("res://assets/sfx/adhan.mp3"): return
 		adhan_player = AudioStreamPlayer3D.new()
@@ -2296,7 +2340,7 @@ func _draw_ui() -> void:
 		ui.draw_circle(mid, 1.8, Color(0.6, 0.9, 1.0, 0.8))
 	# survivors: red edges pulse when the killer is close
 	if rules.powered and rules.doom >= 0.0:
-		var near := 1.0 - rules.doom / Rules.DOOM_TIME
+		var near := 1.0 - rules.doom / rules.doom_time
 		if near > 0.6: ui.draw_rect(Rect2(Vector2.ZERO, s), Color(0.9, 0.1, 0.02, (near - 0.6) * 0.45)) # the sky closing in
 		if impact_t >= 0.0:
 			var wht := clampf(1.0 - impact_t / 1.2, 0.0, 1.0)
@@ -2346,7 +2390,7 @@ func _draw_ui() -> void:
 		_draw_gate_count(Vector2(mid.x, 120.0), rules.gate_t)
 	elif doom_up:
 		_draw_moon(Vector2(mid.x, 120.0))
-		var falling := "the moon falls" # the moon on every map now, the Empty Quarter too
+		var falling := "the meteor hits" if world.map_id == "moon" else "the moon falls" # the moon on every map, the Empty Quarter too; the Moon has its meteor
 		if my_role == "killer": _text(Vector2(mid.x, 214), "Stop them escaping before %s" % falling, 22, Color(1, 0.5, 0.4))
 		elif my_state in ["escaped", "dead"]: _text(Vector2(mid.x, 214), "%d of your team still inside" % _others_alive().size(), 22, Color(1, 0.9, 0.6))
 		else: _text(Vector2(mid.x, 214), "Get out before %s!" % falling, 24, Color(1, 0.45, 0.35))
@@ -2563,7 +2607,7 @@ func _draw_gate_count(c: Vector2, left: float) -> void:
 
 func _draw_moon(c: Vector2) -> void:
 	var left: float = maxf(rules.doom, 0.0)
-	var f: float = clampf(1.0 - left / Rules.DOOM_TIME, 0.0, 1.0)
+	var f: float = clampf(1.0 - left / rules.doom_time, 0.0, 1.0)
 	var pulse := 1.0
 	if left < 30.0: pulse = 0.72 + 0.28 * sin(Time.get_ticks_msec() / 1000.0 * 9.0)
 	var r: float = 30.0 + (3.0 * pulse if left < 30.0 else 0.0)
@@ -2627,6 +2671,19 @@ func _draw_sigs(mid: Vector2) -> void:
 		var label := "%s — %s (%d m)" % [who, SIG_TEXT[int(sg.k)], roundi(flat.length())] if who != "" else "%s (%d m)" % [SIG_TEXT[int(sg.k)], roundi(flat.length())]
 		_text(at + Vector2(0, 26.0), label, 17, col, 300.0)
 
+## The market (or Kuwait City's mosque) on the map.
+func _draw_market(c: Vector2, k: float, u: float, big: bool, mk: Dictionary) -> void:
+	minimap.draw_set_transform(c + Vector2(mk.pos.x, mk.pos.z) * k, -mk.yaw, Vector2.ONE)
+	minimap.draw_rect(Rect2(-Vector2(mk.w, mk.d) * k / 2.0, Vector2(mk.w, mk.d) * k), Color(0.8, 0.25, 0.25) if world.map_id != "kuwait" else Color(0.75, 0.62, 0.3))
+	minimap.draw_rect(Rect2(Vector2(-mk.w / 2.0, mk.d / 2.0) * k, Vector2(mk.w, 13.0) * k), Color(0.25, 0.25, 0.27)) # parking
+	minimap.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	if world.map_id == "kuwait":
+		minimap.draw_circle(c + Vector2(mk.pos.x - 5.0, mk.pos.z) * k, 7.0 * u, Color(0.85, 0.72, 0.35))
+		if big: _map_text(c + Vector2(mk.pos.x + 8.0, mk.pos.z + 3.0) * k, "Mosque", 16, Color(1, 0.88, 0.5))
+	else:
+		_map_pic(c + Vector2(mk.pos.x, mk.pos.z) * k, "market", 18.0 * u)
+		if big: _map_text(c + Vector2(mk.pos.x + 8.0, mk.pos.z + 3.0) * k, "Market", 16, Color(1, 0.7, 0.7))
+
 func _draw_minimap() -> void:
 	if scare_t > 0.0: return
 	var vs := get_viewport().get_visible_rect().size
@@ -2671,12 +2728,19 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 		minimap.draw_line(tc - Vector2(9, 0) * u, tc + Vector2(9, 0) * u, Color(1, 0.25, 0.2), 1.4 * u)
 		minimap.draw_line(tc - Vector2(0, 9) * u, tc + Vector2(0, 9) * u, Color(1, 0.25, 0.2), 1.4 * u)
 		if big: _map_text(tc + Vector2(0, -16) * u, "Sniper", 15, Color(1, 0.4, 0.35))
+	if world.map_id == "moon" and big: # the launch pad beyond the south gates, and the rocket on it
+		var pad := NightWorld.MOON_PAD
+		minimap.draw_rect(Rect2(c + Vector2(pad.x, pad.w) * k, Vector2(pad.y - pad.x, pad.z - pad.w) * k), Color(0.28, 0.3, 0.34) if not rules.powered else Color(0.22, 0.42, 0.3))
+		var rc := c + Vector2(NightWorld.MOON_ROCKET.x, NightWorld.MOON_ROCKET.z) * k
+		minimap.draw_colored_polygon(PackedVector2Array([rc + Vector2(0, -12) * u, rc + Vector2(-5, 6) * u, rc + Vector2(5, 6) * u]), Color(0.95, 0.95, 1.0))
+		minimap.draw_arc(c + Vector2(NightWorld.MOON_BOARD.x, NightWorld.MOON_BOARD.z) * k, NightWorld.MOON_BOARD_R * k, 0, TAU, 24, Color(0.4, 1, 0.55), 1.6 * u)
+		_map_text(rc + Vector2(16, 4) * u, "Rocket", 15, Color(0.85, 0.92, 1.0))
 	for i in world.gate_points.size(): # escape roads + gates
 		if rules.sniper and i != 0: continue # (the north gate stays shut behind the tower)
 		var p: Vector3 = world.gate_points[i][0]
 		var out_dir := signf(p.z)
 		var open: bool = rules.gates[i].open
-		if big: minimap.draw_rect(Rect2(c + Vector2(-NightWorld.LANE_W / 2.0, minf(p.z, p.z + out_dir * NightWorld.MAP_ROAD)) * k, Vector2(NightWorld.LANE_W, NightWorld.MAP_ROAD) * k), Color(0.3, 0.3, 0.3) if not open else Color(0.25, 0.5, 0.3))
+		if big and world.map_id != "moon": minimap.draw_rect(Rect2(c + Vector2(-NightWorld.LANE_W / 2.0, minf(p.z, p.z + out_dir * NightWorld.MAP_ROAD)) * k, Vector2(NightWorld.LANE_W, NightWorld.MAP_ROAD) * k), Color(0.3, 0.3, 0.3) if not open else Color(0.25, 0.5, 0.3))
 		var gpc := c + Vector2(p.x, p.z) * k
 		# the owner's gate pictures: red with ↑ for the north one, blue with ↓ for the south; a green
 		# ring once it is open
@@ -2710,16 +2774,11 @@ func _draw_map(o: Vector2, side: float, big: bool) -> void:
 			minimap.draw_rect(Rect2(c + Vector2(-NightWorld.PIER_W / 2.0, NightWorld.PIER_FROM) * k,
 				Vector2(NightWorld.PIER_W, NightWorld.WALL - NightWorld.PIER_FROM) * k), Color(0.55, 0.4, 0.25))
 		var mk: Dictionary = world.market
-		minimap.draw_set_transform(c + Vector2(mk.pos.x, mk.pos.z) * k, -mk.yaw, Vector2.ONE)
-		minimap.draw_rect(Rect2(-Vector2(mk.w, mk.d) * k / 2.0, Vector2(mk.w, mk.d) * k), Color(0.8, 0.25, 0.25) if world.map_id != "kuwait" else Color(0.75, 0.62, 0.3))
-		minimap.draw_rect(Rect2(Vector2(-mk.w / 2.0, mk.d / 2.0) * k, Vector2(mk.w, 13.0) * k), Color(0.25, 0.25, 0.27)) # parking
-		minimap.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-		if world.map_id == "kuwait":
-			minimap.draw_circle(c + Vector2(mk.pos.x - 5.0, mk.pos.z) * k, 7.0 * u, Color(0.85, 0.72, 0.35))
-			if big: _map_text(c + Vector2(mk.pos.x + 8.0, mk.pos.z + 3.0) * k, "Mosque", 16, Color(1, 0.88, 0.5))
+		if world.map_id == "moon": # the base's hub
+			minimap.draw_circle(c + Vector2(mk.pos.x, mk.pos.z) * k, 6.2 * k, Color(0.78, 0.8, 0.84))
+			if big: _map_text(c + Vector2(mk.pos.x + 9.0, mk.pos.z + 3.0) * k, "Base", 16, Color(0.75, 0.88, 1.0))
 		else:
-			_map_pic(c + Vector2(mk.pos.x, mk.pos.z) * k, "market", 18.0 * u)
-			if big: _map_text(c + Vector2(mk.pos.x + 8.0, mk.pos.z + 3.0) * k, "Market", 16, Color(1, 0.7, 0.7))
+			_draw_market(c, k, u, big, mk)
 	for i in world.hook_points.size():
 		if i >= world.road_hook0: break # the ones along the roads are off the map
 		var hp: Vector3 = world.hook_points[i]
@@ -3391,7 +3450,7 @@ func _process(dt: float) -> void:
 		blood.name = "Blood"
 		world.add_child(blood)
 		blood.setup(world, [body.get_rid()])
-	if catdog == null and blood != null: # the owner's cat and dog, once a round
+	if catdog == null and blood != null and world.map_id != "moon": # the owner's cat and dog, once a round (no animals on the Moon)
 		catdog = NFCatDog.new()
 		catdog.name = "CatDog"
 		world.add_child(catdog)
@@ -3411,7 +3470,7 @@ func _process(dt: float) -> void:
 		feast.name = "Feast"
 		world.add_child(feast)
 		feast.setup(world, rules, blood, _cam_pos, _rig_of, _feast_bite)
-	if ravens == null and world.ready_done and world.map_id != "garage": # the owner's ravens
+	if ravens == null and world.ready_done and not world.map_id in ["garage", "moon"]: # the owner's ravens
 		ravens = NFRavens.new()
 		ravens.name = "Ravens"
 		ravens.listeners = func() -> Array:
@@ -3478,6 +3537,10 @@ func _process(dt: float) -> void:
 		elif st == "dead" or (st == "down" and anim != "crawl"): anim = "dying"
 		elif st == "hurt" and anim == "idle": anim = "injured"
 		var was: Vector3 = r.node.position
+		if world.map_id == "moon" and was.z > -NightWorld.WALL + 0.5 and target.z < -NightWorld.WALL - 8.0: # through a portal: a jump, not a slide
+			for gi in world.gate_points.size():
+				if absf(was.x - (world.gate_points[gi][0] as Vector3).x) < 6.0: world.portal_flash(gi)
+			r.node.position = target
 		r.node.position = r.node.position.lerp(target, w)
 		# how fast they really move here: the legs keep up with it (a faster player — the developer
 		# tools' speed — runs with quicker strides instead of gliding over the ground)
@@ -3641,7 +3704,10 @@ func _process(dt: float) -> void:
 		for g in world.gate_points: _sfx("gate", g[0] + Vector3(0, 3, 0), 8.0)
 		_sfx("gate", null, -12.0)
 		doom_music.play()
-		if my_role == "survivor": # past each gate an escape car waits; the last gate is 600 m down the road
+		if world.map_id == "moon": # both gates open onto the launch pad: the rocket
+			_flash("The gates are open — run to the rocket on the launch pad, 3:30 before the meteor hits!" if my_role == "survivor"
+				else "The gates are open — they're running for the rocket. Stop them!")
+		elif my_role == "survivor": # past each gate an escape car waits; the last gate is 600 m down the road
 			_flash("The gates are open — get in the escape car behind the gate; the last gate is 600 m on")
 		else: _flash("The gates are open — they'll escape by car behind the gate, chase them in yours")
 	# survivors feel the killer coming: heartbeat inside the terror radius, heavy breathing when he is very close
@@ -3715,7 +3781,7 @@ func _process(dt: float) -> void:
 	_unimpale()
 	_cam_focus()
 	if rules.powered and rules.doom >= 0.0:
-		var near := 1.0 - rules.doom / Rules.DOOM_TIME
+		var near := 1.0 - rules.doom / rules.doom_time
 		world.set_moon_near(near)
 		var rumble := clampf((near - 0.75) / 0.25, 0.0, 1.0)
 		if impact_t >= 0.0: rumble = maxf(1.0 - impact_t / 3.0, 0.0) * 2.5
@@ -3735,6 +3801,7 @@ func _process(dt: float) -> void:
 
 func _physics_process(delta: float) -> void:
 	if not started: return
+	_portal(delta)
 	for n in hit_anim.keys(): # the one-shot flinch, if the clip exists
 		hit_anim[n] = hit_anim[n] - delta
 		if hit_anim[n] <= 0.0: hit_anim.erase(n)

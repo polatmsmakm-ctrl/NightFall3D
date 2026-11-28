@@ -12,6 +12,7 @@ const VIEWS := {                       # map -> [camera position, what it looks 
 	"rubkhali": [Vector3(24, 7, 30), Vector3(-16, 1, -18)],
 	"garage":   [Vector3.ZERO, Vector3.ZERO], # worked out from the modules below
 	"beach":    [Vector3(0, 10, 4), Vector3(0, 0, 60)],
+	"moon":     [Vector3(8, 3.2, -44), Vector3(40, 11, 18)],
 }
 
 func frames(n: int) -> void:
