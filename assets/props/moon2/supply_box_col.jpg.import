@@ -18,7 +18,7 @@ dest_files=["res://.godot/imported/supply_box_col.jpg-c82837cb859da1f990087fe933
 [params]
 
 compress/mode=2
-compress/high_quality=true
+compress/high_quality=false
 compress/lossy_quality=1.0
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

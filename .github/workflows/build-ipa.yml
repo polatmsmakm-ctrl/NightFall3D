@@ -52,5 +52,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          cd build/ios
+          SIZE=$(stat -f%z Nightfall.ipa)
+          echo "IPA is $SIZE bytes"
+          FILES="Nightfall.ipa"
+          NOTES="Unsigned IPA for Sideloadly"
+          if [ "$SIZE" -gt 2000000000 ]; then
+            # GitHub refuses a release file of 2 GB or more: send it in parts, with a one-click joiner
+            split -b 1900m Nightfall.ipa Nightfall.ipa.part
+            PARTS=$(ls Nightfall.ipa.part*)
+            { printf '@echo off\r\ncd /d "%%~dp0"\r\ncopy /b '; first=1; for p in $PARTS; do if [ $first = 0 ]; then printf ' + '; fi; printf '%s' "$p"; first=0; done; printf ' Nightfall.ipa\r\necho Done: Nightfall.ipa is ready for Sideloadly\r\npause\r\n'; } > join_parts_windows.bat
+            { printf '#!/bin/sh\ncd "$(dirname "$0")"\ncat '; for p in $PARTS; do printf '%s ' "$p"; done; printf '> Nightfall.ipa\necho Done\n'; } > join_parts_mac.sh
+            FILES="$PARTS join_parts_windows.bat join_parts_mac.sh"
+            NOTES="The IPA is over GitHub's 2 GB limit, so it comes in parts. Download every Nightfall.ipa.part file and join_parts_windows.bat into one folder, double-click join_parts_windows.bat, then open the Nightfall.ipa it makes in Sideloadly."
+          fi
           gh release delete latest --yes --cleanup-tag || true
-          gh release create latest build/ios/Nightfall.ipa --title "Latest build" --notes "Unsigned IPA for Sideloadly" --target ${{ github.sha }}
+          gh release create latest $FILES --title "Latest build" --notes "$NOTES" --target ${{ github.sha }}

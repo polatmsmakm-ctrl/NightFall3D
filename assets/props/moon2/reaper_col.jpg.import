@@ -18,7 +18,7 @@ dest_files=["res://.godot/imported/reaper_col.jpg-09dca22f5cb2fd84e862bef0db7ddb
 [params]
 
 compress/mode=2
-compress/high_quality=true
+compress/high_quality=false
 compress/lossy_quality=1.0
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

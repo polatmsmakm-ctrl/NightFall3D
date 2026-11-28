@@ -18,7 +18,7 @@ dest_files=["res://.godot/imported/water_tank_emit.jpg-b758b6b467d3724d60496966b
 [params]
 
 compress/mode=2
-compress/high_quality=true
+compress/high_quality=false
 compress/lossy_quality=1.0
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

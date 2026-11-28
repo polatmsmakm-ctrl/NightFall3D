@@ -1245,6 +1245,12 @@ loads `<name>.ogg` first, then `.mp3` (`SFX`, `SFX_LOOPS`).
   Create_an_ultra-real #4, Premium_modern_horro #2 (the old click).
 
 ## Updates come as a new IPA (the in-game updater was removed)
+**The IPA passed GitHub's 2 GB limit for one release file** (November 28, with the Moon's full-detail
+models): `build-ipa.yml` now splits an IPA over 2 GB into `Nightfall.ipa.partaa / partab ...` and adds
+`join_parts_windows.bat` (double-click: `copy /b` the parts into `Nightfall.ipa`) and `join_parts_mac.sh`;
+the release notes say so. The second Moon batch's maps keep Godot's default compression (ETC2 on the
+iPhone, half the size of the ASTC 4x4 of `high_quality`); nothing was resized.
+
 The owner asked (November 27) to drop the in-game updates and go back to the first way: every push to
 `main` builds `Nightfall.ipa` (`build-ipa.yml`, the `latest` release) and he installs it with Sideloadly.
 `scripts/patch.gd`, `patch.yml`, `ping.yml`, `tools/make_patch.gd`, `tools/updater.*`, the server's

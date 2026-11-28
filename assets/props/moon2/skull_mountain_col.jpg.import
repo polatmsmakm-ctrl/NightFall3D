@@ -18,7 +18,7 @@ dest_files=["res://.godot/imported/skull_mountain_col.jpg-baceb475524a3759354479
 [params]
 
 compress/mode=2
-compress/high_quality=true
+compress/high_quality=false
 compress/lossy_quality=1.0
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

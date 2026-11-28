@@ -18,7 +18,7 @@ dest_files=["res://.godot/imported/gangster_car_col.jpg-809286171254554eef6ed674
 [params]
 
 compress/mode=2
-compress/high_quality=true
+compress/high_quality=false
 compress/lossy_quality=1.0
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

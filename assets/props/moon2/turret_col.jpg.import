@@ -18,7 +18,7 @@ dest_files=["res://.godot/imported/turret_col.jpg-be1eb1332a4a4a8e8d76bc332b46ab
 [params]
 
 compress/mode=2
-compress/high_quality=true
+compress/high_quality=false
 compress/lossy_quality=1.0
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
